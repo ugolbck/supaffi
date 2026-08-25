@@ -6,10 +6,19 @@ export type MerchantInput = {
   emailProviderConfig: string;
 };
 
+// Runtime domain lookups (webhooks, click tracking, Caddy's on-demand TLS
+// ask) are all exact-string matches against a real Host header/SNI, which is
+// always lowercase and never padded with whitespace. Normalizing here — and
+// having callers store this normalized value, not the raw form input — is
+// what keeps a stored Merchant.domain matchable by those lookups.
+export function normalizeDomain(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
 export function validateMerchantInput(input: MerchantInput): string | null {
   if (!input.name.trim()) return "Name is required";
 
-  const domain = input.domain.trim();
+  const domain = normalizeDomain(input.domain);
   if (!domain) return "Domain is required";
   if (domain.includes("://") || domain.includes("/") || /\s/.test(domain)) {
     return "Domain must be a bare hostname (no https://, no path)";
@@ -29,7 +38,7 @@ export function validateMerchantInput(input: MerchantInput): string | null {
 export function validateMerchantEditInput(input: MerchantInput): string | null {
   if (!input.name.trim()) return "Name is required";
 
-  const domain = input.domain.trim();
+  const domain = normalizeDomain(input.domain);
   if (!domain) return "Domain is required";
   if (domain.includes("://") || domain.includes("/") || /\s/.test(domain)) {
     return "Domain must be a bare hostname (no https://, no path)";

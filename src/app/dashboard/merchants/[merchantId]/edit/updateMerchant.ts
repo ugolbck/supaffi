@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { updateMerchant as updateMerchantRecord } from "@/lib/merchant";
-import { validateMerchantEditInput } from "../../new/validation";
+import { validateMerchantEditInput, normalizeDomain } from "../../new/validation";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 
 export async function updateMerchantAction(
@@ -31,8 +31,8 @@ export async function updateMerchantAction(
 
   try {
     await updateMerchantRecord(session.user.id, merchantId, {
-      name: input.name,
-      domain: input.domain,
+      name: input.name.trim(),
+      domain: normalizeDomain(input.domain),
       // Blank means "keep existing" on edit — updateMerchant only
       // overwrites a credential field when it is !== undefined, so an
       // empty string here (not converted) would get encrypted and

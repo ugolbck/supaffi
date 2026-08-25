@@ -43,6 +43,7 @@ const baseInput = {
 describe.skipIf(!hasDatabase)("program", () => {
   let ownerId: string;
   let merchantId: string;
+  let merchantId2: string;
   let otherOwnerId: string;
   let otherMerchantId: string;
 
@@ -66,6 +67,21 @@ describe.skipIf(!hasDatabase)("program", () => {
       },
     });
     merchantId = merchant.id;
+
+    // A second Merchant owned by the SAME Owner — the boundary that
+    // getProgramForMerchant/updateProgram's `where: { id, merchantId }`
+    // filter (scoped in addition to the ownership check) protects against.
+    const merchant2 = await db.merchant.create({
+      data: {
+        ownerId,
+        name: "M2",
+        domain: "program-test-2.example.com",
+        stripeSecretKeyEnc: "x",
+        stripeWebhookSecretEnc: "x",
+        emailProviderConfigEnc: "x",
+      },
+    });
+    merchantId2 = merchant2.id;
 
     const otherOwner = await db.owner.create({
       data: { email: "program-test-other-owner@example.com", passwordHash: "x" },
@@ -114,6 +130,12 @@ describe.skipIf(!hasDatabase)("program", () => {
       data: { merchantId: otherMerchantId, ...baseInput, defaultCommissionRate: 20 },
     });
     const result = await getProgramForMerchant(ownerId, otherMerchantId, id);
+    expect(result).toBeNull();
+  });
+
+  it("getProgramForMerchant returns null for a Program under a different Merchant owned by the SAME Owner", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    const result = await getProgramForMerchant(ownerId, merchantId2, id);
     expect(result).toBeNull();
   });
 

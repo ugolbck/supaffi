@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { createMerchant as createMerchantRecord } from "@/lib/merchant";
-import { validateMerchantInput } from "./validation";
+import { validateMerchantInput, normalizeDomain } from "./validation";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 
 export async function createMerchantAction(
@@ -28,7 +28,11 @@ export async function createMerchantAction(
 
   let merchantId: string;
   try {
-    const created = await createMerchantRecord(session.user.id, input);
+    const created = await createMerchantRecord(session.user.id, {
+      ...input,
+      name: input.name.trim(),
+      domain: normalizeDomain(input.domain),
+    });
     merchantId = created.id;
   } catch (err) {
     // Unique constraint on Merchant.domain — the most likely real-world

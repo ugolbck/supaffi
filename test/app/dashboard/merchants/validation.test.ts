@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateMerchantInput } from "@/app/dashboard/merchants/new/validation";
+import { validateMerchantInput, normalizeDomain } from "@/app/dashboard/merchants/new/validation";
 
 const validInput = {
   name: "InstantGradient",
@@ -45,6 +45,20 @@ describe("validateMerchantInput", () => {
   it("rejects a missing email provider config", () => {
     expect(validateMerchantInput({ ...validInput, emailProviderConfig: "" })).toBe(
       "Email provider configuration is required"
+    );
+  });
+
+  it("accepts a mixed-case, whitespace-padded domain (validated against the normalized form)", () => {
+    expect(
+      validateMerchantInput({ ...validInput, domain: " Affiliates.InstantGradient.com " })
+    ).toBeNull();
+  });
+});
+
+describe("normalizeDomain", () => {
+  it("trims and lowercases the domain so it matches a real Host header/SNI", () => {
+    expect(normalizeDomain(" Affiliates.InstantGradient.com ")).toBe(
+      "affiliates.instantgradient.com"
     );
   });
 });

@@ -37,4 +37,16 @@ describe("validateMerchantEditInput", () => {
       })
     ).toBe("Name is required");
   });
+
+  it("accepts a mixed-case, whitespace-padded domain (validated against the normalized form)", () => {
+    expect(
+      validateMerchantEditInput({
+        name: "Renamed",
+        domain: " Renamed.Example.com ",
+        stripeSecretKey: "",
+        stripeWebhookSecret: "",
+        emailProviderConfig: "",
+      })
+    ).toBeNull();
+  });
 });
