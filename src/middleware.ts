@@ -10,8 +10,6 @@ import { shouldRedirectToLogin } from "@/lib/middlewareLogic";
 // and session strategy, both present in authConfig.
 const { auth } = NextAuth(authConfig);
 
-export { shouldRedirectToLogin };
-
 export default auth((req) => {
   if (shouldRedirectToLogin(req.nextUrl.pathname, !!req.auth)) {
     return NextResponse.redirect(new URL("/login", req.nextUrl.origin));

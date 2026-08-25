@@ -10,6 +10,11 @@ export async function createOwner(
   email: string,
   password: string
 ): Promise<{ id: string; email: string }> {
+  const normalizedEmail = email.trim().toLowerCase();
+  // Hashed before the transaction starts: Argon2 (~100ms) has no business
+  // running while the advisory lock and a pooled connection are held.
+  const passwordHash = await hashPassword(password);
+
   return db.$transaction(async (tx) => {
     // Advisory lock scoped to this transaction, released automatically on
     // commit/rollback. Serializes concurrent createOwner calls so the
@@ -23,9 +28,8 @@ export async function createOwner(
       throw new Error("An Owner already exists on this Instance");
     }
 
-    const passwordHash = await hashPassword(password);
     return tx.owner.create({
-      data: { email, passwordHash },
+      data: { email: normalizedEmail, passwordHash },
       select: { id: true, email: true },
     });
   });
@@ -35,7 +39,8 @@ export async function verifyOwnerCredentials(
   email: string,
   password: string
 ): Promise<{ id: string; email: string } | null> {
-  const owner = await db.owner.findUnique({ where: { email } });
+  const normalizedEmail = email.trim().toLowerCase();
+  const owner = await db.owner.findUnique({ where: { email: normalizedEmail } });
   if (!owner) return null;
   const valid = await verifyPassword(password, owner.passwordHash);
   if (!valid) return null;

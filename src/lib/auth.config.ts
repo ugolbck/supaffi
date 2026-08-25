@@ -7,7 +7,10 @@ import type { NextAuthConfig } from "next-auth";
 // session cookie, which these shared options (secret, jwt strategy) cover.
 // src/lib/auth.ts spreads this into the full config used everywhere else.
 export const authConfig: NextAuthConfig = {
-  session: { strategy: "jwt" },
+  // 30 days, matching the Affiliate session lifetime decision in CONTEXT.md
+  // ("Session persists long (30-60 days)") — stated explicitly rather than
+  // left to Auth.js's inherited default.
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   pages: { signIn: "/login" },
   providers: [],
 };

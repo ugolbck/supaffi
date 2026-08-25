@@ -1,17 +1,40 @@
+// Destructive: runs db.owner.deleteMany() before/after every test. Point
+// DATABASE_URL at a disposable database, never a real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { createOwner, ownerExists, verifyOwnerCredentials } from "@/lib/owner";
 
-beforeEach(async () => {
-  await db.owner.deleteMany();
-});
+// Skip this whole suite cleanly when no database is reachable, instead of
+// letting Prisma throw an opaque connection error mid-run. Checked once,
+// up front, via a real connection attempt (not just "is DATABASE_URL set")
+// so a stale/unreachable URL also skips rather than failing the suite.
+let hasDatabase = false;
+if (process.env.DATABASE_URL) {
+  try {
+    await db.$connect();
+    hasDatabase = true;
+  } catch {
+    hasDatabase = false;
+  }
+}
 
-afterAll(async () => {
-  await db.owner.deleteMany();
-  await db.$disconnect();
-});
+if (!hasDatabase) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "Skipping test/lib/owner.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+  );
+}
 
-describe("owner", () => {
+describe.skipIf(!hasDatabase)("owner", () => {
+  beforeEach(async () => {
+    await db.owner.deleteMany();
+  });
+
+  afterAll(async () => {
+    await db.owner.deleteMany();
+    await db.$disconnect();
+  });
+
   it("reports no Owner exists on a fresh Instance", async () => {
     expect(await ownerExists()).toBe(false);
   });
