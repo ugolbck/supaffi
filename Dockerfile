@@ -1,6 +1,10 @@
 FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
+# npm ci runs the postinstall hook (`prisma generate`), which needs the
+# schema present, so it has to be copied in before npm ci runs, not just
+# in the builder stage's later `COPY . .`.
+COPY prisma ./prisma
 RUN npm ci
 
 FROM node:24-alpine AS builder
@@ -25,9 +29,14 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# The entrypoint runs `prisma migrate deploy` at container start, which
+# needs the Prisma CLI's full dependency tree, not just its own package —
+# copying select node_modules subdirectories by hand (tried first) breaks
+# on transitive dependencies (e.g. @prisma/config needing the `effect`
+# package) that aren't obvious until the CLI actually runs. The Next.js
+# standalone output already excludes unused deps from its own bundle, so
+# this is the CLI's cost alone, not a general bloat of the image.
+COPY --from=builder /app/node_modules ./node_modules
 COPY docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
