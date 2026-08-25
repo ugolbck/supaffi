@@ -6,26 +6,29 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "vitest run",
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@auth/prisma-adapter": "^2.0.0",
+    "@node-rs/argon2": "^2.1.0",
+    "@prisma/client": "^6.0.0",
+    "@sentry/nextjs": "^10.0.0",
     "next": "^16.0.0",
+    "next-auth": "5.0.0-beta.32",
+    "pg": "^8.13.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@prisma/client": "^6.0.0",
-    "next-auth": "5.0.0-beta.32",
-    "@auth/prisma-adapter": "^2.0.0",
     "resend": "^4.0.0",
-    "stripe": "^22.0.0",
-    "@sentry/nextjs": "^10.0.0",
-    "pg": "^8.13.0"
+    "stripe": "^22.0.0"
   },
   "devDependencies": {
-    "prisma": "^6.0.0",
-    "typescript": "^5.6.0",
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/pg": "^8.11.0"
+    "prisma": "^6.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.11"
   }
 }
