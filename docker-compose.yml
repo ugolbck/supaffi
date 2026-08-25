@@ -18,7 +18,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: supaffi
     volumes:
-      - supaffi_db:/var/lib/postgresql/data
+      - supaffi_db:/var/lib/postgresql
 
   caddy:
     image: caddy:2-alpine

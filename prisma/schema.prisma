@@ -116,7 +116,7 @@ model Commission {
   adjustsCommission   Commission?  @relation("Adjustment", fields: [adjustsCommissionId], references: [id])
   adjustments         Commission[] @relation("Adjustment")
 
-  stripeInvoiceId String? @unique // ties this Commission to the exact billing-cycle payment (invoice.paid is the canonical event for subscriptions, not charge.succeeded) — null for adjustment rows, which aren't tied to a new payment
+  stripePaymentRef String? @unique // an Invoice ID for subscriptions, a PaymentIntent ID for one-time purchases (no Invoice exists for those) — null for adjustment rows, which aren't tied to a new payment
   amount         Decimal @db.Decimal(10, 2) // negative for adjustment rows
   currency       String  // ISO code, e.g. "usd", "eur" — never converted (see CONTEXT.md)
 
@@ -128,6 +128,8 @@ model Commission {
   flagReason String?          // e.g. "buyer email matches affiliate email"
 
   createdAt DateTime @default(now())
+
+  @@index([status, payableAt])
 }
 
 // Postgres-only webhook queue (ADR 0007). Drained via SELECT ... FOR UPDATE SKIP LOCKED.
@@ -146,6 +148,10 @@ model WebhookEvent {
   payload       Json
   status        WebhookEventStatus @default(PENDING)
   attempts      Int      @default(0)
+  lastError     String?  // last failure message, for debugging FAILED rows
+  nextAttemptAt DateTime @default(now()) // backoff scheduling, the claim query filters on this
   createdAt     DateTime @default(now())
   processedAt   DateTime?
+
+  @@index([status, nextAttemptAt, createdAt])
 }
