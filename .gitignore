@@ -17,6 +17,9 @@ dist/
 # Prisma
 prisma/generated/
 
+# TypeScript build info
+*.tsbuildinfo
+
 # OS / editor
 .DS_Store
 *.log
