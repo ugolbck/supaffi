@@ -39,4 +39,30 @@ describe("owner", () => {
     const noSuchUser = await verifyOwnerCredentials("nobody@example.com", "anything");
     expect(noSuchUser).toBeNull();
   });
+
+  it("prevents race condition: concurrent createOwner calls serialize correctly", async () => {
+    // Call createOwner twice concurrently with different emails
+    const results = await Promise.allSettled([
+      createOwner("alice@example.com", "password1"),
+      createOwner("bob@example.com", "password2"),
+    ]);
+
+    // Exactly one should succeed, one should fail
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    // The rejected one should have the correct error
+    const rejectedError = rejected[0];
+    if (rejectedError.status === "rejected") {
+      expect(rejectedError.reason).toBeInstanceOf(Error);
+      expect(rejectedError.reason.message).toBe("An Owner already exists on this Instance");
+    }
+
+    // Verify only one Owner exists in the database
+    const count = await db.owner.count();
+    expect(count).toBe(1);
+  });
 });
