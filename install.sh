@@ -7,6 +7,7 @@ set -euo pipefail
 if [ ! -f .env ]; then
   echo "MASTER_ENCRYPTION_KEY=$(openssl rand -hex 32)" > .env
   echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env
+  echo "AUTH_SECRET=$(openssl rand -base64 32)" >> .env
 fi
 
 docker compose up -d

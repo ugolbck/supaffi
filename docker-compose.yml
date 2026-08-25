@@ -1,10 +1,14 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        AUTH_SECRET: ${AUTH_SECRET} # needed at build time too — see Dockerfile
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://supaffi:${POSTGRES_PASSWORD}@db:5432/supaffi
       MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY} # decrypts Merchant Stripe/email keys at rest (ADR 0003), generated once at install, never stored in the DB
+      AUTH_SECRET: ${AUTH_SECRET} # signs Owner session JWTs (Auth.js)
     depends_on:
       - db
     expose:

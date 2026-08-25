@@ -5,6 +5,13 @@ RUN npm ci
 
 FROM node:24-alpine AS builder
 WORKDIR /app
+# Auth.js v5 needs AUTH_SECRET present when its config module loads, which
+# happens during `next build` while compiling the /api/auth routes, not
+# just at runtime. Passed in as a build arg (docker-compose.yml), doesn't
+# need to be the real deployed secret, just present so the build succeeds —
+# the actual runtime value comes from the container's own AUTH_SECRET env var.
+ARG AUTH_SECRET
+ENV AUTH_SECRET=${AUTH_SECRET}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
