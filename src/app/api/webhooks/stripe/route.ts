@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { Prisma } from "@prisma/client";
+import { isUniqueConstraintError } from "@/lib/prismaErrors";
 
 // One instance can host several Merchants (ADR 0006), each on their own
 // domain, so the Merchant is resolved by which domain the request arrived
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
     // Unique constraint on stripeEventId — Stripe redelivered an event we
     // already have queued. Not an error, still a success from Stripe's
     // point of view.
-    if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")) {
+    if (!isUniqueConstraintError(err)) {
       throw err;
     }
   }
