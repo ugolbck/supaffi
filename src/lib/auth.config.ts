@@ -1,4 +1,12 @@
-import type { NextAuthConfig } from "next-auth";
+import type { DefaultSession, NextAuthConfig } from "next-auth";
+
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+    } & DefaultSession["user"];
+  }
+}
 
 // The subset of the NextAuth config that is safe to run in the Edge
 // Middleware runtime: no providers (the Credentials provider's authorize()
@@ -13,4 +21,12 @@ export const authConfig: NextAuthConfig = {
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   pages: { signIn: "/login" },
   providers: [],
+  callbacks: {
+    session({ session, token }) {
+      if (token.sub) {
+        session.user.id = token.sub;
+      }
+      return session;
+    },
+  },
 };
