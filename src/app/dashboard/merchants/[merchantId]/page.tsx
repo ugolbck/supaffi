@@ -2,7 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwner } from "@/lib/merchant";
-import { db } from "@/lib/db";
+import { listProgramsForMerchant } from "@/lib/program";
 import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/stripeWebhookEvents";
 
 export default async function MerchantDetailPage({
@@ -17,13 +17,7 @@ export default async function MerchantDetailPage({
   const merchant = await getMerchantForOwner(session.user.id, merchantId);
   if (!merchant) notFound();
 
-  // Inline for now — Task 6 introduces listProgramsForMerchant in
-  // src/lib/program.ts; Task 7 swaps this for that call once it exists.
-  const programs = await db.program.findMany({
-    where: { merchantId: merchant.id },
-    select: { id: true, name: true, defaultCommissionRate: true },
-    orderBy: { createdAt: "asc" },
-  });
+  const programs = await listProgramsForMerchant(session.user.id, merchant.id);
 
   const webhookUrl = `https://${merchant.domain}/api/webhooks/stripe`;
 
@@ -58,7 +52,7 @@ export default async function MerchantDetailPage({
               >
                 {p.name}
               </Link>{" "}
-              — {p.defaultCommissionRate.toString()}%
+              — {String(p.defaultCommissionRate)}%
             </li>
           ))}
         </ul>
