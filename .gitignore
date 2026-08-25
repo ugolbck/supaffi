@@ -1,0 +1,22 @@
+# Local planning docs, not part of the public repo
+CONTEXT.md
+docs/adr/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Prisma
+prisma/generated/
+
+# OS / editor
+.DS_Store
+*.log

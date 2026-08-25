@@ -1,0 +1,16 @@
+{
+	on_demand_tls {
+		ask http://app:3000/api/internal/domain-check
+	}
+}
+
+# Matches any domain, since each Merchant on this Instance points their own
+# domain here (ADR 0006). Caddy checks with the app before issuing a cert
+# for a domain it hasn't seen, so pointing an unrelated domain at this
+# server can't be used to obtain free certificates through it.
+:443 {
+	tls {
+		on_demand
+	}
+	reverse_proxy app:3000
+}

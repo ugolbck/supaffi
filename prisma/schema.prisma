@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// The person who installed this Instance. Full access to every Merchant on it.
+model Owner {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  createdAt    DateTime   @default(now())
+  merchants    Merchant[]
+}
+
+model Merchant {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     Owner    @relation(fields: [ownerId], references: [id])
+  name      String
+  domain    String   @unique // e.g. affiliates.instantgradient.com
+
+  // Encrypted at rest (ADR 0003), master key outside the database
+  stripeSecretKeyEnc      String
+  stripeWebhookSecretEnc  String
+  emailProviderConfigEnc  String // SMTP or Resend-style API key, for Affiliate magic links
+
+  programs       Program[]
+  affiliates     Affiliate[]
+  webhookEvents  WebhookEvent[]
+  createdAt      DateTime @default(now())
+}
+
+enum CommissionDurationType {
+  ONE_TIME
+  FIXED_MONTHS
+  FOREVER
+}
+
+model Program {
+  id         String                 @id @default(cuid())
+  merchantId String
+  merchant   Merchant               @relation(fields: [merchantId], references: [id])
+  name       String
+
+  defaultCommissionRate   Decimal  @db.Decimal(5, 2) // percentage, e.g. 20.00
+  commissionDurationType  CommissionDurationType
+  commissionDurationMonths Int?    // only set when commissionDurationType = FIXED_MONTHS
+  attributionWindowDays   Int      @default(60)
+  holdingPeriodDays       Int      @default(30)
+
+  affiliates Affiliate[]
+  createdAt  DateTime @default(now())
+}
+
+model Affiliate {
+  id         String   @id @default(cuid())
+  merchantId String   // identity is scoped to the Merchant, not the Program — moving between Programs (e.g. Standard to VIP tier) keeps the same Affiliate row and history
+  merchant   Merchant @relation(fields: [merchantId], references: [id])
+  programId  String   // current Program assignment, reassignable
+  program    Program  @relation(fields: [programId], references: [id])
+
+  email         String
+  name          String?
+  referralCode  String   @unique // readable slug from the affiliate's name (e.g. "sarah"), not random — better CTR/trust than a random ID
+  customCommissionRate Decimal? @db.Decimal(5, 2) // overrides the current Program's default when set
+  payoutDetails String?  // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
+
+  clicks      Click[]
+  commissions Commission[]
+  createdAt   DateTime @default(now())
+
+  @@unique([merchantId, email])
+}
+
+model Click {
+  id            String    @id @default(cuid())
+  affiliateId   String
+  affiliate     Affiliate @relation(fields: [affiliateId], references: [id])
+  referralToken String    @unique // the value passed into Stripe as client_reference_id — only used to match the FIRST checkout
+  expiresAt     DateTime  // createdAt + Program.attributionWindowDays, computed at insert
+  createdAt     DateTime  @default(now())
+
+  // Set once, when checkout.session.completed fires and matches referralToken.
+  // client_reference_id doesn't propagate to renewal invoices, so every invoice.paid
+  // event after the first is matched via this Customer ID instead, not the token.
+  stripeCustomerId String? @unique
+
+  commissions Commission[]
+
+  @@index([stripeCustomerId])
+}
+
+enum CommissionStatus {
+  PENDING
+  FLAGGED // self-referral signal detected (email/payment overlap with the Affiliate); blocks progress to PAYABLE until the Merchant confirms or dismisses
+  PAYABLE
+  PAID
+  VOIDED
+}
+
+model Commission {
+  id          String   @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id])
+  clickId     String
+  click       Click    @relation(fields: [clickId], references: [id])
+
+  // Null for a normal Commission. Set when this row is a negative clawback entry
+  // for a refund that landed after the original Commission was already Paid —
+  // the original stays Paid, untouched, this is a separate negative-amount row.
+  adjustsCommissionId String?
+  adjustsCommission   Commission?  @relation("Adjustment", fields: [adjustsCommissionId], references: [id])
+  adjustments         Commission[] @relation("Adjustment")
+
+  stripeInvoiceId String? @unique // ties this Commission to the exact billing-cycle payment (invoice.paid is the canonical event for subscriptions, not charge.succeeded) — null for adjustment rows, which aren't tied to a new payment
+  amount         Decimal @db.Decimal(10, 2) // negative for adjustment rows
+  currency       String  // ISO code, e.g. "usd", "eur" — never converted (see CONTEXT.md)
+
+  status     CommissionStatus @default(PENDING)
+  payableAt  DateTime         // createdAt + Program.holdingPeriodDays
+  paidAt     DateTime?
+  voidedAt   DateTime?
+  voidReason String?          // e.g. "refund", "confirmed self-referral"
+  flagReason String?          // e.g. "buyer email matches affiliate email"
+
+  createdAt DateTime @default(now())
+}
+
+// Postgres-only webhook queue (ADR 0007). Drained via SELECT ... FOR UPDATE SKIP LOCKED.
+enum WebhookEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+model WebhookEvent {
+  id            String   @id @default(cuid())
+  merchantId    String
+  merchant      Merchant @relation(fields: [merchantId], references: [id])
+  stripeEventId String   @unique // blocks duplicate delivery
+  payload       Json
+  status        WebhookEventStatus @default(PENDING)
+  attempts      Int      @default(0)
+  createdAt     DateTime @default(now())
+  processedAt   DateTime?
+}
