@@ -9,6 +9,9 @@ export async function processWebhookEvent(row: WebhookEvent): Promise<void> {
   const event = row.payload as unknown as Stripe.Event;
   const merchant = await db.merchant.findUniqueOrThrow({ where: { id: row.merchantId } });
 
+  // Keep this switch's cases in sync with src/lib/stripeWebhookEvents.ts's
+  // REQUIRED_STRIPE_WEBHOOK_EVENTS list — that's what a Merchant is shown
+  // on their Merchant detail page as the events to enable in Stripe.
   switch (event.type) {
     case "checkout.session.completed":
       return handleCheckoutSessionCompleted(merchant, event.data.object as Stripe.Checkout.Session);
