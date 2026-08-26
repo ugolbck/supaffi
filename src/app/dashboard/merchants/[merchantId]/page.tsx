@@ -28,6 +28,9 @@ export default async function MerchantDetailPage({
       <Link href={`/dashboard/merchants/${merchant.id}/edit`} className="cursor-pointer">
         Edit connection details
       </Link>
+      <Link href={`/dashboard/merchants/${merchant.id}/commissions`} className="cursor-pointer">
+        View commissions
+      </Link>
 
       <h2>Stripe webhook setup</h2>
       <p>In your Stripe Dashboard, add a webhook endpoint pointing at:</p>
