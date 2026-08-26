@@ -35,13 +35,18 @@ function PaginationItem({ ...props }: React.ComponentProps<"li">) {
 
 type PaginationLinkProps = {
   isActive?: boolean
+  // Pass e.g. `render={<Link href="..." />}` to route the link through
+  // next/link (client-side navigation) instead of a plain anchor. Defaults
+  // to a plain <a> when omitted.
+  render?: React.ReactElement<React.ComponentProps<"a">>
 } & Pick<React.ComponentProps<typeof Button>, "size"> &
-  React.ComponentProps<"a">
+  Omit<React.ComponentProps<"a">, "ref">
 
 function PaginationLink({
   className,
   isActive,
   size = "icon",
+  render = <a />,
   ...props
 }: PaginationLinkProps) {
   return (
@@ -50,14 +55,11 @@ function PaginationLink({
       size={size}
       className={cn(className)}
       nativeButton={false}
-      render={
-        <a
-          aria-current={isActive ? "page" : undefined}
-          data-slot="pagination-link"
-          data-active={isActive}
-          {...props}
-        />
-      }
+      render={render}
+      aria-current={isActive ? "page" : undefined}
+      data-slot="pagination-link"
+      data-active={isActive}
+      {...(props as React.ComponentProps<typeof Button>)}
     />
   )
 }

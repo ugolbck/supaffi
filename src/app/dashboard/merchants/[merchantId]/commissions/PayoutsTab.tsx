@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listPayableGroups } from "@/lib/commission";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -14,14 +15,20 @@ import { PayoutDetailDialog } from "./PayoutDetailDialog";
 
 const PAGE_SIZE = 10;
 
+function payoutsHref(page: number, flaggedPage: number): string {
+  return `?tab=payouts&payoutsPage=${page}&flaggedPage=${flaggedPage}`;
+}
+
 export async function PayoutsTab({
   ownerId,
   merchantId,
   page,
+  otherPage,
 }: {
   ownerId: string;
   merchantId: string;
   page: number;
+  otherPage: number;
 }) {
   const { groups, totalGroups } = await listPayableGroups(ownerId, merchantId, {
     page,
@@ -55,32 +62,42 @@ export async function PayoutsTab({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {groups.map((g) => (
-            <TableRow key={`${g.affiliateId}-${g.currency}`}>
-              <TableCell>
-                <div className="flex flex-col">
-                  <span className="font-medium">{g.affiliateName ?? g.affiliateEmail}</span>
-                  <span className="text-xs text-muted-foreground">{g.affiliateEmail}</span>
-                </div>
-              </TableCell>
-              <TableCell className="uppercase">{g.currency}</TableCell>
-              <TableCell>{g.commissionCount}</TableCell>
-              <TableCell className="font-mono">{g.totalAmount}</TableCell>
-              <TableCell className="flex justify-end gap-2">
-                <PayoutDetailDialog
-                  merchantId={merchantId}
-                  affiliateId={g.affiliateId}
-                  affiliateName={g.affiliateName ?? g.affiliateEmail}
-                  currency={g.currency}
-                />
-                <MarkPaidButton
-                  merchantId={merchantId}
-                  affiliateId={g.affiliateId}
-                  currency={g.currency}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
+          {groups.map((g) => {
+            const isNegative = g.totalAmount.startsWith("-");
+            return (
+              <TableRow key={`${g.affiliateId}-${g.currency}`}>
+                <TableCell>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{g.affiliateName ?? g.affiliateEmail}</span>
+                    <span className="text-xs text-muted-foreground">{g.affiliateEmail}</span>
+                  </div>
+                </TableCell>
+                <TableCell className="uppercase">{g.currency}</TableCell>
+                <TableCell>{g.commissionCount}</TableCell>
+                <TableCell className="font-mono">{g.totalAmount}</TableCell>
+                <TableCell className="flex justify-end gap-2">
+                  <PayoutDetailDialog
+                    merchantId={merchantId}
+                    affiliateId={g.affiliateId}
+                    affiliateName={g.affiliateName ?? g.affiliateEmail}
+                    currency={g.currency}
+                  />
+                  {isNegative ? (
+                    <span className="flex items-center text-xs text-muted-foreground">
+                      Carries to next payout
+                    </span>
+                  ) : (
+                    <MarkPaidButton
+                      merchantId={merchantId}
+                      affiliateId={g.affiliateId}
+                      currency={g.currency}
+                      commissionIds={g.commissionIds}
+                    />
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
 
@@ -89,20 +106,23 @@ export async function PayoutsTab({
           <PaginationContent>
             <PaginationItem>
               <PaginationPrevious
-                href={page > 1 ? `?payoutsPage=${page - 1}` : undefined}
+                render={<Link href={payoutsHref(Math.max(1, page - 1), otherPage)} />}
                 aria-disabled={page <= 1}
               />
             </PaginationItem>
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
               <PaginationItem key={p}>
-                <PaginationLink href={`?payoutsPage=${p}`} isActive={p === page}>
+                <PaginationLink
+                  render={<Link href={payoutsHref(p, otherPage)} />}
+                  isActive={p === page}
+                >
                   {p}
                 </PaginationLink>
               </PaginationItem>
             ))}
             <PaginationItem>
               <PaginationNext
-                href={page < totalPages ? `?payoutsPage=${page + 1}` : undefined}
+                render={<Link href={payoutsHref(Math.min(totalPages, page + 1), otherPage)} />}
                 aria-disabled={page >= totalPages}
               />
             </PaginationItem>

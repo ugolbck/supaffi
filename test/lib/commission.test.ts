@@ -224,7 +224,9 @@ describe.skipIf(!hasDatabase)("commission", () => {
     const usdCommission = await makeCommission(affiliate.id, usdClick.id, { currency: "usd" });
     const eurCommission = await makeCommission(affiliate.id, eurClick.id, { currency: "eur" });
 
-    const result = await markPayoutGroupPaid(ownerId, merchantId, affiliate.id, "usd");
+    const result = await markPayoutGroupPaid(ownerId, merchantId, affiliate.id, "usd", [
+      usdCommission.id,
+    ]);
     expect(result.count).toBe(1);
 
     const updatedUsd = await db.commission.findUniqueOrThrow({ where: { id: usdCommission.id } });
@@ -233,6 +235,46 @@ describe.skipIf(!hasDatabase)("commission", () => {
 
     const updatedEur = await db.commission.findUniqueOrThrow({ where: { id: eurCommission.id } });
     expect(updatedEur.status).toBe("PAYABLE");
+  });
+
+  it("markPayoutGroupPaid does not sweep up a commission that became PAYABLE after the page was loaded", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click1 = await makeClick(affiliate.id);
+    const click2 = await makeClick(affiliate.id);
+    await makeCommission(affiliate.id, click1.id, { amount: "10.00", currency: "usd" });
+    await makeCommission(affiliate.id, click2.id, { amount: "15.00", currency: "usd" });
+
+    const { groups } = await listPayableGroups(ownerId, merchantId, { page: 1, pageSize: 10 });
+    const group = groups.find((g) => g.affiliateId === affiliate.id && g.currency === "usd");
+    expect(group).toBeDefined();
+    expect(group!.commissionIds).toHaveLength(2);
+
+    // Simulate a third commission crossing its holding-period boundary
+    // between the Merchant loading the page and clicking "Mark paid".
+    const click3 = await makeClick(affiliate.id);
+    const lateCommission = await makeCommission(affiliate.id, click3.id, {
+      amount: "20.00",
+      currency: "usd",
+    });
+
+    const result = await markPayoutGroupPaid(
+      ownerId,
+      merchantId,
+      affiliate.id,
+      "usd",
+      group!.commissionIds
+    );
+    expect(result.count).toBe(2);
+
+    for (const id of group!.commissionIds) {
+      const updated = await db.commission.findUniqueOrThrow({ where: { id } });
+      expect(updated.status).toBe("PAID");
+    }
+
+    const updatedLate = await db.commission.findUniqueOrThrow({
+      where: { id: lateCommission.id },
+    });
+    expect(updatedLate.status).toBe("PAYABLE");
   });
 
   it("listFlaggedCommissions returns only FLAGGED commissions for this Merchant, paginated", async () => {

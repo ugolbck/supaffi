@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listFlaggedCommissions } from "@/lib/commission";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -15,14 +16,20 @@ import { DismissFlagButton } from "./DismissFlagButton";
 
 const PAGE_SIZE = 10;
 
+function flaggedHref(page: number, payoutsPage: number): string {
+  return `?tab=flagged&payoutsPage=${payoutsPage}&flaggedPage=${page}`;
+}
+
 export async function FlaggedTab({
   ownerId,
   merchantId,
   page,
+  otherPage,
 }: {
   ownerId: string;
   merchantId: string;
   page: number;
+  otherPage: number;
 }) {
   const { commissions, total } = await listFlaggedCommissions(ownerId, merchantId, {
     page,
@@ -64,7 +71,14 @@ export async function FlaggedTab({
                 </div>
               </TableCell>
               <TableCell className="font-mono">
-                {c.amount} {c.currency.toUpperCase()}
+                <div className="flex flex-col">
+                  <span>
+                    {c.amount} {c.currency.toUpperCase()}
+                  </span>
+                  {c.stripePaymentRef && (
+                    <span className="text-xs text-muted-foreground">{c.stripePaymentRef}</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell>
                 <Badge className="bg-status-warning-bg text-status-warning">
@@ -85,20 +99,23 @@ export async function FlaggedTab({
           <PaginationContent>
             <PaginationItem>
               <PaginationPrevious
-                href={page > 1 ? `?flaggedPage=${page - 1}` : undefined}
+                render={<Link href={flaggedHref(Math.max(1, page - 1), otherPage)} />}
                 aria-disabled={page <= 1}
               />
             </PaginationItem>
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
               <PaginationItem key={p}>
-                <PaginationLink href={`?flaggedPage=${p}`} isActive={p === page}>
+                <PaginationLink
+                  render={<Link href={flaggedHref(p, otherPage)} />}
+                  isActive={p === page}
+                >
                   {p}
                 </PaginationLink>
               </PaginationItem>
             ))}
             <PaginationItem>
               <PaginationNext
-                href={page < totalPages ? `?flaggedPage=${page + 1}` : undefined}
+                render={<Link href={flaggedHref(Math.min(totalPages, page + 1), otherPage)} />}
                 aria-disabled={page >= totalPages}
               />
             </PaginationItem>

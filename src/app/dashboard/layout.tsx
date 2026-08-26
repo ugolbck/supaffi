@@ -28,7 +28,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div className="flex-1" />
           <AccountMenu email={session.user.email ?? ""} />
         </header>
-        <div className="flex flex-1 flex-col overflow-hidden p-4">{children}</div>
+        <div className="flex flex-1 flex-col overflow-y-auto p-4">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

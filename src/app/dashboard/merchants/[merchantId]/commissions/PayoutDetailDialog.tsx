@@ -60,8 +60,13 @@ export function PayoutDetailDialog({
           ) : (
             lines.map((line) => (
               <div key={line.id} className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">
+                <span className="flex items-center gap-2 text-muted-foreground">
                   {new Date(line.createdAt).toLocaleDateString()}
+                  {line.stripePaymentRef && (
+                    <span className="font-mono text-xs text-muted-foreground/70">
+                      {line.stripePaymentRef}
+                    </span>
+                  )}
                 </span>
                 <span className="font-mono">
                   {line.amount} {currency.toUpperCase()}

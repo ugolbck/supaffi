@@ -10,10 +10,12 @@ export function MarkPaidButton({
   merchantId,
   affiliateId,
   currency,
+  commissionIds,
 }: {
   merchantId: string;
   affiliateId: string;
   currency: string;
+  commissionIds: string[];
 }) {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -25,7 +27,7 @@ export function MarkPaidButton({
       disabled={isPending}
       onClick={() => {
         startTransition(async () => {
-          const result = await markPaidAction(merchantId, affiliateId, currency);
+          const result = await markPaidAction(merchantId, affiliateId, currency, commissionIds);
           if ("error" in result) {
             toast.error(result.error);
           } else {

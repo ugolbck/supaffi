@@ -18,6 +18,7 @@ export type PayoutGroup = {
   currency: string;
   totalAmount: string;
   commissionCount: number;
+  commissionIds: string[];
 };
 
 export async function listPayableGroups(
@@ -32,7 +33,7 @@ export async function listPayableGroups(
     where: { status: "PAYABLE", affiliate: { merchantId } },
     _sum: { amount: true },
     _count: { _all: true },
-    orderBy: { affiliateId: "asc" },
+    orderBy: [{ affiliateId: "asc" }, { currency: "asc" }],
   });
 
   const totalGroups = grouped.length;
@@ -45,6 +46,32 @@ export async function listPayableGroups(
   });
   const affiliateById = new Map(affiliates.map((a) => [a.id, a]));
 
+  // Fetch exactly the commission ids backing each group on this page, so a
+  // later "mark paid" can be bounded to what the Merchant actually saw here
+  // (rather than sweeping up anything that becomes PAYABLE afterward).
+  const commissionRows =
+    pageSlice.length === 0
+      ? []
+      : await db.commission.findMany({
+          where: {
+            status: "PAYABLE",
+            affiliate: { merchantId },
+            OR: pageSlice.map((g) => ({ affiliateId: g.affiliateId, currency: g.currency })),
+          },
+          select: { id: true, affiliateId: true, currency: true },
+        });
+
+  const idsByGroup = new Map<string, string[]>();
+  for (const row of commissionRows) {
+    const key = `${row.affiliateId}:${row.currency}`;
+    const existing = idsByGroup.get(key);
+    if (existing) {
+      existing.push(row.id);
+    } else {
+      idsByGroup.set(key, [row.id]);
+    }
+  }
+
   const groups: PayoutGroup[] = pageSlice.map((g) => {
     const affiliate = affiliateById.get(g.affiliateId)!;
     return {
@@ -54,6 +81,7 @@ export async function listPayableGroups(
       currency: g.currency,
       totalAmount: (g._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
       commissionCount: g._count._all,
+      commissionIds: idsByGroup.get(`${g.affiliateId}:${g.currency}`) ?? [],
     };
   });
 
@@ -66,6 +94,7 @@ export type PayoutCommissionLine = {
   currency: string;
   createdAt: Date;
   payableAt: Date;
+  stripePaymentRef: string | null;
 };
 
 export async function getPayoutGroupDetail(
@@ -78,7 +107,14 @@ export async function getPayoutGroupDetail(
 
   const commissions = await db.commission.findMany({
     where: { status: "PAYABLE", currency, affiliate: { id: affiliateId, merchantId } },
-    select: { id: true, amount: true, currency: true, createdAt: true, payableAt: true },
+    select: {
+      id: true,
+      amount: true,
+      currency: true,
+      createdAt: true,
+      payableAt: true,
+      stripePaymentRef: true,
+    },
     orderBy: { createdAt: "asc" },
   });
 
@@ -89,12 +125,18 @@ export async function markPayoutGroupPaid(
   ownerId: string,
   merchantId: string,
   affiliateId: string,
-  currency: string
+  currency: string,
+  commissionIds: string[]
 ): Promise<{ count: number }> {
   await assertMerchantOwnership(ownerId, merchantId);
 
   return db.commission.updateMany({
-    where: { status: "PAYABLE", currency, affiliate: { id: affiliateId, merchantId } },
+    where: {
+      status: "PAYABLE",
+      currency,
+      affiliate: { id: affiliateId, merchantId },
+      id: { in: commissionIds },
+    },
     data: { status: "PAID", paidAt: new Date() },
   });
 }
@@ -108,6 +150,7 @@ export type FlaggedCommission = {
   affiliateId: string;
   affiliateName: string | null;
   affiliateEmail: string;
+  stripePaymentRef: string | null;
 };
 
 export async function listFlaggedCommissions(
@@ -129,6 +172,7 @@ export async function listFlaggedCommissions(
         currency: true,
         flagReason: true,
         createdAt: true,
+        stripePaymentRef: true,
         affiliate: { select: { id: true, name: true, email: true } },
       },
       orderBy: { createdAt: "asc" },
@@ -148,6 +192,7 @@ export async function listFlaggedCommissions(
       affiliateId: c.affiliate.id,
       affiliateName: c.affiliate.name,
       affiliateEmail: c.affiliate.email,
+      stripePaymentRef: c.stripePaymentRef,
     })),
   };
 }
