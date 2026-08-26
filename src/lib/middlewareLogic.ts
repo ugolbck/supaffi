@@ -6,9 +6,26 @@
 // bundler, so any test that imports @/lib/auth fails at import time
 // regardless of AUTH_SECRET. See src/middleware.ts for where this is used.
 
-const PROTECTED_PREFIXES = ["/dashboard"];
+type SessionRole = "owner" | "affiliate" | null;
 
-export function shouldRedirectToLogin(pathname: string, hasSession: boolean): boolean {
-  if (hasSession) return false;
-  return PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+const PROTECTED_ROUTES: ReadonlyArray<{
+  prefix: string;
+  role: "owner" | "affiliate";
+  loginPath: string;
+}> = [
+  { prefix: "/dashboard", role: "owner", loginPath: "/login" },
+  { prefix: "/affiliates/dashboard", role: "affiliate", loginPath: "/affiliates/login" },
+];
+
+// Returns the path to redirect to, or null if the request may proceed.
+// A mismatched role (e.g. an Owner session hitting /affiliates/dashboard)
+// redirects the same as no session at all — one shared session cookie
+// means a session always exists for *some* role, and that's not enough.
+export function resolveLoginRedirect(pathname: string, role: SessionRole): string | null {
+  for (const route of PROTECTED_ROUTES) {
+    if (pathname.startsWith(route.prefix) && role !== route.role) {
+      return route.loginPath;
+    }
+  }
+  return null;
 }

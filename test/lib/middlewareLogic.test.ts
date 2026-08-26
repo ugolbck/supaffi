@@ -1,18 +1,35 @@
 import { describe, it, expect } from "vitest";
-import { shouldRedirectToLogin } from "@/lib/middlewareLogic";
+import { resolveLoginRedirect } from "@/lib/middlewareLogic";
 
-describe("shouldRedirectToLogin", () => {
-  it("redirects an unauthenticated request to a protected path", () => {
-    expect(shouldRedirectToLogin("/dashboard", false)).toBe(true);
+describe("resolveLoginRedirect", () => {
+  it("redirects an unauthenticated request to the Owner dashboard", () => {
+    expect(resolveLoginRedirect("/dashboard", null)).toBe("/login");
   });
 
-  it("does not redirect an authenticated request to a protected path", () => {
-    expect(shouldRedirectToLogin("/dashboard", true)).toBe(false);
+  it("does not redirect an Owner session on the Owner dashboard", () => {
+    expect(resolveLoginRedirect("/dashboard", "owner")).toBe(null);
   });
 
-  it("does not redirect an unauthenticated request to a public path", () => {
-    expect(shouldRedirectToLogin("/login", false)).toBe(false);
-    expect(shouldRedirectToLogin("/setup", false)).toBe(false);
-    expect(shouldRedirectToLogin("/", false)).toBe(false);
+  it("redirects an Affiliate session away from the Owner dashboard", () => {
+    expect(resolveLoginRedirect("/dashboard", "affiliate")).toBe("/login");
+  });
+
+  it("redirects an unauthenticated request to the Affiliate dashboard", () => {
+    expect(resolveLoginRedirect("/affiliates/dashboard", null)).toBe("/affiliates/login");
+  });
+
+  it("does not redirect an Affiliate session on the Affiliate dashboard", () => {
+    expect(resolveLoginRedirect("/affiliates/dashboard", "affiliate")).toBe(null);
+  });
+
+  it("redirects an Owner session away from the Affiliate dashboard", () => {
+    expect(resolveLoginRedirect("/affiliates/dashboard", "owner")).toBe("/affiliates/login");
+  });
+
+  it("does not redirect requests to public paths", () => {
+    expect(resolveLoginRedirect("/login", null)).toBe(null);
+    expect(resolveLoginRedirect("/affiliates/login", null)).toBe(null);
+    expect(resolveLoginRedirect("/setup", null)).toBe(null);
+    expect(resolveLoginRedirect("/", null)).toBe(null);
   });
 });

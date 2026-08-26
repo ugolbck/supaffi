@@ -1,22 +1,27 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { verifyOwnerCredentials } from "@/lib/owner";
+import { consumeAffiliateLoginToken } from "@/lib/affiliateAuth";
 import { authConfig } from "@/lib/auth.config";
 
-// Credentials + JWT sessions, no database adapter. The adapter is only
-// needed for the Affiliate magic-link provider (persisted verification
-// tokens) — a separate, later piece of work. Nothing here needs it: the
-// JWT itself carries everything, and Owner credentials are checked
-// directly against the Owner table in the authorize() callback below.
+// Two Credentials providers, JWT sessions, no database adapter. Auth.js's
+// built-in Email provider needs an adapter whose contract assumes email is
+// globally unique per user — Affiliate email is only unique per Merchant
+// (@@unique([merchantId, email])), a real mismatch, not a config detail.
+// Instead, the Affiliate magic-link flow is hand-rolled
+// (AffiliateLoginToken, src/lib/affiliateAuth.ts) and redeemed through the
+// second Credentials provider below — the same pattern Owner login already
+// uses, just with a token instead of a password.
 //
-// The Credentials provider (and its argon2-dependent authorize() callback)
-// lives only here, not in auth.config.ts, so Edge Middleware can use the
-// shared config without bundling a native/wasm dependency. See
-// src/lib/auth.config.ts and src/middleware.ts.
+// Both Credentials providers (and their native/wasm or DB-heavy authorize()
+// callbacks) live only here, not in auth.config.ts, so Edge Middleware can
+// use the shared config without bundling them. See src/lib/auth.config.ts
+// and src/middleware.ts.
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({
+      id: "credentials",
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
@@ -26,7 +31,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const password = credentials?.password;
         if (typeof email !== "string" || typeof password !== "string") return null;
         const owner = await verifyOwnerCredentials(email, password);
-        return owner; // { id, email } or null — Auth.js treats null as "authorization failed"
+        if (!owner) return null;
+        return { ...owner, role: "owner" as const };
+      },
+    }),
+    Credentials({
+      id: "affiliate-token",
+      credentials: {
+        token: { label: "Token", type: "text" },
+      },
+      authorize: async (credentials) => {
+        const token = credentials?.token;
+        if (typeof token !== "string") return null;
+        const affiliate = await consumeAffiliateLoginToken(token);
+        if (!affiliate) return null;
+        return { ...affiliate, role: "affiliate" as const };
       },
     }),
   ],

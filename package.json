@@ -10,7 +10,6 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.0.0",
     "@base-ui/react": "^1.7.0",
     "@node-rs/argon2": "^2.1.0",
     "@prisma/client": "^6.0.0",
