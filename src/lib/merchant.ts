@@ -92,3 +92,25 @@ export async function updateMerchant(
     },
   });
 }
+
+export async function getMerchantByDomain(
+  domain: string
+): Promise<{ id: string; name: string; domain: string; websiteUrl: string } | null> {
+  return db.merchant.findUnique({
+    where: { domain },
+    select: { id: true, name: true, domain: true, websiteUrl: true },
+  });
+}
+
+// Internal only — the one function that returns the encrypted email
+// credential. Never call this from a page or anything whose result reaches
+// a response; only the Affiliate magic-link send path (src/lib/email/
+// affiliateMagicLink.ts) needs it.
+export async function getMerchantEmailCredentials(
+  merchantId: string
+): Promise<{ name: string; domain: string; emailProviderConfigEnc: string } | null> {
+  return db.merchant.findUnique({
+    where: { id: merchantId },
+    select: { name: true, domain: true, emailProviderConfigEnc: true },
+  });
+}

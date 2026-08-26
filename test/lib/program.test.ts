@@ -8,6 +8,7 @@ import {
   listProgramsForMerchant,
   getProgramForMerchant,
   updateProgram,
+  getProgramForSignup,
 } from "@/lib/program";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
@@ -163,5 +164,19 @@ describe.skipIf(!hasDatabase)("program", () => {
     await expect(
       updateProgram(ownerId, otherMerchantId, id, { ...baseInput, name: "Hijacked" })
     ).rejects.toThrow();
+  });
+
+  it("getProgramForSignup resolves a Program scoped to its Merchant, no owner required", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+
+    const result = await getProgramForSignup(merchantId, id);
+    expect(result?.name).toBe("Standard");
+  });
+
+  it("getProgramForSignup returns null when the Program belongs to a different Merchant", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+
+    const result = await getProgramForSignup(merchantId2, id);
+    expect(result).toBeNull();
   });
 });

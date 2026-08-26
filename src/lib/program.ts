@@ -100,3 +100,16 @@ export async function updateProgram(
     data: { ...input },
   });
 }
+
+// Public — no Owner/session context. Scoped only by merchantId (resolved
+// from the request's Host header by the caller), not by ownership, since
+// this backs the public signup page.
+export async function getProgramForSignup(
+  merchantId: string,
+  programId: string
+): Promise<{ id: string; name: string } | null> {
+  return db.program.findFirst({
+    where: { id: programId, merchantId },
+    select: { id: true, name: true },
+  });
+}

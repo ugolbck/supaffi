@@ -8,6 +8,8 @@ import {
   listMerchantsForOwner,
   getMerchantForOwner,
   updateMerchant,
+  getMerchantByDomain,
+  getMerchantEmailCredentials,
 } from "@/lib/merchant";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
@@ -161,5 +163,42 @@ describe.skipIf(!hasDatabase)("merchant", () => {
 
     const result = await getMerchantForOwner(ownerId, id);
     expect(result?.websiteUrl).toBe("https://instantgradient.com");
+  });
+
+  it("getMerchantByDomain resolves a Merchant by its tracking domain, no owner required", async () => {
+    await createMerchant(ownerId, {
+      name: "InstantGradient",
+      domain: "bydomain-test.example.com",
+      websiteUrl: "https://instantgradient.com",
+      stripeSecretKey: "sk_test_abc123",
+      stripeWebhookSecret: "whsec_abc123",
+      emailProviderConfig: "resend_api_key_abc",
+    });
+
+    const result = await getMerchantByDomain("bydomain-test.example.com");
+    expect(result?.name).toBe("InstantGradient");
+    expect(result?.websiteUrl).toBe("https://instantgradient.com");
+  });
+
+  it("getMerchantByDomain returns null for an unknown domain", async () => {
+    const result = await getMerchantByDomain("nope.example.com");
+    expect(result).toBeNull();
+  });
+
+  it("getMerchantEmailCredentials returns the encrypted config, unlike every other read path", async () => {
+    const { id } = await createMerchant(ownerId, {
+      name: "InstantGradient",
+      domain: "emailcreds-test.example.com",
+      websiteUrl: "https://instantgradient.com",
+      stripeSecretKey: "sk_test_abc123",
+      stripeWebhookSecret: "whsec_abc123",
+      emailProviderConfig: "resend_api_key_abc",
+    });
+
+    const result = await getMerchantEmailCredentials(id);
+    expect(result?.name).toBe("InstantGradient");
+    expect(result?.domain).toBe("emailcreds-test.example.com");
+    expect(result?.emailProviderConfigEnc).not.toBe("resend_api_key_abc");
+    expect(result?.emailProviderConfigEnc).toContain(":"); // iv:authTag:ciphertext format
   });
 });
