@@ -1,6 +1,8 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getAffiliateSession } from "@/lib/affiliate";
+import { getMerchantByDomain } from "@/lib/merchant";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CopyLinkButton } from "./CopyLinkButton";
 
@@ -12,6 +14,12 @@ export default async function AffiliateDashboardPage() {
 
   const data = await getAffiliateSession(session.user.id);
   if (!data) redirect("/affiliates/login");
+
+  const host = (await headers()).get("host");
+  const merchant = host ? await getMerchantByDomain(host) : null;
+  if (!merchant || merchant.id !== data.merchantId) {
+    redirect("/affiliates/login");
+  }
 
   const referralLink = `${data.merchantWebsiteUrl}?ref=${data.referralCode}`;
 

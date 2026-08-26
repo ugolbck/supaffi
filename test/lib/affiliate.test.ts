@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { createAffiliate, getAffiliateByEmail, getAffiliateSession } from "@/lib/affiliate";
+import { isUniqueConstraintErrorOn } from "@/lib/prismaErrors";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -131,11 +132,66 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     expect(result).toEqual({
       referralCode: "sarah",
       merchantWebsiteUrl: "https://affiliate-lib-test.example.com",
+      merchantId,
     });
   });
 
   it("getAffiliateSession returns null for an unknown id", async () => {
     const result = await getAffiliateSession("does-not-exist");
     expect(result).toBeNull();
+  });
+
+  // Affiliate has two separate unique constraints: a per-Merchant
+  // (merchantId, email) pair, and a globally-unique referralCode. A bare
+  // isUniqueConstraintError(err) can't tell these apart, which matters
+  // because createAffiliateSignup reacts very differently to each (treat
+  // as an existing-login vs. retry with a freshly generated code). These
+  // two tests prove isUniqueConstraintErrorOn correctly distinguishes a
+  // real P2002 triggered by each constraint.
+  it("isUniqueConstraintErrorOn identifies an (merchantId, email) collision as an email violation, not a referralCode one", async () => {
+    await createAffiliate(merchantId, programId, { name: "Sarah", email: "sarah@example.com" });
+
+    let caught: unknown;
+    try {
+      await db.affiliate.create({
+        data: {
+          merchantId,
+          programId,
+          email: "sarah@example.com",
+          name: "Sarah Duplicate",
+          referralCode: "some-other-unused-code",
+        },
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    expect(isUniqueConstraintErrorOn(caught, "email")).toBe(true);
+    expect(isUniqueConstraintErrorOn(caught, "referralCode")).toBe(false);
+  });
+
+  it("isUniqueConstraintErrorOn identifies a referralCode collision as a referralCode violation, not an email one — even across different Merchants, since referralCode is globally unique", async () => {
+    await createAffiliate(merchantId, programId, { name: "Sarah", email: "sarah@example.com" });
+
+    let caught: unknown;
+    try {
+      // Different Merchant, different email — only the referralCode collides.
+      await db.affiliate.create({
+        data: {
+          merchantId: otherMerchantId,
+          programId: otherProgramId,
+          email: "sarah-from-other-merchant@example.com",
+          name: "Sarah",
+          referralCode: "sarah",
+        },
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeDefined();
+    expect(isUniqueConstraintErrorOn(caught, "referralCode")).toBe(true);
+    expect(isUniqueConstraintErrorOn(caught, "email")).toBe(false);
   });
 });

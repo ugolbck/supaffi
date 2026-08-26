@@ -7,7 +7,7 @@ import { createAffiliate, getAffiliateByEmail } from "@/lib/affiliate";
 import { createAffiliateLoginToken } from "@/lib/affiliateAuth";
 import { sendAffiliateMagicLinkEmail } from "@/lib/email/affiliateMagicLink";
 import { validateSignupInput } from "./validation";
-import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { isUniqueConstraintErrorOn } from "@/lib/prismaErrors";
 
 type FormState = { status: "form" | "sent"; error: string };
 
@@ -43,12 +43,27 @@ export async function createAffiliateSignup(
     });
     affiliateId = created.id;
   } catch (err) {
-    if (!isUniqueConstraintError(err)) throw err;
-    // Already signed up for this Merchant — treat this as a login request
-    // instead of erroring, so a repeat visitor just gets back in.
-    const existing = await getAffiliateByEmail(merchant.id, result.email);
-    if (!existing) throw err; // constraint violated but lookup found nothing — surface the real error
-    affiliateId = existing.id;
+    if (isUniqueConstraintErrorOn(err, "email")) {
+      // Already signed up for this Merchant — treat this as a login request
+      // instead of erroring, so a repeat visitor just gets back in.
+      const existing = await getAffiliateByEmail(merchant.id, result.email);
+      if (!existing) throw err; // constraint violated but lookup found nothing — surface the real error
+      affiliateId = existing.id;
+    } else if (isUniqueConstraintErrorOn(err, "referralCode")) {
+      // referralCode is globally unique (not scoped to this Merchant) and
+      // generated via a read-then-write with no transaction, so two
+      // concurrent signups whose names slugify to the same base code can
+      // race. Retry once — createAffiliate regenerates the code from
+      // scratch, and it'll pick a different one now that the loser's
+      // candidate is taken.
+      const retried = await createAffiliate(merchant.id, program.id, {
+        name: result.name,
+        email: result.email,
+      });
+      affiliateId = retried.id;
+    } else {
+      throw err;
+    }
   }
 
   const rawToken = await createAffiliateLoginToken(affiliateId);

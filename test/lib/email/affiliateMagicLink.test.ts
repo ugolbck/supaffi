@@ -45,4 +45,23 @@ describe("sendAffiliateMagicLinkEmail", () => {
     );
     expect(call.subject).toContain("InstantGradient");
   });
+
+  it("throws when Resend resolves with an error (e.g. unverified sending domain)", async () => {
+    sendMock.mockResolvedValueOnce({
+      data: null,
+      error: { name: "validation_error", message: "domain not verified" },
+    });
+
+    await expect(
+      sendAffiliateMagicLinkEmail(
+        {
+          name: "InstantGradient",
+          domain: "affiliates.instantgradient.com",
+          emailProviderConfigEnc: "enc-blob",
+        },
+        { email: "sarah@example.com" },
+        "raw-token-abc"
+      )
+    ).rejects.toThrow(/domain not verified/);
+  });
 });

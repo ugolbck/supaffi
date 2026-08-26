@@ -39,14 +39,15 @@ export async function getAffiliateByEmail(
 
 export async function getAffiliateSession(
   affiliateId: string
-): Promise<{ referralCode: string; merchantWebsiteUrl: string } | null> {
+): Promise<{ referralCode: string; merchantWebsiteUrl: string; merchantId: string } | null> {
   const affiliate = await db.affiliate.findUnique({
     where: { id: affiliateId },
-    select: { referralCode: true, merchant: { select: { websiteUrl: true } } },
+    select: { referralCode: true, merchant: { select: { id: true, websiteUrl: true } } },
   });
   if (!affiliate) return null;
   return {
     referralCode: affiliate.referralCode,
     merchantWebsiteUrl: affiliate.merchant.websiteUrl,
+    merchantId: affiliate.merchant.id,
   };
 }

@@ -5,7 +5,7 @@ import { createMerchantAction } from "./createMerchant";
 
 export default async function NewMerchantPage() {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
   return (
     <main>
