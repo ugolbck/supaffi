@@ -25,14 +25,19 @@ export function DashboardBreadcrumb({ merchants }: { merchants: Merchant[] }) {
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
 
-  const crumbs: { label: string; href: string }[] = [];
+  const crumbs: { label: string; href: string; isLinkable: boolean }[] = [];
   let href = "";
   for (const segment of segments) {
     href += `/${segment}`;
     const merchant = merchants.find((m) => m.id === segment);
+    const isRawFallback = !merchant && !(segment in STATIC_LABELS);
     const label = merchant ? merchant.name : STATIC_LABELS[segment] ?? segment;
     if (crumbs.length > 0 && crumbs[crumbs.length - 1].label === label) continue;
-    crumbs.push({ label, href });
+    // "programs" has no standalone page (only /programs/new and
+    // /programs/[id]/edit exist), and a segment with no static label or
+    // Merchant match has no known page either — neither should ever link.
+    const isLinkable = segment !== "programs" && !isRawFallback;
+    crumbs.push({ label, href, isLinkable });
   }
 
   return (
@@ -43,8 +48,10 @@ export function DashboardBreadcrumb({ merchants }: { merchants: Merchant[] }) {
             <BreadcrumbItem>
               {i === crumbs.length - 1 ? (
                 <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-              ) : (
+              ) : crumb.isLinkable ? (
                 <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
+              ) : (
+                <span>{crumb.label}</span>
               )}
             </BreadcrumbItem>
             {i < crumbs.length - 1 && <BreadcrumbSeparator />}
