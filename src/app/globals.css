@@ -1,0 +1,171 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+:root {
+  /* Accent — periwinkle/indigo duo. Works dark-on-light (700 on 50/100) and
+     light-on-dark (100/300 on 900/950), same hue both directions. */
+  --accent-50: #f2f4fe;
+  --accent-100: #e6eafc;
+  --accent-200: #cfd8fa;
+  --accent-300: #b7c9f8;
+  --accent-400: #8ca0f0;
+  --accent-500: #5e6ee0;
+  --accent-600: #3d45cb;
+  --accent-700: #232dbe;
+  --accent-800: #1b2296;
+  --accent-900: #171c73;
+  --accent-950: #0f1350;
+
+  /* Rare brand accent — used sparingly for one-off warm moments (empty
+     states, celebratory confirmations), never for status/semantic meaning. */
+  --brand-pink-50: #fde7e8;
+  --brand-pink-600: #9f2d3e;
+
+  /* Neutrals */
+  --neutral-50: #fafafa;
+  --neutral-100: #f4f4f5;
+  --neutral-200: #e4e4e7;
+  --neutral-300: #d4d4d8;
+  --neutral-400: #a1a1aa;
+  --neutral-500: #71717a;
+  --neutral-600: #52525b;
+  --neutral-700: #3f3f46;
+  --neutral-800: #27272a;
+  --neutral-900: #18181b;
+  --neutral-950: #09090b;
+
+  /* Status — maps 1:1 onto Commission.status; never reuse brand-pink here */
+  --status-success: #16a34a;
+  --status-success-bg: #f0fdf4;
+  --status-warning: #d97706;
+  --status-warning-bg: #fffbeb;
+  --status-danger: #dc2626;
+  --status-danger-bg: #fef2f2;
+
+  /* shadcn/ui tokens, mapped onto the palette above. Light-only — no .dark
+     overrides exist by design (Theme decision: light only). */
+  --background: var(--neutral-50);
+  --foreground: var(--neutral-900);
+  --card: #ffffff;
+  --card-foreground: var(--neutral-900);
+  --popover: #ffffff;
+  --popover-foreground: var(--neutral-900);
+  --primary: var(--accent-700);
+  --primary-foreground: var(--accent-50);
+  --secondary: var(--neutral-100);
+  --secondary-foreground: var(--neutral-900);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-500);
+  --accent: var(--accent-100);
+  --accent-foreground: var(--accent-800);
+  --destructive: var(--status-danger);
+  --destructive-foreground: #ffffff;
+  --border: var(--neutral-200);
+  --input: var(--neutral-200);
+  --ring: var(--accent-400);
+
+  --chart-1: var(--accent-600);
+  --chart-2: var(--accent-300);
+  --chart-3: var(--status-success);
+  --chart-4: var(--status-warning);
+  --chart-5: var(--neutral-400);
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: var(--neutral-900);
+  --sidebar-primary: var(--accent-700);
+  --sidebar-primary-foreground: var(--accent-50);
+  --sidebar-accent: var(--neutral-100);
+  --sidebar-accent-foreground: var(--neutral-900);
+  --sidebar-border: var(--neutral-200);
+  --sidebar-ring: var(--accent-400);
+
+  /* Sharp/technical shape language: controls get a hair of radius, bounded
+     grid-cell structures (cards, panels, tables) stay square. */
+  --radius: 2px;
+  --radius-structural: 0px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-status-success: var(--status-success);
+  --color-status-success-bg: var(--status-success-bg);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-bg: var(--status-warning-bg);
+  --color-status-danger: var(--status-danger);
+  --color-status-danger-bg: var(--status-danger-bg);
+  --color-brand-pink-50: var(--brand-pink-50);
+  --color-brand-pink-600: var(--brand-pink-600);
+
+  --color-accent-50: var(--accent-50);
+  --color-accent-100: var(--accent-100);
+  --color-accent-200: var(--accent-200);
+  --color-accent-300: var(--accent-300);
+  --color-accent-400: var(--accent-400);
+  --color-accent-500: var(--accent-500);
+  --color-accent-600: var(--accent-600);
+  --color-accent-700: var(--accent-700);
+  --color-accent-800: var(--accent-800);
+  --color-accent-900: var(--accent-900);
+  --color-accent-950: var(--accent-950);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 1px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-structural: var(--radius-structural);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist-sans);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}

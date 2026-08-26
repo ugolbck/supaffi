@@ -1,6 +1,7 @@
 # Local planning docs, not part of the public repo
 CONTEXT.md
 docs/adr/
+docs/design/
 docs/superpowers/
 .superpowers/
 
