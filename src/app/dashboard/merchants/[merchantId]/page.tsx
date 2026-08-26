@@ -12,7 +12,7 @@ export default async function MerchantDetailPage({
 }) {
   const { merchantId } = await params;
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
   const merchant = await getMerchantForOwner(session.user.id, merchantId);
   if (!merchant) notFound();

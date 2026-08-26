@@ -5,7 +5,7 @@ import { listMerchantsForOwner } from "@/lib/merchant";
 
 export default async function DashboardPage() {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
   const merchants = await listMerchantsForOwner(session.user.id);
 

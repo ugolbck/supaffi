@@ -14,5 +14,8 @@ export default async function Home() {
     redirect("/setup");
   }
   const session = await auth();
+  if (session?.user?.role === "affiliate") {
+    redirect("/affiliates/dashboard");
+  }
   redirect(session ? "/dashboard" : "/login");
 }

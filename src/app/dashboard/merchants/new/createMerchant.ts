@@ -13,7 +13,7 @@ export async function createMerchantAction(
   formData: FormData
 ): Promise<{ error: string } | never> {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
   const input = {
     name: String(formData.get("name") ?? ""),
