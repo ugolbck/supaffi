@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { auth, signOut } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { listMerchantsForOwner } from "@/lib/merchant";
 
 export default async function DashboardPage() {
@@ -32,17 +32,6 @@ export default async function DashboardPage() {
       <Link href="/dashboard/merchants/new" className="cursor-pointer">
         Connect a Merchant
       </Link>
-
-      <form
-        action={async () => {
-          "use server";
-          await signOut({ redirectTo: "/login" });
-        }}
-      >
-        <button type="submit" className="cursor-pointer">
-          Log out
-        </button>
-      </form>
     </main>
   );
 }
