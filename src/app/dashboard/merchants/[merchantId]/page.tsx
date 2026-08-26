@@ -53,6 +53,8 @@ export default async function MerchantDetailPage({
                 {p.name}
               </Link>{" "}
               — {String(p.defaultCommissionRate)}%
+              <br />
+              Signup link: <code>{`https://${merchant.domain}/affiliates/signup/${p.id}`}</code>
             </li>
           ))}
         </ul>
