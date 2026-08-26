@@ -4,6 +4,7 @@ import { encrypt } from "@/lib/crypto";
 type CreateMerchantInput = {
   name: string;
   domain: string;
+  websiteUrl: string;
   stripeSecretKey: string;
   stripeWebhookSecret: string;
   emailProviderConfig: string;
@@ -12,6 +13,7 @@ type CreateMerchantInput = {
 type UpdateMerchantInput = {
   name: string;
   domain: string;
+  websiteUrl: string;
   stripeSecretKey?: string;
   stripeWebhookSecret?: string;
   emailProviderConfig?: string;
@@ -26,6 +28,7 @@ export async function createMerchant(
       ownerId,
       name: input.name,
       domain: input.domain,
+      websiteUrl: input.websiteUrl,
       stripeSecretKeyEnc: encrypt(input.stripeSecretKey),
       stripeWebhookSecretEnc: encrypt(input.stripeWebhookSecret),
       emailProviderConfigEnc: encrypt(input.emailProviderConfig),
@@ -47,10 +50,10 @@ export async function listMerchantsForOwner(
 export async function getMerchantForOwner(
   ownerId: string,
   merchantId: string
-): Promise<{ id: string; name: string; domain: string; createdAt: Date } | null> {
+): Promise<{ id: string; name: string; domain: string; websiteUrl: string; createdAt: Date } | null> {
   return db.merchant.findFirst({
     where: { id: merchantId, ownerId },
-    select: { id: true, name: true, domain: true, createdAt: true },
+    select: { id: true, name: true, domain: true, websiteUrl: true, createdAt: true },
   });
 }
 
@@ -76,6 +79,7 @@ export async function updateMerchant(
     data: {
       name: input.name,
       domain: input.domain,
+      websiteUrl: input.websiteUrl,
       ...(input.stripeSecretKey !== undefined && {
         stripeSecretKeyEnc: encrypt(input.stripeSecretKey),
       }),

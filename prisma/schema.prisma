@@ -22,6 +22,7 @@ model Merchant {
   owner     Owner    @relation(fields: [ownerId], references: [id])
   name      String
   domain    String   @unique // e.g. affiliates.instantgradient.com
+  websiteUrl String  // the actual product site affiliates promote, e.g. https://instantgradient.com — distinct from `domain`, which is only the tracking subdomain
 
   // Encrypted at rest (ADR 0003), master key outside the database
   stripeSecretKeyEnc      String

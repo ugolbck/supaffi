@@ -58,6 +58,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     const { id } = await createMerchant(ownerId, {
       name: "InstantGradient",
       domain: "affiliates.instantgradient.com",
+      websiteUrl: "https://example.com",
       stripeSecretKey: "sk_test_abc123",
       stripeWebhookSecret: "whsec_abc123",
       emailProviderConfig: "resend_api_key_abc",
@@ -74,6 +75,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     await createMerchant(ownerId, {
       name: "Mine",
       domain: "mine.example.com",
+      websiteUrl: "https://example.com",
       stripeSecretKey: "sk_test_1",
       stripeWebhookSecret: "whsec_1",
       emailProviderConfig: "cfg1",
@@ -81,6 +83,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     await createMerchant(otherOwnerId, {
       name: "NotMine",
       domain: "notmine.example.com",
+      websiteUrl: "https://example.com",
       stripeSecretKey: "sk_test_2",
       stripeWebhookSecret: "whsec_2",
       emailProviderConfig: "cfg2",
@@ -95,6 +98,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     const { id } = await createMerchant(otherOwnerId, {
       name: "NotMine",
       domain: "notmine2.example.com",
+      websiteUrl: "https://example.com",
       stripeSecretKey: "sk_test_3",
       stripeWebhookSecret: "whsec_3",
       emailProviderConfig: "cfg3",
@@ -108,6 +112,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     const { id } = await createMerchant(ownerId, {
       name: "Original",
       domain: "original.example.com",
+      websiteUrl: "https://example.com",
       stripeSecretKey: "sk_test_original",
       stripeWebhookSecret: "whsec_original",
       emailProviderConfig: "cfg_original",
@@ -117,6 +122,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     await updateMerchant(ownerId, id, {
       name: "Renamed",
       domain: "original.example.com",
+      websiteUrl: "https://example.com",
       stripeSecretKey: "sk_test_new",
       // stripeWebhookSecret and emailProviderConfig intentionally omitted
     });
@@ -132,13 +138,28 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     const { id } = await createMerchant(otherOwnerId, {
       name: "NotMine",
       domain: "notmine3.example.com",
+      websiteUrl: "https://example.com",
       stripeSecretKey: "sk_test_4",
       stripeWebhookSecret: "whsec_4",
       emailProviderConfig: "cfg4",
     });
 
     await expect(
-      updateMerchant(ownerId, id, { name: "Hijacked", domain: "notmine3.example.com" })
+      updateMerchant(ownerId, id, { name: "Hijacked", domain: "notmine3.example.com", websiteUrl: "https://example.com" })
     ).rejects.toThrow();
+  });
+
+  it("stores and returns websiteUrl verbatim (not a secret, never encrypted)", async () => {
+    const { id } = await createMerchant(ownerId, {
+      name: "InstantGradient",
+      domain: "websiteurl-test.example.com",
+      websiteUrl: "https://instantgradient.com",
+      stripeSecretKey: "sk_test_abc123",
+      stripeWebhookSecret: "whsec_abc123",
+      emailProviderConfig: "resend_api_key_abc",
+    });
+
+    const result = await getMerchantForOwner(ownerId, id);
+    expect(result?.websiteUrl).toBe("https://instantgradient.com");
   });
 });

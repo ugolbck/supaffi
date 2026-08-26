@@ -6,7 +6,7 @@ type FormState = { error: string };
 
 type Props = {
   action: (prevState: FormState, formData: FormData) => Promise<FormState>;
-  initial?: { name: string; domain: string };
+  initial?: { name: string; domain: string; websiteUrl: string };
   credentialsRequired: boolean;
 };
 
@@ -27,6 +27,16 @@ export function MerchantForm({ action, initial, credentialsRequired }: Props) {
           name="domain"
           defaultValue={initial?.domain}
           placeholder="affiliates.example.com"
+          required
+        />
+      </label>
+      <label>
+        Website URL
+        <input
+          type="text"
+          name="websiteUrl"
+          defaultValue={initial?.websiteUrl}
+          placeholder="https://example.com"
           required
         />
       </label>

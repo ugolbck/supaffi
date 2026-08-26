@@ -21,6 +21,7 @@ export async function updateMerchantAction(
   const input = {
     name: String(formData.get("name") ?? ""),
     domain: String(formData.get("domain") ?? ""),
+    websiteUrl: String(formData.get("websiteUrl") ?? ""),
     stripeSecretKey,
     stripeWebhookSecret,
     emailProviderConfig,
@@ -33,6 +34,7 @@ export async function updateMerchantAction(
     await updateMerchantRecord(session.user.id, merchantId, {
       name: input.name.trim(),
       domain: normalizeDomain(input.domain),
+      websiteUrl: input.websiteUrl.trim(),
       // Blank means "keep existing" on edit — updateMerchant only
       // overwrites a credential field when it is !== undefined, so an
       // empty string here (not converted) would get encrypted and

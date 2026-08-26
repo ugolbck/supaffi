@@ -18,6 +18,7 @@ export async function createMerchantAction(
   const input = {
     name: String(formData.get("name") ?? ""),
     domain: String(formData.get("domain") ?? ""),
+    websiteUrl: String(formData.get("websiteUrl") ?? ""),
     stripeSecretKey: String(formData.get("stripeSecretKey") ?? ""),
     stripeWebhookSecret: String(formData.get("stripeWebhookSecret") ?? ""),
     emailProviderConfig: String(formData.get("emailProviderConfig") ?? ""),
@@ -32,6 +33,7 @@ export async function createMerchantAction(
       ...input,
       name: input.name.trim(),
       domain: normalizeDomain(input.domain),
+      websiteUrl: input.websiteUrl.trim(),
     });
     merchantId = created.id;
   } catch (err) {

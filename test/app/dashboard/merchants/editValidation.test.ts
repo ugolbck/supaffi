@@ -7,6 +7,7 @@ describe("validateMerchantEditInput", () => {
       validateMerchantEditInput({
         name: "Renamed",
         domain: "renamed.example.com",
+        websiteUrl: "https://example.com",
         stripeSecretKey: "",
         stripeWebhookSecret: "",
         emailProviderConfig: "",
@@ -19,6 +20,7 @@ describe("validateMerchantEditInput", () => {
       validateMerchantEditInput({
         name: "Renamed",
         domain: "renamed.example.com",
+        websiteUrl: "https://example.com",
         stripeSecretKey: "not-a-key",
         stripeWebhookSecret: "",
         emailProviderConfig: "",
@@ -31,6 +33,7 @@ describe("validateMerchantEditInput", () => {
       validateMerchantEditInput({
         name: "",
         domain: "renamed.example.com",
+        websiteUrl: "https://example.com",
         stripeSecretKey: "",
         stripeWebhookSecret: "",
         emailProviderConfig: "",
@@ -43,6 +46,7 @@ describe("validateMerchantEditInput", () => {
       validateMerchantEditInput({
         name: "Renamed",
         domain: " Renamed.Example.com ",
+        websiteUrl: "https://example.com",
         stripeSecretKey: "",
         stripeWebhookSecret: "",
         emailProviderConfig: "",

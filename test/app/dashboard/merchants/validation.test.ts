@@ -4,6 +4,7 @@ import { validateMerchantInput, normalizeDomain } from "@/app/dashboard/merchant
 const validInput = {
   name: "InstantGradient",
   domain: "affiliates.instantgradient.com",
+  websiteUrl: "https://example.com",
   stripeSecretKey: "sk_test_abc123",
   stripeWebhookSecret: "whsec_abc123",
   emailProviderConfig: "resend_api_key_abc",

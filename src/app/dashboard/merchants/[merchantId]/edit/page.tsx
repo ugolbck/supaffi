@@ -23,7 +23,7 @@ export default async function EditMerchantPage({
       <h1>Edit {merchant.name}</h1>
       <MerchantForm
         action={boundAction}
-        initial={{ name: merchant.name, domain: merchant.domain }}
+        initial={{ name: merchant.name, domain: merchant.domain, websiteUrl: merchant.websiteUrl }}
         credentialsRequired={false}
       />
     </main>

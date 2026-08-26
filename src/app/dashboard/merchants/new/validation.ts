@@ -1,6 +1,7 @@
 export type MerchantInput = {
   name: string;
   domain: string;
+  websiteUrl: string;
   stripeSecretKey: string;
   stripeWebhookSecret: string;
   emailProviderConfig: string;
@@ -15,6 +16,15 @@ export function normalizeDomain(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
+function isValidWebsiteUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function validateMerchantInput(input: MerchantInput): string | null {
   if (!input.name.trim()) return "Name is required";
 
@@ -22,6 +32,10 @@ export function validateMerchantInput(input: MerchantInput): string | null {
   if (!domain) return "Domain is required";
   if (domain.includes("://") || domain.includes("/") || /\s/.test(domain)) {
     return "Domain must be a bare hostname (no https://, no path)";
+  }
+
+  if (!isValidWebsiteUrl(input.websiteUrl)) {
+    return "Website URL must be a full address starting with http:// or https://";
   }
 
   if (!input.stripeSecretKey.startsWith("sk_")) return "Stripe secret key must start with sk_";
@@ -42,6 +56,10 @@ export function validateMerchantEditInput(input: MerchantInput): string | null {
   if (!domain) return "Domain is required";
   if (domain.includes("://") || domain.includes("/") || /\s/.test(domain)) {
     return "Domain must be a bare hostname (no https://, no path)";
+  }
+
+  if (!isValidWebsiteUrl(input.websiteUrl)) {
+    return "Website URL must be a full address starting with http:// or https://";
   }
 
   if (input.stripeSecretKey && !input.stripeSecretKey.startsWith("sk_")) {
