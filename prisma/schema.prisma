@@ -72,9 +72,23 @@ model Affiliate {
 
   clicks      Click[]
   commissions Commission[]
+  loginTokens AffiliateLoginToken[]
   createdAt   DateTime @default(now())
 
   @@unique([merchantId, email])
+}
+
+model AffiliateLoginToken {
+  id          String    @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id])
+  tokenHash   String    @unique // SHA-256 of the raw token — the raw token itself only ever exists in memory and the emailed URL
+  expiresAt   DateTime  // createdAt + 15 minutes, a standard range for a cold-email magic link
+  usedAt      DateTime? // set on redemption; a used or expired token is rejected
+
+  createdAt DateTime @default(now())
+
+  @@index([affiliateId])
 }
 
 model Click {
