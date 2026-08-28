@@ -3,7 +3,15 @@
 // DATABASE_URL at a disposable database, never a real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
-import { createAffiliate, getAffiliateByEmail, getAffiliateSession } from "@/lib/affiliate";
+import {
+  createAffiliate,
+  getAffiliateByEmail,
+  getAffiliateSession,
+  getAffiliateStats,
+  listAffiliateCommissions,
+  updateAffiliatePayoutDetails,
+  getAffiliatePayoutDetails,
+} from "@/lib/affiliate";
 import { isUniqueConstraintErrorOn } from "@/lib/prismaErrors";
 
 let hasDatabase = false;
@@ -30,6 +38,9 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
   let otherProgramId: string;
 
   beforeEach(async () => {
+    await db.commission.deleteMany();
+    await db.click.deleteMany();
+    await db.affiliateLoginToken.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -88,6 +99,9 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
   });
 
   afterAll(async () => {
+    await db.commission.deleteMany();
+    await db.click.deleteMany();
+    await db.affiliateLoginToken.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -193,5 +207,153 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     expect(caught).toBeDefined();
     expect(isUniqueConstraintErrorOn(caught, "referralCode")).toBe(true);
     expect(isUniqueConstraintErrorOn(caught, "email")).toBe(false);
+  });
+
+  describe("getAffiliateStats / listAffiliateCommissions / updateAffiliatePayoutDetails", () => {
+    async function makeAffiliateWithClickAndCommission(opts: {
+      email: string;
+      referralCode: string;
+      status: "PENDING" | "FLAGGED" | "PAYABLE" | "PAID" | "VOIDED";
+      currency: string;
+      amount: string;
+    }) {
+      const affiliate = await db.affiliate.create({
+        data: { merchantId, programId, email: opts.email, referralCode: opts.referralCode },
+      });
+      const click = await db.click.create({
+        data: {
+          affiliateId: affiliate.id,
+          referralToken: `${opts.referralCode}-token`,
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+      await db.commission.create({
+        data: {
+          affiliateId: affiliate.id,
+          clickId: click.id,
+          amount: opts.amount,
+          currency: opts.currency,
+          status: opts.status,
+          payableAt: new Date(),
+          flagReason: opts.status === "FLAGGED" ? "buyer email matches affiliate email" : null,
+        },
+      });
+      return affiliate;
+    }
+
+    it("counts total clicks and merges FLAGGED into the PENDING total, never exposing FLAGGED itself", async () => {
+      const affiliate = await makeAffiliateWithClickAndCommission({
+        email: "stats-a@example.com",
+        referralCode: "stats-a",
+        status: "PENDING",
+        currency: "usd",
+        amount: "10.00",
+      });
+      // Second click+commission on the same affiliate, FLAGGED, same currency —
+      // must merge into the same PENDING total, not appear as its own bucket.
+      const secondClick = await db.click.create({
+        data: {
+          affiliateId: affiliate.id,
+          referralToken: "stats-a-token-2",
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+      await db.commission.create({
+        data: {
+          affiliateId: affiliate.id,
+          clickId: secondClick.id,
+          amount: "5.00",
+          currency: "usd",
+          status: "FLAGGED",
+          payableAt: new Date(),
+          flagReason: "buyer email matches affiliate email",
+        },
+      });
+
+      const stats = await getAffiliateStats(affiliate.id);
+
+      expect(stats.totalClicks).toBe(2);
+      expect(stats.totals).toHaveLength(1);
+      expect(stats.totals[0]).toEqual({ currency: "usd", status: "PENDING", amount: "15.00" });
+      expect(stats.totals.some((t) => (t.status as string) === "FLAGGED")).toBe(false);
+    });
+
+    it("keeps different currencies and statuses in separate totals, never summed together", async () => {
+      const affiliate = await db.affiliate.create({
+        data: { merchantId, programId, email: "stats-b@example.com", referralCode: "stats-b" },
+      });
+      const click = await db.click.create({
+        data: { affiliateId: affiliate.id, referralToken: "stats-b-token", expiresAt: new Date(Date.now() + 60_000) },
+      });
+      await db.commission.createMany({
+        data: [
+          { affiliateId: affiliate.id, clickId: click.id, amount: "20.00", currency: "usd", status: "PAYABLE", payableAt: new Date() },
+          { affiliateId: affiliate.id, clickId: click.id, amount: "30.00", currency: "eur", status: "PAYABLE", payableAt: new Date() },
+          { affiliateId: affiliate.id, clickId: click.id, amount: "40.00", currency: "usd", status: "PAID", payableAt: new Date(), paidAt: new Date() },
+        ],
+      });
+
+      const stats = await getAffiliateStats(affiliate.id);
+
+      expect(stats.totals).toHaveLength(3);
+      expect(stats.totals).toEqual(
+        expect.arrayContaining([
+          { currency: "usd", status: "PAYABLE", amount: "20.00" },
+          { currency: "eur", status: "PAYABLE", amount: "30.00" },
+          { currency: "usd", status: "PAID", amount: "40.00" },
+        ])
+      );
+    });
+
+    it("paginates commission history newest first and remaps FLAGGED to PENDING per row", async () => {
+      const affiliate = await db.affiliate.create({
+        data: { merchantId, programId, email: "history@example.com", referralCode: "history" },
+      });
+      const click = await db.click.create({
+        data: { affiliateId: affiliate.id, referralToken: "history-token", expiresAt: new Date(Date.now() + 60_000) },
+      });
+      for (let i = 0; i < 3; i++) {
+        await db.commission.create({
+          data: {
+            affiliateId: affiliate.id,
+            clickId: click.id,
+            amount: `${i + 1}.00`,
+            currency: "usd",
+            status: i === 0 ? "FLAGGED" : "PENDING",
+            payableAt: new Date(),
+            flagReason: i === 0 ? "buyer email matches affiliate email" : null,
+            createdAt: new Date(Date.now() + i * 1000),
+          },
+        });
+      }
+
+      const page1 = await listAffiliateCommissions(affiliate.id, { page: 1, pageSize: 2 });
+      expect(page1.total).toBe(3);
+      expect(page1.rows).toHaveLength(2);
+      expect(page1.rows[0].amount).toBe("3.00"); // newest first
+      expect(page1.rows[1].amount).toBe("2.00");
+
+      const page2 = await listAffiliateCommissions(affiliate.id, { page: 2, pageSize: 2 });
+      expect(page2.rows).toHaveLength(1);
+      expect(page2.rows[0].amount).toBe("1.00");
+      expect(page2.rows[0].status).toBe("PENDING"); // was FLAGGED, must read as PENDING
+      expect((page2.rows[0] as unknown as { flagReason?: unknown }).flagReason).toBeUndefined();
+    });
+
+    it("updates payout details, and blanks out to null rather than storing an empty string", async () => {
+      const affiliate = await db.affiliate.create({
+        data: { merchantId, programId, email: "payout@example.com", referralCode: "payout" },
+      });
+
+      await updateAffiliatePayoutDetails(affiliate.id, "PayPal: payout@example.com");
+      let updated = await db.affiliate.findUniqueOrThrow({ where: { id: affiliate.id } });
+      expect(updated.payoutDetails).toBe("PayPal: payout@example.com");
+
+      await updateAffiliatePayoutDetails(affiliate.id, "");
+      updated = await db.affiliate.findUniqueOrThrow({ where: { id: affiliate.id } });
+      expect(updated.payoutDetails).toBeNull();
+
+      expect(await getAffiliatePayoutDetails(affiliate.id)).toBeNull();
+    });
   });
 });
