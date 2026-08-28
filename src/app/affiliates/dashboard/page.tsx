@@ -44,28 +44,30 @@ export default async function AffiliateDashboardPage({
   ]);
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-16">
-      <Card>
-        <CardHeader>
-          <CardTitle>Your referral link</CardTitle>
-          <CardDescription>Share this link to start earning commission.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="w-fit rounded-md border border-border/70 bg-muted px-2.5 py-1 font-mono text-sm break-all">
-            {referralLink}
-          </div>
-          <CopyLinkButton link={referralLink} />
-        </CardContent>
-      </Card>
+    <main className="mx-auto flex h-svh w-full max-w-2xl flex-col overflow-hidden px-4">
+      <div className="flex flex-1 flex-col gap-6 overflow-y-auto py-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Your referral link</CardTitle>
+            <CardDescription>Share this link to start earning commission.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="w-fit rounded-md border border-border/70 bg-muted px-2.5 py-1 font-mono text-sm break-all">
+              {referralLink}
+            </div>
+            <CopyLinkButton link={referralLink} />
+          </CardContent>
+        </Card>
 
-      <StatsRow stats={stats} />
+        <StatsRow stats={stats} />
 
-      <div className="flex flex-col gap-2">
-        <h2 className="font-heading text-lg font-semibold tracking-tight">Commission history</h2>
-        <CommissionHistory affiliateId={session.user.id} page={page} />
+        <div className="flex flex-col gap-2">
+          <h2 className="font-heading text-lg font-semibold tracking-tight">Commission history</h2>
+          <CommissionHistory affiliateId={session.user.id} page={page} />
+        </div>
+
+        <PayoutDetailsForm initial={payoutDetails ?? ""} />
       </div>
-
-      <PayoutDetailsForm initial={payoutDetails ?? ""} />
     </main>
   );
 }
