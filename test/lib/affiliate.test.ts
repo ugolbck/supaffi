@@ -11,6 +11,7 @@ import {
   listAffiliateCommissions,
   updateAffiliatePayoutDetails,
   getAffiliatePayoutDetails,
+  toDisplayStatus,
 } from "@/lib/affiliate";
 import { isUniqueConstraintErrorOn } from "@/lib/prismaErrors";
 
@@ -354,6 +355,15 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       expect(updated.payoutDetails).toBeNull();
 
       expect(await getAffiliatePayoutDetails(affiliate.id)).toBeNull();
+    });
+
+    it("toDisplayStatus defaults an unrecognized status to PENDING (fail closed)", () => {
+      expect(toDisplayStatus("SOME_FUTURE_STATUS")).toBe("PENDING");
+      expect(toDisplayStatus("PENDING")).toBe("PENDING");
+      expect(toDisplayStatus("PAYABLE")).toBe("PAYABLE");
+      expect(toDisplayStatus("PAID")).toBe("PAID");
+      expect(toDisplayStatus("VOIDED")).toBe("VOIDED");
+      expect(toDisplayStatus("FLAGGED")).toBe("PENDING");
     });
   });
 });

@@ -55,8 +55,12 @@ export async function getAffiliateSession(
 
 export type AffiliateCommissionStatus = "PENDING" | "PAYABLE" | "PAID" | "VOIDED";
 
-function toDisplayStatus(status: string): AffiliateCommissionStatus {
-  return status === "FLAGGED" ? "PENDING" : (status as AffiliateCommissionStatus);
+const AFFILIATE_VISIBLE_STATUSES: readonly string[] = ["PENDING", "PAYABLE", "PAID", "VOIDED"];
+
+export function toDisplayStatus(status: string): AffiliateCommissionStatus {
+  return AFFILIATE_VISIBLE_STATUSES.includes(status)
+    ? (status as AffiliateCommissionStatus)
+    : "PENDING";
 }
 
 export type AffiliateStatusTotal = {

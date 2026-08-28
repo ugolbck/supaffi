@@ -10,7 +10,9 @@ import { CommissionHistory } from "./CommissionHistory";
 import { PayoutDetailsForm } from "./PayoutDetailsForm";
 
 function sanitizePage(raw: string | undefined): number {
-  return Math.max(1, Math.floor(Number(raw)) || 1);
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, 1_000_000);
 }
 
 export default async function AffiliateDashboardPage({

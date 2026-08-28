@@ -35,7 +35,7 @@ export async function CommissionHistory({
   const { rows, total } = await listAffiliateCommissions(affiliateId, { page, pageSize: PAGE_SIZE });
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  if (rows.length === 0) {
+  if (total === 0) {
     return (
       <Empty>
         <EmptyHeader>
