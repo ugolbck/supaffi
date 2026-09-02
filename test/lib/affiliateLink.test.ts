@@ -111,7 +111,15 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
   });
 
   it("rejects a destination that is not a path on the merchant's own site", () => {
-    for (const bad of ["pricing", "https://evil.example.com", "//evil.example.com", "/a b"]) {
+    for (const bad of [
+      "pricing",
+      "https://evil.example.com",
+      "//evil.example.com",
+      "/a b",
+      "/\\evil.com",
+      "/pricing?utm_source=x",
+      "/pricing#faq",
+    ]) {
       const result = validateLinkInput({ code: "sarah", destinationPath: bad });
       expect("error" in result && result.error).toBeTruthy();
     }

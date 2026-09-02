@@ -69,12 +69,20 @@ export function validateLinkInput(
 
   // A destination is a path on the Merchant's own site. Anything that could
   // read as an absolute or protocol-relative URL would send the Affiliate's
-  // traffic somewhere else entirely.
-  if (!raw.startsWith("/") || raw.startsWith("//")) {
+  // traffic somewhere else entirely. A backslash is included because browsers
+  // normalize it to a slash, so "/\evil.com" resolves as "//evil.com" too.
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) {
     return { error: "A destination starts with / and points at a page on the site." };
   }
   if (raw.includes("://") || /\s/.test(raw)) {
     return { error: "A destination cannot contain spaces or a full web address." };
+  }
+  // The referral code is appended as its own query parameter. A query string
+  // here would double up into "?a=1?via=code", and a fragment would keep the
+  // browser from ever sending it to the server, so the link would silently
+  // stop earning.
+  if (raw.includes("?") || raw.includes("#")) {
+    return { error: "A destination cannot contain a question mark or a hash symbol." };
   }
   if (raw.length > 200) {
     return { error: "That destination is too long." };
