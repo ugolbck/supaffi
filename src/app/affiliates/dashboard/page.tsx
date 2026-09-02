@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { auth } from "@/lib/auth";
 import { getAffiliateSession, getAffiliateStats, getAffiliatePayoutDetails } from "@/lib/affiliate";
 import { getMerchantByDomain } from "@/lib/merchant";
@@ -37,7 +38,7 @@ export default async function AffiliateDashboardPage({
   const { page: pageParam } = await searchParams;
   const page = sanitizePage(pageParam);
 
-  const referralLink = `${data.merchantWebsiteUrl}?ref=${data.referralCode}`;
+  const referralLink = `${data.merchantWebsiteUrl}?${REFERRAL_QUERY_PARAM}=${data.referralCode}`;
   const [stats, payoutDetails] = await Promise.all([
     getAffiliateStats(session.user.id),
     getAffiliatePayoutDetails(session.user.id),

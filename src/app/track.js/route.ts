@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { REFERRAL_COOKIE } from "@/lib/referral";
+import { REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
 
 // Served at /track.js on the Merchant's own Supaffi domain, embedded on
 // the Merchant's actual site with a plain <script src="..."> tag — a
@@ -17,10 +17,10 @@ export async function GET(req: NextRequest) {
   const script = `
 (function () {
   var params = new URLSearchParams(window.location.search);
-  var ref = params.get("ref");
-  if (!ref) return;
+  var code = params.get("${REFERRAL_QUERY_PARAM}");
+  if (!code) return;
 
-  fetch("${origin}/api/track?ref=" + encodeURIComponent(ref))
+  fetch("${origin}/api/track?${REFERRAL_QUERY_PARAM}=" + encodeURIComponent(code))
     .then(function (res) { return res.ok ? res.json() : null; })
     .then(function (data) {
       if (!data || !data.referralToken) return;

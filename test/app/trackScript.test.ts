@@ -31,6 +31,6 @@ describe("track.js", () => {
   });
 
   it("bakes in the origin it was served from", async () => {
-    expect(await script("https://acme.test")).toContain("https://acme.test/api/track?ref=");
+    expect(await script("https://acme.test")).toContain("https://acme.test/api/track?via=");
   });
 });

@@ -28,3 +28,14 @@ export const REFERRAL_COOKIE = "__supaffi_referral";
  * else claims this one.
  */
 export const REFERRAL_METADATA_KEY = "supaffi_referral";
+
+/**
+ * Query parameter carrying an Affiliate's referral code on their link, e.g.
+ * `https://merchant.com/pricing?via=sarah`.
+ *
+ * `via` rather than `ref`: `ref` is already taken on most sites, by analytics
+ * tools, generic referrer plumbing, and the merchant's own campaign tags, so
+ * an affiliate link would collide with whatever is there. `via` is also what
+ * Rewardful uses, which is the spelling affiliates already recognise.
+ */
+export const REFERRAL_QUERY_PARAM = "via";

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
+import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
 
 // Called cross-origin, from the Merchant's own site (wherever the tracking
 // script is embedded), not from this Merchant's own domain — so this is
@@ -16,7 +17,7 @@ import { db } from "@/lib/db";
 // Merchant's own checkout code can read it later and pass it into Stripe.
 export async function GET(req: NextRequest) {
   const host = req.headers.get("host");
-  const referralCode = req.nextUrl.searchParams.get("ref");
+  const referralCode = req.nextUrl.searchParams.get(REFERRAL_QUERY_PARAM);
   if (!host || !referralCode) {
     return new NextResponse(null, { status: 400 });
   }

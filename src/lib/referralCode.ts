@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 // prisma/schema.prisma's comment on Affiliate.referralCode). Globally
 // unique across every Merchant on the Instance, matching the schema's
 // bare `@unique` (not scoped to merchantId) — the code appears directly in
-// a public `?ref=` URL, and staying merchant-agnostic keeps it short and
+// a public `?via=` URL, and staying merchant-agnostic keeps it short and
 // unambiguous.
 export async function generateReferralCode(name: string): Promise<string> {
   const base = slugify(name) || "affiliate";
