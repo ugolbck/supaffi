@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { CommissionStatus } from "@/lib/commission";
+import { LedgerScroller, LEDGER_ROW_HEIGHT } from "@/components/dashboard/LedgerScroller";
 import { ConfirmFraudButton } from "./ConfirmFraudButton";
 import { DismissFlagButton } from "./DismissFlagButton";
 import { markPaidAction } from "./markPaid";
@@ -110,7 +111,7 @@ export function CommissionTable({
 
   return (
     <div className="flex flex-1 flex-col lg:min-h-0">
-      <div className="flex-1 overflow-y-auto lg:min-h-0">
+      <LedgerScroller>
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>
@@ -138,7 +139,7 @@ export function CommissionTable({
               <TableRow
                 key={row.id}
                 data-state={selected.has(row.id) ? "selected" : undefined}
-                className="animate-in fade-in fill-mode-both duration-300"
+                className={`animate-in fade-in fill-mode-both duration-300 ${LEDGER_ROW_HEIGHT}`}
                 style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
               >
                 <TableCell>
@@ -195,7 +196,7 @@ export function CommissionTable({
             ))}
           </TableBody>
         </Table>
-      </div>
+      </LedgerScroller>
 
       {selected.size > 0 && (
         <div className="flex shrink-0 animate-in flex-wrap items-center justify-between gap-3 border-t border-border/70 bg-elevated px-4 py-3 slide-in-from-bottom-2 duration-200 ease-[var(--ease-out)]">

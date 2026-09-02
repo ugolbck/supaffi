@@ -105,6 +105,13 @@ export default async function CommissionsPage({
   const weeklyVolume = toWeeks(volume.series);
 
   const totalPages = Math.max(1, Math.ceil(total / COMMISSIONS_PAGE_SIZE));
+
+  // Same hole as the affiliates list: a page number past the end rendered an
+  // empty ledger under a label counting rows that are not there.
+  if (page > totalPages) {
+    const query = hrefWith({ page: totalPages > 1 ? String(totalPages) : null });
+    redirect(`/dashboard/products/${merchant.slug}/commissions${query === "?" ? "" : query}`);
+  }
   const anyFilterActive = Boolean(
     filters.status || filters.affiliateId || filters.currency || filters.query
   );

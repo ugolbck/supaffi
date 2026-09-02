@@ -17,6 +17,7 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { LedgerScroller, LEDGER_ROW_HEIGHT } from "@/components/dashboard/LedgerScroller";
 import { AffiliateSheet, type AffiliateRowView } from "./AffiliateSheet";
 
 export type { AffiliateRowView };
@@ -62,7 +63,7 @@ export function AffiliateTable({
 
   return (
     <div className="flex flex-1 flex-col lg:min-h-0">
-      <div className="flex-1 overflow-y-auto lg:min-h-0">
+      <LedgerScroller>
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>
@@ -81,7 +82,7 @@ export function AffiliateTable({
                 key={row.id}
                 onClick={() => openRow(row.id)}
                 data-state={row.id === selectedId && open ? "selected" : undefined}
-                className="animate-in fade-in cursor-pointer fill-mode-both duration-300"
+                className={`animate-in fade-in cursor-pointer fill-mode-both duration-300 ${LEDGER_ROW_HEIGHT}`}
                 style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
               >
                 <TableCell className="max-w-56">
@@ -135,7 +136,7 @@ export function AffiliateTable({
             ))}
           </TableBody>
         </Table>
-      </div>
+      </LedgerScroller>
 
       <AffiliateSheet row={selected} open={open} onOpenChange={setOpen} />
     </div>

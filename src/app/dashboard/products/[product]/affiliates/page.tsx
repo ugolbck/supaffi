@@ -134,6 +134,15 @@ export default async function AffiliatesPage({
   });
 
   const totalPages = Math.max(1, Math.ceil(total / AFFILIATES_PAGE_SIZE));
+
+  // A hand-edited page number past the end would otherwise put an empty table
+  // under a label counting rows that are not there. Clamping only the label
+  // would swap one lie for another, so the URL is corrected instead.
+  if (page > totalPages) {
+    const query = hrefWith({ page: totalPages > 1 ? String(totalPages) : null });
+    redirect(`${base}/affiliates${query === "?" ? "" : query}`);
+  }
+
   const firstShown = total === 0 ? 0 : (page - 1) * AFFILIATES_PAGE_SIZE + 1;
   const lastShown = Math.min(page * AFFILIATES_PAGE_SIZE, total);
 
