@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { CommissionStatus, StatusTotal } from "@/lib/commission";
+import { money } from "@/lib/format";
 
 /**
  * Count and money per status, doubling as the status filter.
@@ -25,13 +26,13 @@ const ACCENTS: Partial<Record<CommissionStatus, string>> = {
   FLAGGED: "text-status-warning",
 };
 
-function money(amounts: { currency: string; total: string }[]): string {
+// Same one-line-of-money constraint the duplicate used to encode itself:
+// the headline currency plus a count of how many more are behind it, rather
+// than a second line this tile has no room for.
+function detailFor(amounts: { currency: string; total: string }[]): string {
   if (amounts.length === 0) return "—";
-  const shown = amounts
-    .slice(0, 2)
-    .map((a) => `${a.total} ${a.currency.toUpperCase()}`)
-    .join("  ·  ");
-  return amounts.length > 2 ? `${shown}  +${amounts.length - 2}` : shown;
+  const extra = amounts.length - 1;
+  return extra > 0 ? `${money(amounts)}  +${extra}` : money(amounts);
 }
 
 function Tile({
@@ -97,7 +98,7 @@ export function StatusTiles({
           key={t.status}
           label={LABELS[t.status]}
           count={t.count}
-          detail={money(t.amounts)}
+          detail={detailFor(t.amounts)}
           href={hrefFor(t.status)}
           active={activeStatus === t.status}
           accent={t.count > 0 ? ACCENTS[t.status] : undefined}
