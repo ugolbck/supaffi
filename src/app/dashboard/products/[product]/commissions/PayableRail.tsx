@@ -56,32 +56,58 @@ export function PayableRail({
       {groups.length === 0 ? (
         <CardEmpty icon={HandCoins} title="No money has cleared its holding period" />
       ) : (
-        <ul className="flex flex-col gap-1">
-          {groups.map((group) => (
-            <li
-              key={`${group.affiliateId}:${group.currency}`}
-              className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 text-sm"
-            >
-              <Link
-                href={group.href}
-                className="min-w-0 flex-1 cursor-pointer truncate font-medium hover:underline"
+        // Rows share the card's height rather than stacking at the top, so
+        // one payable affiliate fills the rail as completely as six do.
+        // `min-h-11` keeps a long list readable, at which point the body
+        // scrolls instead of squashing every row.
+        <ul className="flex flex-1 flex-col">
+          {groups.map((group) => {
+            // A refund can land after everything it claws back is already
+            // PAID, leaving a lone negative row. It is a real balance and has
+            // to be shown, but there is nothing to pay: the mutation refuses
+            // a negative total, so a Pay button here could only ever fail
+            // (CONTEXT.md; the balance carries to the next payout).
+            const carries = Number(group.total) < 0;
+            return (
+              <li
+                key={`${group.affiliateId}:${group.currency}`}
+                className="flex min-h-14 flex-1 flex-col justify-center gap-1 border-b border-border/50 py-2 text-sm last:border-0"
               >
-                {group.affiliateName ?? group.affiliateEmail}
-              </Link>
-              <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
-                {group.total} {group.currency.toUpperCase()}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 shrink-0 cursor-pointer px-2 text-xs"
-                disabled={isPending}
-                onClick={() => pay(group)}
-              >
-                Pay
-              </Button>
-            </li>
-          ))}
+                <Link
+                  href={group.href}
+                  className="cursor-pointer truncate font-medium hover:underline"
+                >
+                  {group.affiliateName ?? group.affiliateEmail}
+                </Link>
+                {/* Amount and action on their own line: at rail width one line
+                    could not hold a name, a figure and a button without
+                    truncating the name down to a letter. */}
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`shrink-0 font-mono text-xs tabular-nums ${
+                      carries ? "text-destructive" : "text-muted-foreground"
+                    }`}
+                  >
+                    {group.total} {group.currency.toUpperCase()}
+                  </span>
+                  <span className="flex-1" />
+                  {carries ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">Carries forward</span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 shrink-0 cursor-pointer px-2 text-xs"
+                      disabled={isPending}
+                      onClick={() => pay(group)}
+                    >
+                      Pay
+                    </Button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </DashboardCard>

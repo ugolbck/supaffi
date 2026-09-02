@@ -112,10 +112,10 @@ export function CommissionTable({
   return (
     <div className="flex flex-1 flex-col lg:min-h-0">
       <LedgerScroller>
-        <Table>
+        <Table className="table-fixed">
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>
-              <TableHead className="w-9">
+              <TableHead className="w-10">
                 {payable.length > 0 && (
                   <Checkbox
                     aria-label="Select every payable commission on this page"
@@ -126,12 +126,12 @@ export function CommissionTable({
                   />
                 )}
               </TableHead>
-              <TableHead>Affiliate</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Earned</TableHead>
+              <TableHead className="w-[24%]">Affiliate</TableHead>
+              <TableHead className="w-[15%] text-right">Amount</TableHead>
+              <TableHead className="w-[12%]">Status</TableHead>
+              <TableHead className="w-[14%]">Earned</TableHead>
               <TableHead>Detail</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="w-[14%] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -151,7 +151,7 @@ export function CommissionTable({
                     />
                   )}
                 </TableCell>
-                <TableCell className="max-w-56">
+                <TableCell>
                   <div className="flex flex-col">
                     <span className="truncate font-medium">
                       {row.affiliateName ?? row.affiliateEmail}
@@ -163,7 +163,7 @@ export function CommissionTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="text-right font-mono whitespace-nowrap tabular-nums">
+                <TableCell className="truncate text-right font-mono whitespace-nowrap tabular-nums">
                   <span className={row.isAdjustment ? "text-destructive" : undefined}>
                     {row.amount} {row.currency.toUpperCase()}
                   </span>
@@ -171,10 +171,10 @@ export function CommissionTable({
                 <TableCell>
                   <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">
+                <TableCell className="truncate whitespace-nowrap text-muted-foreground">
                   {row.createdLabel}
                 </TableCell>
-                <TableCell className="max-w-64">
+                <TableCell>
                   <div className="flex flex-col">
                     <span className="truncate text-sm text-muted-foreground">{row.stateLabel}</span>
                     {row.stripePaymentRef && (

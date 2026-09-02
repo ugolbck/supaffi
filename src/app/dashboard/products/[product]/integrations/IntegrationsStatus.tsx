@@ -188,7 +188,7 @@ function TrackingCard({
 
 function DeliveriesCard({ health }: { health: WebhookHealth }) {
   return (
-    <DashboardCard title="Recent webhook deliveries" className="lg:col-span-7" bodyClassName="p-0">
+    <DashboardCard title="Recent webhook deliveries" className="lg:col-span-7" bodyPadding={false}>
       {health.recent.length === 0 ? (
         <CardEmpty icon={Webhook} title="No events delivered yet." />
       ) : (

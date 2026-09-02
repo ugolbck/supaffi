@@ -20,6 +20,7 @@ export function DashboardCard({
   className = "",
   bodyClassName = "",
   bodyScrolls = false,
+  bodyPadding = true,
 }: {
   title?: string;
   /** Sits with the title, for the one control this card owns. */
@@ -31,6 +32,14 @@ export function DashboardCard({
   bodyClassName?: string;
   /** Only a list that can outgrow its cell gets a scrollbar. */
   bodyScrolls?: boolean;
+  /**
+   * Off for a body that has to bleed to the card's edges, like a ruled ledger.
+   * A real switch rather than passing `p-0` through `bodyClassName`: two
+   * padding utilities on one element resolve by stylesheet order, so `px-4`
+   * wins however the string is concatenated and the override silently does
+   * nothing.
+   */
+  bodyPadding?: boolean;
 }) {
   return (
     <section
@@ -43,9 +52,9 @@ export function DashboardCard({
         </div>
       )}
       <div
-        className={`flex min-h-0 flex-1 flex-col px-4 ${title ? "pb-3.5" : "py-3.5"} ${
-          bodyScrolls ? "overflow-y-auto" : ""
-        } ${bodyClassName}`}
+        className={`flex min-h-0 flex-1 flex-col ${
+          bodyPadding ? `px-4 ${title ? "pb-3.5" : "py-3.5"}` : ""
+        } ${bodyScrolls ? "overflow-y-auto" : ""} ${bodyClassName}`}
       >
         {children}
       </div>

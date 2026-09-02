@@ -19,6 +19,7 @@ const STATIC_LABELS: Record<string, string> = {
   edit: "Edit",
   commissions: "Commissions",
   programs: "Programs",
+  affiliates: "Affiliates",
   integrations: "Integrations",
   stripe: "Stripe",
   resend: "Resend",
@@ -37,10 +38,9 @@ export function DashboardBreadcrumb({ merchants }: { merchants: Merchant[] }) {
     const isRawFallback = !merchant && !(segment in STATIC_LABELS);
     const label = merchant ? merchant.name : STATIC_LABELS[segment] ?? segment;
     if (crumbs.length > 0 && crumbs[crumbs.length - 1].label === label) continue;
-    // "programs" has no standalone page (only /programs/new and
-    // /programs/[id]/edit exist), and a segment with no static label or
-    // Merchant match has no known page either — neither should ever link.
-    const isLinkable = segment !== "programs" && !isRawFallback;
+    // A segment with no static label and no Merchant match is an id or a slug
+    // with no page of its own, so it is text, not a link.
+    const isLinkable = !isRawFallback;
     crumbs.push({ label, href, isLinkable });
   }
 

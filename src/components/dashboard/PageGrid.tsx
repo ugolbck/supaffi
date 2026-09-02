@@ -59,6 +59,9 @@ export function SignalRow({ children, columns }: { children: ReactNode; columns:
  * invisible until the cards come out the wrong width.
  */
 const COLUMNS = {
+  // 1 is reachable: cardGrid() returns it for a screen with a single card
+  // plus its ghost, e.g. Programs on a product with no program yet.
+  1: "lg:grid-cols-1",
   2: "lg:grid-cols-2",
   3: "lg:grid-cols-3",
   4: "lg:grid-cols-4",

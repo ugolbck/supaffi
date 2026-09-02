@@ -78,6 +78,8 @@ export type ProductMetrics = {
   /** PENDING plus PAYABLE: money the Owner still has to hand over. */
   owed: CurrencyTotal[];
   paid: CurrencyTotal[];
+  /** Commissions held back for review, all time. Drives the Owner's to-do list. */
+  flagged: number;
   series: DayPoint[];
 };
 
@@ -90,7 +92,7 @@ export async function getProductMetrics(
 
   const since = windowStart(days);
 
-  const [clickRows, commissionRows, owedRows, paidRows] = await Promise.all([
+  const [clickRows, commissionRows, owedRows, paidRows, flagged] = await Promise.all([
     db.click.findMany({
       where: { affiliate: { merchantId }, createdAt: { gte: since } },
       select: { createdAt: true },
@@ -109,6 +111,9 @@ export async function getProductMetrics(
       where: { affiliate: { merchantId }, status: "PAID" },
       _sum: { amount: true },
     }),
+    // Not windowed: a flagged commission stays the Owner's problem however
+    // long it has sat there.
+    db.commission.count({ where: { affiliate: { merchantId }, status: "FLAGGED" } }),
   ]);
 
   const series = emptySeries(days);
@@ -130,6 +135,7 @@ export async function getProductMetrics(
     conversionRate: clicks === 0 ? 0 : Math.round((conversions / clicks) * 1000) / 10,
     owed: totalsByCurrency(owedRows),
     paid: totalsByCurrency(paidRows),
+    flagged,
     series: [...series.values()],
   };
 }

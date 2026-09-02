@@ -78,6 +78,36 @@ describe.skipIf(!hasDatabase)("product setup", () => {
     // on screens that had stopped being onboarding.
     vi.stubEnv("EMAIL_DELIVERY", "console");
     const { owner, merchant } = await seedMerchant(true);
+    await db.program.create({
+      data: {
+        merchantId: merchant.id,
+        slug: "standard",
+        name: "Standard",
+        defaultCommissionRate: "20.00",
+        commissionDurationType: "FOREVER",
+        attributionWindowDays: 60,
+        holdingPeriodDays: 30,
+      },
+    });
+    await db.merchant.update({
+      where: { id: merchant.id },
+      data: { trackingVerifiedAt: new Date() },
+    });
+
+    const setup = await getProductSetup(owner.id, merchant.id);
+    expect(setup.totalSteps).toBe(3);
+    expect(setup.affiliateCount).toBe(0);
+    expect(setup.doneCount).toBe(3);
+    expect(setup.complete).toBe(true);
+  });
+
+  it("is complete on clicks alone, before any sale has verified tracking", async () => {
+    // The case the rule change was actually about. `awaiting-sale` means the
+    // snippet is firing and there is nothing further the Owner can do; only a
+    // paying customer arriving through a link can move it to verified, and
+    // waiting on that kept a finished product showing the step rail forever.
+    vi.stubEnv("EMAIL_DELIVERY", "console");
+    const { owner, merchant } = await seedMerchant(true);
     const program = await db.program.create({
       data: {
         merchantId: merchant.id,
@@ -104,17 +134,10 @@ describe.skipIf(!hasDatabase)("product setup", () => {
         expiresAt: new Date(Date.now() + 60 * 86400_000),
       },
     });
-    // Undo the affiliate so the only thing missing is a recruit.
-    await db.click.deleteMany();
-    await db.affiliate.deleteMany();
-    await db.merchant.update({
-      where: { id: merchant.id },
-      data: { trackingVerifiedAt: new Date() },
-    });
 
     const setup = await getProductSetup(owner.id, merchant.id);
-    expect(setup.totalSteps).toBe(3);
-    expect(setup.affiliateCount).toBe(0);
+    expect(merchant.trackingVerifiedAt).toBeNull();
+    expect(setup.trackingStatus).toBe("awaiting-sale");
     expect(setup.doneCount).toBe(3);
     expect(setup.complete).toBe(true);
   });

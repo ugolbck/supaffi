@@ -63,14 +63,18 @@ export default async function DashboardPage() {
   // What is actually asking for the Owner's time, in the order it should be
   // dealt with. Money first, then anything silently not working.
   const attention: { icon: typeof Flag; text: string; href: string }[] = [];
-  if (metrics.flagged > 0) {
-    const first = merchants[0];
+  // Per product, not one row off the owner-wide count: the link has to land
+  // on the ledger that actually holds the flag, and with two products the
+  // owner-wide count could never say which.
+  merchants.forEach((merchant, i) => {
+    const flagged = perProduct[i].flagged;
+    if (flagged === 0) return;
     attention.push({
       icon: Flag,
-      text: `${metrics.flagged} flagged commission${metrics.flagged === 1 ? "" : "s"} to review`,
-      href: `/dashboard/products/${first.slug}/commissions?status=FLAGGED`,
+      text: `${merchant.name}: ${flagged} flagged commission${flagged === 1 ? "" : "s"} to review`,
+      href: `/dashboard/products/${merchant.slug}/commissions?status=FLAGGED`,
     });
-  }
+  });
   merchants.forEach((merchant, i) => {
     const setup = setups[i];
     if (!setup.integrationsConnected) {

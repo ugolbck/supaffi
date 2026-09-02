@@ -31,7 +31,7 @@ const ACCENTS: Partial<Record<CommissionStatus, string>> = {
 // line of text, not two, but a two-currency merchant still deserves both
 // real amounts here, not a headline figure and a bare count of what it hid.
 function detailFor(amounts: { currency: string; total: string }[]): string {
-  if (amounts.length === 0) return "—";
+  if (amounts.length === 0) return "nothing yet";
   const hint = moneyHint(amounts);
   return hint ? `${money(amounts)}  ·  ${hint}` : money(amounts);
 }
@@ -90,7 +90,7 @@ export function StatusTiles({
       <Tile
         label="All"
         count={allCount}
-        detail={allCount === 0 ? "—" : "every status"}
+        detail={allCount === 0 ? "nothing yet" : "every status"}
         href={hrefFor(null)}
         active={activeStatus === null}
       />

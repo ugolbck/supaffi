@@ -54,7 +54,7 @@ function StatusRow({
   }[tone];
 
   return (
-    <div className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-sm">
+    <div className="flex min-h-12 flex-1 items-center gap-2.5 border-b border-border/50 py-2 text-sm last:border-0">
       <span className={`flex size-6 shrink-0 items-center justify-center rounded-full ${toneClass}`}>
         <Icon className="size-3.5" strokeWidth={tone === "success" ? 3 : 2} />
       </span>
@@ -208,9 +208,15 @@ export default async function MerchantDetailPage({
               }
             />
           ) : (
-            <ul className="flex flex-col gap-1">
+            // Rows share the card's height rather than stacking at the top,
+            // ruled between, which is what keeps this card full at one
+            // affiliate as well as at five.
+            <ul className="flex flex-1 flex-col">
               {topAffiliates.map((affiliate, i) => (
-                <li key={affiliate.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm">
+                <li
+                  key={affiliate.id}
+                  className="flex min-h-11 flex-1 items-center gap-2.5 border-b border-border/50 py-1.5 text-sm last:border-0"
+                >
                   <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground tabular-nums">
                     {i + 1}
                   </span>
@@ -235,11 +241,11 @@ export default async function MerchantDetailPage({
           {activity.length === 0 ? (
             <CardEmpty icon={Activity} title="No activity yet." />
           ) : (
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-1 flex-col">
               {activity.map((item) => (
                 <li
                   key={item.id}
-                  className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm"
+                  className="flex min-h-11 flex-1 items-center gap-2.5 border-b border-border/50 py-1.5 text-sm last:border-0"
                 >
                   <span className="w-14 shrink-0 text-xs text-muted-foreground tabular-nums">
                     {DATE.format(item.at)}
@@ -275,13 +281,13 @@ export default async function MerchantDetailPage({
           {programs.length === 0 ? (
             <CardEmpty icon={Percent} title="No programs yet." />
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-1 flex-col gap-2">
               {programs.map((p) => {
                 const link = `${originFor(merchant.domain)}/affiliates/signup/${p.slug}`;
                 return (
                   <div
                     key={p.id}
-                    className="flex flex-col gap-1.5 rounded-lg border border-border/70 bg-background/60 p-2.5"
+                    className="flex flex-1 flex-col justify-center gap-1.5 rounded-lg border border-border/70 bg-background/60 p-2.5"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-sm font-medium">{p.name}</span>
@@ -306,7 +312,6 @@ export default async function MerchantDetailPage({
         <DashboardCard
           title="Status"
           className="lg:col-span-3"
-          bodyClassName="gap-1"
           footer={
             <Link href={`${base}/integrations`}>
               <Button variant="outline" size="sm" className="w-full cursor-pointer">
@@ -316,7 +321,7 @@ export default async function MerchantDetailPage({
           }
         >
           {celebrate && (
-            <div className="pb-1.5">
+            <div className="shrink-0 pb-1.5">
               <TrackingVerified merchantId={merchant.id} />
             </div>
           )}

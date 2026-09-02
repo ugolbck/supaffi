@@ -118,7 +118,16 @@ export async function getStripeKeyKind(
   });
   if (!merchant?.stripeSecretKeyEnc) return null;
 
-  const key = decrypt(merchant.stripeSecretKeyEnc);
+  // A rotated or lost MASTER_ENCRYPTION_KEY makes decrypt throw. Integrations
+  // is the one screen that exists to tell an Owner their Stripe connection is
+  // broken, so it has to render and say so rather than 500 (CONTEXT.md: a
+  // decrypt failure prompts a reconnect).
+  let key: string;
+  try {
+    key = decrypt(merchant.stripeSecretKeyEnc);
+  } catch {
+    return null;
+  }
   if (key.startsWith("rk_")) return "restricted";
   if (key.startsWith("sk_")) return "secret";
   return null;
