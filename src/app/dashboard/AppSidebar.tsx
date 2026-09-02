@@ -7,6 +7,7 @@ import {
   Code2,
   LayoutDashboard,
   Lock,
+  Percent,
   Plus,
   Plug,
   Receipt,
@@ -45,6 +46,12 @@ const MERCHANT_NAV = [
     icon: Plug,
     label: "Integrations",
     locked: "Where your payment provider and email sending are connected.",
+  },
+  {
+    key: "programs",
+    icon: Percent,
+    label: "Programs",
+    locked: "The commission terms Affiliates sign up under.",
   },
   {
     key: "affiliates",
@@ -118,6 +125,7 @@ export function AppSidebar({
   const merchantHrefs: Record<(typeof MERCHANT_NAV)[number]["key"], string> = {
     overview: base,
     integrations: `${base}/integrations`,
+    programs: `${base}/programs`,
     affiliates: `${base}/affiliates`,
     commissions: `${base}/commissions`,
     tracking: `${base}/tracking`,
@@ -132,6 +140,7 @@ export function AppSidebar({
     if (key === "integrations") return pathname.startsWith(`${base}/integrations`);
     if (key === "tracking") return pathname === `${base}/tracking`;
     if (key === "settings") return pathname === `${base}/edit`;
+    if (key === "programs") return pathname.startsWith(`${base}/programs`);
     if (key === "affiliates") return pathname.startsWith(`${base}/affiliates`);
     if (key === "commissions") return pathname.startsWith(`${base}/commissions`);
     return false;

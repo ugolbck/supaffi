@@ -136,6 +136,22 @@ describe.skipIf(!hasDatabase)("program", () => {
     expect(list[0].name).toBe("Standard");
   });
 
+  it("lists Programs with the terms the Programs screen's cards need", async () => {
+    await createProgram(ownerId, merchantId, {
+      ...baseInput,
+      commissionDurationType: "FIXED_MONTHS",
+      commissionDurationMonths: 12,
+      attributionWindowDays: 45,
+      holdingPeriodDays: 15,
+    });
+
+    const [program] = await listProgramsForMerchant(ownerId, merchantId);
+    expect(program.commissionDurationType).toBe("FIXED_MONTHS");
+    expect(program.commissionDurationMonths).toBe(12);
+    expect(program.attributionWindowDays).toBe(45);
+    expect(program.holdingPeriodDays).toBe(15);
+  });
+
   it("lists Programs with their affiliate count", async () => {
     const { id } = await createProgram(ownerId, merchantId, baseInput);
     await db.affiliate.create({

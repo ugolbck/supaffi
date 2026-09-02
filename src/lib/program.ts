@@ -52,6 +52,10 @@ export async function listProgramsForMerchant(
     slug: string;
     name: string;
     defaultCommissionRate: unknown;
+    commissionDurationType: CommissionDurationType;
+    commissionDurationMonths: number | null;
+    attributionWindowDays: number;
+    holdingPeriodDays: number;
     affiliateCount: number;
   }[]
 > {
@@ -64,13 +68,19 @@ export async function listProgramsForMerchant(
       slug: true,
       name: true,
       defaultCommissionRate: true,
+      commissionDurationType: true,
+      commissionDurationMonths: true,
+      attributionWindowDays: true,
+      holdingPeriodDays: true,
       _count: { select: { affiliates: true } },
     },
     orderBy: { createdAt: "asc" },
   });
 
   // The product overview's Programs card reads this to say how many
-  // affiliates each program has without a second round trip per row.
+  // affiliates each program has without a second round trip per row. The
+  // Programs screen's cards read the duration/window/holding fields too, so
+  // that grid doesn't need a second query per card either.
   return programs.map(({ _count, ...program }) => ({
     ...program,
     affiliateCount: _count.affiliates,
