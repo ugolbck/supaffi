@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { REFERRAL_COOKIE } from "@/lib/referral";
 
 // Served at /track.js on the Merchant's own Supaffi domain, embedded on
 // the Merchant's actual site with a plain <script src="..."> tag — a
@@ -29,9 +30,16 @@ export async function GET(req: NextRequest) {
       // drop the cookie too early. The Attribution Window itself is
       // enforced server-side against Click.expiresAt when a purchase comes
       // in, not by this cookie's own duration.
+      //
+      // SameSite=Lax, never None: this cookie is only ever read first-party,
+      // by the Merchant's own checkout code on their own domain. Secure is
+      // added only over HTTPS, because a Secure cookie on a plain-HTTP dev
+      // site is silently dropped and tracking would fail with no error.
       document.cookie =
-        "supaffi_ref=" + data.referralToken +
-        "; path=/; max-age=" + (60 * 60 * 24 * 90) + "; SameSite=Lax";
+        "${REFERRAL_COOKIE}=" + data.referralToken +
+        "; path=/; max-age=" + (60 * 60 * 24 * 90) +
+        "; SameSite=Lax" +
+        (window.location.protocol === "https:" ? "; Secure" : "");
     });
 })();
 `.trim();
