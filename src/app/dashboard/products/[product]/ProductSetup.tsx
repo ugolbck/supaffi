@@ -28,6 +28,19 @@ const STEP_ICON: Record<SetupStepId, ComponentType<{ className?: string }>> = {
   tracking: Code,
 };
 
+// Tailwind can't see a dynamically built class string, so the column count
+// has to come from a lookup rather than `grid-cols-${steps.length}`. Keyed on
+// the step count rather than hardcoded to 3, so the step rail can't silently
+// break the way it already did once (four steps, then three).
+const STEPPER_COLUMNS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+  5: "grid-cols-5",
+  6: "grid-cols-6",
+};
+
 /**
  * Setup for one product, as a horizontal stepper filling its own band.
  *
@@ -109,7 +122,7 @@ export function ProductSetup({
         </span>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-3">
+      <div className={`grid min-h-0 flex-1 ${STEPPER_COLUMNS[steps.length] ?? "grid-cols-3"}`}>
         {steps.map((step, i) => {
           const isDone = step.done;
           const isCurrent = i === currentIndex;

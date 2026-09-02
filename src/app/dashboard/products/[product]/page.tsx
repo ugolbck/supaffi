@@ -15,6 +15,7 @@ import { PageShell, PageHeader, SignalRow, Band } from "@/components/dashboard/P
 import { StatTile } from "@/components/dashboard/StatTile";
 import { DashboardCard, CardEmpty } from "@/components/dashboard/DashboardCard";
 import { BarChart } from "@/components/charts/BarChart";
+import { money, moneyHint } from "@/lib/format";
 import { ProductSetup } from "./ProductSetup";
 import { TrackingVerified } from "./TrackingVerified";
 
@@ -30,22 +31,13 @@ import { TrackingVerified } from "./TrackingVerified";
  * the row is theirs again.
  */
 
-function money(totals: { currency: string; total: string }[]): string {
-  if (totals.length === 0) return "0.00";
-  const [first] = totals;
-  return `${first.total} ${first.currency.toUpperCase()}`;
-}
-
-function moneyHint(totals: { currency: string; total: string }[]): string | undefined {
-  if (totals.length < 2) return undefined;
-  return totals
-    .slice(1)
-    .map((t) => `${t.total} ${t.currency.toUpperCase()}`)
-    .join("  ·  ");
-}
-
 const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
+// A one-line status row is the exact shape this whole layout exists to
+// remove: three of them centred in a tall card is empty space with icons on
+// it. The secondary line under each label is what a real Stripe/Email/
+// Tracking screen would tell you anyway, so the card earns its height
+// instead of the body just centring three short rows in it.
 function StatusRow({
   icon: Icon,
   label,
@@ -68,8 +60,10 @@ function StatusRow({
       <span className={`flex size-6 shrink-0 items-center justify-center rounded-full ${toneClass}`}>
         <Icon className="size-3.5" strokeWidth={tone === "success" ? 3 : 2} />
       </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span className="shrink-0 text-xs text-muted-foreground">{detail}</span>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate font-medium">{label}</span>
+        <span className="truncate text-xs text-muted-foreground">{detail}</span>
+      </div>
     </div>
   );
 }
@@ -99,6 +93,22 @@ export default async function MerchantDetailPage({
   ]);
 
   const firstProgram = programs[0] ?? null;
+
+  // Per day conversion rate, not carried on DayPoint itself: dividing at the
+  // edge keeps analytics.ts free of a derived field only this tile needs.
+  // Zero clicks reads as a zero rate rather than NaN or a hole in the line.
+  const rateSeries = metrics.series.map((d) =>
+    d.clicks === 0 ? 0 : Math.round((d.conversions / d.clicks) * 1000) / 10
+  );
+
+  // The Status card's Tracking row wants a last-click date. metrics.series
+  // already carries a click count per day for the 30 day window, so the most
+  // recent day with clicks > 0 in that window is read off it rather than
+  // adding a second query just for a timestamp.
+  const lastClickDay = [...metrics.series].reverse().find((d) => d.clicks > 0)?.date ?? null;
+  const lastClickLabel = lastClickDay
+    ? DATE.format(new Date(`${lastClickDay}T00:00:00Z`))
+    : null;
 
   return (
     <PageShell>
@@ -132,7 +142,7 @@ export default async function MerchantDetailPage({
           value={String(metrics.conversions)}
           series={metrics.series.map((d) => d.conversions)}
         />
-        <StatTile label="Rate" value={`${metrics.conversionRate}%`} hint="last 30 days" />
+        <StatTile label="Rate" value={`${metrics.conversionRate}%`} series={rateSeries} />
         <StatTile
           label="Owed"
           value={money(metrics.owed)}
@@ -286,7 +296,7 @@ export default async function MerchantDetailPage({
           <DashboardCard
             title="Status"
             className="lg:col-span-3"
-            bodyClassName="justify-center gap-1.5"
+            bodyClassName="gap-1"
             footer={
               <Link href={`${base}/integrations`}>
                 <Button variant="outline" size="sm" className="w-full cursor-pointer">
@@ -302,14 +312,24 @@ export default async function MerchantDetailPage({
             )}
             <StatusRow icon={Check} label="Stripe" detail="Connected" tone="success" />
             {setup.emailConnected ? (
-              <StatusRow icon={Check} label="Email" detail="Connected" tone="success" />
+              <StatusRow icon={Check} label="Email" detail="Sending via Resend" tone="success" />
             ) : (
-              <StatusRow icon={Terminal} label="Email" detail="Terminal" tone="muted" />
+              <StatusRow icon={Terminal} label="Email" detail="Printed to the terminal" tone="muted" />
             )}
             {setup.trackingStatus === "verified" ? (
-              <StatusRow icon={Check} label="Tracking" detail="Live" tone="success" />
+              <StatusRow
+                icon={Check}
+                label="Tracking"
+                detail={lastClickLabel ? `Live, last click ${lastClickLabel}` : "Live"}
+                tone="success"
+              />
             ) : (
-              <StatusRow icon={Clock} label="Tracking" detail="Waiting" tone="waiting" />
+              <StatusRow
+                icon={Clock}
+                label="Tracking"
+                detail={lastClickLabel ? `Waiting on a sale, last click ${lastClickLabel}` : "Waiting on a sale"}
+                tone="waiting"
+              />
             )}
           </DashboardCard>
         </Band>

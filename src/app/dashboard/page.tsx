@@ -11,6 +11,7 @@ import { StatTile } from "@/components/dashboard/StatTile";
 import { DashboardCard, CardEmpty } from "@/components/dashboard/DashboardCard";
 import { GhostCard } from "@/components/dashboard/GhostCard";
 import { BarChart } from "@/components/charts/BarChart";
+import { money, moneyHint } from "@/lib/format";
 import { ProductCard } from "./ProductCard";
 
 /**
@@ -21,20 +22,6 @@ import { ProductCard } from "./ProductCard";
  * product it means. Everything after "add a product" now lives on that
  * product's own page.
  */
-
-function money(totals: { currency: string; total: string }[]): string {
-  if (totals.length === 0) return "0.00";
-  const [first] = totals;
-  return `${first.total} ${first.currency.toUpperCase()}`;
-}
-
-function moneyHint(totals: { currency: string; total: string }[]): string | undefined {
-  if (totals.length < 2) return undefined;
-  return totals
-    .slice(1)
-    .map((t) => `${t.total} ${t.currency.toUpperCase()}`)
-    .join("  ·  ");
-}
 
 export default async function DashboardPage() {
   const session = await auth();
