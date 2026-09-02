@@ -215,7 +215,7 @@ export default async function MerchantDetailPage({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <Link
-                        href={`/dashboard/products/${merchant.slug}/programs/${p.id}/edit`}
+                        href={`/dashboard/products/${merchant.slug}/programs/${p.slug}/edit`}
                         className="truncate text-sm font-medium hover:underline"
                       >
                         {p.name}

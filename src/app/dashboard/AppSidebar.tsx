@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Building2,
-  Flag,
+  Code2,
   LayoutDashboard,
   Lock,
   Plus,
@@ -59,10 +59,10 @@ const MERCHANT_NAV = [
     locked: "What's owed, what's cleared the holding period, what's paid.",
   },
   {
-    key: "flagged",
-    icon: Flag,
-    label: "Flagged",
-    locked: "Refunds and suspicious referrals held back for review.",
+    key: "tracking",
+    icon: Code2,
+    label: "Tracking",
+    locked: "The snippets that tell Supaffi which sale an affiliate sent.",
   },
   {
     key: "settings",
@@ -110,7 +110,6 @@ export function AppSidebar({
   email: string;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const merchantMatch = pathname.match(/^\/dashboard\/products\/([^/]+)/);
   const activeSlug = merchantMatch?.[1];
   const activeMerchant = merchants.find((m) => m.slug === activeSlug);
@@ -121,20 +120,19 @@ export function AppSidebar({
     integrations: `${base}/integrations`,
     affiliates: base,
     commissions: `${base}/commissions`,
-    flagged: `${base}/commissions?status=FLAGGED`,
+    tracking: `${base}/tracking`,
     settings: `${base}/edit`,
   };
 
-  // Commissions and Flagged are the same screen, told apart only by the status
-  // filter, so pathname alone would light up both rows at once.
-  const onCommissions = pathname.startsWith(`${base}/commissions`);
-  const flaggedFilter = searchParams.get("status") === "FLAGGED";
+  // Flagged used to be its own row pointing at ?status=FLAGGED. It is a filter
+  // on the commissions ledger, not a place, and having both meant two rows
+  // fighting over the same screen.
   function isActiveNav(key: (typeof MERCHANT_NAV)[number]["key"]): boolean {
     if (key === "overview") return pathname === base;
     if (key === "integrations") return pathname.startsWith(`${base}/integrations`);
+    if (key === "tracking") return pathname === `${base}/tracking`;
     if (key === "settings") return pathname === `${base}/edit`;
-    if (key === "commissions") return onCommissions && !flaggedFilter;
-    if (key === "flagged") return onCommissions && flaggedFilter;
+    if (key === "commissions") return pathname.startsWith(`${base}/commissions`);
     return false;
   }
 
