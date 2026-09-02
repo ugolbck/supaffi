@@ -1,0 +1,10 @@
+# Copy to docker-compose.override.yml for local development. Compose loads that
+# filename automatically and it is gitignored, so nothing here reaches a
+# self-hosted install.
+#
+# Publishes Postgres on loopback only, for psql and for running the test suite
+# from the host.
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
