@@ -5,6 +5,7 @@ import { getMerchantForOwnerBySlug, getIntegrationStatus, getStripeKeyKind } fro
 import { deliveryMode } from "@/lib/email/transport";
 import { getProductSetup, stepAfter } from "@/lib/productSetup";
 import { getWebhookHealth } from "@/lib/analytics";
+import { getTrackingTimestamps } from "@/lib/tracking";
 import { originFor } from "@/lib/url";
 import { SetupShell } from "../SetupShell";
 import { ProviderCard } from "./ProviderCard";
@@ -69,9 +70,10 @@ export default async function IntegrationsPage({
   // forward button) has nothing left to say. This is what stopped a finished
   // product from reading "Step 1 of 3" forever.
   if (setup.complete) {
-    const [health, keyKind] = await Promise.all([
+    const [health, keyKind, timestamps] = await Promise.all([
       getWebhookHealth(session.user.id, merchant.id),
       getStripeKeyKind(session.user.id, merchant.id),
+      getTrackingTimestamps(merchant.id),
     ]);
     return (
       <IntegrationsStatus
@@ -82,6 +84,8 @@ export default async function IntegrationsPage({
         emailMode={deliveryMode()}
         emailConnected={setup.emailConnected}
         trackingStatus={setup.trackingStatus}
+        lastClickAt={timestamps.lastClickAt}
+        verifiedAt={timestamps.verifiedAt}
       />
     );
   }
@@ -112,7 +116,6 @@ export default async function IntegrationsPage({
       step={1}
       title={`Connect ${merchant.name}`}
       lede="Read-only access. Nothing is charged or created on your accounts."
-      productSlug={merchant.slug}
       next={next}
     >
       <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">

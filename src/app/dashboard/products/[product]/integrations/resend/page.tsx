@@ -43,7 +43,6 @@ export default async function ConnectResendPage({
           </span>
         ) : null
       }
-      productSlug={merchant.slug}
       next={next}
     >
       <SetupPanel className="lg:flex-1 lg:overflow-y-auto">

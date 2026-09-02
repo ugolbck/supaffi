@@ -74,7 +74,6 @@ export default async function TrackingPage({
       title="Install tracking"
       lede="Two snippets, both on your own site. The first records the click, the second tells Stripe which affiliate sent the sale."
       status={<StatusPill status={status} />}
-      productSlug={merchant.slug}
       next={next}
       aside={
         <SetupPanel title="Where this stands" className="lg:flex-1">

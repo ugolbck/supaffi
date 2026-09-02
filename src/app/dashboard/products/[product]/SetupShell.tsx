@@ -42,7 +42,6 @@ export function SetupShell({
   status,
   children,
   aside,
-  productSlug,
   next,
 }: {
   /** Which of the four setup steps this screen is. */
@@ -56,7 +55,6 @@ export function SetupShell({
   children: React.ReactNode;
   /** Optional right rail. Without it the content runs the full width. */
   aside?: React.ReactNode;
-  productSlug: string;
   /** Where this step leads. Null once there is nothing left to do. */
   next: { label: string; href: string } | null;
 }) {
@@ -79,16 +77,22 @@ export function SetupShell({
         {aside && <div className="flex flex-col gap-4 lg:col-span-2 lg:min-h-0">{aside}</div>}
       </div>
 
-      <footer className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-border/60 pt-4">
-        {next && (
+      {/* The border and padding are part of the button's chrome, not a
+          permanent fixture of the shell: with nothing to put in it, an
+          unconditional footer leaves a bordered strip of empty space at the
+          bottom of every screen with no next step (the last step of setup,
+          or any provider-connect screen reached once setup is already
+          done). */}
+      {next && (
+        <footer className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-border/60 pt-4">
           <Link href={next.href}>
             <Button className="cursor-pointer">
               {next.label}
               <ArrowRight />
             </Button>
           </Link>
-        )}
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

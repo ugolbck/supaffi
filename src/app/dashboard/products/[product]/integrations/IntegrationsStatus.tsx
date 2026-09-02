@@ -25,6 +25,8 @@ const DATETIME = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
+const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
 const KEY_KIND_LABEL: Record<Exclude<StripeKeyKind, null>, string> = {
   restricted: "restricted key",
   secret: "full secret key",
@@ -138,7 +140,17 @@ function EmailCard({
   );
 }
 
-function TrackingCard({ base, status }: { base: string; status: TrackingStatus }) {
+function TrackingCard({
+  base,
+  status,
+  lastClickAt,
+  verifiedAt,
+}: {
+  base: string;
+  status: TrackingStatus;
+  lastClickAt: Date | null;
+  verifiedAt: Date | null;
+}) {
   const live = status === "verified";
   return (
     <DashboardCard
@@ -152,7 +164,7 @@ function TrackingCard({ base, status }: { base: string; status: TrackingStatus }
         </Link>
       }
     >
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+      <div className="flex flex-col gap-3">
         {live ? (
           <ConnectedBadge label="Live" />
         ) : (
@@ -161,11 +173,12 @@ function TrackingCard({ base, status }: { base: string; status: TrackingStatus }
             Awaiting a sale
           </span>
         )}
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {live
-            ? "Both halves are confirmed working."
-            : "Clicks are recorded. The checkout half confirms itself on the first sale."}
-        </p>
+        <div className="flex flex-col gap-1.5 border-t border-border/60 pt-3">
+          <Fact label="Last click">{lastClickAt ? DATE.format(lastClickAt) : "None yet"}</Fact>
+          <Fact label="Last attributed sale">
+            {verifiedAt ? DATE.format(verifiedAt) : "Not yet"}
+          </Fact>
+        </div>
       </div>
     </DashboardCard>
   );
@@ -220,6 +233,8 @@ export function IntegrationsStatus({
   emailMode,
   emailConnected,
   trackingStatus,
+  lastClickAt,
+  verifiedAt,
 }: {
   merchant: { slug: string; name: string; domain: string };
   webhookUrl: string;
@@ -228,6 +243,8 @@ export function IntegrationsStatus({
   emailMode: DeliveryMode;
   emailConnected: boolean;
   trackingStatus: TrackingStatus;
+  lastClickAt: Date | null;
+  verifiedAt: Date | null;
 }) {
   const base = `/dashboard/products/${merchant.slug}`;
 
@@ -241,7 +258,12 @@ export function IntegrationsStatus({
       </Band>
 
       <Band columns={12}>
-        <TrackingCard base={base} status={trackingStatus} />
+        <TrackingCard
+          base={base}
+          status={trackingStatus}
+          lastClickAt={lastClickAt}
+          verifiedAt={verifiedAt}
+        />
         <DeliveriesCard health={health} />
       </Band>
     </PageShell>

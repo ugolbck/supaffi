@@ -46,7 +46,6 @@ export default async function ConnectStripePage({
           </span>
         ) : null
       }
-      productSlug={merchant.slug}
       next={next}
     >
       <SetupPanel className="lg:flex-1 lg:overflow-y-auto">

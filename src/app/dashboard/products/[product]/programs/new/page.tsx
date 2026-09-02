@@ -26,7 +26,6 @@ export default async function NewProgramPage({
       step={2}
       title="Set your commission terms"
       lede="What affiliates earn, for how long, and how long a commission waits before you can pay it."
-      productSlug={merchant.slug}
       // The form's own submit is what moves this step forward, so the footer
       // offers no second, competing way to advance.
       next={null}
