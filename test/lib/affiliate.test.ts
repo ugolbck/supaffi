@@ -5,6 +5,8 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
   createAffiliate,
+  listAffiliatesForMerchant,
+  type AffiliateListFilters,
   getAffiliateByEmail,
   getAffiliateSession,
   getAffiliateStats,
@@ -33,10 +35,13 @@ if (!hasDatabase) {
 }
 
 describe.skipIf(!hasDatabase)("affiliate", () => {
+  let ownerId: string;
   let merchantId: string;
   let programId: string;
+  let vipProgramId: string;
   let otherMerchantId: string;
   let otherProgramId: string;
+  let foreignOwnerId: string;
 
   beforeEach(async () => {
     await db.commission.deleteMany();
@@ -50,6 +55,11 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     const owner = await db.owner.create({
       data: { email: "affiliate-lib-owner@example.com", passwordHash: "x" },
     });
+    ownerId = owner.id;
+    const foreignOwner = await db.owner.create({
+      data: { email: "affiliate-lib-foreign@example.com", passwordHash: "x" },
+    });
+    foreignOwnerId = foreignOwner.id;
     const merchant = await db.merchant.create({
       data: {
         slug: crypto.randomUUID(),
@@ -75,6 +85,18 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       },
     });
     programId = program.id;
+    const vipProgram = await db.program.create({
+      data: {
+        slug: crypto.randomUUID(),
+        merchantId,
+        name: "VIP",
+        defaultCommissionRate: "40.00",
+        commissionDurationType: "FOREVER",
+        attributionWindowDays: 60,
+        holdingPeriodDays: 30,
+      },
+    });
+    vipProgramId = vipProgram.id;
 
     const otherMerchant = await db.merchant.create({
       data: {
@@ -368,6 +390,207 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       expect(toDisplayStatus("PAID")).toBe("PAID");
       expect(toDisplayStatus("VOIDED")).toBe("VOIDED");
       expect(toDisplayStatus("FLAGGED")).toBe("PENDING");
+    });
+  });
+
+  describe("listAffiliatesForMerchant", () => {
+    const NO_FILTERS: AffiliateListFilters = { programId: null, query: null };
+    const PAGE = { page: 1, pageSize: 25 };
+
+    async function makeAffiliate(fields: {
+      email: string;
+      name?: string | null;
+      referralCode: string;
+      programId?: string;
+      customCommissionRate?: string;
+      merchantId?: string;
+    }) {
+      return db.affiliate.create({
+        data: {
+          merchantId: fields.merchantId ?? merchantId,
+          programId: fields.programId ?? programId,
+          email: fields.email,
+          name: fields.name ?? null,
+          referralCode: fields.referralCode,
+          customCommissionRate: fields.customCommissionRate ?? null,
+        },
+      });
+    }
+
+    async function makeClick(affiliateId: string) {
+      return db.click.create({
+        data: {
+          affiliateId,
+          referralToken: crypto.randomUUID(),
+          expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+
+    async function makeCommission(
+      affiliateId: string,
+      amount: string,
+      currency: string,
+      status: "PENDING" | "PAYABLE" | "PAID" | "VOIDED" | "FLAGGED" = "PAYABLE"
+    ) {
+      const click = await makeClick(affiliateId);
+      return db.commission.create({
+        data: {
+          affiliateId,
+          clickId: click.id,
+          amount,
+          currency,
+          status,
+          payableAt: new Date(),
+          stripePaymentRef: crypto.randomUUID(),
+        },
+      });
+    }
+
+    it("falls back to the Program's default rate and prefers the override when set", async () => {
+      const standard = await makeAffiliate({ email: "sarah@example.com", referralCode: "sarah" });
+      const overridden = await makeAffiliate({
+        email: "rob@example.com",
+        referralCode: "rob",
+        customCommissionRate: "42.50",
+      });
+
+      const { rows } = await listAffiliatesForMerchant(ownerId, merchantId, NO_FILTERS, PAGE);
+      const byId = new Map(rows.map((r) => [r.id, r]));
+
+      expect(byId.get(standard.id)?.commissionRate).toBe("20");
+      expect(byId.get(standard.id)?.rateIsOverride).toBe(false);
+      expect(byId.get(overridden.id)?.commissionRate).toBe("42.5");
+      expect(byId.get(overridden.id)?.rateIsOverride).toBe(true);
+    });
+
+    it("counts clicks and conversions per affiliate", async () => {
+      const busy = await makeAffiliate({ email: "busy@example.com", referralCode: "busy" });
+      const quiet = await makeAffiliate({ email: "quiet@example.com", referralCode: "quiet" });
+
+      await makeClick(busy.id);
+      await makeCommission(busy.id, "10.00", "usd");
+      await makeCommission(busy.id, "5.00", "usd");
+      await makeClick(quiet.id);
+
+      const { rows, total } = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        NO_FILTERS,
+        PAGE
+      );
+      const byId = new Map(rows.map((r) => [r.id, r]));
+
+      expect(total).toBe(2);
+      // Three clicks: one on its own, plus the one behind each commission.
+      expect(byId.get(busy.id)?.clicks).toBe(3);
+      expect(byId.get(busy.id)?.conversions).toBe(2);
+      expect(byId.get(quiet.id)?.clicks).toBe(1);
+      expect(byId.get(quiet.id)?.conversions).toBe(0);
+    });
+
+    it("keeps earnings per currency and leaves voided money out", async () => {
+      const affiliate = await makeAffiliate({ email: "multi@example.com", referralCode: "multi" });
+      await makeCommission(affiliate.id, "10.00", "usd", "PAYABLE");
+      await makeCommission(affiliate.id, "5.00", "usd", "PAID");
+      await makeCommission(affiliate.id, "7.00", "eur", "PENDING");
+      await makeCommission(affiliate.id, "99.00", "usd", "VOIDED");
+
+      const { rows } = await listAffiliatesForMerchant(ownerId, merchantId, NO_FILTERS, PAGE);
+
+      expect(rows[0].earned).toEqual([
+        { currency: "eur", total: "7.00" },
+        { currency: "usd", total: "15.00" },
+      ]);
+    });
+
+    it("filters by program", async () => {
+      await makeAffiliate({ email: "std@example.com", referralCode: "std" });
+      const vip = await makeAffiliate({
+        email: "vip@example.com",
+        referralCode: "vip",
+        programId: vipProgramId,
+      });
+
+      const { rows, total } = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        { programId: vipProgramId, query: null },
+        PAGE
+      );
+
+      expect(total).toBe(1);
+      expect(rows.map((r) => r.id)).toEqual([vip.id]);
+      expect(rows[0].programName).toBe("VIP");
+      expect(rows[0].commissionRate).toBe("40");
+    });
+
+    it("searches over name, email and referral code", async () => {
+      const byName = await makeAffiliate({
+        email: "a@example.com",
+        name: "Marguerite",
+        referralCode: "zzz-a",
+      });
+      const byEmail = await makeAffiliate({
+        email: "someone@needle.test",
+        name: "Bob",
+        referralCode: "zzz-b",
+      });
+      const byCode = await makeAffiliate({
+        email: "c@example.com",
+        name: "Carol",
+        referralCode: "haystack-code",
+      });
+
+      const nameHit = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        { programId: null, query: "marguer" },
+        PAGE
+      );
+      expect(nameHit.rows.map((r) => r.id)).toEqual([byName.id]);
+
+      const emailHit = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        { programId: null, query: "NEEDLE.test" },
+        PAGE
+      );
+      expect(emailHit.rows.map((r) => r.id)).toEqual([byEmail.id]);
+
+      const codeHit = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        { programId: null, query: "haystack" },
+        PAGE
+      );
+      expect(codeHit.rows.map((r) => r.id)).toEqual([byCode.id]);
+    });
+
+    it("never returns another Merchant's affiliates", async () => {
+      await makeAffiliate({ email: "mine@example.com", referralCode: "mine" });
+      await makeAffiliate({
+        email: "theirs@example.com",
+        referralCode: "theirs",
+        merchantId: otherMerchantId,
+        programId: otherProgramId,
+      });
+
+      const { rows, total } = await listAffiliatesForMerchant(
+        ownerId,
+        merchantId,
+        NO_FILTERS,
+        PAGE
+      );
+
+      expect(total).toBe(1);
+      expect(rows[0].email).toBe("mine@example.com");
+    });
+
+    it("throws for a Merchant that belongs to another Owner", async () => {
+      await expect(
+        listAffiliatesForMerchant(foreignOwnerId, merchantId, NO_FILTERS, PAGE)
+      ).rejects.toThrow("Merchant not found");
     });
   });
 });

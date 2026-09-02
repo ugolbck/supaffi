@@ -1,6 +1,21 @@
 import { db } from "@/lib/db";
 import { generateReferralCode } from "@/lib/referralCode";
 import { Prisma } from "@prisma/client";
+import type { CurrencyTotal } from "@/lib/analytics";
+import type { CommissionStatus } from "@/lib/commission";
+
+// Owner-scoping is done in the query, never inferred from the route guard.
+// An Affiliate reaches an Owner only through its Merchant, so both links get
+// checked: the Merchant is the Owner's, and the Affiliate is that Merchant's.
+async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
+  const merchant = await db.merchant.findFirst({
+    where: { id: merchantId, ownerId },
+    select: { id: true },
+  });
+  if (!merchant) {
+    throw new Error("Merchant not found");
+  }
+}
 
 export type CreateAffiliateInput = { name: string; email: string };
 
@@ -172,4 +187,241 @@ export async function getAffiliatePayoutDetails(affiliateId: string): Promise<st
     select: { payoutDetails: true },
   });
   return affiliate?.payoutDetails ?? null;
+}
+
+export type AffiliateListFilters = {
+  /** Null means every Program on the Merchant. */
+  programId: string | null;
+  /** Matches a name, an email or a referral code. */
+  query: string | null;
+};
+
+export type AffiliateListRow = {
+  id: string;
+  name: string | null;
+  email: string;
+  referralCode: string;
+  programId: string;
+  programName: string;
+  programSlug: string;
+  /** The override when the Affiliate has one, otherwise the Program default. */
+  commissionRate: string;
+  rateIsOverride: boolean;
+  clicks: number;
+  conversions: number;
+  /** One entry per currency. Supaffi never converts (CONTEXT.md). */
+  earned: CurrencyTotal[];
+  createdAt: Date;
+};
+
+export const AFFILIATES_PAGE_SIZE = 25;
+
+/**
+ * Everyone promoting this product, with what they have brought in.
+ *
+ * This lives here rather than in analytics.ts because a row is an affiliate,
+ * not a metric: identity, program and rate are the point, and the counts hang
+ * off them.
+ *
+ * The counts are gathered in three grouped queries keyed on the ids of the
+ * page that was just read, not per row and not over the whole Merchant. That
+ * keeps the cost of the screen flat at five queries whether the account has
+ * one affiliate or ten thousand, and it means an affiliate with no clicks
+ * still comes back as a zero rather than dropping out of a join.
+ */
+export async function listAffiliatesForMerchant(
+  ownerId: string,
+  merchantId: string,
+  filters: AffiliateListFilters,
+  { page, pageSize }: { page: number; pageSize: number }
+): Promise<{ rows: AffiliateListRow[]; total: number }> {
+  await assertMerchantOwnership(ownerId, merchantId);
+
+  const query = filters.query?.trim();
+  const where = {
+    merchantId,
+    merchant: { ownerId },
+    ...(filters.programId ? { programId: filters.programId } : {}),
+    ...(query
+      ? {
+          OR: [
+            { name: { contains: query, mode: "insensitive" as const } },
+            { email: { contains: query, mode: "insensitive" as const } },
+            { referralCode: { contains: query, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+
+  const [total, affiliates] = await Promise.all([
+    db.affiliate.count({ where }),
+    db.affiliate.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        referralCode: true,
+        customCommissionRate: true,
+        createdAt: true,
+        program: {
+          select: { id: true, name: true, slug: true, defaultCommissionRate: true },
+        },
+      },
+      // Newest first. Ranking by money is the Leaderboard's job, and doing it
+      // here would mean aggregating every affiliate before paging any of them.
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+
+  if (affiliates.length === 0) return { total, rows: [] };
+
+  const ids = affiliates.map((a) => a.id);
+  const [clickCounts, conversionCounts, earnedRows] = await Promise.all([
+    db.click.groupBy({
+      by: ["affiliateId"],
+      where: { affiliateId: { in: ids } },
+      _count: { _all: true },
+    }),
+    // Every commission counts as a conversion, voided ones included, which is
+    // what getProductMetrics counts for the rate on the same screen. Money is
+    // the thing a void takes away, not the sale having happened.
+    db.commission.groupBy({
+      by: ["affiliateId"],
+      where: { affiliateId: { in: ids } },
+      _count: { _all: true },
+    }),
+    db.commission.groupBy({
+      by: ["affiliateId", "currency"],
+      where: { affiliateId: { in: ids }, status: { notIn: ["VOIDED"] } },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const clicksById = new Map(clickCounts.map((c) => [c.affiliateId, c._count._all]));
+  const conversionsById = new Map(
+    conversionCounts.map((c) => [c.affiliateId, c._count._all])
+  );
+  const earnedById = new Map<string, CurrencyTotal[]>();
+  for (const row of earnedRows) {
+    const totals = earnedById.get(row.affiliateId) ?? [];
+    totals.push({
+      currency: row.currency,
+      total: (row._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+    });
+    earnedById.set(row.affiliateId, totals);
+  }
+
+  return {
+    total,
+    rows: affiliates.map((a) => ({
+      id: a.id,
+      name: a.name,
+      email: a.email,
+      referralCode: a.referralCode,
+      programId: a.program.id,
+      programName: a.program.name,
+      programSlug: a.program.slug,
+      commissionRate: (a.customCommissionRate ?? a.program.defaultCommissionRate).toString(),
+      rateIsOverride: a.customCommissionRate !== null,
+      clicks: clicksById.get(a.id) ?? 0,
+      conversions: conversionsById.get(a.id) ?? 0,
+      earned: (earnedById.get(a.id) ?? []).sort((x, y) =>
+        x.currency.localeCompare(y.currency)
+      ),
+      createdAt: a.createdAt,
+    })),
+  };
+}
+
+export type AffiliateSignals = {
+  total: number;
+  /** At least one commission that has not been voided. */
+  earning: number;
+  joinedThisMonth: number;
+};
+
+export async function getAffiliateSignals(
+  ownerId: string,
+  merchantId: string
+): Promise<AffiliateSignals> {
+  await assertMerchantOwnership(ownerId, merchantId);
+
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+
+  const scope = { merchantId, merchant: { ownerId } };
+  const [total, earning, joinedThisMonth] = await Promise.all([
+    db.affiliate.count({ where: scope }),
+    db.affiliate.count({
+      where: { ...scope, commissions: { some: { status: { not: "VOIDED" } } } },
+    }),
+    db.affiliate.count({ where: { ...scope, createdAt: { gte: monthStart } } }),
+  ]);
+
+  return { total, earning, joinedThisMonth };
+}
+
+export type AffiliateDetailCommission = {
+  id: string;
+  amount: string;
+  currency: string;
+  /** The real status, flags included: this is the Owner's view, not the Affiliate's. */
+  status: CommissionStatus;
+  createdAt: Date;
+};
+
+export type AffiliateDetail = {
+  payoutDetails: string | null;
+  commissions: AffiliateDetailCommission[];
+};
+
+/**
+ * What the detail sheet shows that the list row does not.
+ *
+ * Fetched for the whole page up front rather than on click, so opening a row
+ * is instant and needs no loading state. Bounded by `perAffiliate`, so the
+ * cost is a page of rows times a handful of commissions, not an affiliate's
+ * entire history.
+ */
+export async function getAffiliateDetails(
+  ownerId: string,
+  merchantId: string,
+  affiliateIds: string[],
+  perAffiliate = 8
+): Promise<Record<string, AffiliateDetail>> {
+  await assertMerchantOwnership(ownerId, merchantId);
+  if (affiliateIds.length === 0) return {};
+
+  const affiliates = await db.affiliate.findMany({
+    where: { id: { in: affiliateIds }, merchantId, merchant: { ownerId } },
+    select: {
+      id: true,
+      payoutDetails: true,
+      commissions: {
+        select: { id: true, amount: true, currency: true, status: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: perAffiliate,
+      },
+    },
+  });
+
+  return Object.fromEntries(
+    affiliates.map((a) => [
+      a.id,
+      {
+        payoutDetails: a.payoutDetails,
+        commissions: a.commissions.map((c) => ({
+          id: c.id,
+          amount: c.amount.toFixed(2),
+          currency: c.currency,
+          status: c.status as CommissionStatus,
+          createdAt: c.createdAt,
+        })),
+      },
+    ])
+  );
 }

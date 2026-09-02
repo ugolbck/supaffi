@@ -118,7 +118,7 @@ export function AppSidebar({
   const merchantHrefs: Record<(typeof MERCHANT_NAV)[number]["key"], string> = {
     overview: base,
     integrations: `${base}/integrations`,
-    affiliates: base,
+    affiliates: `${base}/affiliates`,
     commissions: `${base}/commissions`,
     tracking: `${base}/tracking`,
     settings: `${base}/edit`,
@@ -132,6 +132,7 @@ export function AppSidebar({
     if (key === "integrations") return pathname.startsWith(`${base}/integrations`);
     if (key === "tracking") return pathname === `${base}/tracking`;
     if (key === "settings") return pathname === `${base}/edit`;
+    if (key === "affiliates") return pathname.startsWith(`${base}/affiliates`);
     if (key === "commissions") return pathname.startsWith(`${base}/commissions`);
     return false;
   }
@@ -216,19 +217,12 @@ export function AppSidebar({
           <SidebarGroupContent>
             <SidebarMenu>
               {MERCHANT_NAV.map((item) => {
-                // Affiliates has no page yet, so it stays locked even with a
-                // Merchant selected — with a reason that says so, rather than
-                // the "add a product" one that would now be a lie.
-                if (!activeMerchant || item.key === "affiliates") {
+                if (!activeMerchant) {
                   return (
                     <LockedItem
                       key={item.key}
                       item={item}
-                      reason={
-                        activeMerchant
-                          ? "Not built yet."
-                          : "Unlocks once you add your first product."
-                      }
+                      reason="Unlocks once you add your first product."
                     />
                   );
                 }
