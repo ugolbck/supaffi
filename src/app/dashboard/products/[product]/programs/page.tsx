@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { listProgramsForMerchant } from "@/lib/program";
 import { getAffiliateSignals } from "@/lib/affiliate";
+import { getProductSetup, sectionGates, SECTION_UNLOCKED_BY } from "@/lib/productSetup";
 import { getProductMetrics } from "@/lib/analytics";
 import { money, moneyHint } from "@/lib/format";
 import { originFor } from "@/lib/url";
@@ -42,6 +43,12 @@ export default async function ProgramsPage({
   if (!merchant) notFound();
 
   const base = `/dashboard/products/${merchant.slug}`;
+
+  // Commission terms need somewhere to read payments from, so this section
+  // does nothing until Stripe is on. Locked in the sidebar and unreachable by
+  // URL, which is the same rule.
+  const setup = await getProductSetup(ownerId, merchant.id);
+  if (!sectionGates(setup).programs) redirect(`${base}${SECTION_UNLOCKED_BY.programs}`);
 
   const [programs, signals, metrics] = await Promise.all([
     listProgramsForMerchant(ownerId, merchant.id),

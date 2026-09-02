@@ -122,7 +122,32 @@ export function ProductSetup({
         </span>
       </div>
 
-      <div className={`grid min-h-0 flex-1 ${STEPPER_COLUMNS[steps.length] ?? "grid-cols-3"}`}>
+      {/*
+        Two rows, not one column per step. Every icon is a cell of the same
+        auto-height row, so the icons share a baseline no matter how much the
+        current step's column carries underneath. One column per step with
+        `justify-center` used to centre each step's icon against its own
+        content, which put the three icons at three different heights and left
+        the connector lines running off into nothing.
+
+        Explicit row placement rather than `subgrid`: subgrid would need each
+        step to stay a single grid item spanning both rows, which is exactly
+        the arrangement that lets a column's own content decide where its icon
+        lands. Two passes over `steps` with `row-start-*` makes the icon row a
+        real, shared row instead.
+
+        The icon cells carry no horizontal padding, so a connector's `w-full`
+        is exactly one column wide and each half-segment runs from its own icon
+        centre to the neighbour's.
+
+        `content-center` rather than a `1fr` label row: a `1fr` row would pin
+        the icons near the top of a full-height card and leave the rest of it
+        empty, where centring the whole two-row block keeps every label right
+        under its own icon and splits the leftover height above and below.
+      */}
+      <div
+        className={`grid min-h-0 flex-1 grid-rows-[auto_auto] content-center ${STEPPER_COLUMNS[steps.length] ?? "grid-cols-3"}`}
+      >
         {steps.map((step, i) => {
           const isDone = step.done;
           const isCurrent = i === currentIndex;
@@ -130,40 +155,51 @@ export function ProductSetup({
 
           return (
             <div
-              key={step.id}
-              className="flex h-full min-w-0 animate-in flex-col items-center justify-center gap-3 fade-in slide-in-from-bottom-1 px-4 text-center duration-300 ease-[var(--ease-out)] fill-mode-both"
+              key={`icon-${step.id}`}
+              className="relative row-start-1 flex min-w-0 animate-in items-center justify-center fade-in slide-in-from-bottom-1 py-1 duration-300 ease-[var(--ease-out)] fill-mode-both"
               style={{ animationDelay: `${i * 50}ms` }}
             >
-              <div className="relative flex w-full shrink-0 items-center justify-center py-1">
-                {/* Half a line from the circle to each neighbour. The circle
-                    sits above it (z-10) so the line reads as unbroken. */}
-                {i > 0 && (
-                  <span className="absolute top-1/2 right-1/2 h-px w-full -translate-y-1/2 bg-border" />
-                )}
-                {i < steps.length - 1 && (
-                  <span className="absolute top-1/2 left-1/2 h-px w-full -translate-y-1/2 bg-border" />
-                )}
-                <span
-                  className={`relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full shadow-[var(--edge-light)] ${
-                    isDone
-                      ? "bg-status-success text-white"
-                      : isCurrent
-                        ? "bg-accent-500 text-white"
-                        : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {isDone ? <Check className="size-4" strokeWidth={3} /> : <Icon className="size-4" />}
-                </span>
-              </div>
+              {/* Half a line from the circle to each neighbour. The circle
+                  sits above it (z-10) so the line reads as unbroken. */}
+              {i > 0 && (
+                <span className="absolute top-1/2 right-1/2 h-px w-full -translate-y-1/2 bg-border" />
+              )}
+              {i < steps.length - 1 && (
+                <span className="absolute top-1/2 left-1/2 h-px w-full -translate-y-1/2 bg-border" />
+              )}
+              <span
+                className={`relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full shadow-[var(--edge-light)] ${
+                  isDone
+                    ? "bg-status-success text-white"
+                    : isCurrent
+                      ? "bg-accent-500 text-white"
+                      : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {isDone ? <Check className="size-4" strokeWidth={3} /> : <Icon className="size-4" />}
+              </span>
+            </div>
+          );
+        })}
 
+        {steps.map((step, i) => {
+          const isDone = step.done;
+          const isCurrent = i === currentIndex;
+
+          return (
+            <div
+              key={`label-${step.id}`}
+              className="row-start-2 flex min-h-0 min-w-0 animate-in flex-col items-center gap-2.5 fade-in slide-in-from-bottom-1 px-4 pt-3 text-center duration-300 ease-[var(--ease-out)] fill-mode-both"
+              style={{ animationDelay: `${i * 50}ms` }}
+            >
               {isCurrent ? (
-                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5">
+                <>
                   <h3 className="text-sm font-semibold tracking-tight">{step.label}</h3>
                   <p className="max-w-64 text-xs leading-relaxed text-muted-foreground">
                     {body[step.id]}
                   </p>
                   {action[step.id]}
-                </div>
+                </>
               ) : (
                 <span
                   className={`text-sm font-medium ${isDone ? "text-muted-foreground" : "text-muted-foreground/60"}`}

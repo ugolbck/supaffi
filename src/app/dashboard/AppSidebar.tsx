@@ -27,9 +27,24 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { ProductSection } from "@/lib/productSetup";
 import { AccountMenu } from "./AccountMenu";
 
 type Merchant = { id: string; slug: string; name: string; domain: string };
+
+/** One product's gate state, resolved server-side in the dashboard layout. */
+export type ProductGates = Record<ProductSection, boolean> & { slug: string };
+
+// Why a section is locked, in terms of the thing that unlocks it. Generic
+// "unlocks later" copy told an Owner nothing about what to do next, which is
+// the whole point of locking the row rather than letting them click into a
+// screen where every control is a dead end.
+const LOCKED_BECAUSE: Record<ProductSection, string> = {
+  programs: "Connect Stripe first. Commission terms need somewhere to read payments from.",
+  tracking: "Set your commission terms first.",
+  affiliates: "Set your commission terms first. Affiliates sign up to a program.",
+  commissions: "Install tracking first. Nothing can be attributed until a click is recorded.",
+};
 
 // The nav a Merchant unlocks. Rendered for real once one exists, and as
 // greyed-out rows before that — showing the shape of the product up front is
@@ -102,7 +117,7 @@ function LockedItem({
           <Lock className="size-3 opacity-70" />
         </TooltipTrigger>
         <TooltipContent side="right" className="max-w-56">
-          {item.locked} {reason}
+          {reason}
         </TooltipContent>
       </Tooltip>
     </SidebarMenuItem>
@@ -111,15 +126,18 @@ function LockedItem({
 
 export function AppSidebar({
   merchants,
+  gates,
   email,
 }: {
   merchants: Merchant[];
+  gates: ProductGates[];
   email: string;
 }) {
   const pathname = usePathname();
   const merchantMatch = pathname.match(/^\/dashboard\/products\/([^/]+)/);
   const activeSlug = merchantMatch?.[1];
   const activeMerchant = merchants.find((m) => m.slug === activeSlug);
+  const activeGates = gates.find((g) => g.slug === activeSlug) ?? null;
   const base = activeMerchant ? `/dashboard/products/${activeMerchant.slug}` : "";
 
   const merchantHrefs: Record<(typeof MERCHANT_NAV)[number]["key"], string> = {
@@ -231,9 +249,15 @@ export function AppSidebar({
                     <LockedItem
                       key={item.key}
                       item={item}
-                      reason="Unlocks once you add your first product."
+                      reason={`${item.locked} Unlocks once you add your first product.`}
                     />
                   );
+                }
+                // Overview, Integrations and Settings carry no gate: they are
+                // where the state every other gate reads gets changed.
+                const gate = item.key in LOCKED_BECAUSE ? (item.key as ProductSection) : null;
+                if (gate && activeGates && !activeGates[gate]) {
+                  return <LockedItem key={item.key} item={item} reason={LOCKED_BECAUSE[gate]} />;
                 }
                 return (
                   <SidebarMenuItem key={item.key}>

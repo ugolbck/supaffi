@@ -2,7 +2,12 @@ import { redirect, notFound } from "next/navigation";
 import { Check, Clock } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
-import { getProductSetup, stepAfter } from "@/lib/productSetup";
+import {
+  getProductSetup,
+  stepAfter,
+  sectionGates,
+  SECTION_UNLOCKED_BY,
+} from "@/lib/productSetup";
 import { getTrackingTimestamps } from "@/lib/tracking";
 import { getProductMetrics } from "@/lib/analytics";
 import { originFor } from "@/lib/url";
@@ -43,6 +48,10 @@ export default async function TrackingPage({
   if (!merchant) notFound();
 
   const setup = await getProductSetup(session.user.id, merchant.id);
+  // A snippet with no program behind it records clicks nothing can pay out.
+  if (!sectionGates(setup).tracking) {
+    redirect(`/dashboard/products/${merchant.slug}${SECTION_UNLOCKED_BY.tracking}`);
+  }
   const status = setup.trackingStatus;
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.

@@ -11,6 +11,7 @@ import {
   AFFILIATES_PAGE_SIZE,
 } from "@/lib/affiliate";
 import { getProductMetrics, getTopAffiliates } from "@/lib/analytics";
+import { getProductSetup, sectionGates, SECTION_UNLOCKED_BY } from "@/lib/productSetup";
 import { money, moneyHint } from "@/lib/format";
 import { originFor } from "@/lib/url";
 import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
@@ -71,6 +72,11 @@ export default async function AffiliatesPage({
 
   const base = `/dashboard/products/${merchant.slug}`;
   const page = Math.max(1, Math.floor(Number(query.page)) || 1);
+
+  // Affiliates sign up to a program, so with none there is nobody to list and
+  // no link to hand out.
+  const setup = await getProductSetup(ownerId, merchant.id);
+  if (!sectionGates(setup).affiliates) redirect(`${base}${SECTION_UNLOCKED_BY.affiliates}`);
 
   const programs = await listProgramsForMerchant(ownerId, merchant.id);
   const firstProgram = programs[0] ?? null;

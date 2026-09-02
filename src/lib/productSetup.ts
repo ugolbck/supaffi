@@ -138,6 +138,36 @@ export function setupSteps(
   ];
 }
 
+export type ProductSection = "programs" | "tracking" | "affiliates" | "commissions";
+
+/**
+ * Which product sections can actually do something yet.
+ *
+ * Overview, Integrations and Settings are always open: they are where an
+ * Owner goes to change the very state these gates read. The other four have a
+ * prerequisite, and before it is met every control on them is a dead end, so
+ * they read as locked in the sidebar and redirect if the URL is typed.
+ *
+ * One definition, read by the sidebar and by each gated page, so a section can
+ * never render while its row says locked, or the other way round.
+ */
+export function sectionGates(setup: ProductSetup): Record<ProductSection, boolean> {
+  return {
+    programs: setup.stripeConnected,
+    tracking: setup.firstProgramSlug !== null,
+    affiliates: setup.firstProgramSlug !== null,
+    commissions: setup.trackingStatus !== "not-started",
+  };
+}
+
+/** The step that unlocks a section, as a path under the product. */
+export const SECTION_UNLOCKED_BY: Record<ProductSection, string> = {
+  programs: "/integrations",
+  tracking: "/programs/new",
+  affiliates: "/programs/new",
+  commissions: "/tracking",
+};
+
 /**
  * Where a given step leads.
  *
