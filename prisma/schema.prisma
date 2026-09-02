@@ -24,10 +24,20 @@ model Merchant {
   domain    String   @unique // e.g. affiliates.instantgradient.com
   websiteUrl String  // the actual product site affiliates promote, e.g. https://instantgradient.com — distinct from `domain`, which is only the tracking subdomain
 
-  // Encrypted at rest (ADR 0003), master key outside the database
-  stripeSecretKeyEnc      String
-  stripeWebhookSecretEnc  String
-  emailProviderConfigEnc  String // SMTP or Resend-style API key, for Affiliate magic links
+  // Encrypted at rest (ADR 0003), master key outside the database.
+  // Nullable because connecting Stripe is a separate onboarding step from
+  // creating the Merchant: a Merchant exists first, then gets integrations
+  // attached. Anything that spends these must handle the unconnected case.
+  stripeSecretKeyEnc      String?
+  stripeWebhookSecretEnc  String?
+  emailProviderConfigEnc  String? // Resend API key, for Affiliate magic links
+
+  // The tracking integration is the one part of setup Supaffi cannot do for
+  // the Merchant: the script goes on their site and client_reference_id goes
+  // in their checkout code. Proving it works needs a real purchase carrying a
+  // token, so it is recorded when that arrives rather than asserted up front.
+  trackingVerifiedAt     DateTime? // first checkout that arrived carrying a Referral Token
+  trackingVerifiedSeenAt DateTime? // when the Owner was shown that it had happened, so the moment is spent once
 
   programs       Program[]
   affiliates     Affiliate[]
