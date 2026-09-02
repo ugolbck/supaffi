@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { CommissionStatus, StatusTotal } from "@/lib/commission";
-import { money } from "@/lib/format";
+import { money, moneyHint } from "@/lib/format";
 
 /**
  * Count and money per status, doubling as the status filter.
@@ -26,13 +26,14 @@ const ACCENTS: Partial<Record<CommissionStatus, string>> = {
   FLAGGED: "text-status-warning",
 };
 
-// Same one-line-of-money constraint the duplicate used to encode itself:
-// the headline currency plus a count of how many more are behind it, rather
-// than a second line this tile has no room for.
+// The same money()/moneyHint() pairing the overview and products pages use,
+// concatenated onto one line instead of stacked: this tile has room for one
+// line of text, not two, but a two-currency merchant still deserves both
+// real amounts here, not a headline figure and a bare count of what it hid.
 function detailFor(amounts: { currency: string; total: string }[]): string {
   if (amounts.length === 0) return "—";
-  const extra = amounts.length - 1;
-  return extra > 0 ? `${money(amounts)}  +${extra}` : money(amounts);
+  const hint = moneyHint(amounts);
+  return hint ? `${money(amounts)}  ·  ${hint}` : money(amounts);
 }
 
 function Tile({

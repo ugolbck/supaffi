@@ -8,6 +8,8 @@ import {
   getRecentActivity,
   getPayableGroups,
   getOwnerMetrics,
+  toWeeks,
+  type DayPoint,
 } from "@/lib/analytics";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -261,5 +263,68 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(metrics.affiliates).toBe(1);
     expect(metrics.clicks).toBe(2);
     expect(metrics.flagged).toBe(1);
+  });
+});
+
+// Pure function, no database: builds synthetic day series and checks the
+// bucketing rules toWeeks documents rather than merely implements.
+function daySeries(
+  count: number,
+  make: (i: number) => Partial<DayPoint> = () => ({})
+): DayPoint[] {
+  return Array.from({ length: count }, (_, i) => {
+    const date = new Date("2026-01-01T00:00:00Z");
+    date.setUTCDate(date.getUTCDate() + i);
+    return {
+      date: date.toISOString().slice(0, 10),
+      clicks: 0,
+      conversions: 0,
+      ...make(i),
+    };
+  });
+}
+
+describe("toWeeks", () => {
+  it("buckets exactly 84 days into 12 weeks of 7", () => {
+    const daily = daySeries(84, () => ({ clicks: 1, conversions: 1 }));
+
+    const weeks = toWeeks(daily);
+
+    expect(weeks).toHaveLength(12);
+    expect(weeks.every((w) => w.clicks === 7 && w.conversions === 7)).toBe(true);
+    // Oldest first, one bucket date per 7-day chunk.
+    expect(weeks[0].date).toBe(daily[0].date);
+    expect(weeks[11].date).toBe(daily[77].date);
+  });
+
+  it("keeps a leftover partial week as its own smaller bucket, neither dropped nor merged", () => {
+    // 10 days: one full week plus 3 leftover days. Folding the leftover into
+    // the prior week would inflate that week's total; dropping it would
+    // under-report the most recent days, the ones a chart's rightmost bar
+    // exists to show. So it gets counted, on its own, exactly as many days
+    // as actually happened.
+    const daily = daySeries(10, () => ({ clicks: 1, conversions: 0 }));
+
+    const weeks = toWeeks(daily);
+
+    expect(weeks).toHaveLength(2);
+    expect(weeks[0].clicks).toBe(7);
+    expect(weeks[1].clicks).toBe(3);
+    expect(weeks[1].date).toBe(daily[7].date);
+  });
+
+  it("keeps a week of entirely zero-filled days as its own zero bucket, not omitted", () => {
+    // Days 7-13 (the second week) are zero-filled; everything else has a
+    // click. If the zero week were dropped, the chart would silently
+    // compress two weeks apart into neighbours, which is the exact lie
+    // emptySeries zero-fills the day series to prevent.
+    const daily = daySeries(21, (i) => ({ clicks: i >= 7 && i < 14 ? 0 : 1 }));
+
+    const weeks = toWeeks(daily);
+
+    expect(weeks).toHaveLength(3);
+    expect(weeks[0].clicks).toBe(7);
+    expect(weeks[1].clicks).toBe(0);
+    expect(weeks[2].clicks).toBe(7);
   });
 });

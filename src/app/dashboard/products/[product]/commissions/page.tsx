@@ -12,7 +12,7 @@ import {
   type CommissionRow,
   type CommissionStatus,
 } from "@/lib/commission";
-import { getPayableGroups, getProductMetrics, type DayPoint } from "@/lib/analytics";
+import { getPayableGroups, getProductMetrics, toWeeks } from "@/lib/analytics";
 import {
   Pagination,
   PaginationContent,
@@ -43,22 +43,6 @@ function parseStatus(raw: string | undefined): CommissionStatus | null {
 
 const VOLUME_WEEKS = 12;
 const VOLUME_WINDOW_DAYS = VOLUME_WEEKS * 7;
-
-// 84 daily bars at rail width (roughly a fifth of the content area) reads as
-// noise; a bar every ~20px is legible, a bar every ~3px is not. Bucketing to
-// weeks is also what the wireframe's card title promises: "Volume, 12 weeks".
-function toWeeks(daily: DayPoint[]): DayPoint[] {
-  const weeks: DayPoint[] = [];
-  for (let i = 0; i < daily.length; i += 7) {
-    const chunk = daily.slice(i, i + 7);
-    weeks.push({
-      date: chunk[0].date,
-      clicks: chunk.reduce((sum, d) => sum + d.clicks, 0),
-      conversions: chunk.reduce((sum, d) => sum + d.conversions, 0),
-    });
-  }
-  return weeks;
-}
 
 // What this commission is waiting on, or what happened to it. One column for
 // all five states, so a flagged row explains itself in the same place a paid

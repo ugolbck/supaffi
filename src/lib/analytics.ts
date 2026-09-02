@@ -134,6 +134,35 @@ export async function getProductMetrics(
   };
 }
 
+/**
+ * Daily points rolled up into weekly totals, oldest first.
+ *
+ * A card at rail width cannot read 84 individual bars, so a day-level series
+ * gets bucketed before it reaches a chart. Two things are deliberate, not
+ * accidental:
+ *
+ * - When `daily.length` is not a multiple of 7, the last bucket is whatever
+ *   is left over (fewer than 7 days), not dropped and not folded into the
+ *   previous week. A partial week still happened; silently discarding it or
+ *   merging its total into a neighbour would misreport that neighbour's
+ *   volume.
+ * - A week made entirely of zero-filled days still produces its own zero
+ *   bucket rather than being omitted. `emptySeries` zero-fills for exactly
+ *   this reason: a chart that skips quiet days lies about the shape.
+ */
+export function toWeeks(daily: DayPoint[]): DayPoint[] {
+  const weeks: DayPoint[] = [];
+  for (let i = 0; i < daily.length; i += 7) {
+    const chunk = daily.slice(i, i + 7);
+    weeks.push({
+      date: chunk[0].date,
+      clicks: chunk.reduce((sum, d) => sum + d.clicks, 0),
+      conversions: chunk.reduce((sum, d) => sum + d.conversions, 0),
+    });
+  }
+  return weeks;
+}
+
 export type TopAffiliate = {
   id: string;
   name: string | null;
