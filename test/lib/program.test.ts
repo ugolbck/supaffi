@@ -59,6 +59,7 @@ describe.skipIf(!hasDatabase)("program", () => {
     ownerId = owner.id;
     const merchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId,
         name: "M",
         domain: "program-test.example.com",
@@ -75,6 +76,7 @@ describe.skipIf(!hasDatabase)("program", () => {
     // filter (scoped in addition to the ownership check) protects against.
     const merchant2 = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId,
         name: "M2",
         domain: "program-test-2.example.com",
@@ -92,6 +94,7 @@ describe.skipIf(!hasDatabase)("program", () => {
     otherOwnerId = otherOwner.id;
     const otherMerchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId: otherOwnerId,
         name: "OM",
         domain: "program-test-other.example.com",
@@ -130,16 +133,21 @@ describe.skipIf(!hasDatabase)("program", () => {
   });
 
   it("getProgramForMerchant returns null when the Merchant isn't owned by the caller", async () => {
-    const { id } = await db.program.create({
-      data: { merchantId: otherMerchantId, ...baseInput, defaultCommissionRate: 20 },
+    const { slug } = await db.program.create({
+      data: {
+        merchantId: otherMerchantId,
+        slug: crypto.randomUUID(),
+        ...baseInput,
+        defaultCommissionRate: 20,
+      },
     });
-    const result = await getProgramForMerchant(ownerId, otherMerchantId, id);
+    const result = await getProgramForMerchant(ownerId, otherMerchantId, slug);
     expect(result).toBeNull();
   });
 
   it("getProgramForMerchant returns null for a Program under a different Merchant owned by the SAME Owner", async () => {
-    const { id } = await createProgram(ownerId, merchantId, baseInput);
-    const result = await getProgramForMerchant(ownerId, merchantId2, id);
+    const { slug } = await createProgram(ownerId, merchantId, baseInput);
+    const result = await getProgramForMerchant(ownerId, merchantId2, slug);
     expect(result).toBeNull();
   });
 
@@ -159,7 +167,7 @@ describe.skipIf(!hasDatabase)("program", () => {
 
   it("updateProgram throws when the Merchant isn't owned by the caller", async () => {
     const { id } = await db.program.create({
-      data: { merchantId: otherMerchantId, ...baseInput },
+      data: { merchantId: otherMerchantId, slug: crypto.randomUUID(), ...baseInput },
     });
     await expect(
       updateProgram(ownerId, otherMerchantId, id, { ...baseInput, name: "Hijacked" })
@@ -167,16 +175,16 @@ describe.skipIf(!hasDatabase)("program", () => {
   });
 
   it("getProgramForSignup resolves a Program scoped to its Merchant, no owner required", async () => {
-    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    const { slug } = await createProgram(ownerId, merchantId, baseInput);
 
-    const result = await getProgramForSignup(merchantId, id);
+    const result = await getProgramForSignup(merchantId, slug);
     expect(result?.name).toBe("Standard");
   });
 
   it("getProgramForSignup returns null when the Program belongs to a different Merchant", async () => {
-    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    const { slug } = await createProgram(ownerId, merchantId, baseInput);
 
-    const result = await getProgramForSignup(merchantId2, id);
+    const result = await getProgramForSignup(merchantId2, slug);
     expect(result).toBeNull();
   });
 });

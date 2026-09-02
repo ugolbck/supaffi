@@ -25,14 +25,14 @@ export async function createMerchantAction(
   const validationError = validateProductInput(input);
   if (validationError) return { error: validationError };
 
-  let merchantId: string;
+  let slug: string;
   try {
     const created = await createMerchantRecord(session.user.id, {
       name: input.name.trim(),
       domain: normalizeDomain(input.domain),
       websiteUrl: input.websiteUrl.trim(),
     });
-    merchantId = created.id;
+    slug = created.slug;
   } catch (err) {
     // Unique constraint on Merchant.domain — the most likely real-world
     // failure here, worth a specific message rather than a raw 500.
@@ -53,5 +53,5 @@ export async function createMerchantAction(
   // breadcrumb's name lookup and the setup checklist all keep showing the
   // state from before this action ran.
   revalidatePath("/dashboard", "layout");
-  redirect(`/dashboard/products/${merchantId}/integrations`);
+  redirect(`/dashboard/products/${slug}/integrations`);
 }

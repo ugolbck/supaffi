@@ -21,6 +21,11 @@ model Merchant {
   ownerId   String
   owner     Owner    @relation(fields: [ownerId], references: [id])
   name      String
+  // What the dashboard URL carries instead of the cuid. Derived from `name`
+  // at creation and left alone afterwards, so renaming a product does not
+  // break links already pointing at it. Unique per Owner, not globally: two
+  // Owners on the same Instance can both have a product called "Docs".
+  slug      String
   domain    String   @unique // e.g. affiliates.instantgradient.com
   websiteUrl String  // the actual product site affiliates promote, e.g. https://instantgradient.com — distinct from `domain`, which is only the tracking subdomain
 
@@ -43,6 +48,8 @@ model Merchant {
   affiliates     Affiliate[]
   webhookEvents  WebhookEvent[]
   createdAt      DateTime @default(now())
+
+  @@unique([ownerId, slug])
 }
 
 enum CommissionDurationType {
@@ -56,6 +63,10 @@ model Program {
   merchantId String
   merchant   Merchant               @relation(fields: [merchantId], references: [id])
   name       String
+  // Appears in the public signup URL an Affiliate is sent, which is a link a
+  // real person is asked to trust. Unique per Merchant, same derive-once rule
+  // as Merchant.slug.
+  slug       String
 
   defaultCommissionRate   Decimal  @db.Decimal(5, 2) // percentage, e.g. 20.00
   commissionDurationType  CommissionDurationType
@@ -65,6 +76,8 @@ model Program {
 
   affiliates Affiliate[]
   createdAt  DateTime @default(now())
+
+  @@unique([merchantId, slug])
 }
 
 model Affiliate {

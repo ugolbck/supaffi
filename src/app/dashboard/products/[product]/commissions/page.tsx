@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwner } from "@/lib/merchant";
+import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { CommissionTabs } from "./CommissionTabs";
 import { PayoutsTab } from "./PayoutsTab";
 import { FlaggedTab } from "./FlaggedTab";
@@ -13,15 +13,15 @@ export default async function CommissionsPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ productId: string }>;
+  params: Promise<{ product: string }>;
   searchParams: Promise<{ payoutsPage?: string; flaggedPage?: string; tab?: string }>;
 }) {
-  const { productId: merchantId } = await params;
+  const { product } = await params;
   const { payoutsPage, flaggedPage, tab } = await searchParams;
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const merchant = await getMerchantForOwner(session.user.id, merchantId);
+  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
   if (!merchant) notFound();
 
   const payoutsPageNum = sanitizePage(payoutsPage);

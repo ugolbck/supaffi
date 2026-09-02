@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import type { ProductRef } from "@/lib/merchant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,15 +10,15 @@ import { connectEmailAction } from "./connectEmailAction";
 type FormState = { error: string };
 
 export function ResendConnectForm({
-  merchantId,
+  product,
   domain,
   alreadyConnected,
 }: {
-  merchantId: string;
+  product: ProductRef;
   domain: string;
   alreadyConnected: boolean;
 }) {
-  const action = connectEmailAction.bind(null, merchantId, alreadyConnected);
+  const action = connectEmailAction.bind(null, product, alreadyConnected);
   const [state, formAction] = useActionState<FormState, FormData>(action, { error: "" });
 
   return (

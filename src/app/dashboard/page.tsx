@@ -66,7 +66,7 @@ export default async function DashboardPage() {
           return (
             <Link
               key={merchant.id}
-              href={`/dashboard/products/${merchant.id}`}
+              href={`/dashboard/products/${merchant.slug}`}
               // Only transform and box-shadow transition, never `all`.
               className="group/product flex animate-in cursor-pointer flex-col gap-3 fill-mode-both fade-in slide-in-from-bottom-2 rounded-(--radius-xl) border border-border/70 bg-card [background-image:var(--card-surface)] p-4 shadow-[var(--edge-light),var(--shadow-sm)] transition-[transform,box-shadow] duration-300 ease-[var(--ease-out)] hover:-translate-y-0.5 hover:shadow-[var(--edge-light),var(--shadow-lg)] active:scale-[0.995]"
               style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}

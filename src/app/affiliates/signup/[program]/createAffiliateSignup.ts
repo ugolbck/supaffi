@@ -12,7 +12,7 @@ import { isUniqueConstraintErrorOn } from "@/lib/prismaErrors";
 type FormState = { status: "form" | "sent"; error: string };
 
 export async function createAffiliateSignup(
-  programId: string,
+  programSlug: string,
   _prevState: FormState,
   formData: FormData
 ): Promise<FormState> {
@@ -30,7 +30,7 @@ export async function createAffiliateSignup(
     return { status: "form", error: "Could not determine which program this is for." };
   }
 
-  const program = await getProgramForSignup(merchant.id, programId);
+  const program = await getProgramForSignup(merchant.id, programSlug);
   if (!program) {
     return { status: "form", error: "This signup link is no longer valid." };
   }

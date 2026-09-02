@@ -18,6 +18,7 @@ async function seedMerchant() {
   });
   const merchant = await db.merchant.create({
     data: {
+      slug: crypto.randomUUID(),
       ownerId: owner.id,
       name: "InstantGradient",
       domain: `${crypto.randomUUID()}.example.com`,
@@ -26,6 +27,7 @@ async function seedMerchant() {
   });
   const program = await db.program.create({
     data: {
+      slug: crypto.randomUUID(),
       merchantId: merchant.id,
       name: "Standard",
       defaultCommissionRate: 20,

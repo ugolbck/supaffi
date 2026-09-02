@@ -10,7 +10,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 
-type Merchant = { id: string; name: string };
+type Merchant = { id: string; slug: string; name: string };
 
 const STATIC_LABELS: Record<string, string> = {
   dashboard: "Products",
@@ -33,7 +33,7 @@ export function DashboardBreadcrumb({ merchants }: { merchants: Merchant[] }) {
   let href = "";
   for (const segment of segments) {
     href += `/${segment}`;
-    const merchant = merchants.find((m) => m.id === segment);
+    const merchant = merchants.find((m) => m.slug === segment);
     const isRawFallback = !merchant && !(segment in STATIC_LABELS);
     const label = merchant ? merchant.name : STATIC_LABELS[segment] ?? segment;
     if (crumbs.length > 0 && crumbs[crumbs.length - 1].label === label) continue;

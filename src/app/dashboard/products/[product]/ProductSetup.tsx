@@ -36,19 +36,19 @@ function Term({ word, children }: { word: string; children: React.ReactNode }) {
  * writing their commission terms is not doing anything wrong.
  */
 export function ProductSetup({
-  merchantId,
+  productSlug,
   merchantName,
   merchantDomain,
   setup,
   className = "",
 }: {
-  merchantId: string;
+  productSlug: string;
   merchantName: string;
   merchantDomain: string;
   setup: Setup;
   className?: string;
 }) {
-  const base = `/dashboard/products/${merchantId}`;
+  const base = `/dashboard/products/${productSlug}`;
 
   const steps = [
     {
@@ -77,7 +77,7 @@ export function ProductSetup({
           .
         </>
       ),
-      state: setup.firstProgramId ? "done" : "todo",
+      state: setup.firstProgramSlug ? "done" : "todo",
       action: (
         <Link href={`${base}/programs/new`}>
           <Button size="sm">Set terms</Button>
@@ -113,10 +113,10 @@ export function ProductSetup({
       title: "Recruit your first affiliate",
       body: `Send this to anyone you want promoting ${merchantName}.`,
       state: setup.affiliateCount > 0 ? "done" : "todo",
-      action: setup.firstProgramId ? (
+      action: setup.firstProgramSlug ? (
         <CopyLinkButton
           size="sm"
-          link={`${originFor(merchantDomain)}/affiliates/signup/${setup.firstProgramId}`}
+          link={`${originFor(merchantDomain)}/affiliates/signup/${setup.firstProgramSlug}`}
         />
       ) : null,
     },

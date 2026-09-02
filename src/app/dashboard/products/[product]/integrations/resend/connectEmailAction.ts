@@ -3,11 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import type { ProductRef } from "@/lib/merchant";
 import { connectEmailProvider } from "@/lib/merchant";
 import { validateEmailProviderKey } from "../../../new/validation";
 
 export async function connectEmailAction(
-  merchantId: string,
+  product: ProductRef,
   alreadyConnected: boolean,
   _prevState: { error: string },
   formData: FormData
@@ -23,7 +24,7 @@ export async function connectEmailAction(
   // Blank on a reconnect means "keep the stored key", so there is nothing
   // to write. Never encrypt an empty string over a live credential.
   if (apiKey) {
-    await connectEmailProvider(session.user.id, merchantId, apiKey);
+    await connectEmailProvider(session.user.id, product.id, apiKey);
   }
 
   // The sidebar and breadcrumb are rendered by the dashboard layout, which a
@@ -31,5 +32,5 @@ export async function connectEmailAction(
   // breadcrumb's name lookup and the setup checklist all keep showing the
   // state from before this action ran.
   revalidatePath("/dashboard", "layout");
-  redirect(`/dashboard/products/${merchantId}/integrations`);
+  redirect(`/dashboard/products/${product.slug}/integrations`);
 }

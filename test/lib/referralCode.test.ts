@@ -37,6 +37,7 @@ describe.skipIf(!hasDatabase)("generateReferralCode", () => {
     });
     const merchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId: owner.id,
         name: "TestCo",
         domain: "refcode-test.example.com",
@@ -49,6 +50,7 @@ describe.skipIf(!hasDatabase)("generateReferralCode", () => {
     merchantId = merchant.id;
     const program = await db.program.create({
       data: {
+        slug: crypto.randomUUID(),
         merchantId,
         name: "Standard",
         defaultCommissionRate: "20.00",

@@ -8,17 +8,17 @@ import { SignupForm } from "./SignupForm";
 export default async function AffiliateSignupPage({
   params,
 }: {
-  params: Promise<{ programId: string }>;
+  params: Promise<{ program: string }>;
 }) {
-  const { programId } = await params;
+  const { program: programSlug } = await params;
   const host = (await headers()).get("host");
   const merchant = host ? await getMerchantByDomain(host) : null;
   if (!merchant) notFound();
 
-  const program = await getProgramForSignup(merchant.id, programId);
+  const program = await getProgramForSignup(merchant.id, programSlug);
   if (!program) notFound();
 
-  const action = createAffiliateSignup.bind(null, programId);
+  const action = createAffiliateSignup.bind(null, programSlug);
 
   return (
     <main className="mx-auto flex max-w-md flex-col justify-center px-4 py-16">

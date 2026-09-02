@@ -3,12 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { updateMerchant as updateMerchantRecord } from "@/lib/merchant";
+import { updateMerchant as updateMerchantRecord, type ProductRef } from "@/lib/merchant";
 import { validateProductInput, normalizeDomain } from "../../new/validation";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 
 export async function updateMerchantAction(
-  merchantId: string,
+  product: ProductRef,
   _prevState: { error: string },
   formData: FormData
 ): Promise<{ error: string } | never> {
@@ -25,7 +25,7 @@ export async function updateMerchantAction(
   if (validationError) return { error: validationError };
 
   try {
-    await updateMerchantRecord(session.user.id, merchantId, {
+    await updateMerchantRecord(session.user.id, product.id, {
       name: input.name.trim(),
       domain: normalizeDomain(input.domain),
       websiteUrl: input.websiteUrl.trim(),
@@ -42,5 +42,5 @@ export async function updateMerchantAction(
   // breadcrumb's name lookup and the setup checklist all keep showing the
   // state from before this action ran.
   revalidatePath("/dashboard", "layout");
-  redirect(`/dashboard/products/${merchantId}`);
+  redirect(`/dashboard/products/${product.slug}`);
 }

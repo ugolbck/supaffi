@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { Check, Clock } from "lucide-react";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwner } from "@/lib/merchant";
+import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { getProductSetup, stepAfter } from "@/lib/productSetup";
 import { originFor } from "@/lib/url";
 import { SetupShell, SetupPanel } from "../SetupShell";
@@ -30,22 +30,22 @@ function StatusPill({ status }: { status: "not-started" | "awaiting-sale" | "ver
 export default async function TrackingPage({
   params,
 }: {
-  params: Promise<{ productId: string }>;
+  params: Promise<{ product: string }>;
 }) {
-  const { productId: merchantId } = await params;
+  const { product } = await params;
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const merchant = await getMerchantForOwner(session.user.id, merchantId);
+  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
   if (!merchant) notFound();
 
-  const setup = await getProductSetup(session.user.id, merchantId);
+  const setup = await getProductSetup(session.user.id, merchant.id);
   const status = setup.trackingStatus;
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
   const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
 
-  const next = stepAfter(merchantId, setup, 3);
+  const next = stepAfter(merchant.slug, setup, 3);
 
   return (
     <SetupShell
@@ -53,7 +53,7 @@ export default async function TrackingPage({
       title="Install tracking"
       lede="Two snippets, both on your own site. The first records the click, the second tells Stripe which affiliate sent the sale."
       status={<StatusPill status={status} />}
-      merchantId={merchantId}
+      productSlug={merchant.slug}
       next={next}
       aside={
         <SetupPanel title="Where this stands" className="lg:flex-1">

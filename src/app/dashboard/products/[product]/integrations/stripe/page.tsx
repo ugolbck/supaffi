@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwner, getIntegrationStatus } from "@/lib/merchant";
+import { getMerchantForOwnerBySlug, getIntegrationStatus } from "@/lib/merchant";
 import { getProductSetup, stepAfter } from "@/lib/productSetup";
 import { SetupShell, SetupPanel } from "../../SetupShell";
 import { StripeConnectForm } from "./StripeConnectForm";
@@ -11,26 +11,26 @@ import { PAYMENT_PROVIDERS } from "../providers";
 export default async function ConnectStripePage({
   params,
 }: {
-  params: Promise<{ productId: string }>;
+  params: Promise<{ product: string }>;
 }) {
-  const { productId: merchantId } = await params;
+  const { product } = await params;
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const merchant = await getMerchantForOwner(session.user.id, merchantId);
+  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
   if (!merchant) notFound();
 
   const [status, setup] = await Promise.all([
-    getIntegrationStatus(session.user.id, merchantId),
-    getProductSetup(session.user.id, merchantId),
+    getIntegrationStatus(session.user.id, merchant.id),
+    getProductSetup(session.user.id, merchant.id),
   ]);
   const webhookUrl = `https://${merchant.domain}/api/webhooks/stripe`;
 
   // Once payments are in, the way forward is whatever is still missing. Until
   // then it is the other half of this step, back on the integrations screen.
   const next = setup.integrationsConnected
-    ? stepAfter(merchantId, setup, 1)
-    : { label: "Back to integrations", href: `/dashboard/products/${merchantId}/integrations` };
+    ? stepAfter(merchant.slug, setup, 1)
+    : { label: "Back to integrations", href: `/dashboard/products/${merchant.slug}/integrations` };
 
   return (
     <SetupShell
@@ -46,12 +46,12 @@ export default async function ConnectStripePage({
           </span>
         ) : null
       }
-      merchantId={merchantId}
+      productSlug={merchant.slug}
       next={next}
     >
       <SetupPanel className="lg:flex-1 lg:overflow-y-auto">
         <StripeConnectForm
-          merchantId={merchantId}
+          product={{ id: merchant.id, slug: merchant.slug }}
           productName={merchant.name}
           webhookUrl={webhookUrl}
           alreadyConnected={status.stripe}

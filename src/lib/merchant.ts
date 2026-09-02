@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
+import { uniqueSlug } from "@/lib/slug";
 
 // Creating a Merchant no longer takes any credentials. Connecting Stripe
 // and email delivery are separate steps, done against a Merchant that
@@ -14,15 +15,25 @@ type MerchantDetailsInput = {
 export async function createMerchant(
   ownerId: string,
   input: MerchantDetailsInput
-): Promise<{ id: string }> {
+): Promise<{ id: string; slug: string }> {
+  const slug = await uniqueSlug(input.name, "product", async (candidate) =>
+    Boolean(
+      await db.merchant.findFirst({
+        where: { ownerId, slug: candidate },
+        select: { id: true },
+      })
+    )
+  );
+
   return db.merchant.create({
     data: {
       ownerId,
       name: input.name,
+      slug,
       domain: input.domain,
       websiteUrl: input.websiteUrl,
     },
-    select: { id: true },
+    select: { id: true, slug: true },
   });
 }
 
@@ -88,23 +99,61 @@ export async function getIntegrationStatus(
 
 export async function listMerchantsForOwner(
   ownerId: string
-): Promise<{ id: string; name: string; domain: string }[]> {
+): Promise<{ id: string; slug: string; name: string; domain: string }[]> {
   return db.merchant.findMany({
     where: { ownerId },
-    select: { id: true, name: true, domain: true },
+    select: { id: true, slug: true, name: true, domain: true },
     orderBy: { createdAt: "asc" },
   });
 }
 
+/**
+ * What a route hands to a Server Action: the id it acts on and the slug it
+ * redirects back to. Both, because an action that only knew the slug would
+ * have to re-resolve it, and one that only knew the id could not build the URL
+ * the Owner should land on.
+ */
+export type ProductRef = { id: string; slug: string };
+
+export type OwnedMerchant = {
+  id: string;
+  slug: string;
+  name: string;
+  domain: string;
+  websiteUrl: string;
+  createdAt: Date;
+};
+
 export async function getMerchantForOwner(
   ownerId: string,
   merchantId: string
-): Promise<{ id: string; name: string; domain: string; websiteUrl: string; createdAt: Date } | null> {
+): Promise<OwnedMerchant | null> {
   return db.merchant.findFirst({
     where: { id: merchantId, ownerId },
-    select: { id: true, name: true, domain: true, websiteUrl: true, createdAt: true },
+    select: MERCHANT_FIELDS,
   });
 }
+
+// What every dashboard route under /dashboard/products/[product] resolves
+// with. The URL carries the slug; everything below this call uses `.id`.
+export async function getMerchantForOwnerBySlug(
+  ownerId: string,
+  slug: string
+): Promise<OwnedMerchant | null> {
+  return db.merchant.findFirst({
+    where: { slug, ownerId },
+    select: MERCHANT_FIELDS,
+  });
+}
+
+const MERCHANT_FIELDS = {
+  id: true,
+  slug: true,
+  name: true,
+  domain: true,
+  websiteUrl: true,
+  createdAt: true,
+} as const;
 
 export async function updateMerchant(
   ownerId: string,
@@ -124,10 +173,10 @@ export async function updateMerchant(
 
 export async function getMerchantByDomain(
   domain: string
-): Promise<{ id: string; name: string; domain: string; websiteUrl: string } | null> {
+): Promise<{ id: string; slug: string; name: string; domain: string; websiteUrl: string } | null> {
   return db.merchant.findUnique({
     where: { domain },
-    select: { id: true, name: true, domain: true, websiteUrl: true },
+    select: { id: true, slug: true, name: true, domain: true, websiteUrl: true },
   });
 }
 

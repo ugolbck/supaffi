@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import type { ProductRef } from "@/lib/merchant";
 import { Check, Copy, ExternalLink, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
@@ -94,17 +95,17 @@ function Step({
 }
 
 export function StripeConnectForm({
-  merchantId,
+  product,
   productName,
   webhookUrl,
   alreadyConnected,
 }: {
-  merchantId: string;
+  product: ProductRef;
   productName: string;
   webhookUrl: string;
   alreadyConnected: boolean;
 }) {
-  const action = connectStripeAction.bind(null, merchantId, alreadyConnected);
+  const action = connectStripeAction.bind(null, product, alreadyConnected);
   const [state, formAction] = useActionState<FormState, FormData>(action, { error: "" });
 
   const keepPlaceholder = "Leave blank to keep the current one";

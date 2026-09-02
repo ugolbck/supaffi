@@ -52,6 +52,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     });
     const merchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId: owner.id,
         name: "TestCo",
         domain: "affiliate-lib-test.example.com",
@@ -64,6 +65,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     merchantId = merchant.id;
     const program = await db.program.create({
       data: {
+        slug: crypto.randomUUID(),
         merchantId,
         name: "Standard",
         defaultCommissionRate: "20.00",
@@ -76,6 +78,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
 
     const otherMerchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId: owner.id,
         name: "OtherCo",
         domain: "affiliate-lib-other.example.com",
@@ -88,6 +91,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     otherMerchantId = otherMerchant.id;
     const otherProgram = await db.program.create({
       data: {
+        slug: crypto.randomUUID(),
         merchantId: otherMerchantId,
         name: "Standard",
         defaultCommissionRate: "20.00",

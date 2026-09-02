@@ -28,7 +28,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AccountMenu } from "./AccountMenu";
 
-type Merchant = { id: string; name: string; domain: string };
+type Merchant = { id: string; slug: string; name: string; domain: string };
 
 // The nav a Merchant unlocks. Rendered for real once one exists, and as
 // greyed-out rows before that — showing the shape of the product up front is
@@ -112,9 +112,9 @@ export function AppSidebar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const merchantMatch = pathname.match(/^\/dashboard\/products\/([^/]+)/);
-  const activeMerchantId = merchantMatch?.[1];
-  const activeMerchant = merchants.find((m) => m.id === activeMerchantId);
-  const base = activeMerchant ? `/dashboard/products/${activeMerchant.id}` : "";
+  const activeSlug = merchantMatch?.[1];
+  const activeMerchant = merchants.find((m) => m.slug === activeSlug);
+  const base = activeMerchant ? `/dashboard/products/${activeMerchant.slug}` : "";
 
   const merchantHrefs: Record<(typeof MERCHANT_NAV)[number]["key"], string> = {
     overview: base,
@@ -192,8 +192,8 @@ export function AppSidebar({
               {merchants.map((m) => (
                 <SidebarMenuItem key={m.id}>
                   <SidebarMenuButton
-                    isActive={m.id === activeMerchantId}
-                    render={<Link href={`/dashboard/products/${m.id}`} />}
+                    isActive={m.slug === activeSlug}
+                    render={<Link href={`/dashboard/products/${m.slug}`} />}
                   >
                     <Building2 />
                     <span>{m.name}</span>

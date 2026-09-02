@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { Check, CreditCard, Mail } from "lucide-react";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwner, getIntegrationStatus } from "@/lib/merchant";
+import { getMerchantForOwnerBySlug, getIntegrationStatus } from "@/lib/merchant";
 import { deliveryMode } from "@/lib/email/transport";
 import { getProductSetup, stepAfter } from "@/lib/productSetup";
 import { SetupShell } from "../SetupShell";
@@ -51,20 +51,20 @@ function CategoryHeader({
 export default async function IntegrationsPage({
   params,
 }: {
-  params: Promise<{ productId: string }>;
+  params: Promise<{ product: string }>;
 }) {
-  const { productId: merchantId } = await params;
+  const { product } = await params;
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const merchant = await getMerchantForOwner(session.user.id, merchantId);
+  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
   if (!merchant) notFound();
 
   const [status, setup] = await Promise.all([
-    getIntegrationStatus(session.user.id, merchantId),
-    getProductSetup(session.user.id, merchantId),
+    getIntegrationStatus(session.user.id, merchant.id),
+    getProductSetup(session.user.id, merchant.id),
   ]);
-  const base = `/dashboard/products/${merchantId}/integrations`;
+  const base = `/dashboard/products/${merchant.slug}/integrations`;
 
   // Nothing to connect when the instance prints emails instead of sending
   // them, which is the only way to run against a `localhost` domain.
@@ -78,7 +78,7 @@ export default async function IntegrationsPage({
 
   // Only offered once this step is genuinely done, so it can never be used to
   // skip a provider that is still missing.
-  const next = setup.integrationsConnected ? stepAfter(merchantId, setup, 1) : null;
+  const next = setup.integrationsConnected ? stepAfter(merchant.slug, setup, 1) : null;
 
   // A single running index across both groups so the entrance stagger reads as
   // one cascade down the page rather than two that restart.
@@ -89,7 +89,7 @@ export default async function IntegrationsPage({
       step={1}
       title={`Connect ${merchant.name}`}
       lede="Read-only access. Nothing is charged or created on your accounts."
-      merchantId={merchantId}
+      productSlug={merchant.slug}
       next={next}
     >
       <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">

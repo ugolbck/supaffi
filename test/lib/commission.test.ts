@@ -33,6 +33,7 @@ if (!hasDatabase) {
 async function makeMerchant(ownerId: string, suffix: string) {
   return db.merchant.create({
     data: {
+      slug: crypto.randomUUID(),
       ownerId,
       name: `Merchant ${suffix}`,
       domain: `commission-test-${suffix}.example.com`,
@@ -47,6 +48,7 @@ async function makeMerchant(ownerId: string, suffix: string) {
 async function makeProgram(merchantId: string) {
   return db.program.create({
     data: {
+      slug: crypto.randomUUID(),
       merchantId,
       name: "Standard",
       defaultCommissionRate: "20.00",

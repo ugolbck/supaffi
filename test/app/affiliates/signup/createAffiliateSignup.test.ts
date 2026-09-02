@@ -6,7 +6,7 @@
 // This is the only test that calls createAffiliateSignup (the Server
 // Action) directly rather than testing a lower-level lib function, because
 // the retry-on-referralCode-collision behavior in its catch block
-// (src/app/affiliates/signup/[programId]/createAffiliateSignup.ts) can only
+// (src/app/affiliates/signup/[program]/createAffiliateSignup.ts) can only
 // be proven correct by exercising that catch block itself against a real
 // P2002 from Postgres.
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
@@ -49,7 +49,7 @@ vi.mock("@/lib/referralCode", () => ({
   }),
 }));
 
-import { createAffiliateSignup } from "@/app/affiliates/signup/[programId]/createAffiliateSignup";
+import { createAffiliateSignup } from "@/app/affiliates/signup/[program]/createAffiliateSignup";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -77,7 +77,7 @@ function formDataFor(name: string, email: string): FormData {
 
 describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
   let merchantId: string;
-  let programId: string;
+  let programSlug: string;
 
   beforeEach(async () => {
     await db.affiliateLoginToken.deleteMany();
@@ -94,6 +94,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     });
     const merchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId: owner.id,
         name: "TestCo",
         domain: "signup-action-test.example.com",
@@ -106,6 +107,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     merchantId = merchant.id;
     const program = await db.program.create({
       data: {
+        slug: crypto.randomUUID(),
         merchantId,
         name: "Standard",
         defaultCommissionRate: "20.00",
@@ -114,7 +116,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
         holdingPeriodDays: 30,
       },
     });
-    programId = program.id;
+    programSlug = program.slug;
 
     headersMock.mockResolvedValue(new Headers({ host: "signup-action-test.example.com" }));
   });
@@ -132,7 +134,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     // First "Sarah" claims the "sarah" code.
     referralCodeQueue.push("sarah");
     const first = await createAffiliateSignup(
-      programId,
+      programSlug,
       { status: "form", error: "" },
       formDataFor("Sarah", "sarah1@example.com")
     );
@@ -146,7 +148,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     // once, and succeed with the next scripted code.
     referralCodeQueue.push("sarah", "sarah2");
     const second = await createAffiliateSignup(
-      programId,
+      programSlug,
       { status: "form", error: "" },
       formDataFor("Sarah", "sarah2@example.com")
     );
@@ -168,7 +170,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
   it("still treats a genuine duplicate signup (same email) as an existing-login request, not a referralCode retry", async () => {
     referralCodeQueue.push("sarah");
     await createAffiliateSignup(
-      programId,
+      programSlug,
       { status: "form", error: "" },
       formDataFor("Sarah", "sarah@example.com")
     );
@@ -177,7 +179,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     // email-collision branch specifically, not the referralCode one.
     referralCodeQueue.push("sarah-again");
     const repeat = await createAffiliateSignup(
-      programId,
+      programSlug,
       { status: "form", error: "" },
       formDataFor("Sarah Again", "sarah@example.com")
     );

@@ -42,7 +42,7 @@ export function SetupShell({
   status,
   children,
   aside,
-  merchantId,
+  productSlug,
   next,
 }: {
   /** Which of the four setup steps this screen is. */
@@ -56,7 +56,7 @@ export function SetupShell({
   children: React.ReactNode;
   /** Optional right rail. Without it the content runs the full width. */
   aside?: React.ReactNode;
-  merchantId: string;
+  productSlug: string;
   /** Where this step leads. Null once there is nothing left to do. */
   next: { label: string; href: string } | null;
 }) {
@@ -80,7 +80,7 @@ export function SetupShell({
       </div>
 
       <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
-        <Link href={`/dashboard/products/${merchantId}`}>
+        <Link href={`/dashboard/products/${productSlug}`}>
           <Button variant="ghost" size="sm">
             Product overview
           </Button>

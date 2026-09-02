@@ -13,6 +13,7 @@ async function seedMerchant(stripeConnected: boolean) {
   });
   const merchant = await db.merchant.create({
     data: {
+      slug: crypto.randomUUID(),
       ownerId: owner.id,
       name: "InstantGradient",
       domain: `${crypto.randomUUID()}.example.com`,
@@ -75,7 +76,7 @@ describe("setup step order", () => {
     emailConnected: true,
     emailRequired: true,
     integrationsConnected: true,
-    firstProgramId: "p1",
+    firstProgramSlug: "p1",
     trackingStatus: "not-started",
     affiliateCount: 0,
     doneCount: 2,

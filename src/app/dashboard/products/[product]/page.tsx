@@ -2,7 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { Check, Plug, Terminal } from "lucide-react";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwner } from "@/lib/merchant";
+import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { listProgramsForMerchant } from "@/lib/program";
 import { getProductSetup } from "@/lib/productSetup";
 import { shouldCelebrateTracking } from "@/lib/tracking";
@@ -86,13 +86,13 @@ function Panel({
 export default async function MerchantDetailPage({
   params,
 }: {
-  params: Promise<{ productId: string }>;
+  params: Promise<{ product: string }>;
 }) {
-  const { productId: merchantId } = await params;
+  const { product } = await params;
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const merchant = await getMerchantForOwner(session.user.id, merchantId);
+  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
   if (!merchant) notFound();
 
   const [programs, setup, celebrate] = await Promise.all([
@@ -117,12 +117,12 @@ export default async function MerchantDetailPage({
           <p className="truncate text-sm text-muted-foreground">{merchant.domain}</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          <Link href={`/dashboard/products/${merchant.id}/edit`}>
+          <Link href={`/dashboard/products/${merchant.slug}/edit`}>
             <Button variant="outline" size="sm">
               Edit details
             </Button>
           </Link>
-          <Link href={`/dashboard/products/${merchant.id}/commissions`}>
+          <Link href={`/dashboard/products/${merchant.slug}/commissions`}>
             <Button size="sm">View commissions</Button>
           </Link>
         </div>
@@ -159,7 +159,7 @@ export default async function MerchantDetailPage({
         {!setup.complete && (
           <ProductSetup
             className="lg:col-span-3"
-            merchantId={merchant.id}
+            productSlug={merchant.slug}
             merchantName={merchant.name}
             merchantDomain={merchant.domain}
             setup={setup}
@@ -170,7 +170,7 @@ export default async function MerchantDetailPage({
           <Panel
             title="Integrations"
             action={
-              <Link href={`/dashboard/products/${merchant.id}/integrations`}>
+              <Link href={`/dashboard/products/${merchant.slug}/integrations`}>
                 <Button variant="outline" size="sm">
                   <Plug />
                   {connectedCount === 2 ? "Manage" : "Finish"}
@@ -194,7 +194,7 @@ export default async function MerchantDetailPage({
           <Panel
             title="Programs"
             action={
-              <Link href={`/dashboard/products/${merchant.id}/programs/new`}>
+              <Link href={`/dashboard/products/${merchant.slug}/programs/new`}>
                 <Button variant="outline" size="sm">
                   Create
                 </Button>
@@ -215,7 +215,7 @@ export default async function MerchantDetailPage({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <Link
-                        href={`/dashboard/products/${merchant.id}/programs/${p.id}/edit`}
+                        href={`/dashboard/products/${merchant.slug}/programs/${p.id}/edit`}
                         className="truncate text-sm font-medium hover:underline"
                       >
                         {p.name}
@@ -223,7 +223,7 @@ export default async function MerchantDetailPage({
                       <Badge variant="outline">{String(p.defaultCommissionRate)}%</Badge>
                     </div>
                     <code className="truncate rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                      {`${originFor(merchant.domain)}/affiliates/signup/${p.id}`}
+                      {`${originFor(merchant.domain)}/affiliates/signup/${p.slug}`}
                     </code>
                   </div>
                 ))}

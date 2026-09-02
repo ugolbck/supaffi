@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwner } from "@/lib/merchant";
+import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { getProgramForMerchant } from "@/lib/program";
 import { ProgramForm } from "../../new/ProgramForm";
 import { updateProgramAction } from "./updateProgram";
@@ -8,19 +8,21 @@ import { updateProgramAction } from "./updateProgram";
 export default async function EditProgramPage({
   params,
 }: {
-  params: Promise<{ productId: string; programId: string }>;
+  params: Promise<{ product: string; program: string }>;
 }) {
-  const { productId: merchantId, programId } = await params;
+  const { product, program: programSlug } = await params;
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const merchant = await getMerchantForOwner(session.user.id, merchantId);
+  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
   if (!merchant) notFound();
 
-  const program = await getProgramForMerchant(session.user.id, merchantId, programId);
+  const productRef = { id: merchant.id, slug: merchant.slug };
+
+  const program = await getProgramForMerchant(session.user.id, merchant.id, programSlug);
   if (!program) notFound();
 
-  const boundAction = updateProgramAction.bind(null, merchantId, programId);
+  const boundAction = updateProgramAction.bind(null, productRef, program.id);
 
   return (
     <div className="mx-auto w-full max-w-3xl">

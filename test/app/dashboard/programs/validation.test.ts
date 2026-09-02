@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateProgramInput } from "@/app/dashboard/products/[productId]/programs/new/validation";
+import { validateProgramInput } from "@/app/dashboard/products/[product]/programs/new/validation";
 
 const validInput = {
   name: "Standard",

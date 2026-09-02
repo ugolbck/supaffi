@@ -38,6 +38,7 @@ describe.skipIf(!hasDatabase)("affiliateAuth", () => {
     });
     const merchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId: owner.id,
         name: "TestCo",
         domain: "affauth-test.example.com",
@@ -49,6 +50,7 @@ describe.skipIf(!hasDatabase)("affiliateAuth", () => {
     });
     const program = await db.program.create({
       data: {
+        slug: crypto.randomUUID(),
         merchantId: merchant.id,
         name: "Standard",
         defaultCommissionRate: "20.00",

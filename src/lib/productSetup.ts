@@ -30,7 +30,7 @@ export type ProductSetup = {
   emailRequired: boolean;
   /** Everything the instance actually needs. Email drops out in console mode. */
   integrationsConnected: boolean;
-  firstProgramId: string | null;
+  firstProgramSlug: string | null;
   trackingStatus: TrackingStatus;
   affiliateCount: number;
   /** Steps finished, out of `totalSteps`. */
@@ -51,7 +51,7 @@ export async function getProductSetup(
     db.program.findFirst({
       where: { merchantId },
       orderBy: { createdAt: "asc" },
-      select: { id: true },
+      select: { slug: true },
     }),
     getTrackingStatus(merchantId),
     db.affiliate.count({ where: { merchantId } }),
@@ -86,7 +86,7 @@ export async function getProductSetup(
     emailConnected: integrations.email,
     emailRequired,
     integrationsConnected,
-    firstProgramId: program?.id ?? null,
+    firstProgramSlug: program?.slug ?? null,
     trackingStatus,
     affiliateCount,
     doneCount,
@@ -103,10 +103,10 @@ export async function getProductSetup(
  * about what the sequence is.
  */
 export function setupSteps(
-  merchantId: string,
+  productSlug: string,
   setup: ProductSetup
 ): { id: SetupStepId; index: number; label: string; href: string; done: boolean }[] {
-  const base = `/dashboard/products/${merchantId}`;
+  const base = `/dashboard/products/${productSlug}`;
   return [
     {
       id: "integrations",
@@ -120,7 +120,7 @@ export function setupSteps(
       index: 2,
       label: "Set your commission terms",
       href: `${base}/programs/new`,
-      done: setup.firstProgramId !== null,
+      done: setup.firstProgramSlug !== null,
     },
     {
       id: "tracking",
@@ -150,10 +150,10 @@ export function setupSteps(
  * thread of setup.
  */
 export function stepAfter(
-  merchantId: string,
+  productSlug: string,
   setup: ProductSetup,
   index: number
 ): { label: string; href: string } | null {
-  const steps = setupSteps(merchantId, setup);
+  const steps = setupSteps(productSlug, setup);
   return steps.find((step) => step.index > index && !step.done) ?? null;
 }

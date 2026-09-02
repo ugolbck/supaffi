@@ -1,22 +1,24 @@
 import { redirect, notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwner } from "@/lib/merchant";
+import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { MerchantForm } from "../../new/MerchantForm";
 import { updateMerchantAction } from "./updateMerchant";
 
 export default async function EditMerchantPage({
   params,
 }: {
-  params: Promise<{ productId: string }>;
+  params: Promise<{ product: string }>;
 }) {
-  const { productId: merchantId } = await params;
+  const { product } = await params;
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const merchant = await getMerchantForOwner(session.user.id, merchantId);
+  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
   if (!merchant) notFound();
 
-  const boundAction = updateMerchantAction.bind(null, merchantId);
+  const productRef = { id: merchant.id, slug: merchant.slug };
+
+  const boundAction = updateMerchantAction.bind(null, productRef);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">

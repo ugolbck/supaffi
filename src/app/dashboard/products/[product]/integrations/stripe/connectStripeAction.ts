@@ -3,11 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import type { ProductRef } from "@/lib/merchant";
 import { connectStripe } from "@/lib/merchant";
 import { validateStripeCredentials } from "../../../new/validation";
 
 export async function connectStripeAction(
-  merchantId: string,
+  product: ProductRef,
   alreadyConnected: boolean,
   _prevState: { error: string },
   formData: FormData
@@ -28,14 +29,14 @@ export async function connectStripeAction(
 
   if (alreadyConnected && !secretKey && !webhookSecret) {
     // Nothing was written, so nothing to revalidate.
-    redirect(`/dashboard/products/${merchantId}/integrations`);
+    redirect(`/dashboard/products/${product.slug}/integrations`);
   }
 
-  await connectStripe(session.user.id, merchantId, { secretKey, webhookSecret });
+  await connectStripe(session.user.id, product.id, { secretKey, webhookSecret });
   // The sidebar and breadcrumb are rendered by the dashboard layout, which a
   // soft navigation reuses from cache. Without this the product list, the
   // breadcrumb's name lookup and the setup checklist all keep showing the
   // state from before this action ran.
   revalidatePath("/dashboard", "layout");
-  redirect(`/dashboard/products/${merchantId}/integrations`);
+  redirect(`/dashboard/products/${product.slug}/integrations`);
 }
