@@ -1,85 +1,76 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { Check, Plug, Terminal } from "lucide-react";
+import { Activity, Check, Clock, Percent, Radio, Share2, Terminal } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { listProgramsForMerchant } from "@/lib/program";
 import { getProductSetup } from "@/lib/productSetup";
+import { getProductMetrics, getTopAffiliates, getRecentActivity } from "@/lib/analytics";
 import { shouldCelebrateTracking } from "@/lib/tracking";
 import { originFor } from "@/lib/url";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { PageShell, PageHeader, SignalRow, Band } from "@/components/dashboard/PageGrid";
+import { StatTile } from "@/components/dashboard/StatTile";
+import { DashboardCard, CardEmpty } from "@/components/dashboard/DashboardCard";
+import { BarChart } from "@/components/charts/BarChart";
 import { ProductSetup } from "./ProductSetup";
 import { TrackingVerified } from "./TrackingVerified";
 
-function IntegrationPill({ label, connected }: { label: string; connected: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
-        connected ? "bg-status-success-bg text-status-success" : "bg-muted text-muted-foreground"
-      }`}
-    >
-      {connected && <Check className="size-3" strokeWidth={3} />}
-      {label}
-      {!connected && <span className="opacity-70">not connected</span>}
-    </span>
-  );
-}
-
-// Console mode is neither connected nor missing, so it gets neither colour.
-function ConsolePill() {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-100 px-2.5 py-1 text-xs font-medium text-accent-800">
-      <Terminal className="size-3" />
-      Email
-      <span className="opacity-70">printed to terminal</span>
-    </span>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="flex flex-col gap-0.5 rounded-(--radius-lg) border border-border/70 bg-elevated [background-image:var(--elevated-surface)] px-3.5 py-2.5 shadow-[var(--edge-light),var(--shadow-xs)]">
-      <span className="font-heading text-lg font-semibold tracking-tight tabular-nums">
-        {value}
-      </span>
-      <span className="text-xs text-muted-foreground">{label}</span>
-    </div>
-  );
-}
-
 /**
- * A panel that owns its share of the viewport rather than growing forever.
+ * One product's own dashboard: its numbers, and while setup is unfinished,
+ * the way to finish it.
  *
- * From `lg` up the page is exactly one screen tall and never scrolls: anything
- * with an unbounded number of rows (Programs) scrolls inside its own panel
- * instead of pushing the rest of the page off the bottom.
- *
- * Below `lg` there is only one column, so pinning to the viewport would leave
- * each panel a sliver too short to read. The page flows and scrolls there
- * instead, which is why every height rule here is `lg:`-prefixed.
+ * Setup and the bands below it share the same two grid rows rather than
+ * stacking on top of a fixed set of cards: while `!setup.complete`, the
+ * stepper takes the second band whole and Recent activity / Programs /
+ * Status don't render at all, because there is not enough height for both
+ * without every card going short. They appear the moment setup is done and
+ * the row is theirs again.
  */
-function Panel({
-  title,
-  action,
-  children,
-  className = "",
+
+function money(totals: { currency: string; total: string }[]): string {
+  if (totals.length === 0) return "0.00";
+  const [first] = totals;
+  return `${first.total} ${first.currency.toUpperCase()}`;
+}
+
+function moneyHint(totals: { currency: string; total: string }[]): string | undefined {
+  if (totals.length < 2) return undefined;
+  return totals
+    .slice(1)
+    .map((t) => `${t.total} ${t.currency.toUpperCase()}`)
+    .join("  ·  ");
+}
+
+const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+function StatusRow({
+  icon: Icon,
+  label,
+  detail,
+  tone,
 }: {
-  title: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  label: string;
+  detail: string;
+  tone: "success" | "waiting" | "muted";
 }) {
+  const toneClass = {
+    success: "bg-status-success-bg text-status-success",
+    waiting: "bg-accent-100 text-accent-800",
+    muted: "bg-muted text-muted-foreground",
+  }[tone];
+
   return (
-    <section
-      className={`flex flex-col lg:min-h-0 rounded-(--radius-xl) border border-border/70 bg-card [background-image:var(--card-surface)] shadow-[var(--edge-light),var(--shadow-sm)] ${className}`}
-    >
-      <div className="flex shrink-0 items-center justify-between gap-3 px-4 pt-3.5 pb-2.5">
-        <h2 className="font-heading text-sm font-semibold tracking-tight">{title}</h2>
-        {action}
-      </div>
-      <div className="flex flex-1 flex-col px-4 pb-4 lg:min-h-0">{children}</div>
-    </section>
+    <div className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-sm">
+      <span className={`flex size-6 shrink-0 items-center justify-center rounded-full ${toneClass}`}>
+        <Icon className="size-3.5" strokeWidth={tone === "success" ? 3 : 2} />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="shrink-0 text-xs text-muted-foreground">{detail}</span>
+    </div>
   );
 }
 
@@ -92,146 +83,237 @@ export default async function MerchantDetailPage({
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
+  const ownerId = session.user.id;
+  const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 
-  const [programs, setup, celebrate] = await Promise.all([
-    listProgramsForMerchant(session.user.id, merchant.id),
-    getProductSetup(session.user.id, merchant.id),
+  const base = `/dashboard/products/${merchant.slug}`;
+
+  const [programs, setup, celebrate, metrics, topAffiliates, activity] = await Promise.all([
+    listProgramsForMerchant(ownerId, merchant.id),
+    getProductSetup(ownerId, merchant.id),
     shouldCelebrateTracking(merchant.id),
+    getProductMetrics(ownerId, merchant.id),
+    getTopAffiliates(ownerId, merchant.id),
+    getRecentActivity(ownerId, merchant.id),
   ]);
 
-  // Counted separately from `integrationsConnected` because the pills below
-  // exist precisely to show which one is missing. Email counts as handled in
-  // console mode, where there is nothing to connect.
-  const emailHandled = setup.emailConnected || !setup.emailRequired;
-  const connectedCount = Number(setup.stripeConnected) + Number(emailHandled);
+  const firstProgram = programs[0] ?? null;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 lg:h-full lg:min-h-0">
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="font-heading truncate text-xl font-extrabold tracking-tight">
-            {merchant.name}
-          </h1>
-          <p className="truncate text-sm text-muted-foreground">{merchant.domain}</p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <Link href={`/dashboard/products/${merchant.slug}/edit`}>
-            <Button variant="outline" size="sm">
-              Edit details
-            </Button>
-          </Link>
-          <Link href={`/dashboard/products/${merchant.slug}/commissions`}>
-            <Button size="sm">View commissions</Button>
-          </Link>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={merchant.name}
+        subtitle={merchant.domain}
+        actions={
+          <>
+            <Link href={`${base}/edit`}>
+              <Button variant="outline" size="sm" className="cursor-pointer">
+                Settings
+              </Button>
+            </Link>
+            <Link href={`${base}/commissions`}>
+              <Button size="sm" className="cursor-pointer">
+                Commissions
+              </Button>
+            </Link>
+          </>
+        }
+      />
 
-      {celebrate && (
-        <div className="shrink-0">
-          <TrackingVerified merchantId={merchant.id} />
-        </div>
-      )}
-
-      <div className="grid shrink-0 gap-3 sm:grid-cols-3">
-        <Stat label="Affiliates" value={setup.affiliateCount} />
-        <Stat label="Programs" value={programs.length} />
-        <Stat
-          label="Tracking"
-          value={
-            setup.trackingStatus === "verified"
-              ? "Live"
-              : setup.trackingStatus === "awaiting-sale"
-                ? "Waiting"
-                : "Off"
-          }
+      <SignalRow columns={5}>
+        <StatTile
+          label="Clicks, 30 days"
+          value={String(metrics.clicks)}
+          series={metrics.series.map((d) => d.clicks)}
         />
-      </div>
+        <StatTile
+          label="Conversions"
+          value={String(metrics.conversions)}
+          series={metrics.series.map((d) => d.conversions)}
+        />
+        <StatTile label="Rate" value={`${metrics.conversionRate}%`} hint="last 30 days" />
+        <StatTile
+          label="Owed"
+          value={money(metrics.owed)}
+          hint={moneyHint(metrics.owed)}
+          tone={metrics.owed.length > 0 ? "success" : "neutral"}
+        />
+        <StatTile label="Paid out" value={money(metrics.paid)} hint={moneyHint(metrics.paid)} />
+      </SignalRow>
 
-      {/* The rest of the screen, split rather than stacked. Setup takes the
-          larger share while it exists, and gives the space back once done. */}
-      <div
-        className={`grid gap-4 lg:min-h-0 lg:flex-1 ${
-          setup.complete ? "lg:grid-cols-2" : "lg:grid-cols-5"
-        }`}
-      >
-        {!setup.complete && (
-          <ProductSetup
-            className="lg:col-span-3"
-            productSlug={merchant.slug}
-            merchantName={merchant.name}
-            merchantDomain={merchant.domain}
-            setup={setup}
-          />
-        )}
+      <Band>
+        <DashboardCard
+          title="Performance"
+          className="lg:col-span-8"
+          action={<span className="text-xs text-muted-foreground">Last 30 days</span>}
+        >
+          {metrics.clicks === 0 ? (
+            <CardEmpty
+              icon={Radio}
+              title={
+                setup.trackingStatus === "not-started"
+                  ? "No clicks yet. Install tracking to start recording them."
+                  : "No clicks in the last 30 days."
+              }
+            />
+          ) : (
+            <BarChart series={metrics.series} />
+          )}
+        </DashboardCard>
 
-        <div className={`flex flex-col gap-4 lg:min-h-0 ${setup.complete ? "" : "lg:col-span-2"}`}>
-          <Panel
-            title="Integrations"
-            action={
-              <Link href={`/dashboard/products/${merchant.slug}/integrations`}>
-                <Button variant="outline" size="sm">
-                  <Plug />
-                  {connectedCount === 2 ? "Manage" : "Finish"}
-                </Button>
-              </Link>
-            }
-            className="shrink-0"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <IntegrationPill label="Stripe" connected={setup.stripeConnected} />
-              {setup.emailConnected ? (
-                <IntegrationPill label="Resend" connected />
-              ) : setup.emailRequired ? (
-                <IntegrationPill label="Resend" connected={false} />
-              ) : (
-                <ConsolePill />
-              )}
-            </div>
-          </Panel>
+        <DashboardCard title="Top affiliates" className="lg:col-span-4" bodyScrolls>
+          {topAffiliates.length === 0 ? (
+            <CardEmpty
+              icon={Share2}
+              title="No affiliates yet."
+              action={
+                firstProgram ? (
+                  <CopyLinkButton
+                    size="sm"
+                    link={`${originFor(merchant.domain)}/affiliates/signup/${firstProgram.slug}`}
+                  />
+                ) : (
+                  <Link href={`${base}/programs/new`}>
+                    <Button size="sm" className="cursor-pointer">
+                      New program
+                    </Button>
+                  </Link>
+                )
+              }
+            />
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {topAffiliates.map((affiliate, i) => (
+                <li key={affiliate.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm">
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground tabular-nums">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {affiliate.name ?? affiliate.email}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {affiliate.clicks} clk
+                  </span>
+                  <span className="shrink-0 font-mono text-xs tabular-nums">
+                    {money(affiliate.earned)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DashboardCard>
+      </Band>
 
-          <Panel
+      {!setup.complete ? (
+        <Band>
+          <ProductSetup className="lg:col-span-12" productSlug={merchant.slug} setup={setup} />
+        </Band>
+      ) : (
+        <Band>
+          <DashboardCard title="Recent activity" className="lg:col-span-5" bodyScrolls>
+            {activity.length === 0 ? (
+              <CardEmpty icon={Activity} title="No activity yet." />
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {activity.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm"
+                  >
+                    <span className="w-14 shrink-0 text-xs text-muted-foreground tabular-nums">
+                      {DATE.format(item.at)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {item.affiliateName ?? item.affiliateEmail}
+                    </span>
+                    {item.kind === "signup" ? (
+                      <span className="shrink-0 text-xs text-muted-foreground">joined</span>
+                    ) : (
+                      <span className="shrink-0 font-mono text-xs tabular-nums">
+                        {item.amount} {item.currency?.toUpperCase()}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DashboardCard>
+
+          <DashboardCard
             title="Programs"
-            action={
-              <Link href={`/dashboard/products/${merchant.slug}/programs/new`}>
-                <Button variant="outline" size="sm">
-                  Create
+            className="lg:col-span-4"
+            bodyScrolls
+            footer={
+              <Link href={`${base}/programs/new`}>
+                <Button variant="outline" size="sm" className="w-full cursor-pointer">
+                  New program
                 </Button>
               </Link>
             }
-            className="lg:min-h-0 lg:flex-1"
           >
             {programs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No Programs yet.</p>
+              <CardEmpty icon={Percent} title="No programs yet." />
             ) : (
-              // The one unbounded list on this page, so it is the one thing
-              // allowed its own scrollbar.
-              <div className="flex flex-col gap-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-                {programs.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex shrink-0 flex-col gap-1 rounded-lg border border-border/70 bg-background/60 p-2.5"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <Link
-                        href={`/dashboard/products/${merchant.slug}/programs/${p.slug}/edit`}
-                        className="truncate text-sm font-medium hover:underline"
-                      >
-                        {p.name}
-                      </Link>
-                      <Badge variant="outline">{String(p.defaultCommissionRate)}%</Badge>
+              <div className="flex flex-col gap-2">
+                {programs.map((p) => {
+                  const link = `${originFor(merchant.domain)}/affiliates/signup/${p.slug}`;
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex flex-col gap-1.5 rounded-lg border border-border/70 bg-background/60 p-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium">{p.name}</span>
+                        <Badge variant="outline">{String(p.defaultCommissionRate)}%</Badge>
+                      </div>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {p.affiliateCount === 1 ? "1 affiliate" : `${p.affiliateCount} affiliates`}
+                      </span>
+                      <div className="flex items-center justify-between gap-2">
+                        <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                          {link}
+                        </code>
+                        <CopyLinkButton size="sm" link={link} />
+                      </div>
                     </div>
-                    <code className="truncate rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                      {`${originFor(merchant.domain)}/affiliates/signup/${p.slug}`}
-                    </code>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
-          </Panel>
-        </div>
-      </div>
-    </div>
+          </DashboardCard>
+
+          <DashboardCard
+            title="Status"
+            className="lg:col-span-3"
+            bodyClassName="justify-center gap-1.5"
+            footer={
+              <Link href={`${base}/integrations`}>
+                <Button variant="outline" size="sm" className="w-full cursor-pointer">
+                  Manage
+                </Button>
+              </Link>
+            }
+          >
+            {celebrate && (
+              <div className="pb-1.5">
+                <TrackingVerified merchantId={merchant.id} />
+              </div>
+            )}
+            <StatusRow icon={Check} label="Stripe" detail="Connected" tone="success" />
+            {setup.emailConnected ? (
+              <StatusRow icon={Check} label="Email" detail="Connected" tone="success" />
+            ) : (
+              <StatusRow icon={Terminal} label="Email" detail="Terminal" tone="muted" />
+            )}
+            {setup.trackingStatus === "verified" ? (
+              <StatusRow icon={Check} label="Tracking" detail="Live" tone="success" />
+            ) : (
+              <StatusRow icon={Clock} label="Tracking" detail="Waiting" tone="waiting" />
+            )}
+          </DashboardCard>
+        </Band>
+      )}
+    </PageShell>
   );
 }

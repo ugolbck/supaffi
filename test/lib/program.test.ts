@@ -49,6 +49,9 @@ describe.skipIf(!hasDatabase)("program", () => {
   let otherMerchantId: string;
 
   beforeEach(async () => {
+    // Affiliates reference Program with a RESTRICT foreign key, so they have
+    // to go first or Program.deleteMany throws instead of cleaning up.
+    await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
@@ -108,6 +111,7 @@ describe.skipIf(!hasDatabase)("program", () => {
   });
 
   afterAll(async () => {
+    await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
@@ -130,6 +134,29 @@ describe.skipIf(!hasDatabase)("program", () => {
     const list = await listProgramsForMerchant(ownerId, merchantId);
     expect(list).toHaveLength(1);
     expect(list[0].name).toBe("Standard");
+  });
+
+  it("lists Programs with their affiliate count", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    await db.affiliate.create({
+      data: {
+        merchantId,
+        programId: id,
+        email: "sarah@example.com",
+        referralCode: "sarah",
+      },
+    });
+    await db.affiliate.create({
+      data: {
+        merchantId,
+        programId: id,
+        email: "rob@example.com",
+        referralCode: "rob",
+      },
+    });
+
+    const list = await listProgramsForMerchant(ownerId, merchantId);
+    expect(list[0].affiliateCount).toBe(2);
   });
 
   it("getProgramForMerchant returns null when the Merchant isn't owned by the caller", async () => {

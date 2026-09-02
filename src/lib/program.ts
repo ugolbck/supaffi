@@ -46,14 +46,35 @@ export async function createProgram(
 export async function listProgramsForMerchant(
   ownerId: string,
   merchantId: string
-): Promise<{ id: string; slug: string; name: string; defaultCommissionRate: unknown }[]> {
+): Promise<
+  {
+    id: string;
+    slug: string;
+    name: string;
+    defaultCommissionRate: unknown;
+    affiliateCount: number;
+  }[]
+> {
   await assertMerchantOwnership(ownerId, merchantId);
 
-  return db.program.findMany({
+  const programs = await db.program.findMany({
     where: { merchantId },
-    select: { id: true, slug: true, name: true, defaultCommissionRate: true },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      defaultCommissionRate: true,
+      _count: { select: { affiliates: true } },
+    },
     orderBy: { createdAt: "asc" },
   });
+
+  // The product overview's Programs card reads this to say how many
+  // affiliates each program has without a second round trip per row.
+  return programs.map(({ _count, ...program }) => ({
+    ...program,
+    affiliateCount: _count.affiliates,
+  }));
 }
 
 export async function getProgramForMerchant(
