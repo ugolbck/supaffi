@@ -28,6 +28,7 @@ async function seedMerchant(stripeConnected: boolean) {
 async function clearAll() {
   await db.commission.deleteMany();
   await db.click.deleteMany();
+  await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
   await db.merchant.deleteMany();
@@ -124,7 +125,7 @@ describe.skipIf(!hasDatabase)("product setup", () => {
         merchantId: merchant.id,
         programId: program.id,
         email: `a-${crypto.randomUUID()}@example.com`,
-        referralCode: crypto.randomUUID(),
+        links: { create: { code: crypto.randomUUID(), isPrimary: true } },
       },
     });
     await db.click.create({

@@ -17,6 +17,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 async function clearAll() {
   await db.commission.deleteMany();
   await db.click.deleteMany();
+  await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
   await db.merchant.deleteMany();
@@ -96,7 +97,9 @@ describe.skipIf(!hasDatabase)("analytics", () => {
         programId,
         email: `aff-${suffix}@example.com`,
         name: `Aff ${suffix}`,
-        referralCode: `code-${suffix}-${crypto.randomUUID().slice(0, 8)}`,
+        links: {
+          create: { code: `code-${suffix}-${crypto.randomUUID().slice(0, 8)}`, isPrimary: true },
+        },
       },
     });
   }

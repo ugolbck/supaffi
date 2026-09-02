@@ -47,7 +47,7 @@ async function seedClick(merchantId: string, programId: string, stripeCustomerId
       merchantId,
       programId,
       email: `aff-${crypto.randomUUID()}@example.com`,
-      referralCode: crypto.randomUUID(),
+      links: { create: { code: crypto.randomUUID(), isPrimary: true } },
     },
   });
   return db.click.create({
@@ -63,6 +63,7 @@ async function seedClick(merchantId: string, programId: string, stripeCustomerId
 async function clearAll() {
   await db.commission.deleteMany();
   await db.click.deleteMany();
+  await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
   await db.merchant.deleteMany();

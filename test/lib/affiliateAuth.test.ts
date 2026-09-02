@@ -1,7 +1,7 @@
-// Destructive: runs db.affiliateLoginToken.deleteMany() / db.affiliate.deleteMany() /
-// db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
-// before every test. Point DATABASE_URL at a disposable database, never a
-// real deployment's data.
+// Destructive: runs db.affiliateLoginToken.deleteMany() / db.affiliateLink.deleteMany() /
+// db.affiliate.deleteMany() / db.program.deleteMany() / db.merchant.deleteMany() /
+// db.owner.deleteMany() before every test. Point DATABASE_URL at a disposable
+// database, never a real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { createAffiliateLoginToken, consumeAffiliateLoginToken } from "@/lib/affiliateAuth";
@@ -28,6 +28,7 @@ describe.skipIf(!hasDatabase)("affiliateAuth", () => {
 
   beforeEach(async () => {
     await db.affiliateLoginToken.deleteMany();
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -64,7 +65,7 @@ describe.skipIf(!hasDatabase)("affiliateAuth", () => {
         merchantId: merchant.id,
         programId: program.id,
         email: "sarah@example.com",
-        referralCode: "sarah",
+        links: { create: { code: "sarah", isPrimary: true } },
       },
     });
     affiliateId = affiliate.id;
@@ -72,6 +73,7 @@ describe.skipIf(!hasDatabase)("affiliateAuth", () => {
 
   afterAll(async () => {
     await db.affiliateLoginToken.deleteMany();
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();

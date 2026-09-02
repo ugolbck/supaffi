@@ -30,21 +30,32 @@ export async function GET(req: NextRequest) {
     return new NextResponse(null, { status: 404 });
   }
 
-  const affiliate = await db.affiliate.findUnique({
-    where: { referralCode, merchantId: merchant.id },
-    select: { id: true, program: { select: { attributionWindowDays: true } } },
+  const link = await db.affiliateLink.findUnique({
+    where: { code: referralCode },
+    select: {
+      id: true,
+      affiliate: {
+        select: {
+          id: true,
+          merchantId: true,
+          program: { select: { attributionWindowDays: true } },
+        },
+      },
+    },
   });
-  if (!affiliate) {
+  // The code is globally unique, so a code belonging to another Merchant
+  // resolves but must not attribute here.
+  if (!link || link.affiliate.merchantId !== merchant.id) {
     return new NextResponse(null, { status: 404 });
   }
 
   const referralToken = randomUUID();
   const expiresAt = new Date(
-    Date.now() + affiliate.program.attributionWindowDays * 24 * 60 * 60 * 1000
+    Date.now() + link.affiliate.program.attributionWindowDays * 24 * 60 * 60 * 1000
   );
 
   await db.click.create({
-    data: { affiliateId: affiliate.id, referralToken, expiresAt },
+    data: { affiliateId: link.affiliate.id, linkId: link.id, referralToken, expiresAt },
   });
 
   return NextResponse.json(

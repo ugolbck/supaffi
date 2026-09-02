@@ -1,5 +1,6 @@
-// Destructive: runs db.affiliateLoginToken.deleteMany() / db.affiliate.deleteMany() /
-// db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
+// Destructive: runs db.affiliateLoginToken.deleteMany() / db.affiliateLink.deleteMany() /
+// db.affiliate.deleteMany() / db.program.deleteMany() / db.merchant.deleteMany() /
+// db.owner.deleteMany()
 // before every test. Point DATABASE_URL at a disposable database, never a
 // real deployment's data.
 //
@@ -30,7 +31,7 @@ vi.mock("@/lib/email/affiliateMagicLink", () => ({
   sendAffiliateMagicLinkEmail: (...args: unknown[]) => sendAffiliateMagicLinkEmailMock(...args),
 }));
 
-// generateReferralCode does its own read-before-write collision check, which
+// generateLinkCode does its own read-before-write collision check, which
 // makes the real race it's vulnerable to hard to force deterministically in
 // a single-process test: two sequential signups would just see each other's
 // row and each pick their own next free suffix, never reaching
@@ -42,7 +43,7 @@ vi.mock("@/lib/email/affiliateMagicLink", () => ({
 // of racy.
 const referralCodeQueue: string[] = [];
 vi.mock("@/lib/referralCode", () => ({
-  generateReferralCode: vi.fn(async () => {
+  generateLinkCode: vi.fn(async () => {
     const next = referralCodeQueue.shift();
     if (next === undefined) throw new Error("test referralCodeQueue exhausted");
     return next;
@@ -81,6 +82,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
 
   beforeEach(async () => {
     await db.affiliateLoginToken.deleteMany();
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -123,6 +125,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
 
   afterAll(async () => {
     await db.affiliateLoginToken.deleteMany();
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -157,10 +160,10 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
 
     const affiliates = await db.affiliate.findMany({
       where: { merchantId },
-      select: { email: true, referralCode: true },
+      select: { email: true, links: { where: { isPrimary: true }, select: { code: true } } },
       orderBy: { email: "asc" },
     });
-    expect(affiliates).toEqual([
+    expect(affiliates.map((a) => ({ email: a.email, referralCode: a.links[0]?.code ?? "" }))).toEqual([
       { email: "sarah1@example.com", referralCode: "sarah" },
       { email: "sarah2@example.com", referralCode: "sarah2" },
     ]);

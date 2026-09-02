@@ -1,6 +1,7 @@
-// Destructive: runs db.affiliate.deleteMany() / db.program.deleteMany() /
-// db.merchant.deleteMany() / db.owner.deleteMany() before every test. Point
-// DATABASE_URL at a disposable database, never a real deployment's data.
+// Destructive: runs db.affiliateLink.deleteMany() / db.affiliate.deleteMany() /
+// db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
+// before every test. Point DATABASE_URL at a disposable database, never a
+// real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
@@ -48,6 +49,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     await db.commission.deleteMany();
     await db.click.deleteMany();
     await db.affiliateLoginToken.deleteMany();
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -130,6 +132,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     await db.commission.deleteMany();
     await db.click.deleteMany();
     await db.affiliateLoginToken.deleteMany();
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -183,14 +186,14 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     expect(result).toBeNull();
   });
 
-  // Affiliate has two separate unique constraints: a per-Merchant
-  // (merchantId, email) pair, and a globally-unique referralCode. A bare
+  // Affiliate has a unique (merchantId, email) constraint, and AffiliateLink
+  // has a separate globally-unique code constraint. A bare
   // isUniqueConstraintError(err) can't tell these apart, which matters
   // because createAffiliateSignup reacts very differently to each (treat
   // as an existing-login vs. retry with a freshly generated code). These
   // two tests prove isUniqueConstraintErrorOn correctly distinguishes a
   // real P2002 triggered by each constraint.
-  it("isUniqueConstraintErrorOn identifies an (merchantId, email) collision as an email violation, not a referralCode one", async () => {
+  it("isUniqueConstraintErrorOn identifies an (merchantId, email) collision as an email violation, not a code one", async () => {
     await createAffiliate(merchantId, programId, { name: "Sarah", email: "sarah@example.com" });
 
     let caught: unknown;
@@ -201,7 +204,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
           programId,
           email: "sarah@example.com",
           name: "Sarah Duplicate",
-          referralCode: "some-other-unused-code",
+          links: { create: { code: "some-other-unused-code", isPrimary: true } },
         },
       });
     } catch (err) {
@@ -210,22 +213,22 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
 
     expect(caught).toBeDefined();
     expect(isUniqueConstraintErrorOn(caught, "email")).toBe(true);
-    expect(isUniqueConstraintErrorOn(caught, "referralCode")).toBe(false);
+    expect(isUniqueConstraintErrorOn(caught, "code")).toBe(false);
   });
 
-  it("isUniqueConstraintErrorOn identifies a referralCode collision as a referralCode violation, not an email one — even across different Merchants, since referralCode is globally unique", async () => {
+  it("isUniqueConstraintErrorOn identifies a code collision as a code violation, not an email one — even across different Merchants, since AffiliateLink.code is globally unique", async () => {
     await createAffiliate(merchantId, programId, { name: "Sarah", email: "sarah@example.com" });
 
     let caught: unknown;
     try {
-      // Different Merchant, different email — only the referralCode collides.
+      // Different Merchant, different email — only the code collides.
       await db.affiliate.create({
         data: {
           merchantId: otherMerchantId,
           programId: otherProgramId,
           email: "sarah-from-other-merchant@example.com",
           name: "Sarah",
-          referralCode: "sarah",
+          links: { create: { code: "sarah", isPrimary: true } },
         },
       });
     } catch (err) {
@@ -233,7 +236,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     }
 
     expect(caught).toBeDefined();
-    expect(isUniqueConstraintErrorOn(caught, "referralCode")).toBe(true);
+    expect(isUniqueConstraintErrorOn(caught, "code")).toBe(true);
     expect(isUniqueConstraintErrorOn(caught, "email")).toBe(false);
   });
 
@@ -246,7 +249,12 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       amount: string;
     }) {
       const affiliate = await db.affiliate.create({
-        data: { merchantId, programId, email: opts.email, referralCode: opts.referralCode },
+        data: {
+          merchantId,
+          programId,
+          email: opts.email,
+          links: { create: { code: opts.referralCode, isPrimary: true } },
+        },
       });
       const click = await db.click.create({
         data: {
@@ -308,7 +316,12 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
 
     it("keeps different currencies and statuses in separate totals, never summed together", async () => {
       const affiliate = await db.affiliate.create({
-        data: { merchantId, programId, email: "stats-b@example.com", referralCode: "stats-b" },
+        data: {
+          merchantId,
+          programId,
+          email: "stats-b@example.com",
+          links: { create: { code: "stats-b", isPrimary: true } },
+        },
       });
       const click = await db.click.create({
         data: { affiliateId: affiliate.id, referralToken: "stats-b-token", expiresAt: new Date(Date.now() + 60_000) },
@@ -335,7 +348,12 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
 
     it("paginates commission history newest first and remaps FLAGGED to PENDING per row", async () => {
       const affiliate = await db.affiliate.create({
-        data: { merchantId, programId, email: "history@example.com", referralCode: "history" },
+        data: {
+          merchantId,
+          programId,
+          email: "history@example.com",
+          links: { create: { code: "history", isPrimary: true } },
+        },
       });
       const click = await db.click.create({
         data: { affiliateId: affiliate.id, referralToken: "history-token", expiresAt: new Date(Date.now() + 60_000) },
@@ -370,7 +388,12 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
 
     it("updates payout details, and blanks out to null rather than storing an empty string", async () => {
       const affiliate = await db.affiliate.create({
-        data: { merchantId, programId, email: "payout@example.com", referralCode: "payout" },
+        data: {
+          merchantId,
+          programId,
+          email: "payout@example.com",
+          links: { create: { code: "payout", isPrimary: true } },
+        },
       });
 
       await updateAffiliatePayoutDetails(affiliate.id, "PayPal: payout@example.com");
@@ -408,7 +431,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         programId: fields.programId ?? programId,
         email: fields.email,
         name: fields.name ?? null,
-        referralCode: fields.referralCode,
+        links: { create: { code: fields.referralCode, isPrimary: true } },
         customCommissionRate: fields.customCommissionRate ?? null,
       },
     });

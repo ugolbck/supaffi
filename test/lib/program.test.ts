@@ -1,6 +1,7 @@
-// Destructive: runs db.program.deleteMany() / db.merchant.deleteMany() /
-// db.owner.deleteMany() before every test. Point DATABASE_URL at a
-// disposable database, never a real deployment's data.
+// Destructive: runs db.affiliateLink.deleteMany() / db.affiliate.deleteMany() /
+// db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
+// before every test. Point DATABASE_URL at a disposable database, never a
+// real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
@@ -50,7 +51,9 @@ describe.skipIf(!hasDatabase)("program", () => {
 
   beforeEach(async () => {
     // Affiliates reference Program with a RESTRICT foreign key, so they have
-    // to go first or Program.deleteMany throws instead of cleaning up.
+    // to go first (and AffiliateLink before Affiliate, same reason) or
+    // Program.deleteMany throws instead of cleaning up.
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -111,6 +114,7 @@ describe.skipIf(!hasDatabase)("program", () => {
   });
 
   afterAll(async () => {
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -159,7 +163,7 @@ describe.skipIf(!hasDatabase)("program", () => {
         merchantId,
         programId: id,
         email: "sarah@example.com",
-        referralCode: "sarah",
+        links: { create: { code: "sarah", isPrimary: true } },
       },
     });
     await db.affiliate.create({
@@ -167,7 +171,7 @@ describe.skipIf(!hasDatabase)("program", () => {
         merchantId,
         programId: id,
         email: "rob@example.com",
-        referralCode: "rob",
+        links: { create: { code: "rob", isPrimary: true } },
       },
     });
 

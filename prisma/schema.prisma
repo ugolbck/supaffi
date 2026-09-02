@@ -89,16 +89,46 @@ model Affiliate {
 
   email         String
   name          String?
-  referralCode  String   @unique // readable slug from the affiliate's name (e.g. "sarah"), not random — better CTR/trust than a random ID
   customCommissionRate Decimal? @db.Decimal(5, 2) // overrides the current Program's default when set
   payoutDetails String?  // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
 
+  links       AffiliateLink[]
   clicks      Click[]
   commissions Commission[]
   loginTokens AffiliateLoginToken[]
   createdAt   DateTime @default(now())
 
   @@unique([merchantId, email])
+}
+
+/// One shareable referral URL. An Affiliate starts with a primary link created
+/// at signup and can add more, e.g. one pointing at /pricing for a review post.
+///
+/// The code lives here rather than on Affiliate so there is one source of truth
+/// for it. Editing a code rewrites this row: the old code stops resolving
+/// immediately and anything already shared with it stops earning. That is a
+/// product decision, stated to the Affiliate in the edit dialog, not an
+/// oversight (docs/design/affiliate-wireframes.md).
+model AffiliateLink {
+  id          String    @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id])
+
+  code String @unique // appears directly in a public ?via= URL, so globally unique across the instance, not scoped to a Merchant
+
+  /// Path on the Merchant's site this link points at, e.g. "/pricing". Null is
+  /// the site root. Display only: the tracking snippet reads ?via= from
+  /// whatever page it is loaded on, so a destination needs no runtime support.
+  destinationPath String?
+
+  /// The link created at signup. Exactly one per Affiliate, and it cannot be
+  /// deleted: the Merchant's dashboard shows it and every signup email carries it.
+  isPrimary Boolean @default(false)
+
+  clicks    Click[]
+  createdAt DateTime @default(now())
+
+  @@index([affiliateId])
 }
 
 model AffiliateLoginToken {
@@ -122,6 +152,12 @@ model Click {
   expiresAt     DateTime  // createdAt + Program.attributionWindowDays, computed at insert
   createdAt     DateTime  @default(now())
 
+  // Which link the visitor arrived through. Nullable so deleting a link does
+  // not take its click history with it, and because affiliateId (not this) is
+  // what the attribution and commission pipeline reads.
+  linkId String?
+  link   AffiliateLink? @relation(fields: [linkId], references: [id], onDelete: SetNull)
+
   // Set once, when checkout.session.completed fires and matches referralToken.
   // client_reference_id doesn't propagate to renewal invoices, so every invoice.paid
   // event after the first is matched via this Customer ID instead, not the token.
@@ -130,6 +166,7 @@ model Click {
   commissions Commission[]
 
   @@index([stripeCustomerId])
+  @@index([linkId])
 }
 
 enum CommissionStatus {

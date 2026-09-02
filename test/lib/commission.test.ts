@@ -1,7 +1,8 @@
 // Destructive: runs db.commission.deleteMany() / db.click.deleteMany() /
-// db.affiliate.deleteMany() / db.program.deleteMany() / db.merchant.deleteMany()
-// / db.owner.deleteMany() before every test. Point DATABASE_URL at a
-// disposable database, never a real deployment's data.
+// db.affiliateLink.deleteMany() / db.affiliate.deleteMany() /
+// db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
+// before every test. Point DATABASE_URL at a disposable database, never a
+// real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
@@ -76,7 +77,7 @@ async function makeAffiliate(merchantId: string, programId: string, suffix: stri
       programId,
       email: `affiliate-${suffix}@example.com`,
       name: `Affiliate ${suffix}`,
-      referralCode: `aff${suffix}`,
+      links: { create: { code: `aff${suffix}`, isPrimary: true } },
     },
   });
 }
@@ -126,6 +127,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
   beforeEach(async () => {
     await db.commission.deleteMany();
     await db.click.deleteMany();
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -146,6 +148,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
   afterAll(async () => {
     await db.commission.deleteMany();
     await db.click.deleteMany();
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -244,7 +247,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         merchantId: otherMerchantId,
         programId: (await makeProgram(otherMerchantId)).id,
         email: "other-affiliate@example.com",
-        referralCode: "other",
+        links: { create: { code: "other", isPrimary: true } },
       },
     });
     await makeCommission(otherAffiliate.id, (await makeClick(otherAffiliate.id)).id, {});

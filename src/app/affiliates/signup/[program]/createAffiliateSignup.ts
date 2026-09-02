@@ -49,8 +49,8 @@ export async function createAffiliateSignup(
       const existing = await getAffiliateByEmail(merchant.id, result.email);
       if (!existing) throw err; // constraint violated but lookup found nothing — surface the real error
       affiliateId = existing.id;
-    } else if (isUniqueConstraintErrorOn(err, "referralCode")) {
-      // referralCode is globally unique (not scoped to this Merchant) and
+    } else if (isUniqueConstraintErrorOn(err, "code")) {
+      // AffiliateLink.code is globally unique (not scoped to this Merchant) and
       // generated via a read-then-write with no transaction, so two
       // concurrent signups whose names slugify to the same base code can
       // race. Retry once — createAffiliate regenerates the code from
