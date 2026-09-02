@@ -3,18 +3,7 @@ import type { CommissionDurationType } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
-
-// The rate and its duration read as one line a human would say out loud,
-// rather than as two fields the Owner has to reconcile themselves.
-function commissionLine(
-  rate: number,
-  type: CommissionDurationType,
-  months: number | null
-): string {
-  if (type === "FOREVER") return `${rate}% forever`;
-  if (type === "FIXED_MONTHS") return `${rate}% for ${months} month${months === 1 ? "" : "s"}`;
-  return `${rate}% one time`;
-}
+import { commissionLine } from "@/lib/programCommission";
 
 /**
  * One Program, as a card that fills its cell: terms, reach, and the two ways
