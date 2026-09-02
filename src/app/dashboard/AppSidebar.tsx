@@ -121,21 +121,20 @@ export function AppSidebar({
     integrations: `${base}/integrations`,
     affiliates: base,
     commissions: `${base}/commissions`,
-    flagged: `${base}/commissions?tab=flagged`,
+    flagged: `${base}/commissions?status=FLAGGED`,
     settings: `${base}/edit`,
   };
 
-  // Commissions and Flagged share a pathname and are told apart only by the
-  // `tab` search param the page itself reads, so pathname alone would light
-  // up both rows at once.
+  // Commissions and Flagged are the same screen, told apart only by the status
+  // filter, so pathname alone would light up both rows at once.
   const onCommissions = pathname.startsWith(`${base}/commissions`);
-  const flaggedTab = searchParams.get("tab") === "flagged";
+  const flaggedFilter = searchParams.get("status") === "FLAGGED";
   function isActiveNav(key: (typeof MERCHANT_NAV)[number]["key"]): boolean {
     if (key === "overview") return pathname === base;
     if (key === "integrations") return pathname.startsWith(`${base}/integrations`);
     if (key === "settings") return pathname === `${base}/edit`;
-    if (key === "commissions") return onCommissions && !flaggedTab;
-    if (key === "flagged") return onCommissions && flaggedTab;
+    if (key === "commissions") return onCommissions && !flaggedFilter;
+    if (key === "flagged") return onCommissions && flaggedFilter;
     return false;
   }
 

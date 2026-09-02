@@ -5,13 +5,23 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
-  listPayableGroups,
-  getPayoutGroupDetail,
-  markPayoutGroupPaid,
-  listFlaggedCommissions,
+  listCommissions,
+  getCommissionTotals,
+  getCommissionFilterOptions,
+  markCommissionsPaid,
   confirmCommissionFraud,
   dismissCommissionFlag,
+  type CommissionFilters,
 } from "@/lib/commission";
+
+const NO_FILTERS: CommissionFilters = {
+  status: null,
+  affiliateId: null,
+  currency: null,
+  query: null,
+};
+
+const PAGE = { page: 1, pageSize: 25 };
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -90,6 +100,7 @@ async function makeCommission(
     status: "PENDING" | "FLAGGED" | "PAYABLE" | "PAID" | "VOIDED";
     payableAt: Date;
     flagReason: string;
+    stripePaymentRef: string;
   }>
 ) {
   return db.commission.create({
@@ -101,6 +112,7 @@ async function makeCommission(
       status: overrides.status ?? "PAYABLE",
       payableAt: overrides.payableAt ?? new Date(Date.now() - 1000),
       flagReason: overrides.flagReason,
+      stripePaymentRef: overrides.stripePaymentRef,
     },
   });
 }
@@ -141,53 +153,92 @@ describe.skipIf(!hasDatabase)("commission", () => {
     await db.$disconnect();
   });
 
-  it("groups PAYABLE commissions by affiliate and currency, summing amounts", async () => {
+  it("returns every status in one list, newest first", async () => {
+    // The whole point of the ledger: a PENDING commission used to be visible
+    // to the affiliate and invisible to the Owner, because the only Owner
+    // views queried PAYABLE and FLAGGED.
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
-    const click1 = await makeClick(affiliate.id);
-    const click2 = await makeClick(affiliate.id);
-    await makeCommission(affiliate.id, click1.id, { amount: "10.00", currency: "usd" });
-    await makeCommission(affiliate.id, click2.id, { amount: "15.50", currency: "usd" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { status: "PENDING" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { status: "PAYABLE" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { status: "FLAGGED" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { status: "PAID" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { status: "VOIDED" });
 
-    const { groups, totalGroups } = await listPayableGroups(ownerId, merchantId, {
-      page: 1,
-      pageSize: 10,
-    });
+    const { rows, total } = await listCommissions(ownerId, merchantId, NO_FILTERS, PAGE);
 
-    expect(totalGroups).toBe(1);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]).toMatchObject({
-      affiliateId: affiliate.id,
-      affiliateEmail: "affiliate-sarah@example.com",
+    expect(total).toBe(5);
+    expect(new Set(rows.map((r) => r.status))).toEqual(
+      new Set(["PENDING", "PAYABLE", "FLAGGED", "PAID", "VOIDED"])
+    );
+    const timestamps = rows.map((r) => r.createdAt.getTime());
+    expect([...timestamps].sort((a, b) => b - a)).toEqual(timestamps);
+  });
+
+  it("filters by status, affiliate and currency", async () => {
+    const sarah = await makeAffiliate(merchantId, programId, "sarah");
+    const rob = await makeAffiliate(merchantId, programId, "rob");
+    await makeCommission(sarah.id, (await makeClick(sarah.id)).id, {
+      status: "PENDING",
       currency: "usd",
-      totalAmount: "25.50",
-      commissionCount: 2,
     });
+    await makeCommission(sarah.id, (await makeClick(sarah.id)).id, {
+      status: "PAYABLE",
+      currency: "eur",
+    });
+    await makeCommission(rob.id, (await makeClick(rob.id)).id, { status: "PENDING" });
+
+    const byStatus = await listCommissions(
+      ownerId,
+      merchantId,
+      { ...NO_FILTERS, status: "PENDING" },
+      PAGE
+    );
+    expect(byStatus.total).toBe(2);
+
+    const byAffiliate = await listCommissions(
+      ownerId,
+      merchantId,
+      { ...NO_FILTERS, affiliateId: sarah.id },
+      PAGE
+    );
+    expect(byAffiliate.total).toBe(2);
+
+    const byCurrency = await listCommissions(
+      ownerId,
+      merchantId,
+      { ...NO_FILTERS, currency: "eur" },
+      PAGE
+    );
+    expect(byCurrency.total).toBe(1);
   });
 
-  it("keeps different currencies as separate groups, never summed together", async () => {
+  it("searches the payment reference and the affiliate", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
-    const click1 = await makeClick(affiliate.id);
-    const click2 = await makeClick(affiliate.id);
-    await makeCommission(affiliate.id, click1.id, { amount: "10.00", currency: "usd" });
-    await makeCommission(affiliate.id, click2.id, { amount: "10.00", currency: "eur" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      stripePaymentRef: "in_1ABCxyz",
+    });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      stripePaymentRef: "pi_9ZZZ",
+    });
 
-    const { groups } = await listPayableGroups(ownerId, merchantId, { page: 1, pageSize: 10 });
+    const byRef = await listCommissions(
+      ownerId,
+      merchantId,
+      { ...NO_FILTERS, query: "abcxyz" },
+      PAGE
+    );
+    expect(byRef.total).toBe(1);
 
-    expect(groups).toHaveLength(2);
-    const currencies = groups.map((g) => g.currency).sort();
-    expect(currencies).toEqual(["eur", "usd"]);
+    const byEmail = await listCommissions(
+      ownerId,
+      merchantId,
+      { ...NO_FILTERS, query: "affiliate-sarah" },
+      PAGE
+    );
+    expect(byEmail.total).toBe(2);
   });
 
-  it("excludes non-PAYABLE commissions from the payout groups", async () => {
-    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
-    const click = await makeClick(affiliate.id);
-    await makeCommission(affiliate.id, click.id, { status: "PENDING" });
-
-    const { groups } = await listPayableGroups(ownerId, merchantId, { page: 1, pageSize: 10 });
-    expect(groups).toHaveLength(0);
-  });
-
-  it("does not include a different Merchant's commissions", async () => {
+  it("never shows a different Merchant's commissions", async () => {
     const otherAffiliate = await db.affiliate.create({
       data: {
         merchantId: otherMerchantId,
@@ -196,107 +247,148 @@ describe.skipIf(!hasDatabase)("commission", () => {
         referralCode: "other",
       },
     });
-    const click = await makeClick(otherAffiliate.id);
-    await makeCommission(otherAffiliate.id, click.id, {});
+    await makeCommission(otherAffiliate.id, (await makeClick(otherAffiliate.id)).id, {});
 
-    const { groups } = await listPayableGroups(ownerId, merchantId, { page: 1, pageSize: 10 });
-    expect(groups).toHaveLength(0);
+    const { total } = await listCommissions(ownerId, merchantId, NO_FILTERS, PAGE);
+    expect(total).toBe(0);
   });
 
-  it("getPayoutGroupDetail returns the individual PAYABLE lines for one affiliate/currency", async () => {
+  it("totals per status keep currencies apart rather than summing them", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
-    const click1 = await makeClick(affiliate.id);
-    const click2 = await makeClick(affiliate.id);
-    await makeCommission(affiliate.id, click1.id, { amount: "10.00", currency: "usd" });
-    await makeCommission(affiliate.id, click2.id, { amount: "5.00", currency: "usd" });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
-      amount: "99.00",
+      status: "PAYABLE",
+      amount: "10.00",
+      currency: "usd",
+    });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      status: "PAYABLE",
+      amount: "15.50",
+      currency: "usd",
+    });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      status: "PAYABLE",
+      amount: "9.00",
       currency: "eur",
     });
 
-    const lines = await getPayoutGroupDetail(ownerId, merchantId, affiliate.id, "usd");
-    expect(lines).toHaveLength(2);
-    expect(lines.map((l) => l.amount).sort()).toEqual(["10.00", "5.00"].sort());
-  });
+    const totals = await getCommissionTotals(ownerId, merchantId);
+    const payable = totals.find((t) => t.status === "PAYABLE")!;
 
-  it("markPayoutGroupPaid transitions only the matching group's commissions to PAID", async () => {
-    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
-    const usdClick = await makeClick(affiliate.id);
-    const eurClick = await makeClick(affiliate.id);
-    const usdCommission = await makeCommission(affiliate.id, usdClick.id, { currency: "usd" });
-    const eurCommission = await makeCommission(affiliate.id, eurClick.id, { currency: "eur" });
-
-    const result = await markPayoutGroupPaid(ownerId, merchantId, affiliate.id, "usd", [
-      usdCommission.id,
+    expect(payable.count).toBe(3);
+    expect(payable.amounts).toEqual([
+      { currency: "eur", total: "9.00" },
+      { currency: "usd", total: "25.50" },
     ]);
-    expect(result.count).toBe(1);
-
-    const updatedUsd = await db.commission.findUniqueOrThrow({ where: { id: usdCommission.id } });
-    expect(updatedUsd.status).toBe("PAID");
-    expect(updatedUsd.paidAt).not.toBeNull();
-
-    const updatedEur = await db.commission.findUniqueOrThrow({ where: { id: eurCommission.id } });
-    expect(updatedEur.status).toBe("PAYABLE");
   });
 
-  it("markPayoutGroupPaid does not sweep up a commission that became PAYABLE after the page was loaded", async () => {
-    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
-    const click1 = await makeClick(affiliate.id);
-    const click2 = await makeClick(affiliate.id);
-    await makeCommission(affiliate.id, click1.id, { amount: "10.00", currency: "usd" });
-    await makeCommission(affiliate.id, click2.id, { amount: "15.00", currency: "usd" });
-
-    const { groups } = await listPayableGroups(ownerId, merchantId, { page: 1, pageSize: 10 });
-    const group = groups.find((g) => g.affiliateId === affiliate.id && g.currency === "usd");
-    expect(group).toBeDefined();
-    expect(group!.commissionIds).toHaveLength(2);
-
-    // Simulate a third commission crossing its holding-period boundary
-    // between the Merchant loading the page and clicking "Mark paid".
-    const click3 = await makeClick(affiliate.id);
-    const lateCommission = await makeCommission(affiliate.id, click3.id, {
-      amount: "20.00",
+  it("offers only affiliates that actually have commissions as filter options", async () => {
+    const withCommission = await makeAffiliate(merchantId, programId, "sarah");
+    await makeAffiliate(merchantId, programId, "rob");
+    await makeCommission(withCommission.id, (await makeClick(withCommission.id)).id, {
       currency: "usd",
     });
 
-    const result = await markPayoutGroupPaid(
-      ownerId,
-      merchantId,
-      affiliate.id,
-      "usd",
-      group!.commissionIds
-    );
-    expect(result.count).toBe(2);
-
-    for (const id of group!.commissionIds) {
-      const updated = await db.commission.findUniqueOrThrow({ where: { id } });
-      expect(updated.status).toBe("PAID");
-    }
-
-    const updatedLate = await db.commission.findUniqueOrThrow({
-      where: { id: lateCommission.id },
-    });
-    expect(updatedLate.status).toBe("PAYABLE");
+    const options = await getCommissionFilterOptions(ownerId, merchantId);
+    expect(options.affiliates.map((a) => a.id)).toEqual([withCommission.id]);
+    expect(options.currencies).toEqual(["usd"]);
   });
 
-  it("listFlaggedCommissions returns only FLAGGED commissions for this Merchant, paginated", async () => {
+  it("marks exactly the selected commissions paid", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
-    const click = await makeClick(affiliate.id);
-    await makeCommission(affiliate.id, click.id, {
-      status: "FLAGGED",
-      flagReason: "buyer email matches affiliate email",
-    });
-    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { status: "PAYABLE" });
+    const first = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const second = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
 
-    const { commissions, total } = await listFlaggedCommissions(ownerId, merchantId, {
-      page: 1,
-      pageSize: 10,
+    const result = await markCommissionsPaid(ownerId, merchantId, [first.id]);
+    expect(result).toEqual({ count: 1 });
+
+    expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("PAID");
+    expect((await db.commission.findUniqueOrThrow({ where: { id: second.id } })).status).toBe(
+      "PAYABLE"
+    );
+  });
+
+  it("does not sweep up a commission that became payable after the page was rendered", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "10.00" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "15.00" });
+
+    const { rows } = await listCommissions(
+      ownerId,
+      merchantId,
+      { ...NO_FILTERS, status: "PAYABLE" },
+      PAGE
+    );
+    const seen = rows.map((r) => r.id);
+    expect(seen).toHaveLength(2);
+
+    // A third crosses its holding-period boundary between render and click.
+    const late = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "20.00",
     });
 
-    expect(total).toBe(1);
-    expect(commissions).toHaveLength(1);
-    expect(commissions[0].flagReason).toBe("buyer email matches affiliate email");
-    expect(commissions[0].affiliateEmail).toBe("affiliate-sarah@example.com");
+    expect(await markCommissionsPaid(ownerId, merchantId, seen)).toEqual({ count: 2 });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: late.id } })).status).toBe(
+      "PAYABLE"
+    );
+  });
+
+  it("refuses a selection spanning two currencies, which is not one payout", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const usd = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      currency: "usd",
+    });
+    const eur = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      currency: "eur",
+    });
+
+    const result = await markCommissionsPaid(ownerId, merchantId, [usd.id, eur.id]);
+    expect(result).toEqual({ error: expect.stringContaining("one currency") });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: usd.id } })).status).toBe(
+      "PAYABLE"
+    );
+  });
+
+  it("refuses to pay out around an outstanding refund adjustment", async () => {
+    // Marking only the positive rows paid would erase money the Affiliate owes
+    // back, instead of carrying it forward against their next payout.
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const earned = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "30.00",
+    });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "-10.00" });
+
+    const result = await markCommissionsPaid(ownerId, merchantId, [earned.id]);
+    expect(result).toEqual({ error: expect.stringContaining("refund adjustment") });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: earned.id } })).status).toBe(
+      "PAYABLE"
+    );
+  });
+
+  it("refuses a selection that owes money back overall", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const earned = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "5.00",
+    });
+    const clawback = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "-12.00",
+    });
+
+    const result = await markCommissionsPaid(ownerId, merchantId, [earned.id, clawback.id]);
+    expect(result).toEqual({ error: expect.stringContaining("carries to the next payout") });
+  });
+
+  it("refuses ids that are no longer payable rather than silently paying fewer", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const payable = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const pending = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      status: "PENDING",
+    });
+
+    const result = await markCommissionsPaid(ownerId, merchantId, [payable.id, pending.id]);
+    expect(result).toEqual({ error: expect.stringContaining("no longer payable") });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: payable.id } })).status).toBe(
+      "PAYABLE"
+    );
   });
 
   it("confirmCommissionFraud voids the commission and preserves the original flagReason", async () => {
@@ -354,7 +446,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     });
 
     await expect(
-      listPayableGroups(otherOwner.id, merchantId, { page: 1, pageSize: 10 })
+      listCommissions(otherOwner.id, merchantId, NO_FILTERS, PAGE)
     ).rejects.toThrow();
   });
 });
