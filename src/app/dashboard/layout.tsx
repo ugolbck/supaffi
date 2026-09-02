@@ -2,10 +2,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardBreadcrumb } from "./DashboardBreadcrumb";
-import { AccountMenu } from "./AccountMenu";
 
 // Defense-in-depth: every page under /dashboard already checks role itself
 // (added during the Affiliate Auth plan). This layout-level check is an
@@ -19,16 +17,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <SidebarProvider>
-      <AppSidebar merchants={merchants} />
+      <AppSidebar merchants={merchants} email={session.user.email ?? ""} />
       <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border/60 bg-elevated/70 px-6 backdrop-blur-md backdrop-saturate-150">
           <SidebarTrigger />
-          <Separator orientation="vertical" className="h-4" />
+          <div className="h-4 w-px shrink-0 bg-border" />
           <DashboardBreadcrumb merchants={merchants} />
-          <div className="flex-1" />
-          <AccountMenu email={session.user.email ?? ""} />
         </header>
-        <div className="flex flex-1 flex-col overflow-y-auto p-4">{children}</div>
+        <div className="flex flex-1 flex-col overflow-y-auto p-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

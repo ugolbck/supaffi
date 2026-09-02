@@ -11,20 +11,18 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { completeSetup } from "./completeSetup";
+import { login } from "./actions";
 
 const initialState = { error: "" };
 
-export function SetupForm() {
-  const [state, formAction] = useActionState(completeSetup, initialState);
+export function LoginForm() {
+  const [state, formAction] = useActionState(login, initialState);
 
   return (
     <Card className="w-full max-w-sm animate-in fade-in zoom-in-95 duration-300 ease-out">
       <CardHeader>
-        <CardTitle className="text-xl">Set up Supaffi</CardTitle>
-        <CardDescription>
-          Create the Owner account for this Instance. This can only be done once.
-        </CardDescription>
+        <CardTitle className="text-xl">Welcome back</CardTitle>
+        <CardDescription>Log in to your Supaffi Instance.</CardDescription>
       </CardHeader>
       <CardContent>
         <form action={formAction} className="flex flex-col gap-4">
@@ -43,24 +41,12 @@ export function SetupForm() {
               id="password"
               type="password"
               name="password"
-              autoComplete="new-password"
+              autoComplete="current-password"
               required
-              minLength={12}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="confirmPassword">Confirm password</Label>
-            <Input
-              id="confirmPassword"
-              type="password"
-              name="confirmPassword"
-              autoComplete="new-password"
-              required
-              minLength={12}
             />
           </div>
           <Button type="submit" className="mt-1">
-            Create account
+            Log in
           </Button>
         </form>
       </CardContent>

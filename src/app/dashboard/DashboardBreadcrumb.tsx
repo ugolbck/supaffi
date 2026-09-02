@@ -13,12 +13,16 @@ import {
 type Merchant = { id: string; name: string };
 
 const STATIC_LABELS: Record<string, string> = {
-  dashboard: "Merchants",
-  merchants: "Merchants",
+  dashboard: "Products",
+  products: "Products",
   new: "New",
   edit: "Edit",
   commissions: "Commissions",
   programs: "Programs",
+  integrations: "Integrations",
+  stripe: "Stripe",
+  resend: "Resend",
+  tracking: "Tracking",
 };
 
 export function DashboardBreadcrumb({ merchants }: { merchants: Merchant[] }) {

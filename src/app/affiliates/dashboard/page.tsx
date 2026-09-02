@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { getAffiliateSession, getAffiliateStats, getAffiliatePayoutDetails } from "@/lib/affiliate";
 import { getMerchantByDomain } from "@/lib/merchant";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CopyLinkButton } from "./CopyLinkButton";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { StatsRow } from "./StatsRow";
 import { CommissionHistory } from "./CommissionHistory";
 import { PayoutDetailsForm } from "./PayoutDetailsForm";

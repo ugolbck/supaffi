@@ -29,7 +29,7 @@ export function LoginForm() {
     <Card>
       <CardHeader>
         <CardTitle>Log in</CardTitle>
-        <CardDescription>We&apos;ll email you a link — no password needed.</CardDescription>
+        <CardDescription>We&apos;ll email you a link. No password needed.</CardDescription>
       </CardHeader>
       <CardContent>
         <form action={formAction} className="flex flex-col gap-4">

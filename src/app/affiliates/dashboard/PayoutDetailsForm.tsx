@@ -23,7 +23,7 @@ export function PayoutDetailsForm({ initial }: { initial: string }) {
       <CardHeader>
         <CardTitle>Payout details</CardTitle>
         <CardDescription>
-          PayPal email, bank details — whatever the Merchant pays you with. They read this
+          PayPal email, bank details, whatever the Merchant pays you with. They read this
           manually when it's time to pay you.
         </CardDescription>
       </CardHeader>
