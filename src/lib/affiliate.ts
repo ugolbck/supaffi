@@ -8,6 +8,13 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+// Callers are expected to have already established that the Owner owns this
+// Merchant (the dashboard reaches this only via listMerchantsForOwner), so
+// this takes no ownerId and does no ownership check of its own.
+export async function countAffiliatesForMerchant(merchantId: string): Promise<number> {
+  return db.affiliate.count({ where: { merchantId } });
+}
+
 export async function createAffiliate(
   merchantId: string,
   programId: string,

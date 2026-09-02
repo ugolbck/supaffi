@@ -11,7 +11,14 @@ import { decrypt } from "@/lib/crypto";
 // version) defensively check for older shapes too.
 const STRIPE_API_VERSION = "2026-07-29.dahlia" as const;
 
-export function stripeClientFor(merchant: { stripeSecretKeyEnc: string }): Stripe {
+// Stripe is connected in its own onboarding step, so a Merchant can exist
+// without a key. Nothing queues Stripe work for such a Merchant (no webhook
+// secret means the webhook route rejects the delivery before it is ever
+// stored), so reaching here without a key is a bug, not a user state.
+export function stripeClientFor(merchant: { stripeSecretKeyEnc: string | null }): Stripe {
+  if (!merchant.stripeSecretKeyEnc) {
+    throw new Error("Stripe is not connected for this Merchant");
+  }
   return new Stripe(decrypt(merchant.stripeSecretKeyEnc), {
     apiVersion: STRIPE_API_VERSION,
   });

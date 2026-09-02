@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
     where: { domain: host },
     select: { id: true, stripeWebhookSecretEnc: true },
   });
-  if (!merchant) {
+  // No webhook secret means Stripe was never connected for this Merchant,
+  // so there is nothing to verify the signature against. Treated the same as
+  // an unknown domain: reject, never queue an unverifiable payload.
+  if (!merchant || !merchant.stripeWebhookSecretEnc) {
     return new NextResponse(null, { status: 404 });
   }
 
