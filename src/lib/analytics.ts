@@ -452,3 +452,89 @@ export async function getOwnerMetrics(
     series: [...series.values()],
   };
 }
+
+export type AffiliateMetrics = {
+  clicks: number;
+  conversions: number;
+  /** Percent with one decimal. Zero, never NaN, when nothing has been clicked. */
+  conversionRate: number;
+  /** PENDING plus PAYABLE: money the Affiliate is owed but has not been sent. */
+  unpaid: CurrencyTotal[];
+  pending: CurrencyTotal[];
+  payable: CurrencyTotal[];
+  paid: CurrencyTotal[];
+  series: DayPoint[];
+};
+
+/**
+ * The affiliate's own numbers, shaped like getProductMetrics so both
+ * dashboards read the same.
+ *
+ * No ownership assertion: an Affiliate id comes from their own session and
+ * every query below is already scoped by it. There is no id to escape to.
+ */
+export async function getAffiliateMetrics(
+  affiliateId: string,
+  days: number = DEFAULT_WINDOW_DAYS
+): Promise<AffiliateMetrics> {
+  const since = windowStart(days);
+
+  const [clickRows, commissionRows, statusRows] = await Promise.all([
+    db.click.findMany({
+      where: { affiliateId, createdAt: { gte: since } },
+      select: { createdAt: true },
+    }),
+    db.commission.findMany({
+      where: { affiliateId, createdAt: { gte: since } },
+      select: { createdAt: true },
+    }),
+    db.commission.groupBy({
+      by: ["currency", "status"],
+      where: { affiliateId },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const series = emptySeries(days);
+  for (const click of clickRows) {
+    const point = series.get(dayKey(click.createdAt));
+    if (point) point.clicks += 1;
+  }
+  for (const commission of commissionRows) {
+    const point = series.get(dayKey(commission.createdAt));
+    if (point) point.conversions += 1;
+  }
+
+  // statusRows is grouped by currency AND status, so folding e.g. PENDING and
+  // PAYABLE into one "unpaid" bucket can produce two rows for the same
+  // currency. totalsByCurrency does not merge duplicates, so they are summed
+  // here first, with Prisma.Decimal rather than JS floats since this is money.
+  const rowsFor = (statuses: readonly string[]) => {
+    const byCurrency = new Map<string, Prisma.Decimal>();
+    for (const row of statusRows) {
+      if (!statuses.includes(row.status)) continue;
+      const amount = row._sum.amount ?? new Prisma.Decimal(0);
+      byCurrency.set(row.currency, (byCurrency.get(row.currency) ?? new Prisma.Decimal(0)).add(amount));
+    }
+    return [...byCurrency.entries()].map(([currency, amount]) => ({
+      currency,
+      _sum: { amount },
+    }));
+  };
+
+  const clicks = clickRows.length;
+  const conversions = commissionRows.length;
+
+  return {
+    clicks,
+    conversions,
+    conversionRate: clicks === 0 ? 0 : Math.round((conversions / clicks) * 1000) / 10,
+    // FLAGGED sits with PENDING, matching toDisplayStatus: an Affiliate is
+    // never shown a fraud check the Merchant has not finished reviewing.
+    pending: totalsByCurrency(rowsFor(["PENDING", "FLAGGED"])),
+    payable: totalsByCurrency(rowsFor(["PAYABLE"])),
+    unpaid: totalsByCurrency(rowsFor(["PENDING", "FLAGGED", "PAYABLE"])),
+    paid: totalsByCurrency(rowsFor(["PAID"])),
+    series: [...series.values()],
+  };
+}
