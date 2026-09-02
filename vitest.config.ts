@@ -4,6 +4,10 @@ import path from "path";
 export default defineConfig({
   test: {
     environment: "node",
+    // Runs before anything imports the Prisma client, which reads
+    // DATABASE_URL at construction. Redirects the database-backed suites to a
+    // scratch database and refuses to run against the development one.
+    setupFiles: ["./test/setup.ts"],
     // Test files that hit the live Postgres DB (test/lib/owner.test.ts,
     // test/lib/merchant.test.ts, ...) share tables and each clear them in
     // beforeEach/afterAll. Running test files in parallel workers races
