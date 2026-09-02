@@ -44,11 +44,16 @@
   --status-danger-bg: #fef2f2;
 
   /* shadcn/ui tokens, mapped onto the palette above. Light-only — no .dark
-     overrides exist by design (Theme decision: light only). */
-  --background: var(--neutral-50);
+     overrides exist by design (Theme decision: light only).
+
+     Three-tier surface elevation, darkest to lightest (closest to the light
+     source): --background (page canvas) < --card (main content panels) <
+     --elevated (buttons, header, sidebar — the surfaces meant to pop). */
+  --background: var(--neutral-100);
   --foreground: var(--neutral-900);
-  --card: #ffffff;
+  --card: var(--neutral-50);
   --card-foreground: var(--neutral-900);
+  --elevated: #ffffff;
   --popover: #ffffff;
   --popover-foreground: var(--neutral-900);
   --primary: var(--accent-700);
@@ -80,10 +85,77 @@
   --sidebar-border: var(--neutral-200);
   --sidebar-ring: var(--accent-400);
 
-  /* Sharp/technical shape language: controls get a hair of radius, bounded
-     grid-cell structures (cards, panels, tables) stay square. */
-  --radius: 2px;
-  --radius-structural: 0px;
+  /* macOS-style rounded shape language. Base scale, concentric per
+     component: outer radius = inner radius + the padding between them.
+     Tuned per-component, not just multiplied blindly. */
+  --radius: 10px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 28px;
+
+  /* Layered shadows, not flat borders — natural depth on any background.
+     One light source, fixed above the page: every layer offsets downward
+     only, and each successive layer roughly doubles its blur while the
+     alpha drops. That falloff is what a single box-shadow can't fake, and
+     it's the same stacking Stripe/Linear-class UIs use. Contact layer
+     (1px, tightest) sells the "resting on the surface" read; the wide
+     layer sells the height. */
+  --shadow-color: 220 20% 15%;
+  --shadow-xs: 0 1px 1px hsl(var(--shadow-color) / 0.04), 0 1px 2px -1px hsl(var(--shadow-color) / 0.05);
+  --shadow-sm: 0 1px 1px hsl(var(--shadow-color) / 0.04), 0 2px 4px -2px hsl(var(--shadow-color) / 0.05),
+    0 4px 8px -4px hsl(var(--shadow-color) / 0.04);
+  --shadow-md: 0 1px 1px hsl(var(--shadow-color) / 0.05), 0 3px 6px -2px hsl(var(--shadow-color) / 0.06),
+    0 8px 16px -6px hsl(var(--shadow-color) / 0.07), 0 16px 32px -12px hsl(var(--shadow-color) / 0.06);
+  --shadow-lg: 0 1px 1px hsl(var(--shadow-color) / 0.05), 0 4px 8px -2px hsl(var(--shadow-color) / 0.07),
+    0 12px 24px -6px hsl(var(--shadow-color) / 0.09), 0 28px 48px -16px hsl(var(--shadow-color) / 0.10);
+  --shadow-xl: 0 1px 1px hsl(var(--shadow-color) / 0.06), 0 6px 12px -3px hsl(var(--shadow-color) / 0.08),
+    0 20px 40px -10px hsl(var(--shadow-color) / 0.12), 0 48px 80px -24px hsl(var(--shadow-color) / 0.14);
+
+  /* The other half of "light comes from the top": a 1px inset highlight on
+     an element's top edge reads as the lit bevel, the drop shadow below
+     reads as the cast shadow. Without the highlight, surfaces look printed
+     on rather than raised. -strong is for saturated/dark fills (primary
+     buttons), where a near-opaque white line would blow out. */
+  --edge-light: inset 0 1px 0 0 rgb(255 255 255 / 0.9);
+  --edge-strong: inset 0 1px 0 0 rgb(255 255 255 / 0.18);
+  --edge-pressed: inset 0 2px 4px -1px hsl(var(--shadow-color) / 0.18);
+
+  /* The built-in CSS easings are too weak to read as intentional. These are
+     the stronger variants: -out for anything entering or responding to the
+     user, -in-out for something moving on screen. Never ease-in for UI, it
+     delays the first frame, which is the frame being watched. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+  /* Crisp, deliberately unblurred: a 1px bright line along the top edge and
+     a 1px dark line along the bottom. These two lines do the edge
+     definition; the fill gradient does the volume. Blurring the highlight
+     instead just fogs the top of the element. */
+  --edge-crisp: inset 0 1px 0 0 rgb(255 255 255 / 0.4), inset 0 -1px 0 0 rgb(0 0 0 / 0.16);
+
+  /* A saturated fill casts a shadow in its own hue. A grey shadow under a
+     blue button reads as a sticker laid on the page; a blue one reads as a
+     solid object sitting on it. The first two layers carry zero blur — they
+     are the button's extruded side wall, not a shadow at all. Only the
+     layers below them are the actual cast shadow. */
+  --shadow-primary: 0 1px 0 0 var(--accent-900), 0 2px 0 0 color-mix(in oklch, var(--accent-900), black 12%),
+    0 4px 8px -2px color-mix(in oklch, var(--accent-950) 42%, transparent),
+    0 10px 20px -6px color-mix(in oklch, var(--accent-950) 32%, transparent);
+  --shadow-primary-hover: 0 1px 0 0 var(--accent-900),
+    0 3px 0 0 color-mix(in oklch, var(--accent-900), black 12%),
+    0 6px 12px -2px color-mix(in oklch, var(--accent-950) 48%, transparent),
+    0 14px 26px -6px color-mix(in oklch, var(--accent-950) 36%, transparent);
+  /* Pressed: the side wall collapses to a single pixel, so the button
+     visibly sits down onto the page instead of only shrinking. */
+  --shadow-primary-pressed: 0 1px 0 0 var(--accent-900),
+    0 1px 3px -1px color-mix(in oklch, var(--accent-950) 42%, transparent);
+
+  /* Surfaces are top-lit gradients, not flat fills — a few percent of
+     luminance falloff over the height is enough to stop a card reading as
+     a rectangle of paint. */
+  --card-surface: linear-gradient(180deg, #ffffff 0%, var(--card) 55%);
+  --elevated-surface: linear-gradient(180deg, #ffffff 0%, var(--neutral-50) 100%);
 }
 
 @theme inline {
@@ -91,6 +163,7 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-elevated: var(--elevated);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
@@ -143,11 +216,17 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --radius-sm: calc(var(--radius) - 1px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-structural: var(--radius-structural);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -159,7 +238,7 @@
     @apply border-border outline-ring/50;
   }
   html {
-    @apply font-sans;
+    @apply font-sans antialiased;
   }
   body {
     @apply bg-background text-foreground;
@@ -167,5 +246,11 @@
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+  h1, h2, h3, h4 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
   }
 }
