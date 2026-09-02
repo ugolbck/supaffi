@@ -4,7 +4,15 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 
 import { db } from "@/lib/db";
 import { createAffiliate } from "@/lib/affiliate";
-import { getPrimaryLink } from "@/lib/affiliateLink";
+import {
+  getPrimaryLink,
+  createLink,
+  updateLink,
+  deleteLink,
+  listLinksWithStats,
+  validateLinkInput,
+  MAX_LINKS_PER_AFFILIATE,
+} from "@/lib/affiliateLink";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
@@ -88,5 +96,118 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     const secondLink = await getPrimaryLink(second.id);
     expect(firstLink?.code).toBe("sarah");
     expect(secondLink?.code).toBe("sarah2");
+  });
+
+  it("rejects a code that is not a clean slug", () => {
+    for (const bad of ["", "a", "Sarah Smith", "sarah!", "-sarah", "sarah-", "a".repeat(31)]) {
+      const result = validateLinkInput({ code: bad, destinationPath: "" });
+      expect("error" in result && result.error).toBeTruthy();
+    }
+  });
+
+  it("accepts a clean slug and normalizes a blank destination to null", () => {
+    const result = validateLinkInput({ code: "sarah-pricing", destinationPath: "  " });
+    expect(result).toEqual({ code: "sarah-pricing", destinationPath: null, error: null });
+  });
+
+  it("rejects a destination that is not a path on the merchant's own site", () => {
+    for (const bad of ["pricing", "https://evil.example.com", "//evil.example.com", "/a b"]) {
+      const result = validateLinkInput({ code: "sarah", destinationPath: bad });
+      expect("error" in result && result.error).toBeTruthy();
+    }
+  });
+
+  it("refuses a code another affiliate already has", async () => {
+    const { merchant, program } = await seedProgram();
+    await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const bob = await createAffiliate(merchant.id, program.id, { name: "Bob", email: "b@example.com" });
+
+    const result = await createLink(bob.id, { code: "sarah", destinationPath: "" });
+    expect(result).toEqual({ error: "That code is already taken. Try another." });
+  });
+
+  it("will not delete the primary link", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const primary = await getPrimaryLink(sarah.id);
+
+    const result = await deleteLink(sarah.id, primary!.id);
+    expect(result).toEqual({ error: "Your signup link cannot be deleted." });
+    expect(await db.affiliateLink.count({ where: { affiliateId: sarah.id } })).toBe(1);
+  });
+
+  it("will not touch another affiliate's link", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const bob = await createAffiliate(merchant.id, program.id, { name: "Bob", email: "b@example.com" });
+    const sarahsLink = await getPrimaryLink(sarah.id);
+
+    const result = await updateLink(bob.id, sarahsLink!.id, { code: "stolen", destinationPath: "" });
+    expect(result).toEqual({ error: "That link no longer exists." });
+    expect((await getPrimaryLink(sarah.id))!.code).toBe("sarah");
+  });
+
+  it("caps how many links one affiliate can hold", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    // One primary already exists, so this fills the allowance exactly.
+    for (let i = 1; i < MAX_LINKS_PER_AFFILIATE; i++) {
+      expect(await createLink(sarah.id, { code: `sarah-${i}`, destinationPath: "" })).toHaveProperty("id");
+    }
+    const result = await createLink(sarah.id, { code: "one-too-many", destinationPath: "" });
+    expect(result).toEqual({
+      error: `You can have up to ${MAX_LINKS_PER_AFFILIATE} links. Delete one to add another.`,
+    });
+  });
+
+  it("counts clicks, conversions and earnings per link", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const primary = await getPrimaryLink(sarah.id);
+    const second = await createLink(sarah.id, { code: "sarah-pricing", destinationPath: "/pricing" });
+    const secondId = (second as { id: string }).id;
+
+    // Two clicks on the primary, one of which converted. One click on the second.
+    const converting = await db.click.create({
+      data: {
+        affiliateId: sarah.id,
+        linkId: primary!.id,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 86400_000),
+      },
+    });
+    await db.click.create({
+      data: {
+        affiliateId: sarah.id,
+        linkId: primary!.id,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 86400_000),
+      },
+    });
+    await db.click.create({
+      data: {
+        affiliateId: sarah.id,
+        linkId: secondId,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 86400_000),
+      },
+    });
+    await db.commission.create({
+      data: {
+        affiliateId: sarah.id,
+        clickId: converting.id,
+        amount: "12.00",
+        currency: "usd",
+        status: "PAYABLE",
+        payableAt: new Date(),
+        stripePaymentRef: crypto.randomUUID(),
+      },
+    });
+
+    const stats = await listLinksWithStats(sarah.id);
+    expect(stats.map((s) => s.code)).toEqual(["sarah", "sarah-pricing"]);
+    expect(stats[0]).toMatchObject({ clicks: 2, conversions: 1, isPrimary: true });
+    expect(stats[0].earned).toEqual([{ currency: "usd", total: "12.00" }]);
+    expect(stats[1]).toMatchObject({ clicks: 1, conversions: 0, earned: [] });
   });
 });
