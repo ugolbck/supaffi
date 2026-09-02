@@ -1,12 +1,15 @@
 import { redirect, notFound } from "next/navigation";
 import { Check, CreditCard, Mail } from "lucide-react";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwnerBySlug, getIntegrationStatus } from "@/lib/merchant";
+import { getMerchantForOwnerBySlug, getIntegrationStatus, getStripeKeyKind } from "@/lib/merchant";
 import { deliveryMode } from "@/lib/email/transport";
 import { getProductSetup, stepAfter } from "@/lib/productSetup";
+import { getWebhookHealth } from "@/lib/analytics";
+import { originFor } from "@/lib/url";
 import { SetupShell } from "../SetupShell";
 import { ProviderCard } from "./ProviderCard";
 import { PAYMENT_PROVIDERS, EMAIL_PROVIDERS, type Provider } from "./providers";
+import { IntegrationsStatus } from "./IntegrationsStatus";
 
 // Both categories get the same treatment: icon, heading, one line of purpose,
 // and their own pill. Email used to sit under a "your payments" headline, which
@@ -60,10 +63,30 @@ export default async function IntegrationsPage({
   const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
   if (!merchant) notFound();
 
-  const [status, setup] = await Promise.all([
-    getIntegrationStatus(session.user.id, merchant.id),
-    getProductSetup(session.user.id, merchant.id),
-  ]);
+  const setup = await getProductSetup(session.user.id, merchant.id);
+
+  // Once every step is done, the wizard rail (step count, progress bar,
+  // forward button) has nothing left to say. This is what stopped a finished
+  // product from reading "Step 1 of 3" forever.
+  if (setup.complete) {
+    const [health, keyKind] = await Promise.all([
+      getWebhookHealth(session.user.id, merchant.id),
+      getStripeKeyKind(session.user.id, merchant.id),
+    ]);
+    return (
+      <IntegrationsStatus
+        merchant={merchant}
+        webhookUrl={`${originFor(merchant.domain)}/api/webhooks/stripe`}
+        keyKind={keyKind}
+        health={health}
+        emailMode={deliveryMode()}
+        emailConnected={setup.emailConnected}
+        trackingStatus={setup.trackingStatus}
+      />
+    );
+  }
+
+  const status = await getIntegrationStatus(session.user.id, merchant.id);
   const base = `/dashboard/products/${merchant.slug}/integrations`;
 
   // Nothing to connect when the instance prints emails instead of sending

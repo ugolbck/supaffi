@@ -79,15 +79,10 @@ export function SetupShell({
         {aside && <div className="flex flex-col gap-4 lg:col-span-2 lg:min-h-0">{aside}</div>}
       </div>
 
-      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
-        <Link href={`/dashboard/products/${productSlug}`}>
-          <Button variant="ghost" size="sm">
-            Product overview
-          </Button>
-        </Link>
+      <footer className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-border/60 pt-4">
         {next && (
           <Link href={next.href}>
-            <Button>
+            <Button className="cursor-pointer">
               {next.label}
               <ArrowRight />
             </Button>

@@ -34,6 +34,35 @@ export async function getTrackingStatus(merchantId: string): Promise<TrackingSta
   return click ? "awaiting-sale" : "not-started";
 }
 
+export type TrackingTimestamps = {
+  /** The most recent Click on this Merchant, of any age. Not the 30 day
+   * window `getProductMetrics` draws its chart from: the status screen wants
+   * the actual last click, not "none in the last month". */
+  lastClickAt: Date | null;
+  /** The same column `getTrackingStatus` reads, exposed here so the status
+   * screen can print the date without a second Prisma read of its own. */
+  verifiedAt: Date | null;
+};
+
+/** The two dates the tracking status screen shows: last click, last sale. */
+export async function getTrackingTimestamps(merchantId: string): Promise<TrackingTimestamps> {
+  const [merchant, lastClick] = await Promise.all([
+    db.merchant.findUnique({
+      where: { id: merchantId },
+      select: { trackingVerifiedAt: true },
+    }),
+    db.click.findFirst({
+      where: { affiliate: { merchantId } },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+  ]);
+  return {
+    lastClickAt: lastClick?.createdAt ?? null,
+    verifiedAt: merchant?.trackingVerifiedAt ?? null,
+  };
+}
+
 /**
  * Records that a checkout arrived carrying a Referral Token.
  *

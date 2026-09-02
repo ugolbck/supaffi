@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { encrypt } from "@/lib/crypto";
+import { encrypt, decrypt } from "@/lib/crypto";
 import { uniqueSlug } from "@/lib/slug";
 
 // Creating a Merchant no longer takes any credentials. Connecting Stripe
@@ -95,6 +95,33 @@ export async function getIntegrationStatus(
     stripe: Boolean(merchant?.stripeSecretKeyEnc && merchant?.stripeWebhookSecretEnc),
     email: Boolean(merchant?.emailProviderConfigEnc),
   };
+}
+
+export type StripeKeyKind = "restricted" | "secret" | null;
+
+/**
+ * What kind of Stripe key is on file, told apart by its prefix alone.
+ *
+ * `rk_` is what the pre-filled restricted-key link (stripeRestrictedKey.ts)
+ * produces; `sk_` is a full account key pasted in some other way, which can
+ * do far more than Supaffi needs and is worth the Owner's status screen
+ * flagging. Decrypting is cheap (one AES block), and the plaintext never
+ * leaves this function.
+ */
+export async function getStripeKeyKind(
+  ownerId: string,
+  merchantId: string
+): Promise<StripeKeyKind> {
+  const merchant = await db.merchant.findFirst({
+    where: { id: merchantId, ownerId },
+    select: { stripeSecretKeyEnc: true },
+  });
+  if (!merchant?.stripeSecretKeyEnc) return null;
+
+  const key = decrypt(merchant.stripeSecretKeyEnc);
+  if (key.startsWith("rk_")) return "restricted";
+  if (key.startsWith("sk_")) return "secret";
+  return null;
 }
 
 export async function listMerchantsForOwner(

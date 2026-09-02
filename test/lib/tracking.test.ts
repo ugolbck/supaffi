@@ -8,6 +8,7 @@ import {
   recordTrackingVerified,
   shouldCelebrateTracking,
   markTrackingCelebrationSeen,
+  getTrackingTimestamps,
 } from "@/lib/tracking";
 
 // Real database, same as the other lib suites. Runs against the scratch
@@ -164,5 +165,56 @@ describe("tracking celebration", () => {
     });
 
     expect(second!.trackingVerifiedSeenAt).toEqual(first!.trackingVerifiedSeenAt);
+  });
+});
+
+describe("tracking timestamps", () => {
+  beforeEach(clearAll);
+
+  it("is both null with nothing recorded yet", async () => {
+    const { merchant } = await seedMerchant();
+    expect(await getTrackingTimestamps(merchant.id)).toEqual({
+      lastClickAt: null,
+      verifiedAt: null,
+    });
+  });
+
+  it("returns the most recent click, not the first one recorded", async () => {
+    const { merchant, program } = await seedMerchant();
+    const older = await seedClick(merchant.id, program.id);
+    const newer = await seedClick(merchant.id, program.id);
+    // Backdated after the fact: two clicks made in the same test run can land
+    // in the same millisecond, which would make a naive "insert order" test
+    // pass by accident even if the query's ORDER BY were wrong.
+    await db.click.update({
+      where: { id: older.id },
+      data: { createdAt: new Date(Date.now() - 86_400_000) },
+    });
+
+    const { lastClickAt } = await getTrackingTimestamps(merchant.id);
+    expect(lastClickAt?.getTime()).toBe(newer.createdAt.getTime());
+  });
+
+  it("carries the same verifiedAt recordTrackingVerified wrote", async () => {
+    const { merchant } = await seedMerchant();
+    await recordTrackingVerified(merchant.id);
+    const raw = await db.merchant.findUnique({
+      where: { id: merchant.id },
+      select: { trackingVerifiedAt: true },
+    });
+
+    const { verifiedAt } = await getTrackingTimestamps(merchant.id);
+    expect(verifiedAt?.getTime()).toBe(raw!.trackingVerifiedAt!.getTime());
+  });
+
+  it("does not read another Merchant's click", async () => {
+    const mine = await seedMerchant();
+    const theirs = await seedMerchant();
+    await seedClick(theirs.merchant.id, theirs.program.id);
+
+    expect(await getTrackingTimestamps(mine.merchant.id)).toEqual({
+      lastClickAt: null,
+      verifiedAt: null,
+    });
   });
 });

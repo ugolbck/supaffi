@@ -3,9 +3,12 @@ import { Check, Clock } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { getProductSetup, stepAfter } from "@/lib/productSetup";
+import { getTrackingTimestamps } from "@/lib/tracking";
+import { getProductMetrics } from "@/lib/analytics";
 import { originFor } from "@/lib/url";
 import { SetupShell, SetupPanel } from "../SetupShell";
 import { TrackingSteps } from "./TrackingSteps";
+import { TrackingStatus } from "./TrackingStatus";
 
 function StatusPill({ status }: { status: "not-started" | "awaiting-sale" | "verified" }) {
   if (status === "verified") {
@@ -44,6 +47,24 @@ export default async function TrackingPage({
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
   const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
+
+  if (setup.complete) {
+    const [timestamps, metrics] = await Promise.all([
+      getTrackingTimestamps(merchant.id),
+      getProductMetrics(session.user.id, merchant.id),
+    ]);
+    return (
+      <TrackingStatus
+        merchant={merchant}
+        status={status}
+        lastClickAt={timestamps.lastClickAt}
+        verifiedAt={timestamps.verifiedAt}
+        clicks={metrics.clicks}
+        series={metrics.series}
+        scriptTag={scriptTag}
+      />
+    );
+  }
 
   const next = stepAfter(merchant.slug, setup, 3);
 

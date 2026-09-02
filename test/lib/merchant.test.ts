@@ -13,6 +13,7 @@ import {
   getIntegrationStatus,
   getMerchantByDomain,
   getMerchantEmailCredentials,
+  getStripeKeyKind,
 } from "@/lib/merchant";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
@@ -245,5 +246,40 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     expect(result?.domain).toBe("emailcreds-test.example.com");
     expect(result?.emailProviderConfigEnc).not.toBe("resend_api_key_abc");
     expect(result?.emailProviderConfigEnc).toContain(":"); // iv:authTag:ciphertext format
+  });
+
+  it("getStripeKeyKind tells a restricted key from a full secret key", async () => {
+    const { id } = await createMerchant(ownerId, {
+      name: "Restricted",
+      domain: "keykind-restricted.example.com",
+      websiteUrl: "https://example.com",
+    });
+    await connectStripe(ownerId, id, { secretKey: "rk_live_abc", webhookSecret: "whsec_x" });
+    expect(await getStripeKeyKind(ownerId, id)).toBe("restricted");
+
+    const { id: id2 } = await createMerchant(ownerId, {
+      name: "Secret",
+      domain: "keykind-secret.example.com",
+      websiteUrl: "https://example.com",
+    });
+    await connectStripe(ownerId, id2, { secretKey: "sk_live_abc", webhookSecret: "whsec_x" });
+    expect(await getStripeKeyKind(ownerId, id2)).toBe("secret");
+  });
+
+  it("getStripeKeyKind is null when nothing is connected, and never leaks another Owner's key", async () => {
+    const { id } = await createMerchant(ownerId, {
+      name: "Unconnected",
+      domain: "keykind-none.example.com",
+      websiteUrl: "https://example.com",
+    });
+    expect(await getStripeKeyKind(ownerId, id)).toBeNull();
+
+    const { id: theirId } = await createMerchant(otherOwnerId, {
+      name: "NotMine",
+      domain: "keykind-notmine.example.com",
+      websiteUrl: "https://example.com",
+    });
+    await connectStripe(otherOwnerId, theirId, { secretKey: "rk_live_x", webhookSecret: "whsec_x" });
+    expect(await getStripeKeyKind(ownerId, theirId)).toBeNull();
   });
 });
