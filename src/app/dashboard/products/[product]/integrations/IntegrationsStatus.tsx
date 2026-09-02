@@ -79,13 +79,15 @@ function StripeCard({
         </Link>
       }
     >
-      <div className="flex flex-col gap-3">
-        <ConnectedBadge label={keyKind ? `Connected · ${KEY_KIND_LABEL[keyKind]}` : "Connected"} />
-        <div className="flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-1.5 py-1 font-mono text-[11px] text-muted-foreground">
-            {webhookUrl}
-          </code>
-          <CopyLinkButton size="sm" link={webhookUrl} />
+      <div className="flex flex-1 flex-col justify-between gap-3">
+        <div className="flex flex-col gap-3">
+          <ConnectedBadge label={keyKind ? `Connected · ${KEY_KIND_LABEL[keyKind]}` : "Connected"} />
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-1.5 py-1 font-mono text-[11px] text-muted-foreground">
+              {webhookUrl}
+            </code>
+            <CopyLinkButton size="sm" link={webhookUrl} />
+          </div>
         </div>
         <div className="flex flex-col gap-1.5 border-t border-border/60 pt-3">
           <Fact label="Last event">
@@ -121,7 +123,7 @@ function EmailCard({
         </Link>
       }
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-1 flex-col justify-between gap-3">
         {consoleMode ? (
           <span className="inline-flex w-fit items-center gap-1 rounded-full bg-accent-100 px-2 py-0.5 text-xs font-medium text-accent-800">
             <Terminal className="size-3" />
@@ -164,7 +166,7 @@ function TrackingCard({
         </Link>
       }
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-1 flex-col justify-between gap-3">
         {live ? (
           <ConnectedBadge label="Live" />
         ) : (
