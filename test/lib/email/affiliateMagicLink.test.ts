@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const sendMock = vi.fn().mockResolvedValue({ data: { id: "email_123" }, error: null });
 
 vi.mock("resend", () => ({
-  Resend: vi.fn().mockImplementation(function() {
+  Resend: vi.fn().mockImplementation(function () {
     return { emails: { send: sendMock } };
   }),
 }));
@@ -16,11 +16,19 @@ import { Resend } from "resend";
 import { decrypt } from "@/lib/crypto";
 import { sendAffiliateMagicLinkEmail } from "@/lib/email/affiliateMagicLink";
 
+// These assert what the email says and where it points. How it leaves the
+// instance is transport.test.ts. Delivery is pinned on here so the assertions
+// run against a real send rather than depending on the ambient default.
 describe("sendAffiliateMagicLinkEmail", () => {
   beforeEach(() => {
     sendMock.mockClear();
     vi.mocked(Resend).mockClear();
     vi.mocked(decrypt).mockClear();
+    vi.stubEnv("EMAIL_DELIVERY", "send");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("decrypts the Merchant's own Resend key and sends with a verify link scoped to the Merchant's domain", async () => {
@@ -44,6 +52,18 @@ describe("sendAffiliateMagicLinkEmail", () => {
       "https://affiliates.instantgradient.com/affiliates/verify?token=raw-token-abc"
     );
     expect(call.subject).toContain("InstantGradient");
+  });
+
+  it("links over http on a local domain, since an https link to localhost is dead on arrival", async () => {
+    await sendAffiliateMagicLinkEmail(
+      { name: "InstantGradient", domain: "localhost:3600", emailProviderConfigEnc: "enc-blob" },
+      { email: "sarah@example.com" },
+      "raw-token-abc"
+    );
+
+    expect(sendMock.mock.calls[0][0].html).toContain(
+      "http://localhost:3600/affiliates/verify?token=raw-token-abc"
+    );
   });
 
   it("throws when Resend resolves with an error (e.g. unverified sending domain)", async () => {
