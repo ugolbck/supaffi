@@ -6,16 +6,23 @@ import { deliveryMode } from "@/lib/email/transport";
 /**
  * Setup state for one product.
  *
+ * Three steps, and they are the three things that have to be true before the
+ * product can earn anybody anything: the tools are connected, the terms exist,
+ * and the tracking is on the Owner's site.
+ *
+ * Recruiting an affiliate used to be a fourth step. It is not setup, it is
+ * using the product, and counting it meant a fully working product read "3 of
+ * 4" forever and kept an onboarding rail on screens that had stopped being
+ * onboarding. It lives on as the empty state of the Affiliates screen.
+ *
  * Adding the first product is the only step that belongs to the account rather
- * than to a product, so it is not here: it happens on the dashboard home, and
- * everything after it happens on the product's own page. That split is what
- * makes a second product work at all, since a wizard living on the home page
- * has no way to say which product it is talking about.
+ * than to a product, so it is not here either: it happens on the dashboard
+ * home, and everything after it happens on the product's own page.
  *
  * Both the home page's product list and the product page read this, so the two
  * screens cannot disagree about how far along a product is.
  */
-export type SetupStepId = "integrations" | "program" | "tracking" | "affiliate";
+export type SetupStepId = "integrations" | "program" | "tracking";
 
 export type ProductSetup = {
   stripeConnected: boolean;
@@ -32,15 +39,16 @@ export type ProductSetup = {
   integrationsConnected: boolean;
   firstProgramSlug: string | null;
   trackingStatus: TrackingStatus;
+  /** Not a setup step. Cards read it; `doneCount` does not. */
   affiliateCount: number;
   /** Steps finished, out of `totalSteps`. */
   doneCount: number;
   totalSteps: number;
-  /** Every step done, including tracking proven by a real attributed sale. */
+  /** Every step done. Setup is over and the step rail comes off every screen. */
   complete: boolean;
 };
 
-export const SETUP_STEP_COUNT = 4;
+export const SETUP_STEP_COUNT = 3;
 
 export async function getProductSetup(
   ownerId: string,
@@ -67,18 +75,14 @@ export async function getProductSetup(
   const emailRequired = deliveryMode() === "send";
   const integrationsConnected = integrations.stripe && (integrations.email || !emailRequired);
 
-  // Tracking only counts once a real sale has arrived carrying a token. That
-  // is the single moment both halves of the integration are proven, so it is
-  // what 100% has to mean.
-  //
-  // `awaiting-sale` is deliberately not counted here. It gets its own state in
-  // the checklist instead, so the row reads as in progress rather than
-  // untouched, without inflating the number.
+  // Tracking counts as done once anything has been recorded, not once a sale
+  // has proven the checkout half. Waiting on a stranger to buy something is not
+  // a task, and holding setup open on it left every Owner permanently
+  // unfinished through no fault of their own.
   const doneCount = [
     integrationsConnected,
     program !== null,
-    trackingStatus === "verified",
-    affiliateCount > 0,
+    trackingStatus !== "not-started",
   ].filter(Boolean).length;
 
   return {
@@ -96,11 +100,11 @@ export async function getProductSetup(
 }
 
 /**
- * The four steps in order, each knowing where it lives and whether it is done.
+ * The three steps in order, each knowing where it lives and whether it is done.
  *
- * One list, so the checklist on the product page, the "Step N of 4" on each
- * setup screen and the forward button in their footers can never disagree
- * about what the sequence is.
+ * One list, so the stepper on the product page, the "Step N of 3" on each setup
+ * screen and the forward button in their footers can never disagree about what
+ * the sequence is.
  */
 export function setupSteps(
   productSlug: string,
@@ -130,13 +134,6 @@ export function setupSteps(
       // Counts as handled once clicks arrive: waiting on a customer to buy is
       // not something the Owner can act on, so it never blocks the way forward.
       done: setup.trackingStatus !== "not-started",
-    },
-    {
-      id: "affiliate",
-      index: 4,
-      label: "Recruit your first affiliate",
-      href: base,
-      done: setup.affiliateCount > 0,
     },
   ];
 }

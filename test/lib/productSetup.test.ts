@@ -26,6 +26,9 @@ async function seedMerchant(stripeConnected: boolean) {
 }
 
 async function clearAll() {
+  await db.commission.deleteMany();
+  await db.click.deleteMany();
+  await db.affiliate.deleteMany();
   await db.program.deleteMany();
   await db.merchant.deleteMany();
   await db.owner.deleteMany();
@@ -68,6 +71,53 @@ describe.skipIf(!hasDatabase)("product setup", () => {
     expect(setup.integrationsConnected).toBe(false);
     expect(setup.doneCount).toBe(0);
   });
+
+  it("is complete with tools, terms and tracking done, and nobody recruited yet", async () => {
+    // Recruiting an affiliate is using the product, not setting it up. Counting
+    // it kept a working product reading "3 of 4" forever, and kept the step rail
+    // on screens that had stopped being onboarding.
+    vi.stubEnv("EMAIL_DELIVERY", "console");
+    const { owner, merchant } = await seedMerchant(true);
+    const program = await db.program.create({
+      data: {
+        merchantId: merchant.id,
+        slug: "standard",
+        name: "Standard",
+        defaultCommissionRate: "20.00",
+        commissionDurationType: "FOREVER",
+        attributionWindowDays: 60,
+        holdingPeriodDays: 30,
+      },
+    });
+    const affiliate = await db.affiliate.create({
+      data: {
+        merchantId: merchant.id,
+        programId: program.id,
+        email: `a-${crypto.randomUUID()}@example.com`,
+        referralCode: crypto.randomUUID(),
+      },
+    });
+    await db.click.create({
+      data: {
+        affiliateId: affiliate.id,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 60 * 86400_000),
+      },
+    });
+    // Undo the affiliate so the only thing missing is a recruit.
+    await db.click.deleteMany();
+    await db.affiliate.deleteMany();
+    await db.merchant.update({
+      where: { id: merchant.id },
+      data: { trackingVerifiedAt: new Date() },
+    });
+
+    const setup = await getProductSetup(owner.id, merchant.id);
+    expect(setup.totalSteps).toBe(3);
+    expect(setup.affiliateCount).toBe(0);
+    expect(setup.doneCount).toBe(3);
+    expect(setup.complete).toBe(true);
+  });
 });
 
 describe("setup step order", () => {
@@ -80,16 +130,15 @@ describe("setup step order", () => {
     trackingStatus: "not-started",
     affiliateCount: 0,
     doneCount: 2,
-    totalSteps: 4,
+    totalSteps: 3,
     complete: false,
   };
 
   it("sends every step forward, never back at itself", () => {
-    // The dead end this exists to prevent: tracking is the outstanding step
-    // while it waits on a customer, so a "first unfinished" lookup would point
-    // the tracking screen at the tracking screen and offer no way on.
-    expect(stepAfter("m1", base, 3)?.href).toBe("/dashboard/products/m1");
-    expect(stepAfter("m1", base, 3)?.label).toBe("Recruit your first affiliate");
+    // The dead end this exists to prevent: a "first unfinished" lookup would
+    // point the tracking screen at the tracking screen and offer no way on.
+    expect(stepAfter("m1", base, 2)?.href).toBe("/dashboard/products/m1/tracking");
+    expect(stepAfter("m1", base, 3)).toBeNull();
   });
 
   it("skips steps already done", () => {
@@ -104,7 +153,8 @@ describe("setup step order", () => {
   });
 
   it("is null at the end of the sequence", () => {
-    expect(stepAfter("m1", { ...base, affiliateCount: 3 }, 3)).toBeNull();
-    expect(stepAfter("m1", base, 4)).toBeNull();
+    const tracked = { ...base, trackingStatus: "awaiting-sale" as const };
+    expect(stepAfter("m1", tracked, 2)).toBeNull();
+    expect(stepAfter("m1", base, 3)).toBeNull();
   });
 });
