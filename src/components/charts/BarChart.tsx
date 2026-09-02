@@ -24,7 +24,12 @@ const DAY = new Intl.DateTimeFormat("en-GB", {
 export function BarChart({ series, className = "" }: { series: DayPoint[]; className?: string }) {
   const [hovered, setHovered] = useState<number | null>(null);
 
-  const max = Math.max(1, ...series.map((d) => d.clicks));
+  // Two numbers, deliberately. `peak` is what the window actually did and is
+  // what gets printed; `max` is the divisor, floored at 1 so an all-zero
+  // series does not divide by zero. Printing the divisor would tell an
+  // Affiliate with no traffic that their peak was 1.
+  const peak = Math.max(0, ...series.map((d) => d.clicks));
+  const max = Math.max(1, peak);
   const active = hovered === null ? null : series[hovered];
 
   // A label under every one of thirty bars is unreadable, so only the ends and
@@ -45,7 +50,7 @@ export function BarChart({ series, className = "" }: { series: DayPoint[]; class
         <span className="ml-auto font-mono tabular-nums">
           {active
             ? `${DAY.format(new Date(`${active.date}T00:00:00Z`))}  ${active.clicks} clicks  ${active.conversions} conv.`
-            : `peak ${max}`}
+            : `peak ${peak}`}
         </span>
       </div>
 

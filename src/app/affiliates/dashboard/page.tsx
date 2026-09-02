@@ -102,7 +102,7 @@ export default async function AffiliateOverviewPage() {
             </Link>
           }
         >
-          <LinkRows links={links} />
+          <LinkRows links={links} websiteUrl={merchant.websiteUrl} />
         </DashboardCard>
       </Band>
 

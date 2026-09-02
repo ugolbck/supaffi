@@ -1,29 +1,34 @@
 import type { AffiliateCommissionRow, AffiliateCommissionStatus } from "@/lib/affiliate";
 import type { AffiliateLinkStats } from "@/lib/affiliateLink";
+import { linkUrl } from "@/lib/affiliateLink";
 import type { CurrencyTotal } from "@/lib/analytics";
 import { money, moneyHint } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
 
 /**
- * The three list bodies the Overview cards are built from.
+ * The three card bodies the Overview is built from.
  *
  * Split out of the page so the page stays a layout: what fetches, what goes in
- * which cell, and which card is empty. The row treatment itself is the owner
- * overview's, verbatim, so both dashboards read the same.
+ * which cell, and which card is empty. Both treatments here are the owner
+ * overview's, so the two dashboards read the same: links use its Programs
+ * panel, commissions use its distributed rows.
  */
 
 const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
 // FLAGGED never reaches an Affiliate: toDisplayStatus folds it into PENDING
-// before a row gets here, so there are four states, not five.
-const STATUS_STYLES: Record<AffiliateCommissionStatus, string> = {
+// before a row gets here, so there are four states, not five. Exported because
+// the commissions ledger shows the same four and a second copy of them would
+// drift.
+export const STATUS_STYLES: Record<AffiliateCommissionStatus, string> = {
   PENDING: "bg-muted text-muted-foreground",
   PAYABLE: "bg-status-success-bg text-status-success",
   PAID: "bg-accent-100 text-accent-800",
   VOIDED: "bg-muted text-muted-foreground line-through",
 };
 
-const STATUS_LABELS: Record<AffiliateCommissionStatus, string> = {
+export const STATUS_LABELS: Record<AffiliateCommissionStatus, string> = {
   PENDING: "Pending",
   PAYABLE: "Payable",
   PAID: "Paid",
@@ -40,33 +45,67 @@ function stateLabel(row: AffiliateCommissionRow): string {
     case "PAID":
       return row.paidAt ? `Paid ${DATE.format(row.paidAt)}` : "Paid";
     case "VOIDED":
-      return "Voided, refunded";
+      // A void is either a refund or a confirmed self-referral and the row
+      // does not carry which, so it does not claim one.
+      return "Voided";
   }
 }
 
 /**
- * Rows share the card's height rather than stacking at the top, ruled between,
- * which is what keeps these cards full at one row as well as at ten.
+ * One panel per link, sharing the card's height.
+ *
+ * The owner's Programs card, which has the same problem: exactly one item on
+ * day one, and the item's point is a URL somebody has to share. Ruled rows
+ * would centre a single line of grey text in a tall card, so each link gets
+ * what it is actually for instead, the shareable URL and the button that
+ * copies it, with its counts above.
  */
-export function LinkRows({ links }: { links: AffiliateLinkStats[] }) {
+export function LinkRows({
+  links,
+  websiteUrl,
+}: {
+  links: AffiliateLinkStats[];
+  websiteUrl: string;
+}) {
   return (
-    <ul className="flex flex-1 flex-col">
-      {links.map((link) => (
-        <li
-          key={link.id}
-          className="flex min-h-11 flex-1 items-center gap-2.5 border-b border-border/50 py-1.5 text-sm last:border-0"
-        >
-          <span className="min-w-0 flex-1 truncate font-mono text-xs">{link.code}</span>
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-            {link.clicks} clk
-          </span>
-          <span className="shrink-0 font-mono text-xs tabular-nums">{money(link.earned)}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-1 flex-col gap-2">
+      {links.map((link) => {
+        const url = linkUrl(websiteUrl, link);
+        return (
+          <div
+            key={link.id}
+            // justify-between, not the Programs card's justify-center: an
+            // Affiliate has one link far more often than an Owner has one
+            // program, and centring 76px of content in a 164px panel is the
+            // pooling this card was rewritten to remove.
+            className="flex flex-1 flex-col justify-between gap-1.5 rounded-lg border border-border/70 bg-background/60 p-2.5"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate text-sm font-medium">{link.code}</span>
+              {link.isPrimary && <Badge variant="outline">Primary</Badge>}
+            </div>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {link.clicks} clk · {link.conversions} conv · {money(link.earned)}
+            </span>
+            <div className="flex items-center justify-between gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                {url}
+              </code>
+              <CopyLinkButton size="sm" link={url} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
+/**
+ * Rows share the card's height rather than stacking at the top, ruled between,
+ * which is what keeps this card full at one commission as well as at ten. The
+ * amount is the row's one full-size element; date, state and status are its
+ * supporting detail.
+ */
 export function CommissionRows({ rows }: { rows: AffiliateCommissionRow[] }) {
   return (
     <ul className="flex flex-1 flex-col">
@@ -81,7 +120,7 @@ export function CommissionRows({ rows }: { rows: AffiliateCommissionRow[] }) {
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
             {stateLabel(row)}
           </span>
-          <span className="shrink-0 font-mono text-xs tabular-nums">
+          <span className="shrink-0 font-mono text-sm tabular-nums">
             {row.amount} {row.currency.toUpperCase()}
           </span>
           <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>
