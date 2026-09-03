@@ -36,7 +36,9 @@ function windowStart(days: number): Date {
   return start;
 }
 
-function dayKey(date: Date): string {
+/** Exported for `listAffiliatePayments` in affiliate.ts, which buckets `paidAt`
+ * by the same UTC day the rest of this file uses. */
+export function dayKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 

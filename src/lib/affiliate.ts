@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { generateLinkCode } from "@/lib/referralCode";
 import { Prisma } from "@prisma/client";
-import type { CurrencyTotal } from "@/lib/analytics";
+import { dayKey, type CurrencyTotal } from "@/lib/analytics";
 import type { CommissionStatus } from "@/lib/commission";
 
 // Owner-scoping is done in the query, never inferred from the route guard.
@@ -255,6 +255,56 @@ export async function getAffiliatePayoutDetails(affiliateId: string): Promise<st
     select: { payoutDetails: true },
   });
   return affiliate?.payoutDetails ?? null;
+}
+
+export type AffiliatePaymentGroup = {
+  /** Midnight UTC of the day these were marked paid. */
+  paidAt: Date;
+  totals: CurrencyTotal[];
+  count: number;
+};
+
+/**
+ * Payment history, derived rather than read from a table: Supaffi has no
+ * payment rail, so a "payment" is just paid commissions grouped by the
+ * calendar day the Merchant marked them paid.
+ *
+ * Grouped in TypeScript, not SQL: `paidAt` is a timestamp and the bucket is a
+ * UTC day, the same rule `dayKey` already applies to click and commission
+ * series in analytics.ts. A day's rows keep their currencies separate
+ * (CONTEXT.md: never convert), so one bucket can carry several totals.
+ */
+export async function listAffiliatePayments(affiliateId: string): Promise<AffiliatePaymentGroup[]> {
+  const rows = await db.commission.findMany({
+    where: { affiliateId, status: "PAID", paidAt: { not: null } },
+    select: { amount: true, currency: true, paidAt: true },
+  });
+
+  const byDay = new Map<string, { paidAt: Date; totals: Map<string, Prisma.Decimal>; count: number }>();
+  for (const row of rows) {
+    const paidAt = row.paidAt!;
+    const key = dayKey(paidAt);
+    let bucket = byDay.get(key);
+    if (!bucket) {
+      bucket = { paidAt: new Date(`${key}T00:00:00.000Z`), totals: new Map(), count: 0 };
+      byDay.set(key, bucket);
+    }
+    bucket.count += 1;
+    bucket.totals.set(
+      row.currency,
+      (bucket.totals.get(row.currency) ?? new Prisma.Decimal(0)).add(row.amount)
+    );
+  }
+
+  return [...byDay.values()]
+    .sort((a, b) => b.paidAt.getTime() - a.paidAt.getTime())
+    .map((bucket) => ({
+      paidAt: bucket.paidAt,
+      count: bucket.count,
+      totals: [...bucket.totals.entries()]
+        .map(([currency, amount]) => ({ currency, total: amount.toFixed(2) }))
+        .sort((a, b) => a.currency.localeCompare(b.currency)),
+    }));
 }
 
 export type AffiliateListFilters = {

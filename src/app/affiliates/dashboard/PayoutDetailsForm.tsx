@@ -2,8 +2,8 @@
 
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { updatePayoutDetailsAction } from "./updatePayoutDetails";
 
 type FormState = { error?: string; saved?: boolean };
@@ -15,37 +15,47 @@ async function submit(_prevState: FormState, formData: FormData): Promise<FormSt
   return { saved: true };
 }
 
-export function PayoutDetailsForm({ initial }: { initial: string }) {
+/**
+ * Sits inside a `DashboardCard` rather than carrying its own `Card`, so it
+ * stretches with the rest of the band instead of sizing to its own content.
+ *
+ * `form` renders as `display: contents`: its child `DashboardCard` is what
+ * the grid actually places and stretches (the `className` grid-span lands on
+ * that card, same as every other card on this screen), while the form itself
+ * still owns submission, so the Save button in the footer can reach the
+ * textarea in the body even though they are card siblings.
+ */
+export function PayoutDetailsForm({ initial, className }: { initial: string; className?: string }) {
   const [state, formAction] = useActionState(submit, {});
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Payout details</CardTitle>
-        <CardDescription>
-          PayPal email, bank details, whatever the Merchant pays you with. They read this
-          manually when it's time to pay you.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form action={formAction} className="flex flex-col gap-3">
-          <Textarea
-            name="payoutDetails"
-            defaultValue={initial}
-            rows={3}
-            placeholder="e.g. PayPal: you@example.com"
-          />
-          {state.error && (
-            <p role="alert" className="text-sm text-status-danger">
-              {state.error}
+    <form action={formAction} className="contents">
+      <DashboardCard
+        title="Payout details"
+        className={className}
+        footer={
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs" aria-live="polite">
+              {state.error && (
+                <span role="alert" className="text-status-danger">
+                  {state.error}
+                </span>
+              )}
+              {state.saved && <span className="text-status-success">Saved.</span>}
             </p>
-          )}
-          {state.saved && <p className="text-sm text-status-success">Saved.</p>}
-          <Button type="submit" className="self-start">
-            Save
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+            <Button type="submit" size="sm" className="cursor-pointer">
+              Save
+            </Button>
+          </div>
+        }
+      >
+        <Textarea
+          name="payoutDetails"
+          defaultValue={initial}
+          placeholder="e.g. PayPal: you@example.com"
+          className="flex-1 resize-none"
+        />
+      </DashboardCard>
+    </form>
   );
 }

@@ -39,8 +39,13 @@ export function PageHeader({
 }
 
 /** Metric tiles, edge to edge. Two up on a phone, all of them on a desktop. */
-export function SignalRow({ children, columns }: { children: ReactNode; columns: 4 | 5 | 6 }) {
-  const lg = { 4: "lg:grid-cols-4", 5: "lg:grid-cols-5", 6: "lg:grid-cols-6" }[columns];
+export function SignalRow({ children, columns }: { children: ReactNode; columns: 3 | 4 | 5 | 6 }) {
+  const lg = {
+    3: "lg:grid-cols-3",
+    4: "lg:grid-cols-4",
+    5: "lg:grid-cols-5",
+    6: "lg:grid-cols-6",
+  }[columns];
   return (
     <div className={`grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-3 ${lg}`}>{children}</div>
   );
