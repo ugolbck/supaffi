@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
@@ -77,10 +76,16 @@ export function LinksTable({
               </TableHead>
             </TableRow>
           </TableHeader>
-          {/* The ledger keeps its rule under the last row too, which the
-              table strips by default. Without it the one link a new Affiliate
-              has floats a full row above the first filler line. */}
-          <TableBody className="[&_tr:last-child]:border-b">
+          {/* A plain <tbody>, not shadcn's TableBody. Its whole contribution
+              is `[&_tr:last-child]:border-0`, and a competing
+              `[&_tr:last-child]:border-b` alongside it is the same selector at
+              the same specificity, so which one wins is decided by stylesheet
+              emission order rather than by anything in this file. That is the
+              trap that made `Band` take its column count as a prop. Dropping
+              the rule instead is what a ledger wants: the last row keeps the
+              rule TableRow already gives it, so the filler picks the rhythm up
+              exactly one pitch below the last link rather than two. */}
+          <tbody data-slot="table-body">
             {links.map((link, i) => {
               const url = linkUrl(websiteUrl, link);
               const hint = moneyHint(link.earned);
@@ -163,7 +168,7 @@ export function LinksTable({
                 </TableRow>
               );
             })}
-          </TableBody>
+          </tbody>
         </Table>
       </LedgerScroller>
 

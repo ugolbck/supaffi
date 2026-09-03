@@ -22,10 +22,12 @@ import { createLinkAction, updateLinkAction } from "./actions";
  * Creating a link and editing one are the same two fields, so they are the
  * same dialog. Absent `link` means create.
  *
- * Editing carries a warning that is not a formality: rewriting a code frees
- * the old one immediately and anything already shared with it stops earning.
- * There is no alias table and no grace period, which is why the confirm button
- * says what it does rather than "Save".
+ * Rewriting a code frees the old one immediately and anything already shared
+ * with it stops earning. There is no alias table and no grace period, so the
+ * dialog says so and the confirm button names the act rather than saying
+ * "Save". Both are conditional on the code actually changing: an Affiliate who
+ * only repoints their destination is not killing anything, and telling them
+ * they are would be a false statement on screen.
  *
  * The create trigger is built here rather than passed in from the page. Base
  * UI composes by a render prop, and an element the page hands over is a client
@@ -59,6 +61,11 @@ export function LinkDialog({
   const open = openProp ?? uncontrolledOpen;
   const editing = link !== undefined;
 
+  // Normalized the way validateLinkInput normalizes, so retyping the same code
+  // in a different case is not a change and does not raise the warning.
+  const normalized = code.trim().toLowerCase();
+  const codeChanged = link !== undefined && normalized !== link.code.trim().toLowerCase();
+
   function setOpen(next: boolean) {
     // A cancelled edit must not leave its draft behind for the next open, and
     // a created link must not leave the form filled in.
@@ -72,7 +79,7 @@ export function LinkDialog({
   }
 
   const preview = linkUrl(websiteUrl, {
-    code: code.trim().toLowerCase() || "your-code",
+    code: normalized || "your-code",
     destinationPath: destination.trim() || null,
   });
 
@@ -152,7 +159,7 @@ export function LinkDialog({
             </p>
           )}
 
-          {editing && (
+          {codeChanged && (
             <p className="rounded-lg bg-status-warning-bg px-3 py-2 text-xs text-status-warning">
               Anyone who already has your old link will stop earning you commission. Clicks
               already recorded are safe.
@@ -167,7 +174,7 @@ export function LinkDialog({
               Cancel
             </DialogClose>
             <Button type="submit" className="cursor-pointer" disabled={isPending}>
-              {editing ? "Change code" : "Create link"}
+              {!editing ? "Create link" : codeChanged ? "Change code" : "Save changes"}
             </Button>
           </DialogFooter>
         </form>
