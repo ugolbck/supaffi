@@ -103,43 +103,6 @@ export function toDisplayStatus(status: string): AffiliateCommissionStatus {
     : "PENDING";
 }
 
-export type AffiliateStatusTotal = {
-  currency: string;
-  status: AffiliateCommissionStatus;
-  amount: string;
-};
-
-export type AffiliateStats = {
-  totalClicks: number;
-  totals: AffiliateStatusTotal[];
-};
-
-export async function getAffiliateStats(affiliateId: string): Promise<AffiliateStats> {
-  const [totalClicks, grouped] = await Promise.all([
-    db.click.count({ where: { affiliateId } }),
-    db.commission.groupBy({
-      by: ["currency", "status"],
-      where: { affiliateId },
-      _sum: { amount: true },
-    }),
-  ]);
-
-  const merged = new Map<string, Prisma.Decimal>();
-  for (const g of grouped) {
-    const status = toDisplayStatus(g.status);
-    const key = `${g.currency}:${status}`;
-    const amount = g._sum.amount ?? new Prisma.Decimal(0);
-    merged.set(key, (merged.get(key) ?? new Prisma.Decimal(0)).add(amount));
-  }
-
-  const totals: AffiliateStatusTotal[] = [...merged.entries()].map(([key, amount]) => {
-    const [currency, status] = key.split(":");
-    return { currency, status: status as AffiliateCommissionStatus, amount: amount.toFixed(2) };
-  });
-
-  return { totalClicks, totals };
-}
-
 export type AffiliateCommissionRow = {
   id: string;
   amount: string;
