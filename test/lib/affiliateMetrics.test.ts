@@ -143,18 +143,37 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
         stripePaymentRef: crypto.randomUUID(),
       },
     });
+    // A genuinely PENDING row, same currency as the flagged one above. This is
+    // what rowsFor (src/lib/analytics.ts) exists to sum: two source rows that
+    // both display as PENDING must merge into one summed bucket, not overwrite
+    // one another. Without it, the single-flagged-row case above would still
+    // pass even if rowsFor overwrote instead of accumulated.
+    await db.commission.create({
+      data: {
+        affiliateId: sarah.id,
+        clickId: click.id,
+        amount: "4.00",
+        currency: "usd",
+        status: "PENDING",
+        payableAt: new Date(Date.now() + 86400_000),
+        stripePaymentRef: crypto.randomUUID(),
+      },
+    });
+
+    const metrics = await getAffiliateMetrics(sarah.id, 30);
+    expect(metrics.pending).toEqual([{ currency: "usd", total: "13.00" }]);
 
     const totals = await getAffiliateCommissionTotals(sarah.id);
     expect(totals).toEqual([
-      { status: "PENDING", count: 1 },
+      { status: "PENDING", count: 2 },
       { status: "PAYABLE", count: 0 },
       { status: "PAID", count: 0 },
       { status: "VOIDED", count: 0 },
     ]);
 
     const { rows } = await listAffiliateCommissions(sarah.id, { page: 1, pageSize: 10, status: "PENDING" });
-    expect(rows).toHaveLength(1);
-    expect(rows[0].status).toBe("PENDING");
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.status === "PENDING")).toBe(true);
   });
 });
 
