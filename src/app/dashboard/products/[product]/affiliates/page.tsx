@@ -14,7 +14,7 @@ import { getProductMetrics, getTopAffiliates } from "@/lib/analytics";
 import { getProductSetup, sectionGates, SECTION_UNLOCKED_BY } from "@/lib/productSetup";
 import { money, moneyHint } from "@/lib/format";
 import { originFor } from "@/lib/url";
-import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
+import { linkUrl } from "@/lib/affiliateLink";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
@@ -127,7 +127,10 @@ export default async function AffiliatesPage({
       rate: `${row.commissionRate}%`,
       rateIsOverride: row.rateIsOverride,
       joinedLabel: DATE.format(row.createdAt),
-      referralLink: `${merchant.websiteUrl}?${REFERRAL_QUERY_PARAM}=${row.referralCode}`,
+      referralLink: linkUrl(merchant.websiteUrl, {
+        code: row.referralCode,
+        destinationPath: row.destinationPath,
+      }),
       payoutDetails: detail?.payoutDetails ?? null,
       commissions: (detail?.commissions ?? []).map((c) => ({
         id: c.id,

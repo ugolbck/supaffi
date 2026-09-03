@@ -14,6 +14,8 @@ export type LedgerRow = {
   currency: string;
   status: AffiliateCommissionStatus;
   linkCode: string | null;
+  /** A negative clawback row netting against a refund, not new money. */
+  isAdjustment: boolean;
   /** When the money arrives, or what happened to it. The point of the screen. */
   whenLabel: string;
 };
@@ -65,7 +67,9 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                 {row.dateLabel}
               </TableCell>
               <TableCell className="truncate text-right font-mono whitespace-nowrap tabular-nums">
-                {row.amount} {row.currency.toUpperCase()}
+                <span className={row.isAdjustment ? "text-destructive" : undefined}>
+                  {row.amount} {row.currency.toUpperCase()}
+                </span>
               </TableCell>
               <TableCell>
                 <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>

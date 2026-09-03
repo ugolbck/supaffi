@@ -112,6 +112,8 @@ export type AffiliateCommissionRow = {
   payableAt: Date;
   paidAt: Date | null;
   linkCode: string | null;
+  /** A negative clawback row netting against a refund, not new money. */
+  isAdjustment: boolean;
 };
 
 /**
@@ -148,6 +150,7 @@ export async function listAffiliateCommissions(
         createdAt: true,
         payableAt: true,
         paidAt: true,
+        adjustsCommissionId: true,
         click: { select: { link: { select: { code: true } } } },
       },
       orderBy: { createdAt: "desc" },
@@ -168,6 +171,7 @@ export async function listAffiliateCommissions(
       amount: r.amount.toFixed(2),
       status: toDisplayStatus(r.status),
       linkCode: r.click.link?.code ?? null,
+      isAdjustment: r.adjustsCommissionId !== null,
     })),
   };
 }
@@ -282,6 +286,8 @@ export type AffiliateListRow = {
   name: string | null;
   email: string;
   referralCode: string;
+  /** The primary link's destination, for building the referral URL with `linkUrl()`. */
+  destinationPath: string | null;
   programId: string;
   programName: string;
   programSlug: string;
@@ -342,7 +348,7 @@ export async function listAffiliatesForMerchant(
         id: true,
         name: true,
         email: true,
-        links: { where: { isPrimary: true }, select: { code: true } },
+        links: { where: { isPrimary: true }, select: { code: true, destinationPath: true } },
         customCommissionRate: true,
         createdAt: true,
         program: {
@@ -402,6 +408,7 @@ export async function listAffiliatesForMerchant(
       name: a.name,
       email: a.email,
       referralCode: a.links[0]?.code ?? "",
+      destinationPath: a.links[0]?.destinationPath ?? null,
       programId: a.program.id,
       programName: a.program.name,
       programSlug: a.program.slug,

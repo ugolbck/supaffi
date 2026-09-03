@@ -4,7 +4,6 @@ import { requireAffiliate } from "@/lib/affiliateAuth";
 import {
   listAffiliateCommissions,
   getAffiliateCommissionTotals,
-  type AffiliateCommissionRow,
   type AffiliateCommissionStatus,
 } from "@/lib/affiliate";
 import { PageShell, PageHeader, Band } from "@/components/dashboard/PageGrid";
@@ -17,7 +16,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { STATUS_LABELS } from "../OverviewCards";
+import { STATUS_LABELS, commissionStateLabel } from "../OverviewCards";
 import { CommissionLedger, type LedgerRow } from "./CommissionLedger";
 
 const PAGE_SIZE = 25;
@@ -35,21 +34,6 @@ function sanitizePage(raw: string | undefined): number {
   const n = Math.floor(Number(raw));
   if (!Number.isFinite(n) || n < 1) return 1;
   return Math.min(n, 1_000_000);
-}
-
-/**
- * What this commission is waiting on, or what happened to it. The point of
- * the screen: an Affiliate's first question is when the money arrives.
- *
- * VOIDED stays the bare word. The row carries no void reason, and a void can
- * be a refund or a confirmed self-referral, so the label must not claim a
- * refund happened (the same call the overview cards made, OverviewCards.tsx).
- */
-function whenYouGetIt(row: AffiliateCommissionRow): string {
-  if (row.status === "VOIDED") return "Voided";
-  if (row.status === "PAID") return `Paid ${DATE.format(row.paidAt ?? row.payableAt)}`;
-  if (row.status === "PAYABLE") return "Ready to pay";
-  return `Clears ${DATE.format(row.payableAt)}`;
 }
 
 function Tile({
@@ -125,7 +109,8 @@ export default async function AffiliateCommissionsPage({
     currency: row.currency,
     status: row.status,
     linkCode: row.linkCode,
-    whenLabel: whenYouGetIt(row),
+    isAdjustment: row.isAdjustment,
+    whenLabel: commissionStateLabel(row),
   }));
 
   const firstShown = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;

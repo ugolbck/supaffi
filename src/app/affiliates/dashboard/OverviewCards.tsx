@@ -36,13 +36,26 @@ export const STATUS_LABELS: Record<AffiliateCommissionStatus, string> = {
   VOIDED: "Voided",
 };
 
-/** When the money arrives, which is the first thing an Affiliate asks a row. */
-function stateLabel(row: AffiliateCommissionRow): string {
+/**
+ * When the money arrives, which is the first thing an Affiliate asks a row.
+ * The one copy of this label: the Overview cards and the Commissions ledger
+ * both import it, rather than keeping their own that can drift apart.
+ */
+export function commissionStateLabel(row: AffiliateCommissionRow): string {
   switch (row.status) {
-    case "PENDING":
+    case "PENDING": {
+      // FLAGGED folds into PENDING and the sweep deliberately never
+      // promotes a flagged row, so its payableAt can sit in the past
+      // indefinitely. Once that date has passed, naming it reads as a bug
+      // ("Clears 14 Aug" in September); this is honest for both a row
+      // genuinely waiting on the next sweep and a concealed flagged one.
+      if (row.payableAt.getTime() <= Date.now()) return "Clearing shortly";
       return `Clears ${DATE.format(row.payableAt)}`;
+    }
     case "PAYABLE":
-      return "Ready to pay";
+      // An adjustment is a negative clawback netting against the next
+      // payout, not new money on its way to the Affiliate.
+      return row.isAdjustment ? "Refund adjustment, comes off your next payout" : "Ready to pay";
     case "PAID":
       return row.paidAt ? `Paid ${DATE.format(row.paidAt)}` : "Paid";
     case "VOIDED":
@@ -125,9 +138,11 @@ export function CommissionRows({ rows }: { rows: AffiliateCommissionRow[] }) {
               {DATE.format(row.createdAt)}
             </span>
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {stateLabel(row)}
+              {commissionStateLabel(row)}
             </span>
-            <span className="shrink-0 font-mono text-sm tabular-nums">
+            <span
+              className={`shrink-0 font-mono text-sm tabular-nums ${row.isAdjustment ? "text-destructive" : ""}`}
+            >
               {row.amount} {row.currency.toUpperCase()}
             </span>
             <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>

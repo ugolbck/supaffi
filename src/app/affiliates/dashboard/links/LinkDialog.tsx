@@ -15,7 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { linkUrl } from "@/lib/affiliateLink";
+import { linkUrl, validateLinkInput } from "@/lib/affiliateLink";
 import { createLinkAction, updateLinkAction } from "./actions";
 
 /**
@@ -78,9 +78,18 @@ export function LinkDialog({
     else setUncontrolledOpen(next);
   }
 
+  // Run through the same validator the submit does. A destination that would
+  // be rejected (no leading slash, a query string, ...) must not preview as
+  // if it were fine, so it falls back to the site root instead. The code is
+  // stood in with a placeholder that always passes, so a code-only problem
+  // does not also blank out a valid destination.
+  const destinationValidation = validateLinkInput({ code: "placeholder", destinationPath: destination });
+  const previewDestination =
+    destinationValidation.error === null ? destinationValidation.destinationPath : null;
+
   const preview = linkUrl(websiteUrl, {
     code: normalized || "your-code",
-    destinationPath: destination.trim() || null,
+    destinationPath: previewDestination,
   });
 
   function submit() {
