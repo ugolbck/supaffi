@@ -110,7 +110,7 @@ export default async function AffiliateOverviewPage() {
         <DashboardCard
           title="Recent commissions"
           className="lg:col-span-8"
-          bodyScrolls
+          bodyPadding={commissions.rows.length === 0}
           footer={
             <Link href="/affiliates/dashboard/commissions">
               <Button variant="outline" size="sm" className="w-full cursor-pointer">

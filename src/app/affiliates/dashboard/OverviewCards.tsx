@@ -5,6 +5,7 @@ import type { CurrencyTotal } from "@/lib/analytics";
 import { money, moneyHint } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { LedgerScroller, LEDGER_ROW_HEIGHT } from "@/components/dashboard/LedgerScroller";
 
 /**
  * The three card bodies the Overview is built from.
@@ -101,32 +102,39 @@ export function LinkRows({
 }
 
 /**
- * Rows share the card's height rather than stacking at the top, ruled between,
- * which is what keeps this card full at one commission as well as at ten. The
- * amount is the row's one full-size element; date, state and status are its
- * supporting detail.
+ * Rows as a ruled ledger, the same technique `LinksTable`, `CommissionLedger`
+ * and `PaymentRows` (payouts/page.tsx) use: fixed-height rows plus
+ * `LedgerScroller`'s filler picking up the rhythm below the last one. A
+ * `flex-1` row used to do this instead, sharing the card's height between
+ * rows — that reads fine at ten rows but at exactly one commission the sole
+ * `li` stretched to the whole card and centred its one line in the middle,
+ * real dead space above and below rather than a full card (the same bug
+ * `PaymentRows` had at one payment). The amount is the row's one full-size
+ * element; date, state and status are its supporting detail.
  */
 export function CommissionRows({ rows }: { rows: AffiliateCommissionRow[] }) {
   return (
-    <ul className="flex flex-1 flex-col">
-      {rows.map((row) => (
-        <li
-          key={row.id}
-          className="flex min-h-11 flex-1 items-center gap-2.5 border-b border-border/50 py-1.5 text-sm last:border-0"
-        >
-          <span className="w-14 shrink-0 text-xs text-muted-foreground tabular-nums">
-            {DATE.format(row.createdAt)}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {stateLabel(row)}
-          </span>
-          <span className="shrink-0 font-mono text-sm tabular-nums">
-            {row.amount} {row.currency.toUpperCase()}
-          </span>
-          <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>
-        </li>
-      ))}
-    </ul>
+    <LedgerScroller>
+      <ul>
+        {rows.map((row) => (
+          <li
+            key={row.id}
+            className={`flex items-center gap-2.5 border-b border-border/50 px-4 text-sm ${LEDGER_ROW_HEIGHT}`}
+          >
+            <span className="w-14 shrink-0 text-xs text-muted-foreground tabular-nums">
+              {DATE.format(row.createdAt)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              {stateLabel(row)}
+            </span>
+            <span className="shrink-0 font-mono text-sm tabular-nums">
+              {row.amount} {row.currency.toUpperCase()}
+            </span>
+            <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>
+          </li>
+        ))}
+      </ul>
+    </LedgerScroller>
   );
 }
 
