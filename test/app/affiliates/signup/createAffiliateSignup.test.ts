@@ -1,12 +1,13 @@
-// Destructive: runs db.affiliateLoginToken.deleteMany() / db.affiliate.deleteMany() /
-// db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
+// Destructive: runs db.affiliateLoginToken.deleteMany() / db.affiliateLink.deleteMany() /
+// db.affiliate.deleteMany() / db.program.deleteMany() / db.merchant.deleteMany() /
+// db.owner.deleteMany()
 // before every test. Point DATABASE_URL at a disposable database, never a
 // real deployment's data.
 //
 // This is the only test that calls createAffiliateSignup (the Server
 // Action) directly rather than testing a lower-level lib function, because
 // the retry-on-referralCode-collision behavior in its catch block
-// (src/app/affiliates/signup/[programId]/createAffiliateSignup.ts) can only
+// (src/app/affiliates/signup/[program]/createAffiliateSignup.ts) can only
 // be proven correct by exercising that catch block itself against a real
 // P2002 from Postgres.
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
@@ -30,7 +31,7 @@ vi.mock("@/lib/email/affiliateMagicLink", () => ({
   sendAffiliateMagicLinkEmail: (...args: unknown[]) => sendAffiliateMagicLinkEmailMock(...args),
 }));
 
-// generateReferralCode does its own read-before-write collision check, which
+// generateLinkCode does its own read-before-write collision check, which
 // makes the real race it's vulnerable to hard to force deterministically in
 // a single-process test: two sequential signups would just see each other's
 // row and each pick their own next free suffix, never reaching
@@ -42,14 +43,14 @@ vi.mock("@/lib/email/affiliateMagicLink", () => ({
 // of racy.
 const referralCodeQueue: string[] = [];
 vi.mock("@/lib/referralCode", () => ({
-  generateReferralCode: vi.fn(async () => {
+  generateLinkCode: vi.fn(async () => {
     const next = referralCodeQueue.shift();
     if (next === undefined) throw new Error("test referralCodeQueue exhausted");
     return next;
   }),
 }));
 
-import { createAffiliateSignup } from "@/app/affiliates/signup/[programId]/createAffiliateSignup";
+import { createAffiliateSignup } from "@/app/affiliates/signup/[program]/createAffiliateSignup";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -77,10 +78,11 @@ function formDataFor(name: string, email: string): FormData {
 
 describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
   let merchantId: string;
-  let programId: string;
+  let programSlug: string;
 
   beforeEach(async () => {
     await db.affiliateLoginToken.deleteMany();
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -94,6 +96,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     });
     const merchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId: owner.id,
         name: "TestCo",
         domain: "signup-action-test.example.com",
@@ -106,6 +109,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     merchantId = merchant.id;
     const program = await db.program.create({
       data: {
+        slug: crypto.randomUUID(),
         merchantId,
         name: "Standard",
         defaultCommissionRate: "20.00",
@@ -114,13 +118,14 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
         holdingPeriodDays: 30,
       },
     });
-    programId = program.id;
+    programSlug = program.slug;
 
     headersMock.mockResolvedValue(new Headers({ host: "signup-action-test.example.com" }));
   });
 
   afterAll(async () => {
     await db.affiliateLoginToken.deleteMany();
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -132,7 +137,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     // First "Sarah" claims the "sarah" code.
     referralCodeQueue.push("sarah");
     const first = await createAffiliateSignup(
-      programId,
+      programSlug,
       { status: "form", error: "" },
       formDataFor("Sarah", "sarah1@example.com")
     );
@@ -146,7 +151,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     // once, and succeed with the next scripted code.
     referralCodeQueue.push("sarah", "sarah2");
     const second = await createAffiliateSignup(
-      programId,
+      programSlug,
       { status: "form", error: "" },
       formDataFor("Sarah", "sarah2@example.com")
     );
@@ -155,10 +160,10 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
 
     const affiliates = await db.affiliate.findMany({
       where: { merchantId },
-      select: { email: true, referralCode: true },
+      select: { email: true, links: { where: { isPrimary: true }, select: { code: true } } },
       orderBy: { email: "asc" },
     });
-    expect(affiliates).toEqual([
+    expect(affiliates.map((a) => ({ email: a.email, referralCode: a.links[0]?.code ?? "" }))).toEqual([
       { email: "sarah1@example.com", referralCode: "sarah" },
       { email: "sarah2@example.com", referralCode: "sarah2" },
     ]);
@@ -168,7 +173,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
   it("still treats a genuine duplicate signup (same email) as an existing-login request, not a referralCode retry", async () => {
     referralCodeQueue.push("sarah");
     await createAffiliateSignup(
-      programId,
+      programSlug,
       { status: "form", error: "" },
       formDataFor("Sarah", "sarah@example.com")
     );
@@ -177,7 +182,7 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     // email-collision branch specifically, not the referralCode one.
     referralCodeQueue.push("sarah-again");
     const repeat = await createAffiliateSignup(
-      programId,
+      programSlug,
       { status: "form", error: "" },
       formDataFor("Sarah Again", "sarah@example.com")
     );

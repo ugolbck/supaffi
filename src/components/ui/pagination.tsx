@@ -53,7 +53,9 @@ function PaginationLink({
     <Button
       variant={isActive ? "outline" : "ghost"}
       size={size}
-      className={cn(className)}
+      // Set here rather than at every call site: Previous and Next compose
+      // this same component, so one class covers all three controls.
+      className={cn("cursor-pointer", className)}
       nativeButton={false}
       render={render}
       aria-current={isActive ? "page" : undefined}

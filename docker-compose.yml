@@ -16,6 +16,11 @@ services:
   db:
     image: postgres:18-alpine
     restart: unless-stopped
+    # No published port. Docker writes its own iptables rules ahead of ufw and
+    # firewalld, so a published 5432 is reachable from the internet even on a
+    # host the operator believes is firewalled. The app reaches it as db:5432
+    # over the compose network. For local psql access see
+    # docker-compose.override.yml.example.
     environment:
       POSTGRES_USER: supaffi
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

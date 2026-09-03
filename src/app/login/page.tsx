@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { ownerExists } from "@/lib/owner";
-import { login } from "./actions";
+import { LoginForm } from "./LoginForm";
 
 // Without this, Next.js statically prerenders the page at build time (the
 // ownerExists() check isn't a dynamic API Next can see) and bakes in
@@ -14,27 +14,15 @@ export default async function LoginPage() {
   }
 
   return (
-    <main>
-      <h1>Log in</h1>
-      <form action={async (formData) => {
-        "use server";
-        const result = await login(formData);
-        if (result?.error) {
-          // Next.js Server Actions can't return client-visible errors without
-          // useActionState — deferred to a future pass, out of scope for this
-          // plan's core deliverable (a working login flow).
-        }
-      }}>
-        <label>
-          Email
-          <input type="email" name="email" required />
-        </label>
-        <label>
-          Password
-          <input type="password" name="password" required />
-        </label>
-        <button type="submit">Log in</button>
-      </form>
+    <main className="relative flex min-h-svh items-center justify-center overflow-hidden px-4 py-16">
+      <div
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          background:
+            "radial-gradient(60% 50% at 50% 0%, var(--accent-100) 0%, transparent 70%)",
+        }}
+      />
+      <LoginForm />
     </main>
   );
 }

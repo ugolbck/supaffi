@@ -1,19 +1,19 @@
 import { db } from "@/lib/db";
 
 // Readable, name-based slugs — better CTR/trust than a random ID (see
-// prisma/schema.prisma's comment on Affiliate.referralCode). Globally
+// prisma/schema.prisma's comment on AffiliateLink.code). Globally
 // unique across every Merchant on the Instance, matching the schema's
 // bare `@unique` (not scoped to merchantId) — the code appears directly in
-// a public `?ref=` URL, and staying merchant-agnostic keeps it short and
+// a public `?via=` URL, and staying merchant-agnostic keeps it short and
 // unambiguous.
-export async function generateReferralCode(name: string): Promise<string> {
+export async function generateLinkCode(name: string): Promise<string> {
   const base = slugify(name) || "affiliate";
   let candidate = base;
   let suffix = 1;
 
   while (
-    await db.affiliate.findUnique({
-      where: { referralCode: candidate },
+    await db.affiliateLink.findUnique({
+      where: { code: candidate },
       select: { id: true },
     })
   ) {

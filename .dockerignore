@@ -1,0 +1,29 @@
+# The builder stage does COPY . ., so anything not excluded here is sent to the
+# daemon and baked into that layer.
+
+# Secrets. .env holds MASTER_ENCRYPTION_KEY and AUTH_SECRET.
+.env
+.env.*
+!.env.example
+
+# Rebuilt inside the image, and copying a host build wastes the layer cache.
+node_modules/
+.next/
+
+.git/
+.gitignore
+
+# Local planning docs, never part of a build.
+docs/
+CONTEXT.md
+.superpowers/
+
+# Tests and tooling the runtime never loads.
+test/
+vitest.config.ts
+
+# Compose and deploy files describe the container, they do not belong in it.
+docker-compose.yml
+docker-compose.override.yml*
+Caddyfile
+README.md

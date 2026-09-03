@@ -5,12 +5,14 @@ import { stripeClientFor } from "@/lib/stripe";
 import { commissionRateFor, computeCommissionAmount, computePayableAt, isExcluded } from "../commission";
 import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { recordTrackingVerified } from "@/lib/tracking";
+import { REFERRAL_METADATA_KEY } from "@/lib/referral";
 
 export async function handleCheckoutSessionCompleted(
   merchant: Merchant,
   session: Stripe.Checkout.Session
 ): Promise<void> {
-  const referralToken = session.client_reference_id;
+  const referralToken = session.metadata?.[REFERRAL_METADATA_KEY];
   if (!referralToken) return; // not a Supaffi-tracked checkout
 
   const click = await db.click.findUnique({
@@ -24,6 +26,14 @@ export async function handleCheckoutSessionCompleted(
   // on the very first purchase.
   const completedAt = new Date(session.created * 1000);
   if (click.expiresAt < completedAt) return;
+
+  // Reaching here proves both halves of the tracking integration at once: a
+  // Click existed, so the script is live on the Merchant's site, and the token
+  // came back on the Session, so their checkout code passes it through.
+  // Recorded before the exclusion and self-referral
+  // checks below, because those decide whether this sale earns a commission,
+  // not whether the integration works.
+  await recordTrackingVerified(merchant.id);
 
   const stripeCustomerId =
     typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null);

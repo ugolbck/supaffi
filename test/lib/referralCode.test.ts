@@ -1,9 +1,10 @@
-// Destructive: runs db.affiliate.deleteMany() / db.program.deleteMany() /
-// db.merchant.deleteMany() / db.owner.deleteMany() before every test. Point
-// DATABASE_URL at a disposable database, never a real deployment's data.
+// Destructive: runs db.affiliateLink.deleteMany() / db.affiliate.deleteMany() /
+// db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
+// before every test. Point DATABASE_URL at a disposable database, never a
+// real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
-import { generateReferralCode } from "@/lib/referralCode";
+import { generateLinkCode } from "@/lib/referralCode";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -22,11 +23,12 @@ if (!hasDatabase) {
   );
 }
 
-describe.skipIf(!hasDatabase)("generateReferralCode", () => {
+describe.skipIf(!hasDatabase)("generateLinkCode", () => {
   let merchantId: string;
   let programId: string;
 
   beforeEach(async () => {
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -37,6 +39,7 @@ describe.skipIf(!hasDatabase)("generateReferralCode", () => {
     });
     const merchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId: owner.id,
         name: "TestCo",
         domain: "refcode-test.example.com",
@@ -49,6 +52,7 @@ describe.skipIf(!hasDatabase)("generateReferralCode", () => {
     merchantId = merchant.id;
     const program = await db.program.create({
       data: {
+        slug: crypto.randomUUID(),
         merchantId,
         name: "Standard",
         defaultCommissionRate: "20.00",
@@ -61,6 +65,7 @@ describe.skipIf(!hasDatabase)("generateReferralCode", () => {
   });
 
   afterAll(async () => {
+    await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
@@ -68,39 +73,43 @@ describe.skipIf(!hasDatabase)("generateReferralCode", () => {
     await db.$disconnect();
   });
 
+  async function makeAffiliateWithCode(email: string, code: string) {
+    const affiliate = await db.affiliate.create({
+      data: { merchantId, programId, email },
+    });
+    await db.affiliateLink.create({
+      data: { affiliateId: affiliate.id, code, isPrimary: true },
+    });
+    return affiliate;
+  }
+
   it("slugifies a name into a lowercase referral code", async () => {
-    const code = await generateReferralCode("Sarah Chen");
+    const code = await generateLinkCode("Sarah Chen");
     expect(code).toBe("sarahchen");
   });
 
   it("keeps digits in the code as-is", async () => {
-    const code = await generateReferralCode("Agent47");
+    const code = await generateLinkCode("Agent47");
     expect(code).toBe("agent47");
   });
 
   it("appends a numeric suffix on collision", async () => {
-    await db.affiliate.create({
-      data: { merchantId, programId, email: "sarah1@example.com", referralCode: "sarah" },
-    });
+    await makeAffiliateWithCode("sarah1@example.com", "sarah");
 
-    const code = await generateReferralCode("Sarah");
+    const code = await generateLinkCode("Sarah");
     expect(code).toBe("sarah2");
   });
 
   it("keeps incrementing past one collision", async () => {
-    await db.affiliate.create({
-      data: { merchantId, programId, email: "sarah1@example.com", referralCode: "sarah" },
-    });
-    await db.affiliate.create({
-      data: { merchantId, programId, email: "sarah2@example.com", referralCode: "sarah2" },
-    });
+    await makeAffiliateWithCode("sarah1@example.com", "sarah");
+    await makeAffiliateWithCode("sarah2@example.com", "sarah2");
 
-    const code = await generateReferralCode("Sarah");
+    const code = await generateLinkCode("Sarah");
     expect(code).toBe("sarah3");
   });
 
   it("falls back to \"affiliate\" for a name with no letters or digits", async () => {
-    const code = await generateReferralCode("!!!");
+    const code = await generateLinkCode("!!!");
     expect(code).toBe("affiliate");
   });
 });

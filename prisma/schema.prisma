@@ -21,18 +21,35 @@ model Merchant {
   ownerId   String
   owner     Owner    @relation(fields: [ownerId], references: [id])
   name      String
+  // What the dashboard URL carries instead of the cuid. Derived from `name`
+  // at creation and left alone afterwards, so renaming a product does not
+  // break links already pointing at it. Unique per Owner, not globally: two
+  // Owners on the same Instance can both have a product called "Docs".
+  slug      String
   domain    String   @unique // e.g. affiliates.instantgradient.com
   websiteUrl String  // the actual product site affiliates promote, e.g. https://instantgradient.com — distinct from `domain`, which is only the tracking subdomain
 
-  // Encrypted at rest (ADR 0003), master key outside the database
-  stripeSecretKeyEnc      String
-  stripeWebhookSecretEnc  String
-  emailProviderConfigEnc  String // SMTP or Resend-style API key, for Affiliate magic links
+  // Encrypted at rest (ADR 0003), master key outside the database.
+  // Nullable because connecting Stripe is a separate onboarding step from
+  // creating the Merchant: a Merchant exists first, then gets integrations
+  // attached. Anything that spends these must handle the unconnected case.
+  stripeSecretKeyEnc      String?
+  stripeWebhookSecretEnc  String?
+  emailProviderConfigEnc  String? // Resend API key, for Affiliate magic links
+
+  // The tracking integration is the one part of setup Supaffi cannot do for
+  // the Merchant: the script goes on their site and client_reference_id goes
+  // in their checkout code. Proving it works needs a real purchase carrying a
+  // token, so it is recorded when that arrives rather than asserted up front.
+  trackingVerifiedAt     DateTime? // first checkout that arrived carrying a Referral Token
+  trackingVerifiedSeenAt DateTime? // when the Owner was shown that it had happened, so the moment is spent once
 
   programs       Program[]
   affiliates     Affiliate[]
   webhookEvents  WebhookEvent[]
   createdAt      DateTime @default(now())
+
+  @@unique([ownerId, slug])
 }
 
 enum CommissionDurationType {
@@ -46,6 +63,10 @@ model Program {
   merchantId String
   merchant   Merchant               @relation(fields: [merchantId], references: [id])
   name       String
+  // Appears in the public signup URL an Affiliate is sent, which is a link a
+  // real person is asked to trust. Unique per Merchant, same derive-once rule
+  // as Merchant.slug.
+  slug       String
 
   defaultCommissionRate   Decimal  @db.Decimal(5, 2) // percentage, e.g. 20.00
   commissionDurationType  CommissionDurationType
@@ -55,6 +76,8 @@ model Program {
 
   affiliates Affiliate[]
   createdAt  DateTime @default(now())
+
+  @@unique([merchantId, slug])
 }
 
 model Affiliate {
@@ -66,16 +89,46 @@ model Affiliate {
 
   email         String
   name          String?
-  referralCode  String   @unique // readable slug from the affiliate's name (e.g. "sarah"), not random — better CTR/trust than a random ID
   customCommissionRate Decimal? @db.Decimal(5, 2) // overrides the current Program's default when set
   payoutDetails String?  // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
 
+  links       AffiliateLink[]
   clicks      Click[]
   commissions Commission[]
   loginTokens AffiliateLoginToken[]
   createdAt   DateTime @default(now())
 
   @@unique([merchantId, email])
+}
+
+/// One shareable referral URL. An Affiliate starts with a primary link created
+/// at signup and can add more, e.g. one pointing at /pricing for a review post.
+///
+/// The code lives here rather than on Affiliate so there is one source of truth
+/// for it. Editing a code rewrites this row: the old code stops resolving
+/// immediately and anything already shared with it stops earning. That is a
+/// product decision, stated to the Affiliate in the edit dialog, not an
+/// oversight (docs/design/affiliate-wireframes.md).
+model AffiliateLink {
+  id          String    @id @default(cuid())
+  affiliateId String
+  affiliate   Affiliate @relation(fields: [affiliateId], references: [id])
+
+  code String @unique // appears directly in a public ?via= URL, so globally unique across the instance, not scoped to a Merchant
+
+  /// Path on the Merchant's site this link points at, e.g. "/pricing". Null is
+  /// the site root. Display only: the tracking snippet reads ?via= from
+  /// whatever page it is loaded on, so a destination needs no runtime support.
+  destinationPath String?
+
+  /// The link created at signup. Exactly one per Affiliate, and it cannot be
+  /// deleted: the Merchant's dashboard shows it and every signup email carries it.
+  isPrimary Boolean @default(false)
+
+  clicks    Click[]
+  createdAt DateTime @default(now())
+
+  @@index([affiliateId])
 }
 
 model AffiliateLoginToken {
@@ -99,6 +152,12 @@ model Click {
   expiresAt     DateTime  // createdAt + Program.attributionWindowDays, computed at insert
   createdAt     DateTime  @default(now())
 
+  // Which link the visitor arrived through. Nullable so deleting a link does
+  // not take its click history with it, and because affiliateId (not this) is
+  // what the attribution and commission pipeline reads.
+  linkId String?
+  link   AffiliateLink? @relation(fields: [linkId], references: [id], onDelete: SetNull)
+
   // Set once, when checkout.session.completed fires and matches referralToken.
   // client_reference_id doesn't propagate to renewal invoices, so every invoice.paid
   // event after the first is matched via this Customer ID instead, not the token.
@@ -107,6 +166,7 @@ model Click {
   commissions Commission[]
 
   @@index([stripeCustomerId])
+  @@index([linkId])
 }
 
 enum CommissionStatus {

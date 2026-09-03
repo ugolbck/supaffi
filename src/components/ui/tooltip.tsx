@@ -21,8 +21,16 @@ function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
 }
 
-function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+// Base UI's Trigger defaults to `delay: 600`, and that default is read from
+// the Trigger itself, not the Root — so a TooltipProvider alone doesn't
+// change it for triggers that don't opt in. These tooltips hang off dashed
+// underlines the user has to deliberately hover, so the hover is already the
+// intent signal; waiting out a hesitation delay on top of it just feels
+// broken. Open on hover, immediately.
+function TooltipTrigger({ delay = 0, ...props }: TooltipPrimitive.Trigger.Props) {
+  return (
+    <TooltipPrimitive.Trigger data-slot="tooltip-trigger" delay={delay} {...props} />
+  )
 }
 
 function TooltipContent({

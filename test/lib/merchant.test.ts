@@ -8,8 +8,12 @@ import {
   listMerchantsForOwner,
   getMerchantForOwner,
   updateMerchant,
+  connectStripe,
+  connectEmailProvider,
+  getIntegrationStatus,
   getMerchantByDomain,
   getMerchantEmailCredentials,
+  getStripeKeyKind,
 } from "@/lib/merchant";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
@@ -56,21 +60,64 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     await db.$disconnect();
   });
 
-  it("creates a Merchant and encrypts its credentials at rest", async () => {
+  it("creates a Merchant with no integrations connected", async () => {
     const { id } = await createMerchant(ownerId, {
       name: "InstantGradient",
       domain: "affiliates.instantgradient.com",
       websiteUrl: "https://example.com",
-      stripeSecretKey: "sk_test_abc123",
-      stripeWebhookSecret: "whsec_abc123",
-      emailProviderConfig: "resend_api_key_abc",
+    });
+
+    const raw = await db.merchant.findUniqueOrThrow({ where: { id } });
+    expect(raw.stripeSecretKeyEnc).toBeNull();
+    expect(raw.stripeWebhookSecretEnc).toBeNull();
+    expect(raw.emailProviderConfigEnc).toBeNull();
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, email: false });
+  });
+
+  it("connectStripe encrypts both Stripe secrets at rest", async () => {
+    const { id } = await createMerchant(ownerId, {
+      name: "InstantGradient",
+      domain: "connect-stripe.example.com",
+      websiteUrl: "https://example.com",
+    });
+
+    await connectStripe(ownerId, id, {
+      secretKey: "sk_test_abc123",
+      webhookSecret: "whsec_abc123",
     });
 
     const raw = await db.merchant.findUniqueOrThrow({ where: { id } });
     expect(raw.stripeSecretKeyEnc).not.toBe("sk_test_abc123");
     expect(raw.stripeSecretKeyEnc).toContain(":"); // iv:authTag:ciphertext format
     expect(raw.stripeWebhookSecretEnc).not.toBe("whsec_abc123");
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: true, email: false });
+  });
+
+  it("connectEmailProvider encrypts the key and is independent of Stripe", async () => {
+    const { id } = await createMerchant(ownerId, {
+      name: "InstantGradient",
+      domain: "connect-email.example.com",
+      websiteUrl: "https://example.com",
+    });
+
+    await connectEmailProvider(ownerId, id, "resend_api_key_abc");
+
+    const raw = await db.merchant.findUniqueOrThrow({ where: { id } });
     expect(raw.emailProviderConfigEnc).not.toBe("resend_api_key_abc");
+    expect(raw.stripeSecretKeyEnc).toBeNull();
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, email: true });
+  });
+
+  it("connectStripe throws when the Merchant belongs to a different Owner", async () => {
+    const { id } = await createMerchant(otherOwnerId, {
+      name: "NotMine",
+      domain: "connect-notmine.example.com",
+      websiteUrl: "https://example.com",
+    });
+
+    await expect(
+      connectStripe(ownerId, id, { secretKey: "sk_test_x", webhookSecret: "whsec_x" })
+    ).rejects.toThrow();
   });
 
   it("lists only the calling Owner's Merchants", async () => {
@@ -78,17 +125,11 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       name: "Mine",
       domain: "mine.example.com",
       websiteUrl: "https://example.com",
-      stripeSecretKey: "sk_test_1",
-      stripeWebhookSecret: "whsec_1",
-      emailProviderConfig: "cfg1",
     });
     await createMerchant(otherOwnerId, {
       name: "NotMine",
       domain: "notmine.example.com",
       websiteUrl: "https://example.com",
-      stripeSecretKey: "sk_test_2",
-      stripeWebhookSecret: "whsec_2",
-      emailProviderConfig: "cfg2",
     });
 
     const mine = await listMerchantsForOwner(ownerId);
@@ -101,39 +142,55 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       name: "NotMine",
       domain: "notmine2.example.com",
       websiteUrl: "https://example.com",
-      stripeSecretKey: "sk_test_3",
-      stripeWebhookSecret: "whsec_3",
-      emailProviderConfig: "cfg3",
     });
 
     const result = await getMerchantForOwner(ownerId, id);
     expect(result).toBeNull();
   });
 
-  it("updateMerchant only overwrites provided credential fields, leaving others untouched", async () => {
+  it("updateMerchant edits details without disturbing connected integrations", async () => {
     const { id } = await createMerchant(ownerId, {
       name: "Original",
       domain: "original.example.com",
       websiteUrl: "https://example.com",
-      stripeSecretKey: "sk_test_original",
-      stripeWebhookSecret: "whsec_original",
-      emailProviderConfig: "cfg_original",
     });
+    await connectStripe(ownerId, id, {
+      secretKey: "sk_test_original",
+      webhookSecret: "whsec_original",
+    });
+    await connectEmailProvider(ownerId, id, "cfg_original");
     const before = await db.merchant.findUniqueOrThrow({ where: { id } });
 
     await updateMerchant(ownerId, id, {
       name: "Renamed",
       domain: "original.example.com",
       websiteUrl: "https://example.com",
-      stripeSecretKey: "sk_test_new",
-      // stripeWebhookSecret and emailProviderConfig intentionally omitted
     });
 
     const after = await db.merchant.findUniqueOrThrow({ where: { id } });
     expect(after.name).toBe("Renamed");
-    expect(after.stripeSecretKeyEnc).not.toBe(before.stripeSecretKeyEnc);
+    expect(after.stripeSecretKeyEnc).toBe(before.stripeSecretKeyEnc);
     expect(after.stripeWebhookSecretEnc).toBe(before.stripeWebhookSecretEnc);
     expect(after.emailProviderConfigEnc).toBe(before.emailProviderConfigEnc);
+  });
+
+  it("connectStripe rotates one secret without clearing the other", async () => {
+    const { id } = await createMerchant(ownerId, {
+      name: "Rotate",
+      domain: "rotate.example.com",
+      websiteUrl: "https://example.com",
+    });
+    await connectStripe(ownerId, id, {
+      secretKey: "sk_test_first",
+      webhookSecret: "whsec_first",
+    });
+    const before = await db.merchant.findUniqueOrThrow({ where: { id } });
+
+    await connectStripe(ownerId, id, { secretKey: "sk_test_second", webhookSecret: "" });
+
+    const after = await db.merchant.findUniqueOrThrow({ where: { id } });
+    expect(after.stripeSecretKeyEnc).not.toBe(before.stripeSecretKeyEnc);
+    expect(after.stripeWebhookSecretEnc).toBe(before.stripeWebhookSecretEnc);
   });
 
   it("updateMerchant throws when the Merchant belongs to a different Owner", async () => {
@@ -141,9 +198,6 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       name: "NotMine",
       domain: "notmine3.example.com",
       websiteUrl: "https://example.com",
-      stripeSecretKey: "sk_test_4",
-      stripeWebhookSecret: "whsec_4",
-      emailProviderConfig: "cfg4",
     });
 
     await expect(
@@ -156,9 +210,6 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       name: "InstantGradient",
       domain: "websiteurl-test.example.com",
       websiteUrl: "https://instantgradient.com",
-      stripeSecretKey: "sk_test_abc123",
-      stripeWebhookSecret: "whsec_abc123",
-      emailProviderConfig: "resend_api_key_abc",
     });
 
     const result = await getMerchantForOwner(ownerId, id);
@@ -170,9 +221,6 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       name: "InstantGradient",
       domain: "bydomain-test.example.com",
       websiteUrl: "https://instantgradient.com",
-      stripeSecretKey: "sk_test_abc123",
-      stripeWebhookSecret: "whsec_abc123",
-      emailProviderConfig: "resend_api_key_abc",
     });
 
     const result = await getMerchantByDomain("bydomain-test.example.com");
@@ -190,15 +238,48 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       name: "InstantGradient",
       domain: "emailcreds-test.example.com",
       websiteUrl: "https://instantgradient.com",
-      stripeSecretKey: "sk_test_abc123",
-      stripeWebhookSecret: "whsec_abc123",
-      emailProviderConfig: "resend_api_key_abc",
     });
+    await connectEmailProvider(ownerId, id, "resend_api_key_abc");
 
     const result = await getMerchantEmailCredentials(id);
     expect(result?.name).toBe("InstantGradient");
     expect(result?.domain).toBe("emailcreds-test.example.com");
     expect(result?.emailProviderConfigEnc).not.toBe("resend_api_key_abc");
     expect(result?.emailProviderConfigEnc).toContain(":"); // iv:authTag:ciphertext format
+  });
+
+  it("getStripeKeyKind tells a restricted key from a full secret key", async () => {
+    const { id } = await createMerchant(ownerId, {
+      name: "Restricted",
+      domain: "keykind-restricted.example.com",
+      websiteUrl: "https://example.com",
+    });
+    await connectStripe(ownerId, id, { secretKey: "rk_live_abc", webhookSecret: "whsec_x" });
+    expect(await getStripeKeyKind(ownerId, id)).toBe("restricted");
+
+    const { id: id2 } = await createMerchant(ownerId, {
+      name: "Secret",
+      domain: "keykind-secret.example.com",
+      websiteUrl: "https://example.com",
+    });
+    await connectStripe(ownerId, id2, { secretKey: "sk_live_abc", webhookSecret: "whsec_x" });
+    expect(await getStripeKeyKind(ownerId, id2)).toBe("secret");
+  });
+
+  it("getStripeKeyKind is null when nothing is connected, and never leaks another Owner's key", async () => {
+    const { id } = await createMerchant(ownerId, {
+      name: "Unconnected",
+      domain: "keykind-none.example.com",
+      websiteUrl: "https://example.com",
+    });
+    expect(await getStripeKeyKind(ownerId, id)).toBeNull();
+
+    const { id: theirId } = await createMerchant(otherOwnerId, {
+      name: "NotMine",
+      domain: "keykind-notmine.example.com",
+      websiteUrl: "https://example.com",
+    });
+    await connectStripe(otherOwnerId, theirId, { secretKey: "rk_live_x", webhookSecret: "whsec_x" });
+    expect(await getStripeKeyKind(ownerId, theirId)).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
-// Destructive: runs db.program.deleteMany() / db.merchant.deleteMany() /
-// db.owner.deleteMany() before every test. Point DATABASE_URL at a
-// disposable database, never a real deployment's data.
+// Destructive: runs db.affiliateLink.deleteMany() / db.affiliate.deleteMany() /
+// db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
+// before every test. Point DATABASE_URL at a disposable database, never a
+// real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
@@ -49,6 +50,11 @@ describe.skipIf(!hasDatabase)("program", () => {
   let otherMerchantId: string;
 
   beforeEach(async () => {
+    // Affiliates reference Program with a RESTRICT foreign key, so they have
+    // to go first (and AffiliateLink before Affiliate, same reason) or
+    // Program.deleteMany throws instead of cleaning up.
+    await db.affiliateLink.deleteMany();
+    await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
@@ -59,6 +65,7 @@ describe.skipIf(!hasDatabase)("program", () => {
     ownerId = owner.id;
     const merchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId,
         name: "M",
         domain: "program-test.example.com",
@@ -75,6 +82,7 @@ describe.skipIf(!hasDatabase)("program", () => {
     // filter (scoped in addition to the ownership check) protects against.
     const merchant2 = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId,
         name: "M2",
         domain: "program-test-2.example.com",
@@ -92,6 +100,7 @@ describe.skipIf(!hasDatabase)("program", () => {
     otherOwnerId = otherOwner.id;
     const otherMerchant = await db.merchant.create({
       data: {
+        slug: crypto.randomUUID(),
         ownerId: otherOwnerId,
         name: "OM",
         domain: "program-test-other.example.com",
@@ -105,6 +114,8 @@ describe.skipIf(!hasDatabase)("program", () => {
   });
 
   afterAll(async () => {
+    await db.affiliateLink.deleteMany();
+    await db.affiliate.deleteMany();
     await db.program.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
@@ -129,17 +140,61 @@ describe.skipIf(!hasDatabase)("program", () => {
     expect(list[0].name).toBe("Standard");
   });
 
-  it("getProgramForMerchant returns null when the Merchant isn't owned by the caller", async () => {
-    const { id } = await db.program.create({
-      data: { merchantId: otherMerchantId, ...baseInput, defaultCommissionRate: 20 },
+  it("lists Programs with the terms the Programs screen's cards need", async () => {
+    await createProgram(ownerId, merchantId, {
+      ...baseInput,
+      commissionDurationType: "FIXED_MONTHS",
+      commissionDurationMonths: 12,
+      attributionWindowDays: 45,
+      holdingPeriodDays: 15,
     });
-    const result = await getProgramForMerchant(ownerId, otherMerchantId, id);
+
+    const [program] = await listProgramsForMerchant(ownerId, merchantId);
+    expect(program.commissionDurationType).toBe("FIXED_MONTHS");
+    expect(program.commissionDurationMonths).toBe(12);
+    expect(program.attributionWindowDays).toBe(45);
+    expect(program.holdingPeriodDays).toBe(15);
+  });
+
+  it("lists Programs with their affiliate count", async () => {
+    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    await db.affiliate.create({
+      data: {
+        merchantId,
+        programId: id,
+        email: "sarah@example.com",
+        links: { create: { code: "sarah", isPrimary: true } },
+      },
+    });
+    await db.affiliate.create({
+      data: {
+        merchantId,
+        programId: id,
+        email: "rob@example.com",
+        links: { create: { code: "rob", isPrimary: true } },
+      },
+    });
+
+    const list = await listProgramsForMerchant(ownerId, merchantId);
+    expect(list[0].affiliateCount).toBe(2);
+  });
+
+  it("getProgramForMerchant returns null when the Merchant isn't owned by the caller", async () => {
+    const { slug } = await db.program.create({
+      data: {
+        merchantId: otherMerchantId,
+        slug: crypto.randomUUID(),
+        ...baseInput,
+        defaultCommissionRate: 20,
+      },
+    });
+    const result = await getProgramForMerchant(ownerId, otherMerchantId, slug);
     expect(result).toBeNull();
   });
 
   it("getProgramForMerchant returns null for a Program under a different Merchant owned by the SAME Owner", async () => {
-    const { id } = await createProgram(ownerId, merchantId, baseInput);
-    const result = await getProgramForMerchant(ownerId, merchantId2, id);
+    const { slug } = await createProgram(ownerId, merchantId, baseInput);
+    const result = await getProgramForMerchant(ownerId, merchantId2, slug);
     expect(result).toBeNull();
   });
 
@@ -159,7 +214,7 @@ describe.skipIf(!hasDatabase)("program", () => {
 
   it("updateProgram throws when the Merchant isn't owned by the caller", async () => {
     const { id } = await db.program.create({
-      data: { merchantId: otherMerchantId, ...baseInput },
+      data: { merchantId: otherMerchantId, slug: crypto.randomUUID(), ...baseInput },
     });
     await expect(
       updateProgram(ownerId, otherMerchantId, id, { ...baseInput, name: "Hijacked" })
@@ -167,16 +222,16 @@ describe.skipIf(!hasDatabase)("program", () => {
   });
 
   it("getProgramForSignup resolves a Program scoped to its Merchant, no owner required", async () => {
-    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    const { slug } = await createProgram(ownerId, merchantId, baseInput);
 
-    const result = await getProgramForSignup(merchantId, id);
+    const result = await getProgramForSignup(merchantId, slug);
     expect(result?.name).toBe("Standard");
   });
 
   it("getProgramForSignup returns null when the Program belongs to a different Merchant", async () => {
-    const { id } = await createProgram(ownerId, merchantId, baseInput);
+    const { slug } = await createProgram(ownerId, merchantId, baseInput);
 
-    const result = await getProgramForSignup(merchantId2, id);
+    const result = await getProgramForSignup(merchantId2, slug);
     expect(result).toBeNull();
   });
 });

@@ -10,15 +10,20 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 
-type Merchant = { id: string; name: string };
+type Merchant = { id: string; slug: string; name: string };
 
 const STATIC_LABELS: Record<string, string> = {
-  dashboard: "Merchants",
-  merchants: "Merchants",
+  dashboard: "Products",
+  products: "Products",
   new: "New",
   edit: "Edit",
   commissions: "Commissions",
   programs: "Programs",
+  affiliates: "Affiliates",
+  integrations: "Integrations",
+  stripe: "Stripe",
+  resend: "Resend",
+  tracking: "Tracking",
 };
 
 export function DashboardBreadcrumb({ merchants }: { merchants: Merchant[] }) {
@@ -29,14 +34,13 @@ export function DashboardBreadcrumb({ merchants }: { merchants: Merchant[] }) {
   let href = "";
   for (const segment of segments) {
     href += `/${segment}`;
-    const merchant = merchants.find((m) => m.id === segment);
+    const merchant = merchants.find((m) => m.slug === segment);
     const isRawFallback = !merchant && !(segment in STATIC_LABELS);
     const label = merchant ? merchant.name : STATIC_LABELS[segment] ?? segment;
     if (crumbs.length > 0 && crumbs[crumbs.length - 1].label === label) continue;
-    // "programs" has no standalone page (only /programs/new and
-    // /programs/[id]/edit exist), and a segment with no static label or
-    // Merchant match has no known page either — neither should ever link.
-    const isLinkable = segment !== "programs" && !isRawFallback;
+    // A segment with no static label and no Merchant match is an id or a slug
+    // with no page of its own, so it is text, not a link.
+    const isLinkable = !isRawFallback;
     crumbs.push({ label, href, isLinkable });
   }
 
