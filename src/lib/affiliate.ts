@@ -90,10 +90,15 @@ export async function getAffiliateSession(
 
 export type AffiliateCommissionStatus = "PENDING" | "PAYABLE" | "PAID" | "VOIDED";
 
-const AFFILIATE_VISIBLE_STATUSES: readonly string[] = ["PENDING", "PAYABLE", "PAID", "VOIDED"];
+const AFFILIATE_VISIBLE_STATUSES: readonly AffiliateCommissionStatus[] = [
+  "PENDING",
+  "PAYABLE",
+  "PAID",
+  "VOIDED",
+];
 
 export function toDisplayStatus(status: string): AffiliateCommissionStatus {
-  return AFFILIATE_VISIBLE_STATUSES.includes(status)
+  return (AFFILIATE_VISIBLE_STATUSES as readonly string[]).includes(status)
     ? (status as AffiliateCommissionStatus)
     : "PENDING";
 }
@@ -143,13 +148,32 @@ export type AffiliateCommissionRow = {
   createdAt: Date;
   payableAt: Date;
   paidAt: Date | null;
+  linkCode: string | null;
 };
+
+/**
+ * A status filter as an Affiliate can express it, folded onto the real
+ * `where` clause. Asking for PENDING has to also match FLAGGED, or the tile
+ * that says "6 pending" and the rows behind it would disagree the moment a
+ * flag exists (`toDisplayStatus` folds the same way for display).
+ */
+function affiliateStatusWhere(status: AffiliateCommissionStatus | null | undefined) {
+  if (!status) return {};
+  if (status === "PENDING") {
+    return { status: { in: ["PENDING", "FLAGGED"] as CommissionStatus[] } };
+  }
+  return { status: status as CommissionStatus };
+}
 
 export async function listAffiliateCommissions(
   affiliateId: string,
-  { page, pageSize }: { page: number; pageSize: number }
+  {
+    page,
+    pageSize,
+    status,
+  }: { page: number; pageSize: number; status?: AffiliateCommissionStatus | null }
 ): Promise<{ rows: AffiliateCommissionRow[]; total: number }> {
-  const where = { affiliateId };
+  const where = { affiliateId, ...affiliateStatusWhere(status) };
   const [rows, total] = await Promise.all([
     db.commission.findMany({
       where,
@@ -161,6 +185,7 @@ export async function listAffiliateCommissions(
         createdAt: true,
         payableAt: true,
         paidAt: true,
+        click: { select: { link: { select: { code: true } } } },
       },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
@@ -179,8 +204,38 @@ export async function listAffiliateCommissions(
       paidAt: r.paidAt,
       amount: r.amount.toFixed(2),
       status: toDisplayStatus(r.status),
+      linkCode: r.click.link?.code ?? null,
     })),
   };
+}
+
+/**
+ * Count per visible status, for the commissions screen's filter tiles.
+ *
+ * FLAGGED folds into PENDING here too, the same way `listAffiliateCommissions`
+ * folds it in the `where`: a flag is an accusation the Merchant has not acted
+ * on, and it must never surface to the Affiliate it is about, tile count
+ * included.
+ */
+export async function getAffiliateCommissionTotals(
+  affiliateId: string
+): Promise<{ status: AffiliateCommissionStatus; count: number }[]> {
+  const grouped = await db.commission.groupBy({
+    by: ["status"],
+    where: { affiliateId },
+    _count: { _all: true },
+  });
+
+  const counts = new Map<AffiliateCommissionStatus, number>();
+  for (const g of grouped) {
+    const status = toDisplayStatus(g.status);
+    counts.set(status, (counts.get(status) ?? 0) + g._count._all);
+  }
+
+  return AFFILIATE_VISIBLE_STATUSES.map((status) => ({
+    status,
+    count: counts.get(status) ?? 0,
+  }));
 }
 
 export async function updateAffiliatePayoutDetails(
