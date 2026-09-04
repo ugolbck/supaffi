@@ -34,12 +34,38 @@ ask() {
   printf '%s' "$answer"
 }
 
+# --- reusing an existing install's configuration ------------------------
+# An upgrade re-runs this script against a $DIR that may already hold .env
+# from a previous install. Read it here, before the root check, so an
+# upgrade run unattended (cron, a provisioning script) does not re-prompt for
+# things it already knows. Read tolerantly: .env is mode 600 and typically
+# root-owned, and this runs before the privilege check on purpose (validating
+# input before asking for root is deliberate, so a typo costs nothing), so as
+# a non-root operator the read below usually just fails and falls through to
+# the current behaviour. Extracted with grep and cut, not sourced: .env holds
+# secrets and arbitrary values that have no business being evaluated as
+# shell.
+existing_env_value() {
+  [ -r "$DIR/.env" ] || return 0
+  grep "^$1=" "$DIR/.env" 2>/dev/null | tail -n 1 | cut -d= -f2-
+}
+existing_env_has_key() {
+  [ -r "$DIR/.env" ] || return 1
+  grep -q "^$1=" "$DIR/.env" 2>/dev/null
+}
+
 # --- the domain ---------------------------------------------------------
 # Required. Without one there is nothing for Caddy to get a certificate for,
 # and the alternatives (a self-signed certificate, or plain HTTP) both put the
 # Owner password on a connection nobody can verify. Resolved first, before the
 # script asks for root or touches the machine, so a typo costs nothing.
+# Precedence: an explicit SUPAFFI_DOMAIN wins outright (the operator is
+# changing it on purpose), then whatever an existing install already has,
+# then the prompt.
 domain="${SUPAFFI_DOMAIN:-}"
+if [ -z "$domain" ]; then
+  domain="$(existing_env_value SUPAFFI_DOMAIN)"
+fi
 if [ -z "$domain" ]; then
   domain="$(ask 'Domain for this Supaffi instance (e.g. supaffi.example.com): ')"
 fi
@@ -79,7 +105,18 @@ port_busy() {
   fi
 }
 
+# Precedence: an explicit SUPAFFI_PROXY_MODE wins outright, then whatever an
+# existing install already has. There is no separate stored key for this;
+# COMPOSE_PROFILES is what set_env_key already writes, so bundled-proxy means
+# bundled and an empty value means external.
 mode="${SUPAFFI_PROXY_MODE:-}"
+if [ -z "$mode" ] && existing_env_has_key COMPOSE_PROFILES; then
+  if [ "$(existing_env_value COMPOSE_PROFILES)" = "bundled-proxy" ]; then
+    mode="bundled"
+  else
+    mode="external"
+  fi
+fi
 if [ -z "$mode" ]; then
   if port_busy 80 || port_busy 443; then
     say "Port 80 or 443 is already in use, so Supaffi will not bring its own proxy."
