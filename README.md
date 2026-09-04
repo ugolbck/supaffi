@@ -78,7 +78,7 @@ Your proxy then forwards to `http://supaffi-app-1:3000`.
 cd /opt/supaffi && curl -fsSL https://get.supaffi.com | sudo bash
 ```
 
-Settings you already have are kept. Migrations run on start.
+Your secrets and settings are kept. Migrations run on start.
 
 ### Backups
 

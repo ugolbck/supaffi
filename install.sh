@@ -45,10 +45,24 @@ ask() {
 # the current behaviour. Extracted with grep and cut, not sourced: .env holds
 # secrets and arbitrary values that have no business being evaluated as
 # shell.
+#
+# existing_env_value reads a missing key as an empty value and never reports
+# failure. It is deliberately sed and not grep: under `set -euo pipefail` a
+# grep that matches nothing fails the whole pipeline, so a bare assignment
+# like `domain="$(existing_env_value SUPAFFI_DOMAIN)"` would kill the script
+# outright the moment the key is absent, printing nothing. Every install made
+# before this feature existed has secrets in .env and no SUPAFFI_DOMAIN, so
+# that is the common upgrade, not an edge case. sed exits 0 whether or not it
+# matched, which makes the safety a property of the command rather than of a
+# trailing `|| true` that the next edit can drop.
 existing_env_value() {
   [ -r "$DIR/.env" ] || return 0
-  grep "^$1=" "$DIR/.env" 2>/dev/null | tail -n 1 | cut -d= -f2-
+  sed -n "s/^$1=//p" "$DIR/.env" 2>/dev/null | tail -n 1
 }
+# A predicate, so a missing key is a false result rather than an error. This
+# one is meant to be called as an `if` condition (which `set -e` exempts) and
+# nowhere else; it is what keeps a stored-but-empty value distinguishable from
+# an absent key, which existing_env_value alone cannot tell apart.
 existing_env_has_key() {
   [ -r "$DIR/.env" ] || return 1
   grep -q "^$1=" "$DIR/.env" 2>/dev/null
