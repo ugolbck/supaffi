@@ -98,6 +98,9 @@ fi
 
 case "$domain" in
   *://*|*/*) die "Use a bare hostname, with no scheme and no path. Got: $domain" ;;
+  *,*) die "One domain only. Got: $domain" ;;
+  *\**) die "A wildcard gets no certificate here. Caddy needs one hostname it can serve. Got: $domain" ;;
+  *:*) die "Use a bare hostname, with no port. HTTPS is served on 443. Got: $domain" ;;
   *.*) ;;
   *) die "That does not look like a domain: $domain" ;;
 esac
@@ -157,7 +160,11 @@ command -v openssl >/dev/null 2>&1 || die "Missing openssl. Install it, then run
 ensure_docker() {
   if command -v docker >/dev/null 2>&1; then
     local major
-    major="$(docker version --format '{{.Server.Version}}' 2>/dev/null | cut -d. -f1)"
+    # `|| true` inside the substitution, not after it. A daemon that is
+    # installed but not answering fails this pipeline, and under `set -e` a
+    # bare assignment from a failed substitution kills the script outright,
+    # before the message below gets to explain what happened.
+    major="$(docker version --format '{{.Server.Version}}' 2>/dev/null | cut -d. -f1 || true)"
     [ -n "$major" ] \
       || die "Docker is installed but its daemon is not responding. Start it, then run this again."
     [ "$major" -ge "$MIN_DOCKER_MAJOR" ] \
@@ -202,8 +209,23 @@ fi
 cd "$DIR"
 
 # --- configuration ------------------------------------------------------
+# Every write below this line touches a file holding the master encryption
+# key, the database password and the auth secret. A restrictive umask means
+# nothing created here can be born readable by anyone else, including the
+# temporary file set_env_key writes before its own chmod lands. The explicit
+# chmods stay: two independent guarantees on this file rather than one.
+old_umask="$(umask)"
+umask 077
+
 touch .env
 chmod 600 .env
+
+# Whether this install has run before, read before the keys below get
+# appended. Used only to decide how long to wait for a setup token.
+upgrade=no
+if grep -q '^MASTER_ENCRYPTION_KEY=' .env; then
+  upgrade=yes
+fi
 
 # Per-key, so an existing install upgrading into a version that added a new
 # secret gets that one appended without regenerating (and thereby
@@ -227,13 +249,28 @@ set_env_key() {
   chmod 600 .env
 }
 
+# Same precedence as the domain and the proxy mode: an explicit variable
+# wins, then whatever the existing install stored, then the default. Written
+# unconditionally, this would revert on every upgrade, and an operator whose
+# proxy is itself a container has to change it for that proxy to reach the
+# app at all.
+bind="${SUPAFFI_APP_BIND:-}"
+if [ -z "$bind" ]; then
+  bind="$(existing_env_value SUPAFFI_APP_BIND)"
+fi
+if [ -z "$bind" ]; then
+  bind="127.0.0.1:3000"
+fi
+
 set_env_key SUPAFFI_DOMAIN "$domain"
-set_env_key SUPAFFI_APP_BIND "${SUPAFFI_APP_BIND:-127.0.0.1:3000}"
+set_env_key SUPAFFI_APP_BIND "$bind"
 if [ "$mode" = "bundled" ]; then
   set_env_key COMPOSE_PROFILES "bundled-proxy"
 else
   set_env_key COMPOSE_PROFILES ""
 fi
+
+umask "$old_umask"
 
 # --- up -----------------------------------------------------------------
 # Dropping caddy from COMPOSE_PROFILES does not stop a container from an
@@ -253,12 +290,27 @@ docker compose up -d --build
 # --- the setup token ----------------------------------------------------
 # Printed by the app's startup hook when no Owner exists yet. Contract with
 # src/instrumentation.ts: one line, "setup token: <token>".
+#
+# An instance that already has an Owner never prints one again, so on an
+# upgrade this is usually a wait for something that is not coming. $upgrade is
+# the honest signal available here: .env already held the secrets an earlier
+# run generated. It cannot tell whether that run ever created an Owner, so the
+# poll is shortened rather than skipped.
 say "Waiting for Supaffi to start."
+if [ "$upgrade" = "yes" ]; then
+  attempts=4
+else
+  attempts=12
+fi
 token=""
-for _ in $(seq 1 60); do
+for _ in $(seq 1 "$attempts"); do
+  # `|| true` inside the substitution, for the same reason as the docker
+  # version check above: a compose command returning non-zero would otherwise
+  # abort the script here, right after the stack came up, printing neither a
+  # token nor a reason.
   token="$(docker compose logs app 2>/dev/null \
     | sed -n 's/.*setup token: \([A-Za-z0-9_-]\{16,\}\).*/\1/p' \
-    | tail -n 1)"
+    | tail -n 1 || true)"
   [ -n "$token" ] && break
   sleep 5
 done
@@ -269,9 +321,12 @@ if [ -n "$token" ]; then
   echo "  Open https://$domain/setup and paste this token:"
   echo
   echo "      $token"
+elif [ "$upgrade" = "yes" ]; then
+  echo "  No setup token: an instance that already has an Owner does not issue one."
+  echo
+  echo "  If this one never finished setup:  cd $DIR && docker compose logs app"
 else
   echo "  Supaffi is starting but has not printed a setup token yet."
-  echo "  Either it is still building, or this instance already has an Owner."
   echo
   echo "  Check with:  cd $DIR && docker compose logs app"
 fi
@@ -282,7 +337,7 @@ if [ "$mode" = "bundled" ]; then
 else
   echo "  Supaffi is not handling HTTPS. Point your own reverse proxy at:"
   echo
-  echo "      http://127.0.0.1:3000"
+  echo "      http://$bind"
   echo
   echo "  Serve it on $domain, and give every product subdomain you add later"
   echo "  the same treatment."
