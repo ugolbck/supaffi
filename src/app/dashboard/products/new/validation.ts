@@ -25,13 +25,28 @@ function isValidWebsiteUrl(raw: string): boolean {
 // Create and edit validate exactly the same thing now: a Merchant is only
 // ever its own details. Integrations are connected separately and validated
 // by their own functions below.
-export function validateProductInput(input: ProductInput): string | null {
+//
+// `instanceDomain` defaults to "" so the check is opt-in: local development
+// and the existing unit tests call this with one argument, and there is no
+// Instance domain to collide with there. Both real callers (create and edit)
+// pass instanceDomain() from @/lib/instance.
+export function validateProductInput(
+  input: ProductInput,
+  instanceDomain = ""
+): string | null {
   if (!input.name.trim()) return "Name is required";
 
   const domain = normalizeDomain(input.domain);
   if (!domain) return "Domain is required";
   if (domain.includes("://") || domain.includes("/") || /\s/.test(domain)) {
     return "Domain must be a bare hostname (no https://, no path)";
+  }
+  // A Merchant on this domain would be served by the named Caddy site block
+  // that exists to serve the admin dashboard, taking over the Owner's own
+  // login. Enforced here rather than in each action because create and edit
+  // share this validator.
+  if (instanceDomain && domain === instanceDomain) {
+    return "That domain serves this Supaffi instance.";
   }
 
   if (!isValidWebsiteUrl(input.websiteUrl)) {

@@ -4,10 +4,26 @@
 	}
 }
 
-# Matches any domain, since each Merchant on this Instance points their own
-# domain here (ADR 0006). Caddy checks with the app before issuing a cert
-# for a domain it hasn't seen, so pointing an unrelated domain at this
-# server can't be used to obtain free certificates through it.
+# This Instance's own domain, set at install time. A named site block takes
+# precedence over the catch-all below and never consults the ask endpoint, so
+# it gets an ordinary certificate on a box whose database is still empty. The
+# catch-all cannot do this: the ask endpoint only approves a domain that
+# already exists as a Merchant, and a fresh install has none, which is what
+# used to make the setup wizard unreachable.
+#
+# The `:localhost` default only exists so the file still parses when the
+# variable is unset; env substitution happens before parsing, and an empty
+# expansion here would be a syntax error rather than a missing site.
+# Certificate work runs in the background and does not block startup, so
+# installing before DNS has propagated is fine. Caddy keeps retrying.
+{$SUPAFFI_DOMAIN:localhost} {
+	reverse_proxy app:3000
+}
+
+# Every Merchant domain (ADR 0006). Matches any host, since each Merchant
+# points their own domain at this same server. Caddy checks with the app
+# before issuing a certificate for a domain it has not seen, so pointing an
+# unrelated domain here cannot mint free certificates through it.
 :443 {
 	tls {
 		on_demand

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { ownerExists } from "@/lib/owner";
+import { setupTokenExists } from "@/lib/setupToken";
 import { SetupForm } from "./SetupForm";
+import { SetupClosed } from "./SetupClosed";
 
 // Without this, Next.js statically prerenders the page at build time (the
 // ownerExists() check isn't a dynamic API Next can see) and bakes in
@@ -23,7 +25,7 @@ export default async function SetupPage() {
             "radial-gradient(60% 50% at 50% 0%, var(--accent-100) 0%, transparent 70%)",
         }}
       />
-      <SetupForm />
+      {setupTokenExists() ? <SetupForm /> : <SetupClosed />}
     </main>
   );
 }

@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { createMerchant as createMerchantRecord } from "@/lib/merchant";
 import { validateProductInput, normalizeDomain } from "./validation";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { instanceDomain } from "@/lib/instance";
 
 export async function createMerchantAction(
   // Required by useActionState's action contract even though this function
@@ -22,7 +23,7 @@ export async function createMerchantAction(
     websiteUrl: String(formData.get("websiteUrl") ?? ""),
   };
 
-  const validationError = validateProductInput(input);
+  const validationError = validateProductInput(input, instanceDomain());
   if (validationError) return { error: validationError };
 
   let slug: string;
