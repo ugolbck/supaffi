@@ -53,8 +53,18 @@ async function announceSetupTokenIfNeeded(): Promise<void> {
   }
 
   const token = mintSetupToken();
+  // The dashboard address comes first because it is the one that always
+  // works: it needs no DNS record and no proxy in front of it. A domain is a
+  // nicety somebody set deliberately, and it is only reachable once they have
+  // also pointed it here.
+  const hostIp = process.env.SUPAFFI_HOST_IP?.trim();
+  const dashboardPort = process.env.SUPAFFI_DASHBOARD_PORT?.trim() || "3443";
   const domain = process.env.SUPAFFI_DOMAIN?.trim();
-  const url = domain ? `https://${domain}/setup` : "this instance's /setup page";
+  const url = hostIp
+    ? `https://${hostIp}:${dashboardPort}/setup`
+    : domain
+      ? `https://${domain}/setup`
+      : "this instance's /setup page";
   console.log(
     [
       "",
