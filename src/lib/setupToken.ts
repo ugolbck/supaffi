@@ -15,6 +15,12 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 // and the Prisma client in db.ts: survives dev-mode module reloads, which
 // would otherwise silently invalidate a token the operator is mid-way
 // through typing.
+//
+// Per process, which is per instance for the single-container stack this
+// ships as. Run several app replicas behind a load balancer and each one mints
+// its own token while none of them can verify another's, so a correct paste
+// lands on the wrong replica and is rejected at random. Scaling this stack
+// horizontally means moving the token to somewhere all replicas share.
 const globalForSetupToken = globalThis as unknown as {
   supaffiSetupToken?: string;
 };
