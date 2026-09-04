@@ -4,48 +4,63 @@ Simple, self-hostable affiliate program software for SaaS founders. Stripe-nativ
 
 ## Self-hosting
 
-You need a server, and a domain you can point at it. Docker gets installed for
-you if it is missing.
-
-**1. Point a subdomain at your server's public IP.** An A record for something
-like `supaffi.example.com`. This is where you will log in. Each product you run
-a program for gets its own separate subdomain later.
-
-On Cloudflare, leave the proxy off (grey cloud). Orange breaks certificate
-issuance.
-
-**2. Install.**
+You need a server. Nothing else. Docker gets installed if it is missing.
 
 ```sh
-curl -fsSL https://get.supaffi.com | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ugolbck/supaffi/main/install.sh | sudo bash
 ```
 
-It asks two things: the domain from step 1, and whether Supaffi should handle
-HTTPS itself. To answer both up front:
+It asks nothing and prints an address and a token:
 
-```sh
-curl -fsSL https://get.supaffi.com | sudo SUPAFFI_DOMAIN=supaffi.example.com SUPAFFI_PROXY_MODE=bundled bash
+```
+Open https://203.0.113.45:3443/setup and paste this token:
+
+    7Kq2xN...
 ```
 
-The variables go on `bash`, not on `curl`.
+Open it, continue past the browser warning, paste the token, and pick an email
+and password. You are in.
 
-**3. Open the URL it prints and paste the setup token.** The token is printed
-once at startup and only works until you create the Owner account. Lost it?
-`docker compose logs app`, or restart to issue a new one.
+The warning is expected. The certificate was signed by your own server rather
+than by an authority your browser knows, so it cannot vouch for who you are
+talking to, which at your own server's address you already know. The connection
+is encrypted regardless. Portainer and Proxmox do the same thing.
+
+If the address does not load at all, your hosting provider is blocking the
+port. Allow it in their firewall, not on the server.
+
+### Adding your first program
+
+Each affiliate program needs one hostname on that product's own domain. This is
+the only DNS you ever do.
+
+1. Add an A record for `affiliates.yourproduct.com` pointing at your server.
+2. Add the product in the dashboard: that hostname, your site's address, your
+   Stripe keys.
+3. Paste the tracking snippet into your site.
+
+That hostname is where your affiliates sign up, where their dashboard lives, and
+the domain their emails come from, so it has to be yours and it has to match the
+product. A second program gets its own, on its own domain.
+
+On Cloudflare, leave the proxy off (grey cloud) for that record.
 
 ### If you already run a reverse proxy
 
-Supaffi's built-in HTTPS wants ports 80 and 443. If something else already has
-them, answer no to the second question, or pass
-`SUPAFFI_PROXY_MODE=external`. Nothing binds 80 or 443, and Supaffi listens on
-`127.0.0.1:3000` for your own proxy to forward to. The installer detects busy
-ports and picks this mode by itself.
+Nothing changes about the install. Supaffi leaves ports 80 and 443 alone when
+something else already has them, and the dashboard keeps its own port either
+way.
 
-You then handle certificates, for your login domain and for every product
-subdomain you add. Point them all at the same place:
+That choice is made once, on the first install, and remembered. If you later
+want to hand the ports over, or take them back, say so:
+
+```sh
+cd /opt/supaffi && sudo SUPAFFI_PROXY_MODE=external bash install.sh
+```
+
+For each program hostname, add a block pointing at the app:
 
 ```nginx
-# nginx
 location / {
     proxy_pass http://127.0.0.1:3000;
     proxy_set_header Host $host;
@@ -53,11 +68,11 @@ location / {
 }
 ```
 
-`Host` matters. Supaffi decides which product a visitor is looking at from the
-domain they arrived on, so a proxy that rewrites it will serve the wrong one.
+`Host` matters. Supaffi decides which product a visitor came for from the
+hostname they arrived on, so a proxy that rewrites it serves the wrong one.
 
-**If your proxy is itself a container**, it cannot reach the host's loopback.
-Put both on one network instead:
+If your proxy is itself a container it cannot reach the host's loopback. Put
+both on one network:
 
 ```yaml
 # docker-compose.override.yml
@@ -72,42 +87,38 @@ networks:
 
 Your proxy then forwards to `http://supaffi-app-1:3000`.
 
+### A domain for the dashboard
+
+Optional, and never asked for. Point one at your server and install with it
+set:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ugolbck/supaffi/main/install.sh \
+  | sudo SUPAFFI_DOMAIN=supaffi.example.com bash
+```
+
+The address above keeps working either way. Your affiliate programs do not use
+this domain, so most people never need one.
+
 ### Updating
 
 ```sh
-cd /opt/supaffi && curl -fsSL https://get.supaffi.com | sudo bash
+cd /opt/supaffi && curl -fsSL https://raw.githubusercontent.com/ugolbck/supaffi/main/install.sh | sudo bash
 ```
 
-Your secrets and settings are kept. Migrations run on start.
+Your secrets and settings are kept. Migrations run on start. Supaffi tracks the
+`main` branch today, so an update brings whatever has landed there. Versioned
+releases are coming.
 
 ### Backups
 
-Updating dumps the database to `/opt/supaffi/backups` first, and stops if that
-fails. That covers a bad update. It does not cover a dead disk, so you still
-want the two below.
-
-Two things, and losing either one is unrecoverable:
+Updating dumps the database to `/opt/supaffi/backups` first and stops if that
+fails. That covers a bad update, not a dead disk, so you still want these two:
 
 - **The database.** `docker compose exec -T db pg_dump -U supaffi supaffi | gzip > supaffi.sql.gz`, on a cron job, stored off the server.
 - **`MASTER_ENCRYPTION_KEY` from `.env`.** It decrypts every product's Stripe
-  and email credentials. Store it somewhere other than next to the database
-  backup, or a single stolen backup gives up both.
-
-### Reaching setup before DNS resolves
-
-A domain is required to install, by design: the alternatives all mean either a
-browser certificate warning or an unencrypted password on the screen where you
-pick your Owner password.
-
-It does not have to resolve yet, and the server does not have to be exposed to
-the internet at all. Tunnel in from your own machine:
-
-```sh
-ssh -L 3000:127.0.0.1:3000 you@your-server
-```
-
-Then open `http://localhost:3000/setup`. Supaffi listens there in both modes.
-If you changed `SUPAFFI_APP_BIND`, match the second port to it.
+  and email credentials. Keep it somewhere other than next to the database
+  backup, or one stolen backup gives up both.
 
 ## Stack
 
