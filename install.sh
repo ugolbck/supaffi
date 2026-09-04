@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One-command self-hosted install.
-#   curl -fsSL https://get.supaffi.com | sudo bash
-#   curl -fsSL https://get.supaffi.com | sudo SUPAFFI_DOMAIN=supaffi.example.com bash
+# One-command self-hosted install. Asks nothing.
+#   curl -fsSL https://raw.githubusercontent.com/ugolbck/supaffi/main/install.sh | sudo bash
 #
-# The variable goes on `bash`, not on `curl`: putting it before curl sets it
-# for the download, not for this script.
+# get.supaffi.com does not exist yet, so the raw URL above is the real one.
+# Swap it back when the install service is built.
+#
+# Nothing below is prompted for in a normal run. Every knob is an environment
+# variable for the operator who wants one, and every variable goes on `bash`,
+# not on `curl`: putting it before curl sets it for the download rather than
+# for this script.
+#
+#   SUPAFFI_HOST_IP          address the dashboard is served on, detected
+#   SUPAFFI_DASHBOARD_PORT   where it listens, default 3443
+#   SUPAFFI_PROXY_MODE       bundled or external, decided on first install
+#   SUPAFFI_DOMAIN           optional domain for the instance itself
+#   SUPAFFI_APP_BIND         where the app's port lands on the host
 #
 # Clones the repo rather than pulling a published image, so the whole stack
 # (compose file, Caddyfile, Dockerfile, migrations) is actually present on the
@@ -69,47 +79,86 @@ existing_env_has_key() {
 }
 
 # --- the domain ---------------------------------------------------------
-# Required. Without one there is nothing for Caddy to get a certificate for,
-# and the alternatives (a self-signed certificate, or plain HTTP) both put the
-# Owner password on a connection nobody can verify. Resolved first, before the
-# script asks for root or touches the machine, so a typo costs nothing.
-# Precedence: an explicit SUPAFFI_DOMAIN wins outright (the operator is
-# changing it on purpose), then whatever an existing install already has,
-# then the prompt.
+# Never asked for. The dashboard is served on this server's own address with a
+# certificate Caddy signs itself, so an install needs no DNS record and no
+# decision from someone who has not used the product yet. Every question in an
+# installer is a chance to lose a person who has not decided anything yet.
+#
+# Still honoured when set deliberately, and still remembered across upgrades,
+# because that path already works. Each affiliate program needs its own
+# hostname regardless, and that is added inside the product, not here.
 domain="${SUPAFFI_DOMAIN:-}"
 if [ -z "$domain" ]; then
   domain="$(existing_env_value SUPAFFI_DOMAIN)"
 fi
-if [ -z "$domain" ]; then
-  domain="$(ask 'Domain for this Supaffi instance (e.g. supaffi.example.com): ')"
-fi
 domain="$(printf '%s' "$domain" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
 
-if [ -z "$domain" ]; then
-  {
-    echo "A domain is required."
-    echo
-    echo "Point one at this server's public IP, then run:"
-    echo
-    echo "  curl -fsSL https://get.supaffi.com | sudo SUPAFFI_DOMAIN=supaffi.example.com bash"
-  } >&2
-  exit 1
+if [ -n "$domain" ]; then
+  case "$domain" in
+    *://*|*/*) die "SUPAFFI_DOMAIN must be a bare hostname, with no scheme and no path. Got: $domain" ;;
+    *,*) die "SUPAFFI_DOMAIN takes one domain. Got: $domain" ;;
+    *\**) die "A wildcard gets no certificate. SUPAFFI_DOMAIN needs one hostname Caddy can serve. Got: $domain" ;;
+    *:*) die "SUPAFFI_DOMAIN must be a bare hostname, with no port. Got: $domain" ;;
+    *.*) ;;
+    *) die "SUPAFFI_DOMAIN does not look like a domain: $domain" ;;
+  esac
 fi
 
-case "$domain" in
-  *://*|*/*) die "Use a bare hostname, with no scheme and no path. Got: $domain" ;;
-  *,*) die "One domain only. Got: $domain" ;;
-  *\**) die "A wildcard gets no certificate here. Caddy needs one hostname it can serve. Got: $domain" ;;
-  *:*) die "Use a bare hostname, with no port. HTTPS is served on 443. Got: $domain" ;;
-  *.*) ;;
-  *) die "That does not look like a domain: $domain" ;;
+# --- this server's address ----------------------------------------------
+# The name the dashboard certificate is issued for, and the address the
+# operator types into their browser. Asked of an outside service first,
+# because the address they reach us on is the public one and on most hosts
+# that is not what the machine's own interfaces report. The local lookup
+# covers a box with no outbound access. Every step tolerates failure, and the
+# prompt at the end is a last resort rather than a question in the normal
+# flow.
+host_ip="${SUPAFFI_HOST_IP:-}"
+if [ -z "$host_ip" ]; then
+  host_ip="$(existing_env_value SUPAFFI_HOST_IP)"
+fi
+if [ -z "$host_ip" ]; then
+  host_ip="$(curl -fsS --max-time 8 https://api.ipify.org 2>/dev/null || true)"
+fi
+if [ -z "$host_ip" ] && command -v hostname >/dev/null 2>&1; then
+  host_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+fi
+host_ip="$(printf '%s' "$host_ip" | tr -d '[:space:]')"
+if [ -z "$host_ip" ]; then
+  host_ip="$(ask 'Could not detect this server address. Enter its public IP: ')"
+  host_ip="$(printf '%s' "$host_ip" | tr -d '[:space:]')"
+fi
+
+case "$host_ip" in
+  "") die "No address to serve the dashboard on. Re-run with SUPAFFI_HOST_IP set to this server's public IP." ;;
+  *://*|*/*) die "SUPAFFI_HOST_IP must be a bare address, with no scheme and no path. Got: $host_ip" ;;
+  *,*|*\ *) die "SUPAFFI_HOST_IP takes one address. Got: $host_ip" ;;
+  # A bare IPv6 address has to be bracketed inside a Caddy site address, which
+  # this script does not build, so refuse clearly instead of writing a config
+  # that fails to parse hours later. A hostname is accepted and works.
+  *:*) die "SUPAFFI_HOST_IP does not support IPv6 yet. Set it to an IPv4 address or a hostname that resolves to this server. Got: $host_ip" ;;
 esac
+
+# Where that dashboard listens. Same precedence as everything else: an
+# explicit variable, then the existing install, then the default.
+dashboard_port="${SUPAFFI_DASHBOARD_PORT:-}"
+if [ -z "$dashboard_port" ]; then
+  dashboard_port="$(existing_env_value SUPAFFI_DASHBOARD_PORT)"
+fi
+if [ -z "$dashboard_port" ]; then
+  dashboard_port=3443
+fi
+case "$dashboard_port" in
+  ""|*[!0-9]*) die "SUPAFFI_DASHBOARD_PORT must be a port number. Got: $dashboard_port" ;;
+esac
+if [ "$dashboard_port" -lt 1024 ] || [ "$dashboard_port" -gt 65535 ]; then
+  die "SUPAFFI_DASHBOARD_PORT must be between 1024 and 65535. Got: $dashboard_port"
+fi
 
 # --- how it gets served -------------------------------------------------
 # Bundled Caddy takes ports 80 and 443 for itself. A server that already runs
 # a reverse proxy has neither to give, and that is the common case for anyone
-# self-hosting more than one thing, so the answer is asked for rather than
-# assumed.
+# self-hosting more than one thing, so this is worked out rather than asked.
+# The dashboard is unaffected either way, because it has its own port.
 port_busy() {
   if command -v ss >/dev/null 2>&1; then
     ss -ltnH "sport = :$1" 2>/dev/null | grep -q .
@@ -122,27 +171,35 @@ port_busy() {
   fi
 }
 
-# Precedence: an explicit SUPAFFI_PROXY_MODE wins outright, then whatever an
-# existing install already has. There is no separate stored key for this;
-# COMPOSE_PROFILES is what set_env_key already writes, so bundled-proxy means
-# bundled and an empty value means external.
+# Decided, not asked, and only once. Precedence: an explicit
+# SUPAFFI_PROXY_MODE wins outright, then whatever the existing install stored,
+# then a look at the ports.
+#
+# The stored value beating a fresh look is the whole point. After a bundled
+# install it is Supaffi's own Caddy holding 80 and 443, so re-detecting would
+# find them busy, conclude that somebody else owns them, and shut Supaffi's
+# proxy down during what the operator thought was a routine update. Every
+# affiliate program would go dark and nothing would say why. Changing this is
+# an explicit act: SUPAFFI_PROXY_MODE.
+#
+# There is no separate stored key; COMPOSE_PROFILES is what set_env_key
+# already writes. Matched as a substring, because that value also carries
+# dashboard-tls, and an exact comparison against bundled-proxy would read
+# every bundled install as external, which is the same outage by another
+# route.
 mode="${SUPAFFI_PROXY_MODE:-}"
 if [ -z "$mode" ] && existing_env_has_key COMPOSE_PROFILES; then
-  if [ "$(existing_env_value COMPOSE_PROFILES)" = "bundled-proxy" ]; then
-    mode="bundled"
-  else
-    mode="external"
-  fi
+  case "$(existing_env_value COMPOSE_PROFILES)" in
+    *bundled-proxy*) mode="bundled" ;;
+    *) mode="external" ;;
+  esac
 fi
 if [ -z "$mode" ]; then
   if port_busy 80 || port_busy 443; then
     say "Port 80 or 443 is already in use, so Supaffi will not bring its own proxy."
     mode="external"
   else
-    case "$(ask 'Let Supaffi handle HTTPS on ports 80 and 443? [Y/n] ')" in
-      [Nn]*) mode="external" ;;
-      *) mode="bundled" ;;
-    esac
+    mode="bundled"
   fi
 fi
 case "$mode" in
@@ -152,7 +209,7 @@ esac
 
 # --- privileges and tools -----------------------------------------------
 [ "$(id -u)" -eq 0 ] \
-  || die "Run this as root: curl -fsSL https://get.supaffi.com | sudo bash"
+  || die "Run this as root: curl -fsSL https://raw.githubusercontent.com/ugolbck/supaffi/main/install.sh | sudo bash"
 
 command -v git >/dev/null 2>&1 || die "Missing git. Install it, then run this again."
 command -v openssl >/dev/null 2>&1 || die "Missing openssl. Install it, then run this again."
@@ -283,6 +340,52 @@ else
   cd "$DIR"
 fi
 
+# --- ports that are not ours --------------------------------------------
+# Runs here and not with the mode decision above, because telling our own
+# container apart from a stranger's needs a checkout to ask Docker about.
+#
+# Whether $1 is held by a process that is not one of our own containers.
+# Answering "is this port busy" is not enough: after a bundled install our own
+# Caddy is the one holding 80 and 443, and treating that as a conflict would
+# block every update.
+foreign_listener() {
+  port_busy "$1" || return 1
+  local ours
+  ours="$(docker compose ps -q "$2" 2>/dev/null || true)"
+  [ -z "$ours" ]
+}
+
+# An operator who installs nginx after Supaffi finds that nginx will not
+# start, because Supaffi's Caddy already holds the ports. That is the loud,
+# immediate failure and it is the right one. What must not happen is Supaffi
+# quietly standing aside at the next update. So: say what is wrong, name the
+# one way out, and change nothing.
+if [ "$mode" = "bundled" ] && { foreign_listener 80 caddy || foreign_listener 443 caddy; }; then
+  {
+    echo "Supaffi is set to serve HTTPS on ports 80 and 443, but something else"
+    echo "on this server is holding them and it is not Supaffi."
+    echo
+    echo "Nothing was changed. Stop the other service, or hand the ports to it:"
+    echo
+    echo "  cd $DIR && SUPAFFI_PROXY_MODE=external bash install.sh"
+  } >&2
+  exit 1
+fi
+
+# Same reasoning for the dashboard. Without this the install dies inside
+# `docker compose up` with a port allocation error that names no fix.
+if foreign_listener "$dashboard_port" caddy-dashboard; then
+  {
+    echo "Port $dashboard_port is already in use by something else, and that is"
+    echo "where the Supaffi dashboard is served."
+    echo
+    echo "Nothing was changed. Pick another port and run this again:"
+    echo
+    echo "  cd $DIR && SUPAFFI_DASHBOARD_PORT=8443 bash install.sh"
+  } >&2
+  exit 1
+fi
+
 # --- configuration ------------------------------------------------------
 # Every write below this line touches a file holding the master encryption
 # key, the database password and the auth secret. A restrictive umask means
@@ -338,11 +441,16 @@ if [ -z "$bind" ]; then
 fi
 
 set_env_key SUPAFFI_DOMAIN "$domain"
+set_env_key SUPAFFI_HOST_IP "$host_ip"
+set_env_key SUPAFFI_DASHBOARD_PORT "$dashboard_port"
 set_env_key SUPAFFI_APP_BIND "$bind"
+# dashboard-tls is unconditional: the dashboard has to be reachable on a
+# server whose 80 and 443 belong to somebody else, which is exactly where the
+# bundled proxy does not run.
 if [ "$mode" = "bundled" ]; then
-  set_env_key COMPOSE_PROFILES "bundled-proxy"
+  set_env_key COMPOSE_PROFILES "dashboard-tls,bundled-proxy"
 else
-  set_env_key COMPOSE_PROFILES ""
+  set_env_key COMPOSE_PROFILES "dashboard-tls"
 fi
 
 umask "$old_umask"
@@ -390,14 +498,21 @@ for _ in $(seq 1 "$attempts"); do
   sleep 5
 done
 
+# The address that always works, whatever else is configured. A domain, when
+# somebody set one deliberately, is a nicety on top rather than the thing to
+# print here.
+setup_url="https://$host_ip:$dashboard_port"
+
 echo
 echo "────────────────────────────────────────────────────────────────────────"
 if [ -n "$token" ]; then
-  echo "  Open https://$domain/setup and paste this token:"
+  echo "  Open $setup_url/setup and paste this token:"
   echo
   echo "      $token"
 elif [ "$upgrade" = "yes" ]; then
   echo "  No setup token: an instance that already has an Owner does not issue one."
+  echo
+  echo "  Open $setup_url"
   echo
   echo "  If this one never finished setup:  cd $DIR && docker compose logs app"
 else
@@ -406,15 +521,10 @@ else
   echo "  Check with:  cd $DIR && docker compose logs app"
 fi
 echo
-if [ "$mode" = "bundled" ]; then
-  echo "  If $domain does not point at this server's public IP yet, set that"
-  echo "  DNS record now. Caddy keeps retrying until it resolves."
-else
-  echo "  Supaffi is not handling HTTPS. Point your own reverse proxy at:"
-  echo
-  echo "      http://$bind"
-  echo
-  echo "  Serve it on $domain, and give every product subdomain you add later"
-  echo "  the same treatment."
-fi
+echo "  Your browser will warn about the certificate. Continue past it. The"
+echo "  warning means it cannot verify who this server is, which you already"
+echo "  know. The connection is encrypted."
+echo
+echo "  If that address does not load, your hosting provider is blocking port"
+echo "  $dashboard_port. Allow it in their firewall, not on the server."
 echo "────────────────────────────────────────────────────────────────────────"
