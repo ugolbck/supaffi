@@ -163,10 +163,14 @@ grep -q '^AUTH_SECRET=' .env || echo "AUTH_SECRET=$(openssl rand -base64 32)" >>
 
 # Rewritten rather than preserved, since the operator just told us what these
 # should be. Filtered through a temporary file rather than `sed -i`, whose
-# in-place flag takes an argument on BSD and not on GNU.
+# in-place flag takes an argument on BSD and not on GNU. The temp file is
+# chmod'd before the mv, not after: .env holds live secrets by this point, and
+# a redirect creates .env.tmp under the process umask (typically world
+# readable), so moving it into place before restricting its mode would leave
+# .env briefly readable by anyone, permanently if the script died in between.
 set_env_key() {
   if grep -q "^$1=" .env; then
-    grep -v "^$1=" .env > .env.tmp && mv .env.tmp .env
+    grep -v "^$1=" .env > .env.tmp && chmod 600 .env.tmp && mv .env.tmp .env
   fi
   printf '%s=%s\n' "$1" "$2" >> .env
   chmod 600 .env
