@@ -50,4 +50,3 @@ at a specific page on the merchant's site rather than only the root.
   instructions have not been checked against the live key-creation form. Stripe
   ignores unknown identifiers silently, so a wrong one produces a key that
   fails at runtime with no signal at connect time.
-- Owner login has no rate limiting. Each attempt costs 64 MiB of Argon2id.
