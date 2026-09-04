@@ -62,7 +62,13 @@ services:
     # README and the installer's token grep both rely on.
     profiles: ["bundled-proxy"]
     environment:
-      SUPAFFI_DOMAIN: ${SUPAFFI_DOMAIN} # substituted into the named site block in ./Caddyfile before parsing
+      # Compose always materializes this key inside the container, even when
+      # SUPAFFI_DOMAIN is unset on the host, so Caddy would otherwise see an
+      # empty string rather than a missing variable. The Caddyfile's
+      # {$SUPAFFI_DOMAIN:localhost} default only fires on a genuinely absent
+      # variable, so a present-but-empty value skips it and crashes Caddy on
+      # startup. The default belongs here too, not just in the Caddyfile.
+      SUPAFFI_DOMAIN: ${SUPAFFI_DOMAIN:-localhost} # substituted into the named site block in ./Caddyfile before parsing
     ports:
       - "80:80"
       - "443:443"
