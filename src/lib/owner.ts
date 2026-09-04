@@ -1,10 +1,10 @@
 import { db } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 
-export async function ownerExists(): Promise<boolean> {
-  const count = await db.owner.count();
-  return count > 0;
-}
+// Lives in its own module so the startup hook can reach it without dragging
+// Argon2 into the Edge instrumentation bundle. Re-exported here so every
+// other caller keeps importing it from the same place as before.
+export { ownerExists } from "@/lib/ownerExists";
 
 export async function createOwner(
   email: string,
