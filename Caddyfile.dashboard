@@ -1,0 +1,28 @@
+# Serves the dashboard on this server's own address, with a certificate Caddy
+# signs itself. No DNS, no ACME, nothing to configure. This is the same shape
+# Portainer, Proxmox and Nextcloud AIO use for their admin interfaces.
+#
+# default_sni is load-bearing and is the first thing to check if this stops
+# working. A browser sent to a bare IP address transmits no SNI, Caddy cannot
+# match a site block without one, and the handshake fails with
+# `tlsv1 alert internal error` even though the certificate was issued.
+# Without it the port answers nothing over either scheme, which reads like a
+# network fault rather than a configuration one.
+{
+	default_sni {$SUPAFFI_HOST_IP:127.0.0.1}
+	# No public hostname here, so there is no ACME account to register and
+	# nothing worth redirecting from port 80.
+	auto_https disable_redirects
+}
+
+# The scheme is stated for being unambiguous rather than because Caddy needs
+# it: a site address carrying a host and a `tls` directive serves HTTPS either
+# way. What is genuinely required is the default_sni above.
+#
+# Note `:3443` and not `:-3443`. Caddy's env default separator is a single
+# colon, so the shell-style form would default the port to the literal
+# `-3443`.
+https://{$SUPAFFI_HOST_IP:127.0.0.1}:{$SUPAFFI_DASHBOARD_PORT:3443} {
+	tls internal
+	reverse_proxy app:3000
+}
