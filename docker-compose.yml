@@ -7,11 +7,21 @@ services:
       DATABASE_URL: postgres://supaffi:${POSTGRES_PASSWORD}@db:5432/supaffi
       MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY} # decrypts Merchant Stripe/email keys at rest (ADR 0003), generated once at install, never stored in the DB
       AUTH_SECRET: ${AUTH_SECRET} # signs Owner session JWTs (Auth.js)
-      AUTH_TRUST_HOST: "true" # Instance is served on many Merchant domains (ADR 0006) — no single AUTH_URL to pin, and Caddy's on_demand_tls ask endpoint already gates which domains reach the app
+      AUTH_TRUST_HOST: "true" # Instance is served on many Merchant domains (ADR 0006), so there is no single AUTH_URL to pin; Caddy's on_demand_tls ask endpoint already gates which domains reach the app
+      SUPAFFI_DOMAIN: ${SUPAFFI_DOMAIN} # the domain this Instance's own dashboard is served on; a Merchant may not claim it (src/lib/instance.ts)
+    ports:
+      # Loopback by default, which is what proxy-less mode needs: the
+      # operator's own reverse proxy forwards to 127.0.0.1:3000, and the SSH
+      # tunnel in the README works with no extra steps. Binding all
+      # interfaces would be worse than it looks, for the reason spelled out
+      # on the db service below: Docker's iptables rules land ahead of ufw
+      # and firewalld, so a published port is internet-reachable on a host
+      # the operator believes is firewalled. Override deliberately, never by
+      # accident.
+      - "${SUPAFFI_APP_BIND:-127.0.0.1:3000}:3000"
     depends_on:
-      - db
-    expose:
-      - "3000"
+      db:
+        condition: service_healthy
 
   db:
     image: postgres:18-alpine
@@ -25,12 +35,34 @@ services:
       POSTGRES_USER: supaffi
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: supaffi
+    healthcheck:
+      # The app's entrypoint runs `prisma migrate deploy` before the server
+      # starts. Waiting only for the container to exist (plain depends_on)
+      # lets that run before Postgres accepts connections; it usually wins the
+      # race, which is the worst kind of bug to ship to strangers' machines.
+      test: ["CMD-SHELL", "pg_isready -U supaffi -d supaffi"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
     volumes:
       - supaffi_db:/var/lib/postgresql
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    # Opt-in, because this service takes ports 80 and 443 for itself and a
+    # server that already runs a reverse proxy has neither to give. The
+    # installer writes COMPOSE_PROFILES=bundled-proxy into .env for the
+    # default path; leaving it unset drops this service entirely and the
+    # operator's own proxy forwards to SUPAFFI_APP_BIND instead.
+    #
+    # A profile rather than a second compose file selected with -f: the
+    # choice then lives in .env, so every command afterwards stays a plain
+    # `docker compose up -d` / `docker compose logs app`, which is what the
+    # README and the installer's token grep both rely on.
+    profiles: ["bundled-proxy"]
+    environment:
+      SUPAFFI_DOMAIN: ${SUPAFFI_DOMAIN} # substituted into the named site block in ./Caddyfile before parsing
     ports:
       - "80:80"
       - "443:443"
