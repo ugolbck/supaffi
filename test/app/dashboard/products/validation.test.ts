@@ -44,6 +44,37 @@ describe("validateProductInput", () => {
       validateProductInput({ ...validInput, domain: " Affiliates.InstantGradient.com " })
     ).toBeNull();
   });
+
+  it("rejects the Instance's own domain, which would take over the admin host", () => {
+    expect(
+      validateProductInput(
+        { ...validInput, domain: "supaffi.example.com" },
+        "supaffi.example.com"
+      )
+    ).toBe("That domain serves this Supaffi instance.");
+  });
+
+  it("compares against the Instance domain after normalizing, not before", () => {
+    expect(
+      validateProductInput(
+        { ...validInput, domain: "  Supaffi.Example.COM " },
+        "supaffi.example.com"
+      )
+    ).toBe("That domain serves this Supaffi instance.");
+  });
+
+  it("allows any other domain when an Instance domain is set", () => {
+    expect(
+      validateProductInput(
+        { ...validInput, domain: "affiliates.instantgradient.com" },
+        "supaffi.example.com"
+      )
+    ).toBeNull();
+  });
+
+  it("skips the check when no Instance domain is configured, so local development is unaffected", () => {
+    expect(validateProductInput({ ...validInput, domain: "localhost:3000" }, "")).toBeNull();
+  });
 });
 
 describe("validateStripeCredentials", () => {

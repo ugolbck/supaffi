@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { updateMerchant as updateMerchantRecord, type ProductRef } from "@/lib/merchant";
 import { validateProductInput, normalizeDomain } from "../../new/validation";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { instanceDomain } from "@/lib/instance";
 
 export async function updateMerchantAction(
   product: ProductRef,
@@ -21,7 +22,7 @@ export async function updateMerchantAction(
     websiteUrl: String(formData.get("websiteUrl") ?? ""),
   };
 
-  const validationError = validateProductInput(input);
+  const validationError = validateProductInput(input, instanceDomain());
   if (validationError) return { error: validationError };
 
   try {
