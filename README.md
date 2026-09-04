@@ -89,20 +89,21 @@ Two things, and losing either one is unrecoverable:
   and email credentials. Store it somewhere other than next to the database
   backup, or a single stolen backup gives up both.
 
-### Looking around before you have a domain
+### Reaching setup before DNS resolves
 
-There is no way in without one, by design: the alternatives all mean either a
+A domain is required to install, by design: the alternatives all mean either a
 browser certificate warning or an unencrypted password on the screen where you
 pick your Owner password.
 
-To try it first, tunnel in. From your own machine:
+It does not have to resolve yet, and the server does not have to be exposed to
+the internet at all. Tunnel in from your own machine:
 
 ```sh
 ssh -L 3000:127.0.0.1:3000 you@your-server
 ```
 
-Then open `http://localhost:3000/setup`. Supaffi already listens on that
-address, in both modes.
+Then open `http://localhost:3000/setup`. Supaffi listens there in both modes.
+If you changed `SUPAFFI_APP_BIND`, match the second port to it.
 
 ## Stack
 
@@ -121,11 +122,11 @@ Affiliates log in by magic link, sent from `affiliates@<your-domain>`. Locally t
 ```
 ────────────────────────────────────────────────────────────────────────
   EMAIL NOT SENT (EMAIL_DELIVERY=console)
-  merchant: Instantgradient (localhost:3600)
+  merchant: Instantgradient (localhost:3000)
   to:       sarah@example.com
   subject:  Log in to Instantgradient's affiliate program
   links:
-    http://localhost:3600/affiliates/verify?token=...
+    http://localhost:3000/affiliates/verify?token=...
 ────────────────────────────────────────────────────────────────────────
 ```
 
@@ -140,7 +141,7 @@ Never set `console` in production. Those printed links are live single-use login
 Stripe will not accept a `localhost` endpoint. Forward events with its CLI instead, and paste the `whsec_` it prints into the connect form:
 
 ```sh
-stripe listen --forward-to localhost:3600/api/webhooks/stripe
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
 
 ## License
