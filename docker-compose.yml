@@ -9,6 +9,8 @@ services:
       AUTH_SECRET: ${AUTH_SECRET} # signs Owner session JWTs (Auth.js)
       AUTH_TRUST_HOST: "true" # Instance is served on many Merchant domains (ADR 0006), so there is no single AUTH_URL to pin; Caddy's on_demand_tls ask endpoint already gates which domains reach the app
       SUPAFFI_DOMAIN: ${SUPAFFI_DOMAIN} # the domain this Instance's own dashboard is served on; a Merchant may not claim it (src/lib/instance.ts)
+      SUPAFFI_HOST_IP: ${SUPAFFI_HOST_IP:-} # the address the startup banner tells the operator to open, when there is no domain
+      SUPAFFI_DASHBOARD_PORT: ${SUPAFFI_DASHBOARD_PORT:-3443} # where caddy-dashboard serves it
     ports:
       # Loopback by default, which is what proxy-less mode needs: the
       # operator's own reverse proxy forwards to 127.0.0.1:3000, and the SSH
@@ -78,6 +80,39 @@ services:
     depends_on:
       - app
 
+  caddy-dashboard:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # Always runs, unlike the caddy service above. That one only exists when
+    # Supaffi owns ports 80 and 443, and the dashboard has to be reachable on
+    # a server where the operator's own nginx owns them. Compose also rejects
+    # an empty port entry, so one service cannot publish 80/443 in one
+    # situation and 3443 in another; two port layouts need two services.
+    #
+    # Still behind a profile so a single COMPOSE_PROFILES value in .env
+    # describes the whole shape of the install. The installer always writes
+    # dashboard-tls into it.
+    profiles: ["dashboard-tls"]
+    environment:
+      # Defaults repeated here and not left to the Caddyfile alone: Compose
+      # materializes every key it declares, so an unset host variable would
+      # reach Caddy as an empty string, which is not the same as absent and
+      # skips the Caddyfile's own default. That crash-looped the other Caddy
+      # once already.
+      SUPAFFI_HOST_IP: ${SUPAFFI_HOST_IP:-127.0.0.1}
+      SUPAFFI_DASHBOARD_PORT: ${SUPAFFI_DASHBOARD_PORT:-3443}
+    ports:
+      # On all interfaces, deliberately, unlike the app's own binding. Being
+      # reachable from the operator's laptop with no DNS and no proxy is the
+      # entire point of this service, and the connection is encrypted.
+      - "${SUPAFFI_DASHBOARD_PORT:-3443}:${SUPAFFI_DASHBOARD_PORT:-3443}"
+    volumes:
+      - ./Caddyfile.dashboard:/etc/caddy/Caddyfile
+      - supaffi_caddy_dashboard_data:/data
+    depends_on:
+      - app
+
 volumes:
   supaffi_db:
   supaffi_caddy_data:
+  supaffi_caddy_dashboard_data:

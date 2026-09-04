@@ -27,3 +27,6 @@ prisma/generated/
 # OS / editor
 .DS_Store
 *.log
+
+# Pre-update database dumps written by install.sh on a self-hosted box
+backups/

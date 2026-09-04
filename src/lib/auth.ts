@@ -1,6 +1,11 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { verifyOwnerCredentials } from "@/lib/owner";
+import {
+  checkLoginAllowed,
+  recordFailedLogin,
+  clearLoginFailures,
+} from "@/lib/loginThrottle";
 import { consumeAffiliateLoginToken } from "@/lib/affiliateAuth";
 import { authConfig } from "@/lib/auth.config";
 
@@ -30,8 +35,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = credentials?.email;
         const password = credentials?.password;
         if (typeof email !== "string" || typeof password !== "string") return null;
+        // Checked before verifyOwnerCredentials, which is where the 64 MiB of
+        // Argon2id gets spent. Throttling after the hash would still burn the
+        // memory this is here to protect.
+        //
+        // Returns null rather than throwing, so the form keeps saying
+        // "Incorrect email or password". A distinct "too many attempts" would
+        // confirm to a stranger that they have the right email, and the Owner
+        // who trips it is looking at their own server logs anyway.
+        if (!checkLoginAllowed(email)) return null;
         const owner = await verifyOwnerCredentials(email, password);
-        if (!owner) return null;
+        if (!owner) {
+          recordFailedLogin(email);
+          return null;
+        }
+        clearLoginFailures(email);
         return { ...owner, role: "owner" as const };
       },
     }),
