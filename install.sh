@@ -185,6 +185,18 @@ else
 fi
 
 # --- up -----------------------------------------------------------------
+# Dropping caddy from COMPOSE_PROFILES does not stop a container from an
+# earlier bundled install: Compose only removes containers for services that
+# have vanished from the compose file entirely, and a profile-excluded
+# service is still a defined service, not an orphan. `--remove-orphans` does
+# not touch it either, for the same reason; reach for it here and the old
+# container keeps holding ports 80 and 443. Stopping it by name is the only
+# thing that works, and it is a no-op (exit 0) on a fresh install where the
+# container was never created, so this is safe under set -e either way.
+if [ "$mode" = "external" ]; then
+  docker compose stop caddy
+  docker compose rm -f caddy
+fi
 docker compose up -d --build
 
 # --- the setup token ----------------------------------------------------
