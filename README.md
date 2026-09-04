@@ -82,6 +82,10 @@ Your secrets and settings are kept. Migrations run on start.
 
 ### Backups
 
+Updating dumps the database to `/opt/supaffi/backups` first, and stops if that
+fails. That covers a bad update. It does not cover a dead disk, so you still
+want the two below.
+
 Two things, and losing either one is unrecoverable:
 
 - **The database.** `docker compose exec -T db pg_dump -U supaffi supaffi | gzip > supaffi.sql.gz`, on a cron job, stored off the server.

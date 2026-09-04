@@ -198,15 +198,90 @@ ensure_docker() {
 ensure_docker
 
 # --- the stack ----------------------------------------------------------
+# An upgrade replaces the checkout wholesale, so anything the operator changed
+# by hand in a tracked file is about to be destroyed without being mentioned.
+# Refuse instead, and name the escape hatch. Untracked files are not at risk
+# (a hard reset leaves them alone) and .env is ignored, so neither shows here.
+refuse_local_edits() {
+  if [ "${SUPAFFI_DISCARD_LOCAL_CHANGES:-}" = "yes" ]; then
+    say "Discarding local changes, as asked."
+    return 0
+  fi
+  if git diff --quiet && git diff --cached --quiet; then
+    return 0
+  fi
+  {
+    echo "This install has local changes to files the update would overwrite:"
+    echo
+    git diff --name-only
+    git diff --cached --name-only
+    echo
+    echo "Keep them somewhere safe, then run this again. To discard them:"
+    echo
+    echo "  SUPAFFI_DISCARD_LOCAL_CHANGES=yes"
+  } >&2
+  exit 1
+}
+
+# Taken before the update touches anything, so a schema change that goes wrong
+# is a restore rather than a loss. Written next to the install because that is
+# the one place the operator is certain to look; it is not a substitute for
+# the off-server backups the README asks for, and it says so.
+#
+# A failure here stops the update. The whole point is to not proceed without
+# it, and an operator who disagrees has SUPAFFI_SKIP_BACKUP.
+backup_database() {
+  if [ "${SUPAFFI_SKIP_BACKUP:-}" = "yes" ]; then
+    say "Skipping the pre-update backup, as asked."
+    return 0
+  fi
+  # Nothing to dump before the first run brings the database up.
+  if ! docker compose ps -a -q db 2>/dev/null | grep -q .; then
+    return 0
+  fi
+  # A database that exists but is not running cannot be dumped, and refusing
+  # here would block the operator whose stack is already broken and who is
+  # updating to fix it. Say it plainly and carry on, rather than skipping in
+  # silence and letting them believe a backup was taken.
+  if ! docker compose ps -q db 2>/dev/null | grep -q .; then
+    say "The database is not running, so no backup was taken. Continuing."
+    return 0
+  fi
+
+  mkdir -p backups
+  chmod 700 backups
+  local file
+  file="backups/supaffi-$(date -u +%Y%m%d-%H%M%S).sql.gz"
+
+  say "Backing up the database to $DIR/$file"
+  if docker compose exec -T db pg_dump -U supaffi supaffi | gzip > "$file"; then
+    chmod 600 "$file"
+    say "Backed up. Older dumps are kept; prune $DIR/backups yourself."
+  else
+    rm -f "$file"
+    {
+      echo "The database backup failed, so nothing was changed and your"
+      echo "install is still running the version it was."
+      echo
+      echo "Check it is healthy:  cd $DIR && docker compose logs db"
+      echo "To update anyway:     SUPAFFI_SKIP_BACKUP=yes"
+    } >&2
+    exit 1
+  fi
+}
+
 if [ -d "$DIR/.git" ]; then
   say "Updating $DIR"
-  git -C "$DIR" fetch --depth 1 origin main
-  git -C "$DIR" reset --hard FETCH_HEAD
+  cd "$DIR"
+  refuse_local_edits
+  backup_database
+  git fetch --depth 1 origin main
+  git reset --hard FETCH_HEAD
 else
   say "Cloning into $DIR"
   git clone --depth 1 "$REPO" "$DIR"
+  cd "$DIR"
 fi
-cd "$DIR"
 
 # --- configuration ------------------------------------------------------
 # Every write below this line touches a file holding the master encryption
