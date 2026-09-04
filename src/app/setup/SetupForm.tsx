@@ -34,6 +34,19 @@ export function SetupForm() {
             </p>
           )}
           <div className="flex flex-col gap-1.5">
+            <Label htmlFor="setupToken">Setup token</Label>
+            <Input
+              id="setupToken"
+              name="setupToken"
+              autoComplete="off"
+              spellCheck={false}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Printed in this instance&apos;s logs at startup.
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" name="email" autoComplete="email" required />
           </div>
