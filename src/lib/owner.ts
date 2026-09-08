@@ -1,12 +1,16 @@
 import { db } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
 // Lives in its own module so the startup hook can reach it without dragging
 // Argon2 into the Edge instrumentation bundle. Re-exported here so every
 // other caller keeps importing it from the same place as before.
 export { ownerExists } from "@/lib/ownerExists";
 
-export const MIN_PASSWORD_LENGTH = 12;
+// Re-exported so callers that already reach this module keep one import. The
+// constant itself lives in a leaf module the setup screen can import without
+// dragging Prisma and Argon2 into a client bundle.
+export { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
 export async function createOwner(
   email: string,
