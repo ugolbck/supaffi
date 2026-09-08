@@ -3,6 +3,17 @@ import { scriptFound } from "@/lib/checks/script";
 
 const page = (html: string) => (async () => new Response(html, { status: 200 })) as unknown as typeof fetch;
 
+const streamedPage = (chunks: string[]) =>
+  (async () =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+          controller.close();
+        },
+      })
+    )) as unknown as typeof fetch;
+
 describe("scriptFound", () => {
   it("finds the tag", async () => {
     const result = await scriptFound("https://instantgradient.com", "affiliates.instantgradient.com",
@@ -33,5 +44,27 @@ describe("scriptFound", () => {
   it("refuses a non-http website url", async () => {
     const result = await scriptFound("file:///etc/passwd", "affiliates.instantgradient.com", page(""));
     expect(result.ok).toBe(false);
+  });
+
+  it("caps the read at 2 MB while streaming, not after", async () => {
+    const pad = "x".repeat(512 * 1024); // 512 KB
+    const tag = `<script src="https://affiliates.instantgradient.com/track.js"></script>`;
+
+    // Four 512 KB chunks land the tag chunk right at the 2 MB mark: a real
+    // cap stops reading before it, a slice-after-the-fact would still see it.
+    const beyondCap = await scriptFound(
+      "https://instantgradient.com",
+      "affiliates.instantgradient.com",
+      streamedPage([pad, pad, pad, pad, tag])
+    );
+    expect(beyondCap.ok).toBe(false);
+    expect(beyondCap.detail).toMatch(/not found/i);
+
+    const beforeCap = await scriptFound(
+      "https://instantgradient.com",
+      "affiliates.instantgradient.com",
+      streamedPage([tag, pad, pad])
+    );
+    expect(beforeCap.ok).toBe(true);
   });
 });
