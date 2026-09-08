@@ -88,7 +88,9 @@ export async function changeOwnerPassword(
   if ("error" in owner) return owner;
   await db.owner.update({
     where: { id: owner.id },
-    data: { passwordHash: await hashPassword(newPassword) },
+    // The stamp goes down in the same update as the hash: every session
+    // issued before this moment stops working (see ownerSessionIsCurrent).
+    data: { passwordHash: await hashPassword(newPassword), passwordChangedAt: new Date() },
   });
   return null;
 }

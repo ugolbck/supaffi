@@ -16,3 +16,30 @@ export async function ownerExists(): Promise<boolean> {
   const count = await db.owner.count();
   return count > 0;
 }
+
+/**
+ * Whether an owner session issued at `issuedAtSeconds` is still valid.
+ *
+ * Sessions are JWTs with no adapter behind them, so there is no session row to
+ * delete when the password changes: a stolen cookie would otherwise stay good
+ * for its full 30 days. Every owner session is checked against the stamp
+ * `changeOwnerPassword` writes, which ends every session issued before it.
+ *
+ * A missing owner row is not current, so a deleted account cannot keep a
+ * session alive.
+ */
+export async function ownerSessionIsCurrent(
+  ownerId: string,
+  issuedAtSeconds: number | undefined
+): Promise<boolean> {
+  const owner = await db.owner.findUnique({
+    where: { id: ownerId },
+    select: { passwordChangedAt: true },
+  });
+  if (!owner) return false;
+  if (!owner.passwordChangedAt) return true;
+  // A token with no issued-at cannot be placed against the change, so it is
+  // treated as older than it.
+  if (issuedAtSeconds === undefined) return false;
+  return issuedAtSeconds * 1000 >= owner.passwordChangedAt.getTime();
+}

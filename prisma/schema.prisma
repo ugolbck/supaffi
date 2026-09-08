@@ -12,6 +12,9 @@ model Owner {
   id           String     @id @default(cuid())
   email        String     @unique
   passwordHash String
+  // Set on every password change. Owner sessions issued before it are
+  // refused, the only way to end a JWT session with no adapter behind it.
+  passwordChangedAt DateTime?
   createdAt    DateTime   @default(now())
   merchants    Merchant[]
 }

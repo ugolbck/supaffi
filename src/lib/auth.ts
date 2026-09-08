@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { type Session } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { verifyOwnerCredentials } from "@/lib/owner";
 import {
@@ -8,6 +8,7 @@ import {
 } from "@/lib/loginThrottle";
 import { consumeAffiliateLoginToken } from "@/lib/affiliateAuth";
 import { authConfig } from "@/lib/auth.config";
+import { ownerSessionIsCurrent } from "@/lib/ownerExists";
 
 // Two Credentials providers, JWT sessions, no database adapter. Auth.js's
 // built-in Email provider needs an adapter whose contract assumes email is
@@ -24,6 +25,27 @@ import { authConfig } from "@/lib/auth.config";
 // and src/middleware.ts.
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  callbacks: {
+    ...authConfig.callbacks,
+    // Owner sessions are checked against the password-change stamp on the
+    // Owner row. Sessions are JWTs with no adapter, so there is no session
+    // record to delete when the password changes; without this a stolen
+    // cookie would keep working for its full 30 days. The lookup is Prisma,
+    // so it lives here rather than in auth.config.ts, which Edge Middleware
+    // imports. The affiliate path is untouched.
+    async session(params) {
+      const session = await authConfig.callbacks!.session!(params);
+      const { token } = params;
+      if (token?.role !== "owner" || !token.sub) return session;
+      if (await ownerSessionIsCurrent(token.sub, token.authAt)) return session;
+      // Neither id nor role, so every `session.user.id` guard in the app
+      // fails closed rather than seeing a half-populated session.
+      const { id: _id, role: _role, ...user } = (session as Session).user;
+      // Cast because the app's own module augmentation declares `id` and
+      // `role` as present on every session user. Dropping them is the point.
+      return { ...session, user } as unknown as Session;
+    },
+  },
   providers: [
     Credentials({
       id: "credentials",

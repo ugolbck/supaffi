@@ -9,6 +9,7 @@ import {
   changeOwnerEmail,
   changeOwnerPassword,
 } from "@/lib/owner";
+import { ownerSessionIsCurrent } from "@/lib/ownerExists";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
 // letting Prisma throw an opaque connection error mid-run. Checked once,
@@ -123,10 +124,55 @@ describe.skipIf(!hasDatabase)("owner", () => {
       ).not.toBeNull();
     });
 
+    it("stamps the password change so older sessions can be told apart", async () => {
+      const owner = await createOwner("first@example.com", "correct horse battery");
+      expect(
+        (await db.owner.findUnique({ where: { id: owner.id } }))?.passwordChangedAt
+      ).toBeNull();
+
+      await changeOwnerPassword(owner.id, "correct horse battery", "a much longer new one");
+
+      const stamped = (await db.owner.findUnique({ where: { id: owner.id } }))?.passwordChangedAt;
+      expect(stamped).toBeInstanceOf(Date);
+      expect(Date.now() - stamped!.getTime()).toBeLessThan(60_000);
+    });
+
     it("refuses a short new password", async () => {
       const owner = await createOwner("first@example.com", "correct horse battery");
       const result = await changeOwnerPassword(owner.id, "correct horse battery", "short");
       expect(result?.error).toMatch(/12/);
     });
+  });
+});
+
+describe.skipIf(!hasDatabase)("ownerSessionIsCurrent", () => {
+  beforeEach(async () => {
+    await db.owner.deleteMany();
+  });
+
+  const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
+
+  it("accepts any session when the password has never been changed", async () => {
+    const owner = await createOwner("first@example.com", "correct horse battery");
+    expect(await ownerSessionIsCurrent(owner.id, seconds(new Date(Date.now() - 86_400_000)))).toBe(
+      true
+    );
+  });
+
+  it("accepts a session signed in after the change and refuses one from before", async () => {
+    const owner = await createOwner("first@example.com", "correct horse battery");
+    const changedAt = new Date(Date.now() - 60_000);
+    await db.owner.update({ where: { id: owner.id }, data: { passwordChangedAt: changedAt } });
+
+    expect(await ownerSessionIsCurrent(owner.id, seconds(new Date(changedAt.getTime() + 1000)))).toBe(
+      true
+    );
+    expect(
+      await ownerSessionIsCurrent(owner.id, seconds(new Date(changedAt.getTime() - 1000)))
+    ).toBe(false);
+  });
+
+  it("refuses a session for an owner that no longer exists", async () => {
+    expect(await ownerSessionIsCurrent("no-such-owner", seconds(new Date()))).toBe(false);
   });
 });

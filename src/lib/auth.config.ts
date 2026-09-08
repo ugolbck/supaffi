@@ -18,6 +18,15 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     role?: SessionRole;
+    /**
+     * Seconds since the epoch at which this session was signed in. Not `iat`:
+     * Auth.js re-signs the cookie on every session read and stamps a fresh
+     * `iat` each time, so `iat` says when the cookie was last refreshed, not
+     * when the session began. A custom claim survives those refreshes, which
+     * is what lets a password change end sessions older than itself
+     * (ownerSessionIsCurrent in src/lib/ownerExists.ts).
+     */
+    authAt?: number;
   }
 }
 
@@ -40,6 +49,11 @@ export const authConfig: NextAuthConfig = {
     jwt({ token, user }) {
       if (user && "role" in user) {
         token.role = user.role as SessionRole;
+      }
+      // Only on sign-in, when `user` is present. Plain arithmetic, so it stays
+      // safe for the Edge middleware that shares this config.
+      if (user) {
+        token.authAt = Math.floor(Date.now() / 1000);
       }
       return token;
     },
