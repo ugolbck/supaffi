@@ -6,6 +6,8 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 // other caller keeps importing it from the same place as before.
 export { ownerExists } from "@/lib/ownerExists";
 
+export const MIN_PASSWORD_LENGTH = 12;
+
 export async function createOwner(
   email: string,
   password: string
@@ -45,4 +47,48 @@ export async function verifyOwnerCredentials(
   const valid = await verifyPassword(password, owner.passwordHash);
   if (!valid) return null;
   return { id: owner.id, email: owner.email };
+}
+
+async function ownerWithVerifiedPassword(
+  ownerId: string,
+  currentPassword: string
+): Promise<{ id: string } | { error: string }> {
+  const owner = await db.owner.findUnique({
+    where: { id: ownerId },
+    select: { id: true, passwordHash: true },
+  });
+  if (!owner) return { error: "Account not found" };
+  const ok = await verifyPassword(currentPassword, owner.passwordHash);
+  if (!ok) return { error: "That password is not right" };
+  return { id: owner.id };
+}
+
+export async function changeOwnerEmail(
+  ownerId: string,
+  currentPassword: string,
+  newEmail: string
+): Promise<{ error: string } | null> {
+  const email = newEmail.trim().toLowerCase();
+  if (!email.includes("@")) return { error: "That does not look like an email address" };
+  const owner = await ownerWithVerifiedPassword(ownerId, currentPassword);
+  if ("error" in owner) return owner;
+  await db.owner.update({ where: { id: owner.id }, data: { email } });
+  return null;
+}
+
+export async function changeOwnerPassword(
+  ownerId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ error: string } | null> {
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    return { error: `Use at least ${MIN_PASSWORD_LENGTH} characters` };
+  }
+  const owner = await ownerWithVerifiedPassword(ownerId, currentPassword);
+  if ("error" in owner) return owner;
+  await db.owner.update({
+    where: { id: owner.id },
+    data: { passwordHash: await hashPassword(newPassword) },
+  });
+  return null;
 }

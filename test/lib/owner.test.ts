@@ -2,7 +2,13 @@
 // DATABASE_URL at a disposable database, never a real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
-import { createOwner, ownerExists, verifyOwnerCredentials } from "@/lib/owner";
+import {
+  createOwner,
+  ownerExists,
+  verifyOwnerCredentials,
+  changeOwnerEmail,
+  changeOwnerPassword,
+} from "@/lib/owner";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
 // letting Prisma throw an opaque connection error mid-run. Checked once,
@@ -87,5 +93,40 @@ describe.skipIf(!hasDatabase)("owner", () => {
     // Verify only one Owner exists in the database
     const count = await db.owner.count();
     expect(count).toBe(1);
+  });
+
+  describe("account changes", () => {
+    it("changes the email when the password is right", async () => {
+      const owner = await createOwner("first@example.com", "correct horse battery");
+      expect(
+        await changeOwnerEmail(owner.id, "correct horse battery", "Second@Example.com")
+      ).toBeNull();
+      expect((await db.owner.findUnique({ where: { id: owner.id } }))?.email).toBe(
+        "second@example.com"
+      );
+    });
+
+    it("refuses an email change with the wrong password", async () => {
+      const owner = await createOwner("first@example.com", "correct horse battery");
+      const result = await changeOwnerEmail(owner.id, "wrong", "second@example.com");
+      expect(result?.error).toMatch(/password/i);
+    });
+
+    it("changes the password and the old one stops working", async () => {
+      const owner = await createOwner("first@example.com", "correct horse battery");
+      expect(
+        await changeOwnerPassword(owner.id, "correct horse battery", "a much longer new one")
+      ).toBeNull();
+      expect(await verifyOwnerCredentials("first@example.com", "correct horse battery")).toBeNull();
+      expect(
+        await verifyOwnerCredentials("first@example.com", "a much longer new one")
+      ).not.toBeNull();
+    });
+
+    it("refuses a short new password", async () => {
+      const owner = await createOwner("first@example.com", "correct horse battery");
+      const result = await changeOwnerPassword(owner.id, "correct horse battery", "short");
+      expect(result?.error).toMatch(/12/);
+    });
   });
 });
