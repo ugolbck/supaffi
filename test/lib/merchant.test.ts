@@ -22,6 +22,7 @@ import {
   dismissWelcome,
   getOnboardingState,
 } from "@/lib/merchant";
+import { webhookEventReceived } from "@/lib/checks/stripe";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
 // letting Prisma throw an opaque connection error mid-run. Checked once, up
@@ -375,5 +376,16 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     await markOnboardingComplete(ownerId, merchant.id);
     const second = (await getOnboardingState(ownerId, merchant.id)).onboardingCompletedAt;
     expect(second?.getTime()).toBe(first?.getTime());
+  });
+
+  it("knows whether Stripe has ever sent an event", async () => {
+    const merchant = await createMerchant(ownerId, {
+      name: "W",
+      domain: "affiliates.w.test",
+      websiteUrl: "https://w.test",
+    });
+    expect((await webhookEventReceived(merchant.id)).ok).toBe(false);
+    await db.webhookEvent.create({ data: { merchantId: merchant.id, stripeEventId: "evt_w", payload: {} } });
+    expect((await webhookEventReceived(merchant.id)).ok).toBe(true);
   });
 });
