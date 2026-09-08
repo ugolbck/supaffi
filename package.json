@@ -12,7 +12,7 @@
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@node-rs/argon2": "^2.1.0",
-    "@prisma/client": "^6.0.0",
+    "@prisma/client": "^7.10.0",
     "@sentry/nextjs": "^10.0.0",
     "@tailwindcss/postcss": "^4.3.3",
     "class-variance-authority": "^0.7.1",
