@@ -2,7 +2,7 @@ import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
-import { commissionRateFor, computeCommissionAmount, computePayableAt, isExcluded } from "../commission";
+import { commissionRateFor, computeCommissionAmount, computePayableAt, isExcluded, saleAmountFor } from "../commission";
 import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
@@ -85,6 +85,7 @@ export async function handleCheckoutSessionCompleted(
         stripePaymentRef,
         amount,
         currency: session.currency,
+        saleAmount: saleAmountFor(session.amount_total, session.currency),
         status: flagReason ? "FLAGGED" : "PENDING",
         payableAt: computePayableAt(program),
         flagReason,

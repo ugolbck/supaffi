@@ -8,6 +8,7 @@ import {
   computePayableAt,
   isExcluded,
   isWithinCommissionDuration,
+  saleAmountFor,
 } from "../commission";
 import { checkSelfReferralEmail } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
@@ -60,6 +61,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
         stripePaymentRef: invoice.id,
         amount,
         currency: invoice.currency,
+        saleAmount: saleAmountFor(invoice.amount_paid, invoice.currency),
         status: flagReason ? "FLAGGED" : "PENDING",
         payableAt: computePayableAt(program),
         flagReason,

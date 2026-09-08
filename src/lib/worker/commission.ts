@@ -15,6 +15,11 @@ export function computeCommissionAmount(
   return Math.round(paid * (ratePercent / 100) * 100) / 100;
 }
 
+/** The customer's payment in major units, for the revenue the commission was earned on. */
+export function saleAmountFor(paidAmountMinor: number, currency: string): number {
+  return minorUnitsToMajor(paidAmountMinor, currency);
+}
+
 export function computePayableAt(program: Program, from: Date = new Date()): Date {
   return new Date(from.getTime() + program.holdingPeriodDays * 24 * 60 * 60 * 1000);
 }
