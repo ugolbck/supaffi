@@ -13,7 +13,7 @@ import { Prisma } from "@prisma/client";
  * the route that called it, same rule as merchant.ts and commission.ts.
  */
 
-export type DayPoint = { date: string; clicks: number; conversions: number };
+export type DayPoint = { date: string; clicks: number; conversions: number; revenue: number };
 export type CurrencyTotal = { currency: string; total: string };
 
 const DEFAULT_WINDOW_DAYS = 30;
@@ -56,7 +56,7 @@ function emptySeries(days: number): Map<string, DayPoint> {
     const day = new Date(start);
     day.setUTCDate(start.getUTCDate() + i);
     const key = dayKey(day);
-    series.set(key, { date: key, clicks: 0, conversions: 0 });
+    series.set(key, { date: key, clicks: 0, conversions: 0, revenue: 0 });
   }
   return series;
 }
@@ -80,6 +80,10 @@ export type ProductMetrics = {
   /** PENDING plus PAYABLE: money the Owner still has to hand over. */
   owed: CurrencyTotal[];
   paid: CurrencyTotal[];
+  /** What customers paid on attributed sales in the window, by currency. Unknown for commissions older than the column. */
+  revenue: CurrencyTotal[];
+  /** Affiliates who joined in the window. */
+  signups: number;
   /** Commissions held back for review, all time. Drives the Owner's to-do list. */
   flagged: number;
   series: DayPoint[];
@@ -94,29 +98,36 @@ export async function getProductMetrics(
 
   const since = windowStart(days);
 
-  const [clickRows, commissionRows, owedRows, paidRows, flagged] = await Promise.all([
-    db.click.findMany({
-      where: { affiliate: { merchantId }, createdAt: { gte: since } },
-      select: { createdAt: true },
-    }),
-    db.commission.findMany({
-      where: { affiliate: { merchantId }, createdAt: { gte: since } },
-      select: { createdAt: true },
-    }),
-    db.commission.groupBy({
-      by: ["currency"],
-      where: { affiliate: { merchantId }, status: { in: ["PENDING", "PAYABLE"] } },
-      _sum: { amount: true },
-    }),
-    db.commission.groupBy({
-      by: ["currency"],
-      where: { affiliate: { merchantId }, status: "PAID" },
-      _sum: { amount: true },
-    }),
-    // Not windowed: a flagged commission stays the Owner's problem however
-    // long it has sat there.
-    db.commission.count({ where: { affiliate: { merchantId }, status: "FLAGGED" } }),
-  ]);
+  const [clickRows, commissionRows, owedRows, paidRows, revenueRows, signups, flagged] =
+    await Promise.all([
+      db.click.findMany({
+        where: { affiliate: { merchantId }, createdAt: { gte: since } },
+        select: { createdAt: true },
+      }),
+      db.commission.findMany({
+        where: { affiliate: { merchantId }, createdAt: { gte: since } },
+        select: { createdAt: true, saleAmount: true, currency: true },
+      }),
+      db.commission.groupBy({
+        by: ["currency"],
+        where: { affiliate: { merchantId }, status: { in: ["PENDING", "PAYABLE"] } },
+        _sum: { amount: true },
+      }),
+      db.commission.groupBy({
+        by: ["currency"],
+        where: { affiliate: { merchantId }, status: "PAID" },
+        _sum: { amount: true },
+      }),
+      db.commission.groupBy({
+        by: ["currency"],
+        where: { affiliate: { merchantId }, createdAt: { gte: since }, saleAmount: { not: null } },
+        _sum: { saleAmount: true },
+      }),
+      db.affiliate.count({ where: { merchantId, createdAt: { gte: since } } }),
+      // Not windowed: a flagged commission stays the Owner's problem however
+      // long it has sat there.
+      db.commission.count({ where: { affiliate: { merchantId }, status: "FLAGGED" } }),
+    ]);
 
   const series = emptySeries(days);
   for (const click of clickRows) {
@@ -125,7 +136,9 @@ export async function getProductMetrics(
   }
   for (const commission of commissionRows) {
     const point = series.get(dayKey(commission.createdAt));
-    if (point) point.conversions += 1;
+    if (!point) continue;
+    point.conversions += 1;
+    point.revenue += Number(commission.saleAmount ?? 0);
   }
 
   const clicks = clickRows.length;
@@ -137,6 +150,10 @@ export async function getProductMetrics(
     conversionRate: clicks === 0 ? 0 : Math.round((conversions / clicks) * 1000) / 10,
     owed: totalsByCurrency(owedRows),
     paid: totalsByCurrency(paidRows),
+    revenue: totalsByCurrency(
+      revenueRows.map((row) => ({ currency: row.currency, _sum: { amount: row._sum.saleAmount } }))
+    ),
+    signups,
     flagged,
     series: [...series.values()],
   };
@@ -166,6 +183,7 @@ export function toWeeks(daily: DayPoint[]): DayPoint[] {
       date: chunk[0].date,
       clicks: chunk.reduce((sum, d) => sum + d.clicks, 0),
       conversions: chunk.reduce((sum, d) => sum + d.conversions, 0),
+      revenue: chunk.reduce((sum, d) => sum + d.revenue, 0),
     });
   }
   return weeks;

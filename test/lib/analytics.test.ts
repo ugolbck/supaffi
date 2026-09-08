@@ -252,6 +252,33 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(activity[1].amount).toBeNull();
   });
 
+  it("sums revenue by currency and counts signups in the window", async () => {
+    const affiliate = await makeAffiliate("rev");
+    const click = await makeClick(affiliate.id);
+    const affiliateId = affiliate.id;
+    const clickId = click.id;
+    await db.commission.createMany({
+      data: [
+        { affiliateId, clickId, amount: 10, saleAmount: 50, currency: "usd", status: "PENDING", payableAt: new Date() },
+        { affiliateId, clickId, amount: 8, saleAmount: 40, currency: "usd", status: "PAID", payableAt: new Date() },
+        { affiliateId, clickId, amount: 9, saleAmount: 45, currency: "eur", status: "PENDING", payableAt: new Date() },
+        // An adjustment carries no sale.
+        { affiliateId, clickId, amount: -8, saleAmount: null, currency: "usd", status: "VOIDED", payableAt: new Date() },
+      ],
+    });
+    await db.affiliate.create({
+      data: { merchantId, programId, email: "second@example.com" },
+    });
+
+    const metrics = await getProductMetrics(ownerId, merchantId, 30);
+
+    expect(metrics.revenue).toEqual([
+      { currency: "eur", total: "45.00" },
+      { currency: "usd", total: "90.00" },
+    ]);
+    expect(metrics.signups).toBe(2);
+  });
+
   it("rolls every product up for the owner-level view", async () => {
     const affiliate = await makeAffiliate("a");
     await makeClick(affiliate.id);
@@ -282,6 +309,7 @@ function daySeries(
       date: date.toISOString().slice(0, 10),
       clicks: 0,
       conversions: 0,
+      revenue: 0,
       ...make(i),
     };
   });
