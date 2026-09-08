@@ -9,7 +9,7 @@ export type CheckDeps = {
   resolvesTo: (hostname: string, ip: string) => Promise<CheckResult>;
   httpsReachable: (hostname: string) => Promise<{ reachable: CheckResult; certificate: CheckResult }>;
   stripeKeyWorks: (key: string) => Promise<CheckResult>;
-  webhookEventReceived: (merchantId: string) => Promise<CheckResult>;
+  webhookEventReceived: (ownerId: string, merchantId: string) => Promise<CheckResult>;
   resendKeyWorks: (key: string) => Promise<CheckResult>;
   sendingDomainVerified: (key: string, domain: string) => Promise<CheckResult>;
   scriptFound: (websiteUrl: string, domain: string) => Promise<CheckResult>;
@@ -74,7 +74,7 @@ export async function runProductChecks(
     hostIp ? settle(deps.resolvesTo(merchant.domain, hostIp), FAILED) : Promise.resolve(NO_ADDRESS),
     settle(deps.httpsReachable(merchant.domain), { reachable: FAILED, certificate: FAILED }),
     stripeKey ? settle(deps.stripeKeyWorks(stripeKey), FAILED) : Promise.resolve(NOT_CONNECTED),
-    settle(deps.webhookEventReceived(merchantId), FAILED),
+    settle(deps.webhookEventReceived(ownerId, merchantId), FAILED),
     resendKey ? settle(deps.resendKeyWorks(resendKey), FAILED) : Promise.resolve(NOT_CONNECTED),
     resendKey ? settle(deps.sendingDomainVerified(resendKey, merchant.domain), FAILED) : Promise.resolve(NOT_CONNECTED),
     settle(deps.scriptFound(merchant.websiteUrl, merchant.domain), FAILED),

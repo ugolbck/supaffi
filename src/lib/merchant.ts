@@ -135,10 +135,14 @@ export async function getStripeKeyKind(
 
 export async function listMerchantsForOwner(
   ownerId: string
-): Promise<{ id: string; slug: string; name: string; domain: string }[]> {
+): Promise<
+  { id: string; slug: string; name: string; domain: string; onboardingCompletedAt: Date | null }[]
+> {
   return db.merchant.findMany({
     where: { ownerId },
-    select: { id: true, slug: true, name: true, domain: true },
+    // onboardingCompletedAt so the product list can tell a product still being
+    // set up from one that is running, without a second query per row.
+    select: { id: true, slug: true, name: true, domain: true, onboardingCompletedAt: true },
     orderBy: { createdAt: "asc" },
   });
 }

@@ -238,7 +238,9 @@ export async function updateAffiliate(
 ): Promise<void> {
   await assertMerchantOwnership(ownerId, merchantId);
 
-  if (input.programId) {
+  // `!== undefined`, not truthiness: an empty programId is a caller asking for
+  // a program that does not exist, which is an error, not "leave it alone".
+  if (input.programId !== undefined) {
     const program = await db.program.findFirst({
       where: { id: input.programId, merchantId },
       select: { id: true },
@@ -249,7 +251,7 @@ export async function updateAffiliate(
   const result = await db.affiliate.updateMany({
     where: { id: affiliateId, merchantId },
     data: {
-      ...(input.programId ? { programId: input.programId } : {}),
+      ...(input.programId !== undefined ? { programId: input.programId } : {}),
       ...(input.customCommissionRate !== undefined
         ? { customCommissionRate: input.customCommissionRate }
         : {}),

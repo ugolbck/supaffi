@@ -56,11 +56,15 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     });
     process.env.SUPAFFI_HOST_IP = "146.59.195.140";
 
+    const webhookArgs: string[][] = [];
     const result = await runProductChecks(owner.id, merchant.id, {
       resolvesTo: async () => ok,
       httpsReachable: async () => ({ reachable: ok, certificate: no }),
       stripeKeyWorks: async () => ok,
-      webhookEventReceived: async () => no,
+      webhookEventReceived: async (ownerId: string, merchantId: string) => {
+        webhookArgs.push([ownerId, merchantId]);
+        return no;
+      },
       resendKeyWorks: async () => ok,
       sendingDomainVerified: async () => ok,
       scriptFound: async () => no,
@@ -73,6 +77,8 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     expect(result.stripe.key.detail).toMatch(/not connected/i);
     expect(result.email.key.detail).toMatch(/not connected/i);
     expect(result.tracking.script.ok).toBe(false);
+    // The webhook check is owner-scoped, so it has to be handed the owner.
+    expect(webhookArgs).toEqual([[owner.id, merchant.id]]);
 
     await connectStripe(owner.id, merchant.id, { secretKey: "rk_test_1", webhookSecret: "whsec_1" });
     await connectEmailProvider(owner.id, merchant.id, "re_1");

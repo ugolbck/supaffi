@@ -606,6 +606,17 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       ).rejects.toThrow();
     });
 
+    it("refuses an empty program id instead of reading it as nothing to change", async () => {
+      const affiliate = await makeAffiliate({ email: "blank@example.com", referralCode: "blank" });
+
+      await expect(
+        updateAffiliate(ownerId, merchantId, affiliate.id, { programId: "" })
+      ).rejects.toThrow(/program not found/i);
+
+      const row = await db.affiliate.findUnique({ where: { id: affiliate.id } });
+      expect(row?.programId).toBe(programId);
+    });
+
     it("refuses another owner's affiliate", async () => {
       const affiliate = await makeAffiliate({ email: "stranger@example.com", referralCode: "stranger" });
 

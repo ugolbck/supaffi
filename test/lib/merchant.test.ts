@@ -384,8 +384,18 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       domain: "affiliates.w.test",
       websiteUrl: "https://w.test",
     });
-    expect((await webhookEventReceived(merchant.id)).ok).toBe(false);
+    expect((await webhookEventReceived(ownerId, merchant.id)).ok).toBe(false);
     await db.webhookEvent.create({ data: { merchantId: merchant.id, stripeEventId: "evt_w", payload: {} } });
-    expect((await webhookEventReceived(merchant.id)).ok).toBe(true);
+    expect((await webhookEventReceived(ownerId, merchant.id)).ok).toBe(true);
+  });
+
+  it("does not answer for another owner's product", async () => {
+    const merchant = await createMerchant(ownerId, {
+      name: "W2",
+      domain: "affiliates.w2.test",
+      websiteUrl: "https://w2.test",
+    });
+    await db.webhookEvent.create({ data: { merchantId: merchant.id, stripeEventId: "evt_w2", payload: {} } });
+    expect((await webhookEventReceived(otherOwnerId, merchant.id)).ok).toBe(false);
   });
 });
