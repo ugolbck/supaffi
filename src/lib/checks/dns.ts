@@ -2,10 +2,17 @@ import { resolve4, resolveNs } from "node:dns/promises";
 
 export type CheckResult = { ok: boolean; detail: string };
 
-/** Whether the hostname's A record points at this server. */
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+/**
+ * Whether the hostname's A record points at this server. `expected` is
+ * SUPAFFI_HOST_IP, which install.sh lets the owner set to a hostname as well
+ * as to a literal address, so a non-literal is resolved with the same
+ * resolver and any shared address counts as a match.
+ */
 export async function resolvesTo(
   hostname: string,
-  expectedIp: string,
+  expected: string,
   resolve: (h: string) => Promise<string[]> = resolve4
 ): Promise<CheckResult> {
   let addresses: string[];
@@ -14,7 +21,23 @@ export async function resolvesTo(
   } catch {
     return { ok: false, detail: "No record found yet" };
   }
-  if (addresses.includes(expectedIp)) return { ok: true, detail: `Points at ${expectedIp}` };
+
+  if (IPV4.test(expected)) {
+    if (addresses.includes(expected)) return { ok: true, detail: `Points at ${expected}` };
+    return { ok: false, detail: `Points at ${addresses.join(", ")}, not this server` };
+  }
+
+  let expectedAddresses: string[];
+  try {
+    expectedAddresses = await resolve(expected);
+  } catch {
+    expectedAddresses = [];
+  }
+  if (expectedAddresses.length === 0) {
+    return { ok: false, detail: `This server's address (${expected}) could not be resolved` };
+  }
+  const shared = addresses.find((a) => expectedAddresses.includes(a));
+  if (shared) return { ok: true, detail: `Points at ${shared}` };
   return { ok: false, detail: `Points at ${addresses.join(", ")}, not this server` };
 }
 
