@@ -224,6 +224,40 @@ export async function getAffiliatePayoutDetails(affiliateId: string): Promise<st
   return affiliate?.payoutDetails ?? null;
 }
 
+/**
+ * Moves an affiliate between this product's programs, or overrides their
+ * rate. Both optional so one call can do either. A program from another
+ * product is refused: identity is scoped to the product, and a cross-product
+ * move would let one product's affiliate earn under another's terms.
+ */
+export async function updateAffiliate(
+  ownerId: string,
+  merchantId: string,
+  affiliateId: string,
+  input: { programId?: string; customCommissionRate?: number | null }
+): Promise<void> {
+  await assertMerchantOwnership(ownerId, merchantId);
+
+  if (input.programId) {
+    const program = await db.program.findFirst({
+      where: { id: input.programId, merchantId },
+      select: { id: true },
+    });
+    if (!program) throw new Error("Program not found on this product");
+  }
+
+  const result = await db.affiliate.updateMany({
+    where: { id: affiliateId, merchantId },
+    data: {
+      ...(input.programId ? { programId: input.programId } : {}),
+      ...(input.customCommissionRate !== undefined
+        ? { customCommissionRate: input.customCommissionRate }
+        : {}),
+    },
+  });
+  if (result.count === 0) throw new Error("Affiliate not found");
+}
+
 export type AffiliatePaymentGroup = {
   /** Midnight UTC of the day these were marked paid. */
   paidAt: Date;

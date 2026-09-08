@@ -15,6 +15,7 @@ import {
   updateAffiliatePayoutDetails,
   getAffiliatePayoutDetails,
   toDisplayStatus,
+  updateAffiliate,
 } from "@/lib/affiliate";
 import { isUniqueConstraintErrorOn } from "@/lib/prismaErrors";
 
@@ -570,6 +571,47 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       await expect(getAffiliateSignals(foreignOwnerId, merchantId)).rejects.toThrow(
         "Merchant not found"
       );
+    });
+  });
+
+  describe("updateAffiliate", () => {
+    it("moves an affiliate to another program of the same product", async () => {
+      const affiliate = await makeAffiliate({ email: "move@example.com", referralCode: "move" });
+
+      await updateAffiliate(ownerId, merchantId, affiliate.id, { programId: vipProgramId });
+
+      const row = await db.affiliate.findUnique({ where: { id: affiliate.id } });
+      expect(row?.programId).toBe(vipProgramId);
+    });
+
+    it("sets and clears a custom rate", async () => {
+      const affiliate = await makeAffiliate({ email: "rate@example.com", referralCode: "rate" });
+
+      await updateAffiliate(ownerId, merchantId, affiliate.id, { customCommissionRate: 25 });
+      expect(
+        Number((await db.affiliate.findUnique({ where: { id: affiliate.id } }))?.customCommissionRate)
+      ).toBe(25);
+
+      await updateAffiliate(ownerId, merchantId, affiliate.id, { customCommissionRate: null });
+      expect(
+        (await db.affiliate.findUnique({ where: { id: affiliate.id } }))?.customCommissionRate
+      ).toBeNull();
+    });
+
+    it("refuses a program that belongs to another product", async () => {
+      const affiliate = await makeAffiliate({ email: "cross@example.com", referralCode: "cross" });
+
+      await expect(
+        updateAffiliate(ownerId, merchantId, affiliate.id, { programId: otherProgramId })
+      ).rejects.toThrow();
+    });
+
+    it("refuses another owner's affiliate", async () => {
+      const affiliate = await makeAffiliate({ email: "stranger@example.com", referralCode: "stranger" });
+
+      await expect(
+        updateAffiliate(foreignOwnerId, merchantId, affiliate.id, { customCommissionRate: 1 })
+      ).rejects.toThrow();
     });
   });
 
