@@ -1,4 +1,4 @@
-FROM node:24-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 # npm ci runs the postinstall hook (`prisma generate`), which needs the
@@ -7,7 +7,7 @@ COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 RUN npm ci
 
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 # Auth.js v5 needs AUTH_SECRET present when its config module loads, which
 # happens during `next build` while compiling the /api/auth routes, not
@@ -21,7 +21,7 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-FROM node:24-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
