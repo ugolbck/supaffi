@@ -60,6 +60,15 @@ describe("scriptFound", () => {
     expect(beyondCap.ok).toBe(false);
     expect(beyondCap.detail).toMatch(/not found/i);
 
+    // One oversized chunk crosses the cap on its own, so the loop cannot stop
+    // before reading it. The tag sits past the cap inside that same chunk.
+    const overshooting = await scriptFound(
+      "https://instantgradient.com",
+      "affiliates.instantgradient.com",
+      streamedPage([pad.repeat(5) + tag])
+    );
+    expect(overshooting.ok).toBe(false);
+
     const beforeCap = await scriptFound(
       "https://instantgradient.com",
       "affiliates.instantgradient.com",
