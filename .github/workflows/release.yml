@@ -1,0 +1,295 @@
+name: Release
+
+# Fires on a version tag. Builds the image for both architectures, publishes
+# it, attests where it came from, and cuts the GitHub release the update check
+# reads.
+#
+#   git tag -a v0.1.0 -m "0.1.0" && git push origin v0.1.0
+#
+# Nothing here is run by hand. Publishing images manually is the thing this
+# exists to make impossible, because the image is the trust anchor for every
+# self-hosted install: it holds the code that reads MASTER_ENCRYPTION_KEY and
+# every merchant's Stripe credentials.
+#
+# Every third-party action is pinned to a commit, not a tag. A tag is mutable
+# and can be repointed by whoever owns the action; that is exactly how
+# tj-actions/changed-files was used against 23,000 repositories in 2025. The
+# trailing comment is the human-readable version and is kept current by
+# Dependabot.
+on:
+  push:
+    tags: ["v*"]
+
+# Nothing by default. Each job takes only what it needs, because a job-level
+# block replaces this one rather than adding to it.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  # Three gates before anything is built, all of which an attacker who can push
+  # a tag would otherwise walk straight past. Tag pushes are not covered by
+  # branch protection, so this job is the only thing standing between "can
+  # create a ref" and "can publish an image every user pulls".
+  verify:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read # read CI's conclusion for this commit
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      make_latest: ${{ steps.v.outputs.make_latest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # ancestry check and tag ordering both need real history
+
+      - id: v
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+
+          # A git ref may contain ; $ ` ( ) & | and quotes. Workflow
+          # interpolation is textual substitution performed before the shell
+          # sees the script, so an unvalidated tag reaching a run block is
+          # arbitrary code in a job that can publish images. Everything
+          # downstream (the image tag, the installer, compareVersions) assumes
+          # a plain three part version, so require exactly that.
+          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Tag must be vMAJOR.MINOR.PATCH. Got: $TAG" >&2
+            exit 1
+          fi
+
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$version" != "$pkg" ]; then
+            echo "Tag is $version but package.json says $pkg. Make them match." >&2
+            exit 1
+          fi
+
+          # The tagged commit has to be on main. Otherwise a tag on an
+          # unreviewed, unmerged commit publishes an image, and the
+          # package.json check above proves nothing because whoever wrote the
+          # commit wrote both sides of it.
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "$SHA is not on main. Tag a commit that has been merged." >&2
+            exit 1
+          fi
+
+          # And CI has to have passed on it. This workflow trusts that gate
+          # rather than re-running the suite, so it has to check that the gate
+          # actually ran.
+          runs="$(gh api "/repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&status=success" --jq '.total_count')"
+          if [ "$runs" -lt 1 ]; then
+            echo "CI has not passed for $SHA. Wait for it, or fix it." >&2
+            exit 1
+          fi
+
+          # Only mark this the latest release when it really is the highest
+          # version. A patch backported to an older line must not become what
+          # /releases/latest returns, or every instance on the newer line is
+          # told to move backwards onto old code with a newer schema.
+          newest="$(git tag -l 'v*' --sort=-v:refname | head -n 1)"
+          if [ "$newest" = "$TAG" ]; then
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  # One native runner per architecture rather than one runner emulating the
+  # other. A Next.js build under QEMU takes the better part of an hour; native
+  # arm64 runners are free on public repositories and take the same time as
+  # amd64.
+  build:
+    needs: verify
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pushed by digest, without a tag. The tags are attached in the publish
+      # job below, once both architectures exist, so a half published release
+      # never leaves a tag pointing at one architecture only.
+      #
+      # provenance is off here on purpose. Left on, buildx pushes an index
+      # holding an attestation manifest and the digest below is that index
+      # rather than the image, which produces a malformed manifest list when
+      # the two are merged in a separate job. The attestation is generated
+      # centrally in publish instead, over the final multi architecture digest,
+      # which is the thing anyone would actually verify.
+      - id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          build-args: |
+            SUPAFFI_VERSION=${{ needs.verify.outputs.version }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          # No cache on a release build. A release happens rarely enough that
+          # the saved minutes are not worth a cache that anyone who ever gets
+          # code execution in this workflow could poison for every future one.
+          no-cache: true
+
+      - name: Save the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          # Stripped of its sha256: prefix. A colon is not a legal character in
+          # an artifact path and the upload below rejects it outright.
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digest-${{ strategy.job-index }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  publish:
+    needs: [verify, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+      id-token: write # sign the provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # One tag, the exact version, and nothing else. No latest, no major or
+      # minor lane: nothing Supaffi ships ever installs from a moving tag, so
+      # they would exist only as something for an attacker to overwrite.
+      - id: publish
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          refs=()
+          for d in /tmp/digests/*; do
+            name="$(basename "$d")"
+            # Validated rather than trusted. This expands into a command line,
+            # so a file named to look like an extra argument would otherwise
+            # become one.
+            if ! printf '%s' "$name" | grep -qE '^[0-9a-f]{64}$'; then
+              echo "Not a digest: $name" >&2
+              exit 1
+            fi
+            refs+=("${IMAGE}@sha256:$name")
+          done
+
+          # Both architectures, or nothing. Publishing a tag that silently
+          # covers one platform is worse than failing.
+          if [ "${#refs[@]}" -ne 2 ]; then
+            echo "Expected 2 architecture digests, found ${#refs[@]}." >&2
+            exit 1
+          fi
+
+          docker buildx imagetools create --tag "${IMAGE}:${VERSION}" "${refs[@]}"
+
+          digest="$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --format '{{.Manifest.Digest}}')"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Check what was published
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          platforms="$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" \
+            --format '{{range .Manifest.Manifests}}{{println .Platform.OS "/" .Platform.Architecture}}{{end}}' \
+            | grep -c 'linux')"
+          if [ "$platforms" -ne 2 ]; then
+            echo "Published manifest covers $platforms platforms, expected 2." >&2
+            exit 1
+          fi
+          # And the image says it is the version we think it is, which is the
+          # only end to end check that the build arg actually landed.
+          docker run --rm --entrypoint sh "${IMAGE}:${VERSION}" \
+            -c "test \"\$SUPAFFI_VERSION\" = \"${VERSION}\""
+
+      # Ties the published digest to this workflow, this commit and this
+      # repository, so an image that appeared in the registry by any other
+      # route can be told apart from one this pipeline built:
+      #   gh attestation verify oci://ghcr.io/ugolbck/supaffi:0.1.0 --repo ugolbck/supaffi
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+
+  release:
+    needs: [verify, publish]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The release body is this version's section of the changelog, verbatim.
+      # A "### Security" heading inside it is what makes the dashboard's update
+      # notice loud rather than quiet, so the changelog is not decoration.
+      - id: notes
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -f CHANGELOG.md ]; then
+            awk -v ver="## $VERSION" '
+              $0 == ver { inside = 1; next }
+              inside && /^## / { exit }
+              inside { print }
+            ' CHANGELOG.md > /tmp/notes.md
+          fi
+          if [ ! -s /tmp/notes.md ]; then
+            echo "No changelog entry for $VERSION. Add one under a \"## $VERSION\" heading." >&2
+            exit 1
+          fi
+
+      - uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3.0.3
+        with:
+          name: ${{ needs.verify.outputs.version }}
+          body_path: /tmp/notes.md
+          make_latest: ${{ needs.verify.outputs.make_latest }}

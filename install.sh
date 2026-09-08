@@ -12,17 +12,25 @@ set -euo pipefail
 # not on `curl`: putting it before curl sets it for the download rather than
 # for this script.
 #
+#   SUPAFFI_VERSION          version to install, default the newest release
 #   SUPAFFI_HOST_IP          address the dashboard is served on, detected
 #   SUPAFFI_DASHBOARD_PORT   where it listens, default 3443
 #   SUPAFFI_PROXY_MODE       bundled or external, decided on first install
 #   SUPAFFI_DOMAIN           optional domain for the instance itself
 #   SUPAFFI_APP_BIND         where the app's port lands on the host
+#   SUPAFFI_BUILD_FROM_SOURCE  yes to compile here instead of pulling an image
+#   SUPAFFI_UPDATE_CHECK     off to stop the dashboard checking for releases
+#   SUPAFFI_KEEP_VERSION     yes to reconfigure without moving version
+#   SUPAFFI_ALLOW_DOWNGRADE  yes to install an older version than this one
 #
-# Clones the repo rather than pulling a published image, so the whole stack
-# (compose file, Caddyfile, Dockerfile, migrations) is actually present on the
-# box. Costs a build on first install, roughly 2 GB of memory and a few
-# minutes. A published image and a `docker compose pull` update path is the
-# planned follow-up.
+# Installs an exact released version, never a branch. The app itself comes
+# from a published image, so nothing is compiled on this server. The checkout
+# is still made, at the matching tag, because the compose file, the Caddyfiles
+# and the licence belong on the box next to the stack they describe.
+#
+# Updating is the same command: it resolves the newest release, backs the
+# database up, and moves to it. Going back is the same command with
+# SUPAFFI_VERSION set to the old one.
 
 REPO="${SUPAFFI_REPO:-https://github.com/ugolbck/supaffi.git}"
 DIR="${SUPAFFI_DIR:-/opt/supaffi}"
@@ -207,6 +215,122 @@ case "$mode" in
   *) die "SUPAFFI_PROXY_MODE must be 'bundled' or 'external'. Got: $mode" ;;
 esac
 
+# --- which version -------------------------------------------------------
+# An install pins an exact version and writes it down. Nothing ever tracks a
+# branch: two servers installed a week apart would otherwise be running
+# different code while both claiming to be up to date.
+#
+# Precedence differs from every other setting here on purpose. An explicit
+# SUPAFFI_VERSION wins, then the newest release, and the stored value comes
+# last, because re-running this script is how an operator updates and reusing
+# the installed version would make that a no-op.
+build_from_source="${SUPAFFI_BUILD_FROM_SOURCE:-}"
+if [ -z "$build_from_source" ] && existing_env_has_key COMPOSE_FILE; then
+  case "$(existing_env_value COMPOSE_FILE)" in
+    *docker-compose.build.yml*) build_from_source="yes" ;;
+  esac
+fi
+
+# The newest published release, as a bare version with no leading v. Prints
+# nothing and fails at nothing if GitHub cannot be reached; the caller decides
+# what an empty answer means.
+# Parsed with python3 where it exists, which is everywhere this script runs in
+# practice, because the sed fallback below reads JSON by field order: it works
+# only because GitHub emits tag_name before body, and that is a property of
+# their formatting rather than a promise. The fallback stays so a box without
+# python3 is not stranded.
+latest_release() {
+  local body
+  body="$(curl -fsS --max-time 10 -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com/repos/ugolbck/supaffi/releases/latest" 2>/dev/null || true)"
+  [ -n "$body" ] || return 0
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "$body" | python3 -c \
+      'import json,sys
+try:
+    print(json.load(sys.stdin)["tag_name"])
+except Exception:
+    pass' 2>/dev/null || true
+  else
+    printf '%s' "$body" \
+      | tr ',' '\n' \
+      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+      | head -n 1 || true
+  fi
+}
+
+# Whether $1 is strictly older than $2. Compares each dotted part as a number,
+# so 0.10.0 is newer than 0.9.0 rather than sorting before it as text.
+version_lt() {
+  local i part_a part_b
+  [ "$1" = "$2" ] && return 1
+  for i in 1 2 3 4; do
+    part_a="$(printf '%s' "$1" | cut -d. -f"$i")"
+    part_b="$(printf '%s' "$2" | cut -d. -f"$i")"
+    part_a="${part_a:-0}"
+    part_b="${part_b:-0}"
+    [ "$part_a" -lt "$part_b" ] && return 0
+    [ "$part_a" -gt "$part_b" ] && return 1
+  done
+  return 1
+}
+
+installed_version="$(existing_env_value SUPAFFI_VERSION | tr -d '[:space:]' | sed 's/^v//')"
+version="${SUPAFFI_VERSION:-}"
+asked_for_version=yes
+
+# Re-running this script is how an operator fixes a port conflict or hands the
+# ports to another proxy, and its own error messages tell them to. Those runs
+# should not also drag the instance onto a new release as a side effect.
+if [ -z "$version" ] && [ "${SUPAFFI_KEEP_VERSION:-}" = "yes" ] && [ -n "$installed_version" ]; then
+  version="$installed_version"
+fi
+
+if [ -z "$version" ]; then
+  asked_for_version=no
+  say "Looking up the newest release."
+  version="$(latest_release)"
+fi
+version="$(printf '%s' "$version" | tr -d '[:space:]' | sed 's/^v//')"
+
+case "$version" in
+  "")
+    die "Could not find a release to install. Either this server has no outbound access to GitHub, or no release has been published yet. Name one explicitly with SUPAFFI_VERSION=0.1.0, or see https://github.com/ugolbck/supaffi/releases"
+    ;;
+  *[!0-9.]*|.*|*.)
+    die "SUPAFFI_VERSION must be a version number like 0.1.0. Got: $version"
+    ;;
+esac
+
+# Moving backwards is not symmetrical with moving forwards. Migrations only run
+# in one direction, so an older image starts against a newer schema: broken at
+# best, quietly wrong at worst, and the backup taken on the way up was taken on
+# the new schema.
+#
+# Refused outright when nothing asked for it, because that case is not an
+# operator's decision at all. It happens when GitHub's "latest" marker moves to
+# an older release, which is exactly what a maintainer does after unpublishing
+# a bad one, and every instance running the update command would follow it down
+# onto the version that was just withdrawn.
+if [ -n "$installed_version" ] && version_lt "$version" "$installed_version"; then
+  if [ "$asked_for_version" = "no" ]; then
+    die "The newest release GitHub reports is $version, which is older than the $installed_version already installed. Nothing was changed. This usually means a release was withdrawn; check https://github.com/ugolbck/supaffi/releases"
+  fi
+  if [ "${SUPAFFI_ALLOW_DOWNGRADE:-}" != "yes" ]; then
+    {
+      echo "Refusing to move from $installed_version back to $version."
+      echo
+      echo "Migrations only run forwards, so the older release would start"
+      echo "against the newer schema. Restore a backup from $DIR/backups"
+      echo "taken while $version was running, or say you understand:"
+      echo
+      echo "  SUPAFFI_ALLOW_DOWNGRADE=yes"
+    } >&2
+    exit 1
+  fi
+  say "Moving back to $version, as asked. The schema is not moved back with it."
+fi
+
 # --- privileges and tools -----------------------------------------------
 [ "$(id -u)" -eq 0 ] \
   || die "Run this as root: curl -fsSL https://raw.githubusercontent.com/ugolbck/supaffi/main/install.sh | sudo bash"
@@ -328,15 +452,23 @@ backup_database() {
 }
 
 if [ -d "$DIR/.git" ]; then
-  say "Updating $DIR"
+  if [ -n "$installed_version" ] && [ "$installed_version" != "$version" ]; then
+    say "Updating $DIR from $installed_version to $version"
+  else
+    say "Updating $DIR to $version"
+  fi
   cd "$DIR"
   refuse_local_edits
   backup_database
-  git fetch --depth 1 origin main
-  git reset --hard FETCH_HEAD
+  # The tag, not a branch. An install that was made before versions existed is
+  # sitting on main, and this is what moves it onto a release.
+  git fetch --depth 1 origin "refs/tags/v$version:refs/tags/v$version" --force \
+    || die "No release tagged v$version. See https://github.com/ugolbck/supaffi/releases"
+  git reset --hard "v$version"
 else
-  say "Cloning into $DIR"
-  git clone --depth 1 "$REPO" "$DIR"
+  say "Cloning $version into $DIR"
+  git clone --depth 1 --branch "v$version" "$REPO" "$DIR" \
+    || die "No release tagged v$version. See https://github.com/ugolbck/supaffi/releases"
   cd "$DIR"
 fi
 
@@ -440,6 +572,43 @@ if [ -z "$bind" ]; then
   bind="127.0.0.1:3000"
 fi
 
+set_env_key SUPAFFI_VERSION "$version"
+
+# Same precedence as the domain and the proxy mode: an explicit variable wins,
+# then whatever the existing install stored. Written every run so the README's
+# instruction to set it on the install command actually does something.
+update_check="${SUPAFFI_UPDATE_CHECK:-}"
+if [ -z "$update_check" ]; then
+  update_check="$(existing_env_value SUPAFFI_UPDATE_CHECK)"
+fi
+set_env_key SUPAFFI_UPDATE_CHECK "$update_check"
+
+# Compose reads COMPOSE_FILE out of .env itself, so writing it here keeps every
+# later command a plain `docker compose up -d` with no flags to remember.
+#
+# Naming any file at all stops Compose auto-loading docker-compose.override.yml,
+# which is the documented way to attach the app to an existing proxy's network.
+# Losing it silently would leave that operator's install unreachable, so it is
+# listed explicitly when it exists.
+#
+# The removal branch is narrow on purpose. An operator may have set
+# COMPOSE_FILE for reasons of their own, and this script has no business
+# discarding a setting it did not write. Removed rather than emptied, because
+# an empty value is not the same as an absent one and Compose would find no
+# files at all.
+if [ "$build_from_source" = "yes" ]; then
+  compose_files="docker-compose.yml:docker-compose.build.yml"
+  if [ -f docker-compose.override.yml ]; then
+    compose_files="$compose_files:docker-compose.override.yml"
+  fi
+  set_env_key COMPOSE_FILE "$compose_files"
+elif existing_env_has_key COMPOSE_FILE; then
+  case "$(existing_env_value COMPOSE_FILE)" in
+    *docker-compose.build.yml*)
+      grep -v "^COMPOSE_FILE=" .env > .env.tmp && chmod 600 .env.tmp && mv .env.tmp .env
+      ;;
+  esac
+fi
 set_env_key SUPAFFI_DOMAIN "$domain"
 set_env_key SUPAFFI_HOST_IP "$host_ip"
 set_env_key SUPAFFI_DASHBOARD_PORT "$dashboard_port"
@@ -468,7 +637,16 @@ if [ "$mode" = "external" ]; then
   docker compose stop caddy
   docker compose rm -f caddy
 fi
-docker compose up -d --build
+if [ "$build_from_source" = "yes" ]; then
+  say "Building from source, as asked. This needs about 2 GB of memory."
+  docker compose up -d --build
+else
+  # Pull first, as its own step: a registry that cannot be reached should say
+  # so plainly rather than surfacing later as a container that will not start.
+  docker compose pull \
+    || die "Could not pull the images for $version. This server needs outbound access to ghcr.io and to Docker Hub. If that is not possible, compile it here instead: SUPAFFI_BUILD_FROM_SOURCE=yes"
+  docker compose up -d
+fi
 
 # --- the setup token ----------------------------------------------------
 # Printed by the app's startup hook when no Owner exists yet. Contract with
@@ -505,6 +683,12 @@ setup_url="https://$host_ip:$dashboard_port"
 
 echo
 echo "────────────────────────────────────────────────────────────────────────"
+if [ -n "$installed_version" ] && [ "$installed_version" != "$version" ]; then
+  echo "  Supaffi $installed_version is now $version."
+else
+  echo "  Supaffi $version."
+fi
+echo
 if [ -n "$token" ]; then
   echo "  Open $setup_url/setup and paste this token:"
   echo

@@ -1,0 +1,27 @@
+# Builds the app from this checkout instead of pulling a published image.
+#
+# Layered on top of docker-compose.yml, never used alone. The installer writes
+# this into .env when asked to build from source:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.build.yml
+#
+# Compose reads COMPOSE_FILE from .env itself, so every documented command
+# stays a plain `docker compose up -d` with no extra flags to remember.
+#
+# Costs a build on the operator's own server, which needs roughly two
+# gigabytes of memory and several minutes. That is exactly what publishing
+# images removed, so this exists for people who self-host in order to compile
+# it themselves, not as the normal path.
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Otherwise a source build always reports itself as "dev" and never
+        # tells its operator that a newer release exists, even though .env
+        # records a real version.
+        SUPAFFI_VERSION: ${SUPAFFI_VERSION:-dev}
+    # Overrides the published image name, so a locally built stack cannot be
+    # confused for a released one, and `docker compose pull` has nothing to
+    # fetch over the top of it.
+    image: supaffi-app:source

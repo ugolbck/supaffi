@@ -1,52 +1,49 @@
 # Roadmap
 
-Open work, roughly in the order it should be done. Shipped decisions live in
-CONTEXT.md; this file is only what is still missing.
+What is still missing, roughly in the order it gets built. Deliberately coarse:
+this is the shape of the work, not a changelog. Shipped versions are in
+CHANGELOG.md.
 
-## Missing screens
+## Now
 
-### Affiliates section is not built
-The sidebar item is permanently locked. No owner-facing list of affiliates,
-their referral codes, their per-affiliate override rate, or their earnings.
+### Installing next to what you already run
+A server with nothing on it is handled. A server that already runs a reverse
+proxy is not, quite: Supaffi stays out of the way as it should, but the program
+hostnames still need a routing rule added by hand, and nothing in the product
+tells you that or checks whether it worked. Both cases should be equally
+automatic.
 
-## Dashboard layout
+### Onboarding
+The install is good and everything after it is not. Setup should be one path
+that holds you until it is finished, rather than a dashboard you can wander
+into half configured. That includes real guidance for the subdomain each
+program needs, splitting the payment and email steps so progress is visible,
+and rewriting the commission terms screen, which currently explains nothing.
 
-### The screens do not read as a dashboard
-Wireframes are done, in `docs/design/wireframes.md`. What follows is why.
+## Next
 
-They read as a marketing page dropped inside a dashboard shell: centred column,
-a hard max width, most of the viewport unused, and cards that stretch to
-absurd heights when their content is short. The Programs card on the product
-overview is the clearest case.
+### The affiliate side
+The affiliate dashboard needs rebuilding. It should be somewhere affiliates
+want to open, not only somewhere they go when chasing a payment. They also
+cannot manage their own links yet: one is generated at signup and that is all
+they get.
 
-Commissions is built to the wireframe and is the reference. Still to bring
-across: products list, product overview, programs, and the settings form.
-Affiliates gets built to it from scratch.
+### The owner's view of affiliates
+The affiliates section is not built. There is no list of who is promoting a
+product, what they have earned, or per-affiliate rates.
 
-### Setup progress shows after setup is done
-Revisiting Integrations on a fully configured product still says "Step 1 of 4".
-The step rail belongs to onboarding, so it should disappear once the product is
-set up, leaving the page as a plain settings screen.
+## Later
 
-## Affiliate side
+### More providers
+Stripe is the only payment provider and Resend the only email provider. Paddle
+and Polar are the obvious next payments; email needs at least a plain SMTP
+option so no one is forced into a single vendor.
 
-### The affiliate dashboard needs a rebuild
-It does not share the owner dashboard's layout, typography, or components. It
-also shows far less than an affiliate needs. Rewardful's affiliate view is the
-reference: visitors, leads and conversions at the top; a links table with
-per-link stats, copy, and edit; then commissions, payouts, referrals, and
-assets as their own sections.
+## Known gaps
 
-### Affiliates cannot manage their links
-One link is generated at signup and cannot be changed. An affiliate should be
-able to edit their code and create additional links, including links that point
-at a specific page on the merchant's site rather than only the root.
-
-## Known gaps, lower priority
-
-- A session that outlives its Owner row still passes the dashboard guard and
-  renders an empty dashboard instead of redirecting to login.
-- The five `rk_` permission identifiers offered in the Stripe connect
-  instructions have not been checked against the live key-creation form. Stripe
-  ignores unknown identifiers silently, so a wrong one produces a key that
-  fails at runtime with no signal at connect time.
+- A session that outlives its owner account still passes the dashboard guard
+  and renders an empty dashboard instead of sending you back to login.
+- The Stripe restricted key permissions named in the connect instructions have
+  not been checked against Stripe's live form. Stripe ignores an unknown one
+  silently, so a wrong name produces a key that fails later with no warning at
+  connect time.

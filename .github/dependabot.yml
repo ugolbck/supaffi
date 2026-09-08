@@ -1,0 +1,26 @@
+version: 2
+
+# Actions are pinned to commit SHAs, which is what makes them safe and also
+# what makes them invisible to a human reading the workflow. Dependabot is what
+# keeps them current: it moves the SHA and rewrites the trailing version
+# comment, so pinning does not quietly become "frozen on a version with a known
+# hole".
+#
+# Docker is here for the same reason. The base images float on a minor tag, so
+# a rebuild picks up patches, but nothing triggers a rebuild between releases.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

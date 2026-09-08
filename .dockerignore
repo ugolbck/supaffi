@@ -22,8 +22,20 @@ CONTEXT.md
 test/
 vitest.config.ts
 
+# Database dumps. install.sh writes one here before every update and never
+# prunes them, so on a self-hosted server this directory holds the owner's
+# password hash, every affiliate's email, and encrypted Stripe key material.
+# The build context is that same directory, so without this line a source
+# build bakes the lot into an image layer.
+backups/
+
 # Compose and deploy files describe the container, they do not belong in it.
 docker-compose.yml
+docker-compose.build.yml
 docker-compose.override.yml*
 Caddyfile
+Caddyfile.dashboard
+install.sh
+CHANGELOG.md
 README.md
+.github/

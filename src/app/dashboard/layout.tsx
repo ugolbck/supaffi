@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { getProductSetup, sectionGates } from "@/lib/productSetup";
+import { availableUpdate, installedVersion } from "@/lib/version";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardBreadcrumb } from "./DashboardBreadcrumb";
@@ -28,9 +29,21 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }))
   );
 
+  // Answers from cache and never waits on the network, so a server that cannot
+  // reach GitHub does not pay for the check on every dashboard load. A stale
+  // cache refreshes in the background and the notice appears on the next
+  // navigation.
+  const update = availableUpdate();
+
   return (
     <SidebarProvider>
-      <AppSidebar merchants={merchants} gates={gates} email={session.user.email ?? ""} />
+      <AppSidebar
+        merchants={merchants}
+        gates={gates}
+        email={session.user.email ?? ""}
+        version={installedVersion()}
+        update={update && { version: update.version, url: update.url, security: update.security }}
+      />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border/60 bg-elevated/70 px-6 backdrop-blur-md backdrop-saturate-150">
           <SidebarTrigger />

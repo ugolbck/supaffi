@@ -1,7 +1,13 @@
 services:
   app:
-    build:
-      context: .
+    # A published image, pinned to an exact version by the installer, never a
+    # moving tag. The default here is only what an unconfigured `docker
+    # compose up` would get; every real install writes SUPAFFI_VERSION into
+    # .env so an update is a deliberate move from one version to another.
+    #
+    # Building from source instead is still supported and is one line in .env:
+    # COMPOSE_FILE=docker-compose.yml:docker-compose.build.yml
+    image: ghcr.io/ugolbck/supaffi:${SUPAFFI_VERSION:-latest}
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://supaffi:${POSTGRES_PASSWORD}@db:5432/supaffi
@@ -11,6 +17,10 @@ services:
       SUPAFFI_DOMAIN: ${SUPAFFI_DOMAIN} # the domain this Instance's own dashboard is served on; a Merchant may not claim it (src/lib/instance.ts)
       SUPAFFI_HOST_IP: ${SUPAFFI_HOST_IP:-} # the address the startup banner tells the operator to open, when there is no domain
       SUPAFFI_DASHBOARD_PORT: ${SUPAFFI_DASHBOARD_PORT:-3443} # where caddy-dashboard serves it
+      SUPAFFI_UPDATE_CHECK: ${SUPAFFI_UPDATE_CHECK:-} # off to stop the dashboard reading GitHub's releases page
+      # SUPAFFI_VERSION is deliberately not passed in. It is baked into the
+      # image at build time, so the version the dashboard reports is the
+      # version that is actually running rather than whatever .env claims.
     ports:
       # Loopback by default, which is what proxy-less mode needs: the
       # operator's own reverse proxy forwards to 127.0.0.1:3000, and the SSH

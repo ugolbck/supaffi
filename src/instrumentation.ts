@@ -22,6 +22,12 @@ export async function register(): Promise<void> {
   if (globalForWorker.supaffiWorkerStarted) return; // dev-mode Fast Refresh guard, same pattern as db.ts
   globalForWorker.supaffiWorkerStarted = true;
 
+  // Read straight from the environment rather than through @/lib/version, to
+  // keep this file's import graph as small as it is: everything reachable from
+  // here is compiled for the Edge runtime too. The image bakes this in at
+  // build time, so an unset value means a build made outside a release.
+  console.log(`Supaffi ${process.env.SUPAFFI_VERSION?.trim() || "dev"}`);
+
   await announceSetupTokenIfNeeded();
 
   const { startWorker } = await import("@/lib/worker");

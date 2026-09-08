@@ -25,6 +25,12 @@ FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Baked in at build time by the release workflow, which takes it from the git
+# tag. Defaults to "dev" so a locally built image is never mistaken for a
+# release, and so the update check has something honest to compare against.
+ARG SUPAFFI_VERSION=dev
+ENV SUPAFFI_VERSION=${SUPAFFI_VERSION}
+
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static

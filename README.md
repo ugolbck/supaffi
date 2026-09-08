@@ -106,9 +106,51 @@ this domain, so most people never need one.
 cd /opt/supaffi && curl -fsSL https://raw.githubusercontent.com/ugolbck/supaffi/main/install.sh | sudo bash
 ```
 
-Your secrets and settings are kept. Migrations run on start. Supaffi tracks the
-`main` branch today, so an update brings whatever has landed there. Versioned
-releases are coming.
+Your secrets and settings are kept. It backs up the database first and stops if
+that fails. Migrations run on start, and a migration that fails stops the app
+rather than serving against a schema it does not match.
+
+An install pins an exact version, never a branch, so updating is a deliberate
+move from one release to the next and it tells you which.
+
+The dashboard tells you when a newer release exists. It will not update itself,
+and no self-hosted tool should: doing that means giving the web app control of
+Docker on your server, which is root on the whole machine. To turn the check
+off, install with `SUPAFFI_UPDATE_CHECK=off`. It sends no data about your
+instance, though GitHub sees your server's IP address as it would for any
+outbound request.
+
+### Going back
+
+Not symmetrical with going forward, and worth understanding before you need it.
+The code goes back; the database does not. Migrations only run in one
+direction, so an older release starts against the newer schema.
+
+The installer refuses a downgrade for that reason, and refuses outright if
+nothing asked for one. When you do mean it:
+
+```sh
+cd /opt/supaffi && sudo SUPAFFI_VERSION=0.1.0 SUPAFFI_ALLOW_DOWNGRADE=yes bash install.sh
+```
+
+If the version you are leaving changed the schema, restore the dump the update
+took on the way up, from `/opt/supaffi/backups`.
+
+### Checking what you installed
+
+Every release is built by a public workflow and signed, so you can confirm the
+image on your server came from this repository rather than from someone who got
+hold of a registry token:
+
+```sh
+gh attestation verify oci://ghcr.io/ugolbck/supaffi:0.1.0 --repo ugolbck/supaffi
+```
+
+### Building it yourself
+
+The app ships as a published image, so nothing is compiled on your server. If
+you would rather compile it, install with `SUPAFFI_BUILD_FROM_SOURCE=yes`. That
+needs roughly 2 GB of memory and a few minutes on every update.
 
 ### Backups
 

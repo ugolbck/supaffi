@@ -29,6 +29,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ProductSection } from "@/lib/productSetup";
 import { AccountMenu } from "./AccountMenu";
+import { VersionNotice, type UpdateInfo } from "./VersionNotice";
 
 type Merchant = { id: string; slug: string; name: string; domain: string };
 
@@ -128,10 +129,14 @@ export function AppSidebar({
   merchants,
   gates,
   email,
+  version,
+  update,
 }: {
   merchants: Merchant[];
   gates: ProductGates[];
   email: string;
+  version: string;
+  update: UpdateInfo | null;
 }) {
   const pathname = usePathname();
   const merchantMatch = pathname.match(/^\/dashboard\/products\/([^/]+)/);
@@ -277,6 +282,7 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-2">
+        <VersionNotice installed={version} update={update} />
         <AccountMenu email={email} />
       </SidebarFooter>
     </Sidebar>

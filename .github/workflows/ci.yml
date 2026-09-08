@@ -1,0 +1,99 @@
+name: CI
+
+# Every push and every pull request. Nothing gets tagged from a red tree: the
+# release workflow refuses a commit this has not passed on, so this is a real
+# gate rather than a badge.
+#
+# Actions are pinned to a commit, not a tag, for the reason spelled out in
+# release.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Unset, the token's scopes come from the repository's default, which on older
+# repositories is read and write. This job runs dependency code, so it gets the
+# least it can do the work with.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+
+    # Most of the suite talks to a real Postgres rather than a mock, so CI
+    # needs one. The database name has to end in _test or test/setup.ts
+    # refuses to run at all, which is deliberate: those suites truncate tables.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: supaffi
+          POSTGRES_PASSWORD: supaffi
+          POSTGRES_DB: supaffi_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U supaffi -d supaffi_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://supaffi:supaffi@localhost:5432/supaffi_test
+      # Throwaway values. Auth.js needs AUTH_SECRET present when its config
+      # module loads during the build, and crypto.ts refuses to load without a
+      # 64 character hex key. Neither is a secret here.
+      AUTH_SECRET: ci-only-not-a-real-secret
+      MASTER_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      # Lifecycle scripts off. Both Shai-Hulud waves worked by having a
+      # dependency's install script read the runner's token, and this job holds
+      # one. The only script we actually need is prisma generate, run
+      # explicitly below where it is visible.
+      - run: npm ci --ignore-scripts
+      - run: npx prisma generate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  # Separate from the checks above because it shares nothing with them, and
+  # because a Dockerfile regression that only surfaces on a tag surfaces at the
+  # worst possible moment. Builds for this runner's architecture only and
+  # pushes nothing; the release workflow does the real, two architecture build.
+  image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: false
+          cache-from: type=gha,scope=ci
+          cache-to: type=gha,mode=max,scope=ci
