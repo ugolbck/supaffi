@@ -238,6 +238,36 @@ export async function deleteMerchant(ownerId: string, merchantId: string): Promi
   ]);
 }
 
+export async function getOnboardingState(
+  ownerId: string,
+  merchantId: string
+): Promise<{ onboardingCompletedAt: Date | null; welcomeDismissedAt: Date | null }> {
+  const merchant = await db.merchant.findFirst({
+    where: { id: merchantId, ownerId },
+    select: { onboardingCompletedAt: true, welcomeDismissedAt: true },
+  });
+  if (!merchant) throw new Error("Merchant not found");
+  return merchant;
+}
+
+// Set once. Re-running onboarding to reconnect something must not make the
+// product look freshly finished again.
+export async function markOnboardingComplete(ownerId: string, merchantId: string): Promise<void> {
+  await assertOwns(ownerId, merchantId);
+  await db.merchant.updateMany({
+    where: { id: merchantId, onboardingCompletedAt: null },
+    data: { onboardingCompletedAt: new Date() },
+  });
+}
+
+export async function dismissWelcome(ownerId: string, merchantId: string): Promise<void> {
+  await assertOwns(ownerId, merchantId);
+  await db.merchant.updateMany({
+    where: { id: merchantId, welcomeDismissedAt: null },
+    data: { welcomeDismissedAt: new Date() },
+  });
+}
+
 // Internal only — the one function that returns the encrypted email
 // credential. Never call this from a page or anything whose result reaches
 // a response; only the Affiliate magic-link send path (src/lib/email/

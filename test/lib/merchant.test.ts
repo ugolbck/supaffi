@@ -18,6 +18,9 @@ import {
   getMerchantEmailCredentials,
   getStripeKeyKind,
   deleteMerchant,
+  markOnboardingComplete,
+  dismissWelcome,
+  getOnboardingState,
 } from "@/lib/merchant";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
@@ -342,5 +345,35 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
     await expect(deleteMerchant(otherOwnerId, merchant.id)).rejects.toThrow();
     expect(await db.merchant.findUnique({ where: { id: merchant.id } })).not.toBeNull();
+  });
+
+  it("remembers that onboarding finished and that the welcome was dismissed", async () => {
+    const merchant = await createMerchant(ownerId, {
+      name: "New",
+      domain: "affiliates.new.test",
+      websiteUrl: "https://new.test",
+    });
+    expect(await getOnboardingState(ownerId, merchant.id)).toEqual({
+      onboardingCompletedAt: null,
+      welcomeDismissedAt: null,
+    });
+    await markOnboardingComplete(ownerId, merchant.id);
+    await dismissWelcome(ownerId, merchant.id);
+    const state = await getOnboardingState(ownerId, merchant.id);
+    expect(state.onboardingCompletedAt).toBeInstanceOf(Date);
+    expect(state.welcomeDismissedAt).toBeInstanceOf(Date);
+  });
+
+  it("does not move the completion time when called twice", async () => {
+    const merchant = await createMerchant(ownerId, {
+      name: "Twice",
+      domain: "affiliates.twice.test",
+      websiteUrl: "https://twice.test",
+    });
+    await markOnboardingComplete(ownerId, merchant.id);
+    const first = (await getOnboardingState(ownerId, merchant.id)).onboardingCompletedAt;
+    await markOnboardingComplete(ownerId, merchant.id);
+    const second = (await getOnboardingState(ownerId, merchant.id)).onboardingCompletedAt;
+    expect(second?.getTime()).toBe(first?.getTime());
   });
 });
