@@ -1,6 +1,9 @@
-// Destructive: runs db.merchant.deleteMany() / db.owner.deleteMany() before
-// every test. Point DATABASE_URL at a disposable database, never a real
-// deployment's data.
+// Destructive: runs db.commission.deleteMany() / db.click.deleteMany() /
+// db.affiliateLink.deleteMany() / db.affiliateLoginToken.deleteMany() /
+// db.affiliate.deleteMany() / db.program.deleteMany() /
+// db.webhookEvent.deleteMany() / db.merchant.deleteMany() /
+// db.owner.deleteMany() before every test. Point DATABASE_URL at a
+// disposable database, never a real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
@@ -14,6 +17,7 @@ import {
   getMerchantByDomain,
   getMerchantEmailCredentials,
   getStripeKeyKind,
+  deleteMerchant,
 } from "@/lib/merchant";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
@@ -42,6 +46,13 @@ describe.skipIf(!hasDatabase)("merchant", () => {
   let otherOwnerId: string;
 
   beforeEach(async () => {
+    await db.commission.deleteMany();
+    await db.click.deleteMany();
+    await db.affiliateLink.deleteMany();
+    await db.affiliateLoginToken.deleteMany();
+    await db.affiliate.deleteMany();
+    await db.program.deleteMany();
+    await db.webhookEvent.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
     const owner = await db.owner.create({
@@ -55,6 +66,13 @@ describe.skipIf(!hasDatabase)("merchant", () => {
   });
 
   afterAll(async () => {
+    await db.commission.deleteMany();
+    await db.click.deleteMany();
+    await db.affiliateLink.deleteMany();
+    await db.affiliateLoginToken.deleteMany();
+    await db.affiliate.deleteMany();
+    await db.program.deleteMany();
+    await db.webhookEvent.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
     await db.$disconnect();
@@ -281,5 +299,48 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
     await connectStripe(otherOwnerId, theirId, { secretKey: "rk_live_x", webhookSecret: "whsec_x" });
     expect(await getStripeKeyKind(ownerId, theirId)).toBeNull();
+  });
+
+  it("deletes a product and everything under it", async () => {
+    const merchant = await createMerchant(ownerId, {
+      name: "Gone",
+      domain: "affiliates.gone.test",
+      websiteUrl: "https://gone.test",
+    });
+    const program = await db.program.create({
+      data: { merchantId: merchant.id, name: "P", slug: "p", defaultCommissionRate: 10, commissionDurationType: "FOREVER" },
+    });
+    const affiliate = await db.affiliate.create({
+      data: { merchantId: merchant.id, programId: program.id, email: "a@example.com" },
+    });
+    const link = await db.affiliateLink.create({
+      data: { affiliateId: affiliate.id, code: "gone1", isPrimary: true },
+    });
+    const click = await db.click.create({
+      data: { affiliateId: affiliate.id, linkId: link.id, referralToken: "tok1", expiresAt: new Date() },
+    });
+    await db.commission.create({
+      data: { affiliateId: affiliate.id, clickId: click.id, amount: 1, currency: "usd", payableAt: new Date() },
+    });
+    await db.webhookEvent.create({
+      data: { merchantId: merchant.id, stripeEventId: "evt_1", payload: {} },
+    });
+
+    await deleteMerchant(ownerId, merchant.id);
+
+    expect(await db.merchant.findUnique({ where: { id: merchant.id } })).toBeNull();
+    expect(await db.affiliate.count({ where: { merchantId: merchant.id } })).toBe(0);
+    expect(await db.commission.count({ where: { affiliateId: affiliate.id } })).toBe(0);
+    expect(await db.webhookEvent.count({ where: { merchantId: merchant.id } })).toBe(0);
+  });
+
+  it("refuses to delete another owner's product", async () => {
+    const merchant = await createMerchant(ownerId, {
+      name: "Mine",
+      domain: "affiliates.mine.test",
+      websiteUrl: "https://mine.test",
+    });
+    await expect(deleteMerchant(otherOwnerId, merchant.id)).rejects.toThrow();
+    expect(await db.merchant.findUnique({ where: { id: merchant.id } })).not.toBeNull();
   });
 });

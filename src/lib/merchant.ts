@@ -216,6 +216,28 @@ export async function getMerchantByDomain(
   });
 }
 
+/**
+ * Deletes a product and every row that hangs off it, in one transaction, in
+ * dependency order. Prisma relations here have no cascade, and adding one to
+ * the schema would make an accidental delete of a Merchant row silently take
+ * a year of commission history with it. Explicit here, behind the ownership
+ * check, is the only place that should be able to do this.
+ */
+export async function deleteMerchant(ownerId: string, merchantId: string): Promise<void> {
+  await assertOwns(ownerId, merchantId);
+  const affiliates = { affiliate: { merchantId } };
+  await db.$transaction([
+    db.commission.deleteMany({ where: affiliates }),
+    db.click.deleteMany({ where: affiliates }),
+    db.affiliateLink.deleteMany({ where: affiliates }),
+    db.affiliateLoginToken.deleteMany({ where: affiliates }),
+    db.affiliate.deleteMany({ where: { merchantId } }),
+    db.program.deleteMany({ where: { merchantId } }),
+    db.webhookEvent.deleteMany({ where: { merchantId } }),
+    db.merchant.delete({ where: { id: merchantId } }),
+  ]);
+}
+
 // Internal only — the one function that returns the encrypted email
 // credential. Never call this from a page or anything whose result reaches
 // a response; only the Affiliate magic-link send path (src/lib/email/
