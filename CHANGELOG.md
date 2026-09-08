@@ -8,6 +8,17 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.1.1
+
+### Fixed
+
+- Updating stopped silently after taking its backup and applied nothing. The
+  install script is piped into a shell, so the shell reads it from standard
+  input, and the backup step attached the database container to that same
+  input and consumed the rest of the script. Nothing was printed and nothing
+  was broken, but the instance stayed on the version it was already running.
+  Fresh installs were never affected, since only an update takes a backup.
+
 ## 0.1.0
 
 First release.

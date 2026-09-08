@@ -435,7 +435,17 @@ backup_database() {
   file="backups/supaffi-$(date -u +%Y%m%d-%H%M%S).sql.gz"
 
   say "Backing up the database to $DIR/$file"
-  if docker compose exec -T db pg_dump -U supaffi supaffi | gzip > "$file"; then
+  # stdin comes from /dev/null, not from this script.
+  #
+  # The documented way to run this is `curl ... | sudo bash`, which means bash
+  # is reading the script itself from stdin. `docker compose exec` attaches
+  # stdin to the container even with -T, so without this redirect it consumes
+  # the rest of the script: bash then reaches end of input and exits quietly,
+  # having taken a backup and applied no update, with nothing printed to say
+  # so. Only updates reach this function, so a fresh install never showed it.
+  #
+  # pg_dump reads nothing from stdin, so /dev/null costs it nothing.
+  if docker compose exec -T db pg_dump -U supaffi supaffi < /dev/null | gzip > "$file"; then
     chmod 600 "$file"
     say "Backed up. Older dumps are kept; prune $DIR/backups yourself."
   else
