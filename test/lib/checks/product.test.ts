@@ -88,4 +88,30 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     expect(after.stripe.key.ok).toBe(true);
     expect(after.email.domain.ok).toBe(true);
   });
+
+  it("degrades one failing check to its own failed result instead of losing every light", async () => {
+    const owner = await db.owner.create({ data: { email: "c@example.com", passwordHash: "x" } });
+    const merchant = await createMerchant(owner.id, {
+      name: "C",
+      domain: "affiliates.c.test",
+      websiteUrl: "https://c.test",
+    });
+    process.env.SUPAFFI_HOST_IP = "146.59.195.140";
+
+    const result = await runProductChecks(owner.id, merchant.id, {
+      resolvesTo: async () => ok,
+      httpsReachable: async () => ({ reachable: ok, certificate: ok }),
+      stripeKeyWorks: async () => ok,
+      webhookEventReceived: async () => {
+        throw new Error("db down");
+      },
+      resendKeyWorks: async () => ok,
+      sendingDomainVerified: async () => ok,
+      scriptFound: async () => ok,
+    });
+
+    expect(result.dns.resolves.ok).toBe(true);
+    expect(result.stripe.webhook.ok).toBe(false);
+    expect(result.stripe.webhook.detail).toBeTruthy();
+  });
 });
