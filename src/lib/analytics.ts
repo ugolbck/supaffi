@@ -13,7 +13,19 @@ import { Prisma } from "@prisma/client";
  * the route that called it, same rule as merchant.ts and commission.ts.
  */
 
-export type DayPoint = { date: string; clicks: number; conversions: number; revenue: number };
+export type DayPoint = {
+  date: string;
+  clicks: number;
+  conversions: number;
+  /**
+   * Chart-only sum of sale amounts. It adds across currencies on purpose,
+   * because a bar chart needs one number per day, so it must never be shown
+   * as money anywhere. The labelled total is `ProductMetrics.revenue`, which
+   * stays bucketed per currency.
+   */
+  revenue: number;
+  signups: number;
+};
 export type CurrencyTotal = { currency: string; total: string };
 
 const DEFAULT_WINDOW_DAYS = 30;
@@ -56,7 +68,7 @@ function emptySeries(days: number): Map<string, DayPoint> {
     const day = new Date(start);
     day.setUTCDate(start.getUTCDate() + i);
     const key = dayKey(day);
-    series.set(key, { date: key, clicks: 0, conversions: 0, revenue: 0 });
+    series.set(key, { date: key, clicks: 0, conversions: 0, revenue: 0, signups: 0 });
   }
   return series;
 }
@@ -98,7 +110,7 @@ export async function getProductMetrics(
 
   const since = windowStart(days);
 
-  const [clickRows, commissionRows, owedRows, paidRows, revenueRows, signups, flagged] =
+  const [clickRows, commissionRows, owedRows, paidRows, revenueRows, signupRows, flagged] =
     await Promise.all([
       db.click.findMany({
         where: { affiliate: { merchantId }, createdAt: { gte: since } },
@@ -123,7 +135,10 @@ export async function getProductMetrics(
         where: { affiliate: { merchantId }, createdAt: { gte: since }, saleAmount: { not: null } },
         _sum: { saleAmount: true },
       }),
-      db.affiliate.count({ where: { merchantId, createdAt: { gte: since } } }),
+      db.affiliate.findMany({
+        where: { merchantId, createdAt: { gte: since } },
+        select: { createdAt: true },
+      }),
       // Not windowed: a flagged commission stays the Owner's problem however
       // long it has sat there.
       db.commission.count({ where: { affiliate: { merchantId }, status: "FLAGGED" } }),
@@ -140,6 +155,10 @@ export async function getProductMetrics(
     point.conversions += 1;
     point.revenue += Number(commission.saleAmount ?? 0);
   }
+  for (const affiliate of signupRows) {
+    const point = series.get(dayKey(affiliate.createdAt));
+    if (point) point.signups += 1;
+  }
 
   const clicks = clickRows.length;
   const conversions = commissionRows.length;
@@ -153,7 +172,7 @@ export async function getProductMetrics(
     revenue: totalsByCurrency(
       revenueRows.map((row) => ({ currency: row.currency, _sum: { amount: row._sum.saleAmount } }))
     ),
-    signups,
+    signups: signupRows.length,
     flagged,
     series: [...series.values()],
   };
@@ -184,6 +203,7 @@ export function toWeeks(daily: DayPoint[]): DayPoint[] {
       clicks: chunk.reduce((sum, d) => sum + d.clicks, 0),
       conversions: chunk.reduce((sum, d) => sum + d.conversions, 0),
       revenue: chunk.reduce((sum, d) => sum + d.revenue, 0),
+      signups: chunk.reduce((sum, d) => sum + d.signups, 0),
     });
   }
   return weeks;
@@ -433,7 +453,7 @@ export async function getOwnerMetrics(
   const since = windowStart(days);
   const scope = { affiliate: { merchant: { ownerId } } };
 
-  const [products, affiliates, clickRows, commissionRows, owedRows, flagged] =
+  const [products, affiliates, clickRows, commissionRows, signupRows, owedRows, flagged] =
     await Promise.all([
       db.merchant.count({ where: { ownerId } }),
       db.affiliate.count({ where: { merchant: { ownerId } } }),
@@ -443,6 +463,10 @@ export async function getOwnerMetrics(
       }),
       db.commission.findMany({
         where: { ...scope, createdAt: { gte: since } },
+        select: { createdAt: true, saleAmount: true },
+      }),
+      db.affiliate.findMany({
+        where: { merchant: { ownerId }, createdAt: { gte: since } },
         select: { createdAt: true },
       }),
       db.commission.groupBy({
@@ -460,7 +484,13 @@ export async function getOwnerMetrics(
   }
   for (const commission of commissionRows) {
     const point = series.get(dayKey(commission.createdAt));
-    if (point) point.conversions += 1;
+    if (!point) continue;
+    point.conversions += 1;
+    point.revenue += Number(commission.saleAmount ?? 0);
+  }
+  for (const affiliate of signupRows) {
+    const point = series.get(dayKey(affiliate.createdAt));
+    if (point) point.signups += 1;
   }
 
   return {

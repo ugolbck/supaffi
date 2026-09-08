@@ -279,6 +279,19 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(metrics.signups).toBe(2);
   });
 
+  it("carries a signup on the day the affiliate joined", async () => {
+    const joined = daysAgo(3);
+    await db.affiliate.create({
+      data: { merchantId, programId, email: "joined@example.com", createdAt: joined },
+    });
+
+    const metrics = await getProductMetrics(ownerId, merchantId, 7);
+
+    const day = metrics.series.find((d) => d.date === joined.toISOString().slice(0, 10));
+    expect(day?.signups).toBe(1);
+    expect(metrics.series.reduce((sum, d) => sum + d.signups, 0)).toBe(1);
+  });
+
   it("rolls every product up for the owner-level view", async () => {
     const affiliate = await makeAffiliate("a");
     await makeClick(affiliate.id);
@@ -293,6 +306,27 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(metrics.affiliates).toBe(1);
     expect(metrics.clicks).toBe(2);
     expect(metrics.flagged).toBe(1);
+  });
+
+  it("carries revenue and signups on the owner-level series", async () => {
+    const affiliate = await makeAffiliate("rev");
+    const click = await makeClick(affiliate.id);
+    await db.commission.create({
+      data: {
+        affiliateId: affiliate.id,
+        clickId: click.id,
+        amount: 10,
+        saleAmount: 50,
+        currency: "usd",
+        status: "PENDING",
+        payableAt: new Date(),
+      },
+    });
+
+    const metrics = await getOwnerMetrics(ownerId, 30);
+
+    expect(metrics.series.reduce((sum, d) => sum + d.revenue, 0)).toBe(50);
+    expect(metrics.series.reduce((sum, d) => sum + d.signups, 0)).toBe(1);
   });
 });
 
@@ -310,6 +344,7 @@ function daySeries(
       clicks: 0,
       conversions: 0,
       revenue: 0,
+      signups: 0,
       ...make(i),
     };
   });
