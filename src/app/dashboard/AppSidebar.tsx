@@ -6,7 +6,6 @@ import {
   Building2,
   Code2,
   LayoutDashboard,
-  Lock,
   Percent,
   Plus,
   Plug,
@@ -26,114 +25,31 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { ProductSection } from "@/lib/productSetup";
 import { AccountMenu } from "./AccountMenu";
 import { VersionNotice, type UpdateInfo } from "./VersionNotice";
 
 type Merchant = { id: string; slug: string; name: string; domain: string };
 
-/** One product's gate state, resolved server-side in the dashboard layout. */
-export type ProductGates = Record<ProductSection, boolean> & { slug: string };
-
-// Why a section is locked, in terms of the thing that unlocks it. Generic
-// "unlocks later" copy told an Owner nothing about what to do next, which is
-// the whole point of locking the row rather than letting them click into a
-// screen where every control is a dead end.
-const LOCKED_BECAUSE: Record<ProductSection, string> = {
-  programs: "Connect Stripe first. Commission terms need somewhere to read payments from.",
-  tracking: "Set your commission terms first.",
-  affiliates: "Set your commission terms first. Affiliates sign up to a program.",
-  commissions: "Install tracking first. Nothing can be attributed until a click is recorded.",
-};
-
-// The nav a Merchant unlocks. Rendered for real once one exists, and as
-// greyed-out rows before that — showing the shape of the product up front is
-// what makes the empty state read as "not set up yet" instead of "broken".
+// One product's nav. Rendered only while a product is open: onboarding owns
+// everything before that, so there is nothing left to grey out or lock. A
+// section that has no product to point at is simply not on screen.
 const MERCHANT_NAV = [
-  {
-    key: "overview",
-    icon: Building2,
-    label: "Overview",
-    locked: "Traffic, affiliates and revenue for one product.",
-  },
-  {
-    key: "integrations",
-    icon: Plug,
-    label: "Integrations",
-    locked: "Where your payment provider and email sending are connected.",
-  },
-  {
-    key: "programs",
-    icon: Percent,
-    label: "Programs",
-    locked: "The commission terms Affiliates sign up under.",
-  },
-  {
-    key: "affiliates",
-    icon: Users,
-    label: "Affiliates",
-    locked: "Everyone promoting your product, and what they've earned.",
-  },
-  {
-    key: "commissions",
-    icon: Receipt,
-    label: "Commissions",
-    locked: "What's owed, what's cleared the holding period, what's paid.",
-  },
-  {
-    key: "tracking",
-    icon: Code2,
-    label: "Tracking",
-    locked: "The snippets that tell Supaffi which sale an affiliate sent.",
-  },
-  {
-    key: "settings",
-    icon: Settings,
-    label: "Settings",
-    locked: "Stripe keys, tracking domain and email delivery.",
-  },
+  { key: "overview", icon: Building2, label: "Overview" },
+  { key: "integrations", icon: Plug, label: "Integrations" },
+  { key: "programs", icon: Percent, label: "Programs" },
+  { key: "affiliates", icon: Users, label: "Affiliates" },
+  { key: "commissions", icon: Receipt, label: "Commissions" },
+  { key: "tracking", icon: Code2, label: "Tracking" },
+  { key: "settings", icon: Settings, label: "Settings" },
 ] as const;
-
-function LockedItem({
-  item,
-  reason,
-}: {
-  item: (typeof MERCHANT_NAV)[number];
-  reason: string;
-}) {
-  return (
-    <SidebarMenuItem>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            // Deliberately not `disabled`/`aria-disabled`: the sidebar's own
-            // styles kill pointer events on those, which would also kill the
-            // hover that explains *why* the row is locked.
-            <span className="flex h-8 w-full cursor-not-allowed items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm text-sidebar-foreground/45 select-none [&_svg]:size-4 [&_svg]:shrink-0" />
-          }
-        >
-          <item.icon />
-          <span className="flex-1 truncate">{item.label}</span>
-          <Lock className="size-3 opacity-70" />
-        </TooltipTrigger>
-        <TooltipContent side="right" className="max-w-56">
-          {reason}
-        </TooltipContent>
-      </Tooltip>
-    </SidebarMenuItem>
-  );
-}
 
 export function AppSidebar({
   merchants,
-  gates,
   email,
   version,
   update,
 }: {
   merchants: Merchant[];
-  gates: ProductGates[];
   email: string;
   version: string;
   update: UpdateInfo | null;
@@ -142,7 +58,6 @@ export function AppSidebar({
   const merchantMatch = pathname.match(/^\/dashboard\/products\/([^/]+)/);
   const activeSlug = merchantMatch?.[1];
   const activeMerchant = merchants.find((m) => m.slug === activeSlug);
-  const activeGates = gates.find((g) => g.slug === activeSlug) ?? null;
   const base = activeMerchant ? `/dashboard/products/${activeMerchant.slug}` : "";
 
   const merchantHrefs: Record<(typeof MERCHANT_NAV)[number]["key"], string> = {
@@ -244,27 +159,12 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>{activeMerchant?.name ?? "Manage"}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {MERCHANT_NAV.map((item) => {
-                if (!activeMerchant) {
-                  return (
-                    <LockedItem
-                      key={item.key}
-                      item={item}
-                      reason={`${item.locked} Unlocks once you add your first product.`}
-                    />
-                  );
-                }
-                // Overview, Integrations and Settings carry no gate: they are
-                // where the state every other gate reads gets changed.
-                const gate = item.key in LOCKED_BECAUSE ? (item.key as ProductSection) : null;
-                if (gate && activeGates && !activeGates[gate]) {
-                  return <LockedItem key={item.key} item={item} reason={LOCKED_BECAUSE[gate]} />;
-                }
-                return (
+        {activeMerchant && (
+          <SidebarGroup>
+            <SidebarGroupLabel>{activeMerchant.name}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {MERCHANT_NAV.map((item) => (
                   <SidebarMenuItem key={item.key}>
                     <SidebarMenuButton
                       isActive={isActiveNav(item.key)}
@@ -274,11 +174,11 @@ export function AppSidebar({
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-2">

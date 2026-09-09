@@ -2,9 +2,10 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { Activity, Check, Clock, Percent, Radio, Share2, Terminal } from "lucide-react";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwnerBySlug } from "@/lib/merchant";
+import { getMerchantForOwnerBySlug, getOnboardingState } from "@/lib/merchant";
 import { listProgramsForMerchant } from "@/lib/program";
 import { getProductSetup } from "@/lib/productSetup";
+import { resumeStep, stepPath } from "@/lib/onboarding";
 import { getProductMetrics, getTopAffiliates, getRecentActivity } from "@/lib/analytics";
 import { shouldCelebrateTracking } from "@/lib/tracking";
 import { originFor } from "@/lib/url";
@@ -16,17 +17,15 @@ import { StatTile } from "@/components/dashboard/StatTile";
 import { DashboardCard, CardEmpty } from "@/components/dashboard/DashboardCard";
 import { BarChart } from "@/components/charts/BarChart";
 import { money, moneyHint } from "@/lib/format";
-import { ProductSetup } from "./ProductSetup";
 import { TrackingVerified } from "./TrackingVerified";
+import { Welcome } from "./Welcome";
 
 /**
- * One product's own dashboard: its numbers, or while setup is unfinished, the
- * one thing left to do.
+ * One product's own dashboard: its numbers.
  *
- * These are two screens, not one screen with a card added. Until setup is
- * complete every number here is a zero and every card an empty state, so the
- * page is the stepper and nothing else. The moment setup is done the numbers
- * arrive and the stepper is gone for good.
+ * There is no half-built version of this screen any more. A product whose
+ * onboarding is unfinished redirects into onboarding, which owns every setup
+ * step, so everything below can assume the product works.
  */
 
 const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -81,29 +80,16 @@ export default async function MerchantDetailPage({
 
   const base = `/dashboard/products/${merchant.slug}`;
 
-  // Read on its own, ahead of everything else, because an unfinished product
-  // renders none of the cards below and so needs none of their queries.
-  const setup = await getProductSetup(ownerId, merchant.id);
+  // Read on their own, ahead of everything else, because a product still in
+  // onboarding renders none of the cards below and so needs none of their
+  // queries.
+  const [onboarding, setup] = await Promise.all([
+    getOnboardingState(ownerId, merchant.id),
+    getProductSetup(ownerId, merchant.id),
+  ]);
 
-  if (!setup.complete) {
-    return (
-      <PageShell>
-        <PageHeader
-          title={merchant.name}
-          subtitle={merchant.domain}
-          actions={
-            <Link href={`${base}/edit`}>
-              <Button variant="outline" size="sm" className="cursor-pointer">
-                Settings
-              </Button>
-            </Link>
-          }
-        />
-        <Band>
-          <ProductSetup className="lg:col-span-12" productSlug={merchant.slug} setup={setup} />
-        </Band>
-      </PageShell>
-    );
+  if (!onboarding.onboardingCompletedAt) {
+    redirect(stepPath(merchant.slug, resumeStep(setup, null)));
   }
 
   const [programs, celebrate, metrics, topAffiliates, activity] = await Promise.all([
@@ -115,6 +101,15 @@ export default async function MerchantDetailPage({
   ]);
 
   const firstProgram = programs[0] ?? null;
+  const firstProgramLink = firstProgram
+    ? `${originFor(merchant.domain)}/affiliates/signup/${firstProgram.slug}`
+    : null;
+
+  // The banner onboarding hands over. It stays until somebody signs up or the
+  // Owner dismisses it: a screen of zeroes with no next action is what it
+  // exists to prevent.
+  const welcomeLink =
+    !onboarding.welcomeDismissedAt && setup.affiliateCount === 0 ? firstProgramLink : null;
 
   // Per day conversion rate, not carried on DayPoint itself: dividing at the
   // edge keeps analytics.ts free of a derived field only this tile needs.
@@ -134,6 +129,9 @@ export default async function MerchantDetailPage({
 
   return (
     <PageShell>
+      {welcomeLink && (
+        <Welcome product={{ id: merchant.id, slug: merchant.slug }} link={welcomeLink} />
+      )}
       <PageHeader
         title={merchant.name}
         subtitle={merchant.domain}
@@ -193,11 +191,8 @@ export default async function MerchantDetailPage({
               icon={Share2}
               title="No affiliates yet."
               action={
-                firstProgram ? (
-                  <CopyLinkButton
-                    size="sm"
-                    link={`${originFor(merchant.domain)}/affiliates/signup/${firstProgram.slug}`}
-                  />
+                firstProgramLink ? (
+                  <CopyLinkButton size="sm" link={firstProgramLink} />
                 ) : (
                   <Link href={`${base}/programs/new`}>
                     <Button size="sm" className="cursor-pointer">

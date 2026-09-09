@@ -1,6 +1,6 @@
 import type { Provider } from "./providers";
 
-// Stripe and Paddle ship a filled app icon; Polar and Resend ship a bare mark.
+// Stripe ships a filled app icon; Resend ships a bare mark.
 // Rendering the second kind on a white tile over a near-white card meant the
 // eye compared 36px of solid colour against a thin 21px line drawing, which is
 // why they read as different sizes despite identical containers.
@@ -10,7 +10,8 @@ import type { Provider } from "./providers";
 // glyph inside Stripe's icon. The surface is one neutral for every glyph
 // rather than a tint of the brand colour: mixing a fixed percentage of a
 // near-black brand into white lands far darker than the same percentage of a
-// bright one, so Resend's tile came out visibly heavier than Polar's.
+// bright one, so a near-black mark's tile came out visibly heavier than a
+// bright one's.
 const GLYPH_INK = 0.56;
 
 export function BrandMark({ provider, size = 36 }: { provider: Provider; size?: number }) {

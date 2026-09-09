@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { listMerchantsForOwner } from "@/lib/merchant";
-import { getProductSetup, sectionGates } from "@/lib/productSetup";
 import { availableUpdate, installedVersion } from "@/lib/version";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
@@ -15,19 +14,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const ownerId = session.user.id;
-  const merchants = await listMerchantsForOwner(ownerId);
+  const merchants = await listMerchantsForOwner(session.user.id);
 
-  // One setup read per product, on every dashboard navigation. Precedented:
-  // the products home already does exactly this per merchant. The sidebar
-  // cannot compute the gates itself (it is a client component), and a section
-  // that reads unlocked while its page redirects is worse than the query.
-  const gates = await Promise.all(
-    merchants.map(async (merchant) => ({
-      slug: merchant.slug,
-      ...sectionGates(await getProductSetup(ownerId, merchant.id)),
-    }))
-  );
+  // A dashboard with nothing in it is not a dashboard. Until a product
+  // exists, the only screen that makes sense is the first onboarding step.
+  if (merchants.length === 0) redirect("/onboarding");
 
   // Answers from cache and never waits on the network, so a server that cannot
   // reach GitHub does not pay for the check on every dashboard load. A stale
@@ -39,7 +30,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <SidebarProvider>
       <AppSidebar
         merchants={merchants}
-        gates={gates}
         email={session.user.email ?? ""}
         version={installedVersion()}
         update={update && { version: update.version, url: update.url, security: update.security }}

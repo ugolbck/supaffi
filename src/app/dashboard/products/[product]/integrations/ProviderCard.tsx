@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, Lock } from "lucide-react";
+import { Check } from "lucide-react";
 import type { Provider } from "./providers";
 import { BrandMark } from "./BrandMark";
 
@@ -14,8 +14,6 @@ export function ProviderCard({
   connected: boolean;
   index: number;
 }) {
-  const planned = provider.status === "planned";
-
   const inner = (
     <>
       {/* One soft wash of the provider's colour, anchored behind its icon in
@@ -41,11 +39,8 @@ export function ProviderCard({
                 Connected
               </span>
             )}
-            {planned && <Lock className="size-3 shrink-0 text-muted-foreground/70" />}
           </div>
-          <p className="truncate text-xs text-muted-foreground">
-            {planned ? "Coming soon." : provider.blurb}
-          </p>
+          <p className="truncate text-xs text-muted-foreground">{provider.blurb}</p>
         </div>
       </div>
     </>
@@ -53,18 +48,6 @@ export function ProviderCard({
 
   const base =
     "group/provider animate-in fade-in slide-in-from-bottom-2 fill-mode-both relative flex flex-col overflow-hidden rounded-(--radius-xl) border border-border/70 bg-card [background-image:var(--card-surface)] p-3.5 duration-300 ease-[var(--ease-out)]";
-
-  if (planned) {
-    return (
-      <div
-        className={`${base} opacity-55`}
-        style={{ animationDelay: `${index * 50}ms` }}
-        aria-disabled
-      >
-        {inner}
-      </div>
-    );
-  }
 
   return (
     <Link
