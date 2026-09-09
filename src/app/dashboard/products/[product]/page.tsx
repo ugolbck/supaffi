@@ -1,71 +1,32 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { Activity, Check, Clock, Percent, Radio, Share2, Terminal } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getOnboardingState } from "@/lib/merchant";
-import { listProgramsForMerchant } from "@/lib/program";
 import { getProductSetup } from "@/lib/productSetup";
 import { resumeStep, stepPath } from "@/lib/onboarding";
-import { getProductMetrics, getTopAffiliates, getRecentActivity } from "@/lib/analytics";
+import { getProductMetrics, getTopAffiliates, getPayableGroups } from "@/lib/analytics";
 import { shouldCelebrateTracking } from "@/lib/tracking";
 import { originFor } from "@/lib/url";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { CopyLinkButton } from "@/components/CopyLinkButton";
-import { PageShell, PageHeader, SignalRow, Band } from "@/components/dashboard/PageGrid";
-import { StatTile } from "@/components/dashboard/StatTile";
-import { DashboardCard, CardEmpty } from "@/components/dashboard/DashboardCard";
-import { BarChart } from "@/components/charts/BarChart";
 import { money, moneyHint } from "@/lib/format";
+import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
+import { StatTile } from "@/components/dashboard/StatTile";
+import { Light } from "@/components/dashboard/Light";
+import { BarChart } from "@/components/charts/BarChart";
 import { TrackingVerified } from "./TrackingVerified";
 import { Welcome } from "./Welcome";
 
 /**
- * One product's own dashboard: its numbers.
+ * One product's own dashboard: what it did, and what is waiting on the Owner.
  *
- * There is no half-built version of this screen any more. A product whose
- * onboarding is unfinished redirects into onboarding, which owns every setup
- * step, so everything below can assume the product works.
+ * There is no half-built version of this screen. A product whose onboarding is
+ * unfinished redirects into onboarding, which owns every setup step, so
+ * everything below can assume the product works.
+ *
+ * Nothing here fills space it has not earned. With no clicks, no signups and
+ * nobody recruited there is no chart, no top-affiliate list and no activity
+ * feed — a single line saying which of the two things it is still waiting for.
  */
-
-const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-
-// A one-line status row is the exact shape this whole layout exists to
-// remove: three of them centred in a tall card is empty space with icons on
-// it. The secondary line under each label is what a real Stripe/Email/
-// Tracking screen would tell you anyway, so the card earns its height
-// instead of the body just centring three short rows in it.
-function StatusRow({
-  icon: Icon,
-  label,
-  detail,
-  tone,
-}: {
-  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
-  label: string;
-  detail: string;
-  tone: "success" | "waiting" | "muted";
-}) {
-  const toneClass = {
-    success: "bg-status-success-bg text-status-success",
-    waiting: "bg-accent-100 text-accent-800",
-    muted: "bg-muted text-muted-foreground",
-  }[tone];
-
-  return (
-    <div className="flex min-h-12 flex-1 items-center gap-2.5 border-b border-border/50 py-2 text-sm last:border-0">
-      <span className={`flex size-6 shrink-0 items-center justify-center rounded-full ${toneClass}`}>
-        <Icon className="size-3.5" strokeWidth={tone === "success" ? 3 : 2} />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate font-medium">{label}</span>
-        <span className="truncate text-xs text-muted-foreground">{detail}</span>
-      </div>
-    </div>
-  );
-}
-
-export default async function MerchantDetailPage({
+export default async function ProductOverviewPage({
   params,
 }: {
   params: Promise<{ product: string }>;
@@ -78,11 +39,8 @@ export default async function MerchantDetailPage({
   const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 
-  const base = `/dashboard/products/${merchant.slug}`;
-
   // Read on their own, ahead of everything else, because a product still in
-  // onboarding renders none of the cards below and so needs none of their
-  // queries.
+  // onboarding renders none of what follows and so needs none of its queries.
   const [onboarding, setup] = await Promise.all([
     getOnboardingState(ownerId, merchant.id),
     getProductSetup(ownerId, merchant.id),
@@ -92,257 +50,135 @@ export default async function MerchantDetailPage({
     redirect(stepPath(merchant.slug, resumeStep(setup, null)));
   }
 
-  const [programs, celebrate, metrics, topAffiliates, activity] = await Promise.all([
-    listProgramsForMerchant(ownerId, merchant.id),
-    shouldCelebrateTracking(merchant.id),
+  const [metrics, top, payable, celebrate] = await Promise.all([
     getProductMetrics(ownerId, merchant.id),
-    getTopAffiliates(ownerId, merchant.id),
-    getRecentActivity(ownerId, merchant.id),
+    getTopAffiliates(ownerId, merchant.id, 5),
+    getPayableGroups(ownerId, merchant.id),
+    shouldCelebrateTracking(merchant.id),
   ]);
 
-  const firstProgram = programs[0] ?? null;
-  const firstProgramLink = firstProgram
-    ? `${originFor(merchant.domain)}/affiliates/signup/${firstProgram.slug}`
+  // Commissions, not groups: the Owner pays per affiliate but is counting
+  // lines on a ledger.
+  const payableTotal = payable.reduce((n, g) => n + g.commissionIds.length, 0);
+  const empty = metrics.clicks === 0 && metrics.signups === 0 && setup.affiliateCount === 0;
+
+  const signupLink = setup.firstProgramSlug
+    ? `${originFor(merchant.domain)}/affiliates/signup/${setup.firstProgramSlug}`
     : null;
 
   // The banner onboarding hands over. It stays until somebody signs up or the
   // Owner dismisses it: a screen of zeroes with no next action is what it
   // exists to prevent.
-  const welcomeLink =
-    !onboarding.welcomeDismissedAt && setup.affiliateCount === 0 ? firstProgramLink : null;
-
-  // Per day conversion rate, not carried on DayPoint itself: dividing at the
-  // edge keeps analytics.ts free of a derived field only this tile needs.
-  // Zero clicks reads as a zero rate rather than NaN or a hole in the line.
-  const rateSeries = metrics.series.map((d) =>
-    d.clicks === 0 ? 0 : Math.round((d.conversions / d.clicks) * 1000) / 10
-  );
-
-  // The Status card's Tracking row wants a last-click date. metrics.series
-  // already carries a click count per day for the 30 day window, so the most
-  // recent day with clicks > 0 in that window is read off it rather than
-  // adding a second query just for a timestamp.
-  const lastClickDay = [...metrics.series].reverse().find((d) => d.clicks > 0)?.date ?? null;
-  const lastClickLabel = lastClickDay
-    ? DATE.format(new Date(`${lastClickDay}T00:00:00Z`))
-    : null;
+  const showWelcome =
+    signupLink !== null && !onboarding.welcomeDismissedAt && setup.affiliateCount === 0;
 
   return (
-    <PageShell>
-      {welcomeLink && (
-        <Welcome product={{ id: merchant.id, slug: merchant.slug }} link={welcomeLink} />
+    <Page>
+      <PageTitle title="Overview" subtitle="Last 30 days" />
+      {celebrate && <TrackingVerified merchantId={merchant.id} />}
+      {showWelcome && (
+        <Welcome product={{ id: merchant.id, slug: merchant.slug }} link={signupLink} />
       )}
-      <PageHeader
-        title={merchant.name}
-        subtitle={merchant.domain}
-        actions={
-          <>
-            <Link href={`${base}/edit`}>
-              <Button variant="outline" size="sm" className="cursor-pointer">
-                Settings
-              </Button>
-            </Link>
-            <Link href={`${base}/commissions`}>
-              <Button size="sm" className="cursor-pointer">
-                Commissions
-              </Button>
-            </Link>
-          </>
-        }
-      />
 
-      <SignalRow columns={5}>
+      <Tiles>
         <StatTile
-          label="Clicks, 30 days"
+          label="Clicks"
           value={String(metrics.clicks)}
           series={metrics.series.map((d) => d.clicks)}
         />
         <StatTile
-          label="Conversions"
+          label="Signups"
+          value={String(metrics.signups)}
+          series={metrics.series.map((d) => d.signups)}
+        />
+        <StatTile
+          label="Sales"
           value={String(metrics.conversions)}
           series={metrics.series.map((d) => d.conversions)}
         />
-        <StatTile label="Rate" value={`${metrics.conversionRate}%`} series={rateSeries} />
         <StatTile
           label="Owed"
           value={money(metrics.owed)}
-          hint={moneyHint(metrics.owed)}
-          tone={metrics.owed.length > 0 ? "success" : "neutral"}
+          hint={payableTotal ? `${payableTotal} payable now` : moneyHint(metrics.owed)}
         />
-        <StatTile label="Paid out" value={money(metrics.paid)} hint={moneyHint(metrics.paid)} />
-      </SignalRow>
+      </Tiles>
 
-      <Band>
-        <DashboardCard
-          title="Performance"
-          className="lg:col-span-8"
-          action={<span className="text-xs text-muted-foreground">Last 30 days</span>}
-        >
-          {metrics.clicks === 0 ? (
-            <CardEmpty icon={Radio} title="No clicks in the last 30 days." />
-          ) : (
-            <BarChart series={metrics.series} />
-          )}
-        </DashboardCard>
+      {!empty && (
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
+          <Section
+            title="Revenue attributed"
+            // The bars sum sale amounts across currencies, which is only
+            // honest as a shape. The money is the header, still per currency.
+            actions={
+              <span className="text-sm font-medium tabular-nums">{money(metrics.revenue)}</span>
+            }
+            fill
+          >
+            <BarChart series={metrics.series} field="revenue" format={(n) => n.toFixed(2)} />
+          </Section>
 
-        <DashboardCard title="Top affiliates" className="lg:col-span-4" bodyScrolls>
-          {topAffiliates.length === 0 ? (
-            <CardEmpty
-              icon={Share2}
-              title="No affiliates yet."
-              action={
-                firstProgramLink ? (
-                  <CopyLinkButton size="sm" link={firstProgramLink} />
-                ) : (
-                  <Link href={`${base}/programs/new`}>
-                    <Button size="sm" className="cursor-pointer">
-                      New program
-                    </Button>
-                  </Link>
-                )
-              }
-            />
-          ) : (
-            // Rows share the card's height rather than stacking at the top,
-            // ruled between, which is what keeps this card full at one
-            // affiliate as well as at five.
-            <ul className="flex flex-1 flex-col">
-              {topAffiliates.map((affiliate, i) => (
-                <li
-                  key={affiliate.id}
-                  className="flex min-h-11 flex-1 items-center gap-2.5 border-b border-border/50 py-1.5 text-sm last:border-0"
-                >
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground tabular-nums">
-                    {i + 1}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">
-                    {affiliate.name ?? affiliate.email}
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {affiliate.clicks} clk
-                  </span>
-                  <span className="shrink-0 font-mono text-xs tabular-nums">
-                    {money(affiliate.earned)}
+          <Section title="Top affiliates" scroll>
+            <ul className="flex flex-col gap-2 text-sm">
+              {top.map((a) => (
+                <li key={a.id} className="flex items-center justify-between gap-3">
+                  <span className="truncate">{a.name ?? a.email}</span>
+                  <span className="shrink-0 text-muted-foreground tabular-nums">
+                    {money(a.earned)} · {a.sales} {a.sales === 1 ? "sale" : "sales"}
                   </span>
                 </li>
               ))}
             </ul>
-          )}
-        </DashboardCard>
-      </Band>
+          </Section>
+        </div>
+      )}
 
-      <Band>
-        <DashboardCard title="Recent activity" className="lg:col-span-5" bodyScrolls>
-          {activity.length === 0 ? (
-            <CardEmpty icon={Activity} title="No activity yet." />
-          ) : (
-            <ul className="flex flex-1 flex-col">
-              {activity.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex min-h-11 flex-1 items-center gap-2.5 border-b border-border/50 py-1.5 text-sm last:border-0"
+      {(payableTotal > 0 || metrics.flagged > 0) && (
+        <Section title="Needs you">
+          <ul className="flex flex-col gap-2 text-sm">
+            {payableTotal > 0 && (
+              <li>
+                <Link
+                  href={`/dashboard/products/${merchant.slug}/commissions?status=PAYABLE`}
+                  className="flex cursor-pointer items-center justify-between hover:underline"
                 >
-                  <span className="w-14 shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {DATE.format(item.at)}
+                  <span>
+                    {payableTotal === 1
+                      ? "1 commission is payable"
+                      : `${payableTotal} commissions are payable`}
                   </span>
-                  <span className="min-w-0 flex-1 truncate">
-                    {item.affiliateName ?? item.affiliateEmail}
+                  <span>Pay them &rsaquo;</span>
+                </Link>
+              </li>
+            )}
+            {metrics.flagged > 0 && (
+              <li>
+                <Link
+                  href={`/dashboard/products/${merchant.slug}/commissions?status=FLAGGED`}
+                  className="flex cursor-pointer items-center justify-between hover:underline"
+                >
+                  <span>
+                    {metrics.flagged === 1
+                      ? "1 commission flagged as a possible self referral"
+                      : `${metrics.flagged} commissions flagged as possible self referrals`}
                   </span>
-                  {item.kind === "signup" ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">joined</span>
-                  ) : (
-                    <span className="shrink-0 font-mono text-xs tabular-nums">
-                      {item.amount} {item.currency?.toUpperCase()}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </DashboardCard>
+                  <span>Review &rsaquo;</span>
+                </Link>
+              </li>
+            )}
+          </ul>
+        </Section>
+      )}
 
-        <DashboardCard
-          title="Programs"
-          className="lg:col-span-4"
-          bodyScrolls
-          footer={
-            <Link href={`${base}/programs/new`}>
-              <Button variant="outline" size="sm" className="w-full cursor-pointer">
-                New program
-              </Button>
-            </Link>
-          }
-        >
-          {programs.length === 0 ? (
-            <CardEmpty icon={Percent} title="No programs yet." />
-          ) : (
-            <div className="flex flex-1 flex-col gap-2">
-              {programs.map((p) => {
-                const link = `${originFor(merchant.domain)}/affiliates/signup/${p.slug}`;
-                return (
-                  <div
-                    key={p.id}
-                    className="flex flex-1 flex-col justify-center gap-1.5 rounded-lg border border-border/70 bg-background/60 p-2.5"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium">{p.name}</span>
-                      <Badge variant="outline">{String(p.defaultCommissionRate)}%</Badge>
-                    </div>
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {p.affiliateCount === 1 ? "1 affiliate" : `${p.affiliateCount} affiliates`}
-                    </span>
-                    <div className="flex items-center justify-between gap-2">
-                      <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                        {link}
-                      </code>
-                      <CopyLinkButton size="sm" link={link} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </DashboardCard>
-
-        <DashboardCard
-          title="Status"
-          className="lg:col-span-3"
-          footer={
-            <Link href={`${base}/integrations`}>
-              <Button variant="outline" size="sm" className="w-full cursor-pointer">
-                Manage
-              </Button>
-            </Link>
-          }
-        >
-          {celebrate && (
-            <div className="shrink-0 pb-1.5">
-              <TrackingVerified merchantId={merchant.id} />
-            </div>
-          )}
-          <StatusRow icon={Check} label="Stripe" detail="Connected" tone="success" />
-          {setup.emailConnected ? (
-            <StatusRow icon={Check} label="Email" detail="Sending via Resend" tone="success" />
-          ) : (
-            <StatusRow icon={Terminal} label="Email" detail="Printed to the terminal" tone="muted" />
-          )}
-          {setup.trackingStatus === "verified" ? (
-            <StatusRow
-              icon={Check}
-              label="Tracking"
-              detail={lastClickLabel ? `Live, last click ${lastClickLabel}` : "Live"}
-              tone="success"
-            />
-          ) : (
-            <StatusRow
-              icon={Clock}
-              label="Tracking"
-              detail={lastClickLabel ? `Waiting on a sale, last click ${lastClickLabel}` : "Waiting on a sale"}
-              tone="waiting"
-            />
-          )}
-        </DashboardCard>
-      </Band>
-    </PageShell>
+      {empty && !showWelcome && (
+        <Section>
+          <div className="flex items-center gap-3 text-sm">
+            <Light result={{ ok: setup.trackingStatus !== "not-started", detail: "" }} label="Tracking" />
+            <span className="text-muted-foreground">
+              {setup.trackingStatus === "not-started" ? "no clicks yet" : "waiting for a first sale"}
+            </span>
+          </div>
+        </Section>
+      )}
+    </Page>
   );
 }

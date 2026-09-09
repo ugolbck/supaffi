@@ -215,6 +215,12 @@ export type TopAffiliate = {
   email: string;
   clicks: number;
   earned: CurrencyTotal[];
+  /**
+   * Sales behind `earned`. Refund adjustments are negative rows pointing at
+   * the commission they correct, so counting every commission row would read
+   * one refunded sale as two sales.
+   */
+  sales: number;
 };
 
 export async function getTopAffiliates(
@@ -246,19 +252,34 @@ export async function getTopAffiliates(
     .sort((a, b) => b[1].total - a[1].total)
     .slice(0, limit);
 
-  const [affiliates, clicks] = await Promise.all([
+  const rankedIds = ranked.map(([id]) => id);
+  const [affiliates, clicks, sales] = await Promise.all([
     db.affiliate.findMany({
-      where: { id: { in: ranked.map(([id]) => id) } },
+      where: { id: { in: rankedIds } },
       select: { id: true, name: true, email: true },
     }),
     db.click.groupBy({
       by: ["affiliateId"],
-      where: { affiliateId: { in: ranked.map(([id]) => id) } },
+      where: { affiliateId: { in: rankedIds } },
+      _count: { _all: true },
+    }),
+    // Same scope as `earned`, minus the rows that are not a sale: adjustments
+    // carry the commission they correct, and a zero or negative amount is a
+    // correction rather than something somebody bought.
+    db.commission.groupBy({
+      by: ["affiliateId"],
+      where: {
+        affiliateId: { in: rankedIds },
+        status: { notIn: ["VOIDED"] },
+        adjustsCommissionId: null,
+        amount: { gt: 0 },
+      },
       _count: { _all: true },
     }),
   ]);
   const affiliateById = new Map(affiliates.map((a) => [a.id, a]));
   const clicksById = new Map(clicks.map((c) => [c.affiliateId, c._count._all]));
+  const salesById = new Map(sales.map((s) => [s.affiliateId, s._count._all]));
 
   return ranked.map(([id, totals]) => {
     const affiliate = affiliateById.get(id)!;
@@ -268,6 +289,7 @@ export async function getTopAffiliates(
       email: affiliate.email,
       clicks: clicksById.get(id) ?? 0,
       earned: totals.earned.sort((a, b) => a.currency.localeCompare(b.currency)),
+      sales: salesById.get(id) ?? 0,
     };
   });
 }

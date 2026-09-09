@@ -123,6 +123,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
       currency: string;
       status: "PENDING" | "PAYABLE" | "PAID" | "VOIDED" | "FLAGGED";
       createdAt: Date;
+      adjustsCommissionId: string;
     }> = {}
   ) {
     return db.commission.create({
@@ -134,6 +135,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
         status: overrides.status ?? "PAYABLE",
         payableAt: new Date(Date.now() - 1000),
         createdAt: overrides.createdAt ?? new Date(),
+        adjustsCommissionId: overrides.adjustsCommissionId ?? null,
       },
     });
   }
@@ -211,6 +213,26 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(top[0].email).toBe("aff-earner@example.com");
     expect(top[1].email).toBe("aff-busy@example.com");
     expect(top[1].clicks).toBe(6);
+  });
+
+  it("counts sales per top affiliate without counting refund adjustments", async () => {
+    // A refund writes a second, negative commission pointing at the one it
+    // corrects. Counting rows would read one refunded sale as two sales.
+    const affiliate = await makeAffiliate("a");
+    const first = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "20.00",
+    });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "30.00" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "-20.00",
+      adjustsCommissionId: first.id,
+    });
+
+    const top = await getTopAffiliates(ownerId, merchantId, 5);
+
+    expect(top).toHaveLength(1);
+    expect(top[0].sales).toBe(2);
+    expect(top[0].earned).toEqual([{ currency: "usd", total: "30.00" }]);
   });
 
   it("returns payable groups carrying the exact commission ids behind each total", async () => {

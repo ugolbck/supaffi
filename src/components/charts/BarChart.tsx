@@ -4,11 +4,16 @@ import { useState } from "react";
 import type { DayPoint } from "@/lib/analytics";
 
 /**
- * Clicks and conversions per day, as bars that fill their container.
+ * One measure per day, as bars that fill their container.
  *
  * Hand-rolled rather than pulled from a charting library: the whole thing is
- * two stacked rectangles per day, and a dependency would cost more than it
- * saves.
+ * a rectangle per day, and a dependency would cost more than it saves.
+ *
+ * `field` picks which number the bars are. Conversions are drawn inside the
+ * bar only when the bar is clicks, because that is the one pair where the
+ * second series is a subset of the first: every conversion started as a
+ * click. Nesting it inside revenue or signups would draw a ratio that means
+ * nothing.
  *
  * The bars are sized in percentages of the plot area, so the chart fills
  * whatever height its card gives it. Every day in the window gets a bar, zeros
@@ -21,16 +26,35 @@ const DAY = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
-export function BarChart({ series, className = "" }: { series: DayPoint[]; className?: string }) {
+const LABEL = {
+  clicks: "Clicks",
+  conversions: "Conversions",
+  revenue: "Revenue",
+  signups: "Signups",
+} as const;
+
+export function BarChart({
+  series,
+  field = "clicks",
+  format = (n: number) => String(n),
+  className = "",
+}: {
+  series: DayPoint[];
+  field?: "clicks" | "conversions" | "revenue" | "signups";
+  /** How the tooltip and the peak print the value. Bar heights are unaffected. */
+  format?: (n: number) => string;
+  className?: string;
+}) {
   const [hovered, setHovered] = useState<number | null>(null);
 
   // Two numbers, deliberately. `peak` is what the window actually did and is
   // what gets printed; `max` is the divisor, floored at 1 so an all-zero
   // series does not divide by zero. Printing the divisor would tell an
   // Affiliate with no traffic that their peak was 1.
-  const peak = Math.max(0, ...series.map((d) => d.clicks));
+  const peak = Math.max(0, ...series.map((d) => d[field]));
   const max = Math.max(1, peak);
   const active = hovered === null ? null : series[hovered];
+  const nested = field === "clicks";
 
   // A label under every one of thirty bars is unreadable, so only the ends and
   // the middle are written out. The tooltip covers the rest.
@@ -41,16 +65,20 @@ export function BarChart({ series, className = "" }: { series: DayPoint[]; class
       <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="size-2 rounded-[2px] bg-muted-foreground/35" />
-          Clicks
+          {LABEL[field]}
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="size-2 rounded-[2px] bg-accent-500" />
-          Conversions
-        </span>
+        {nested && (
+          <span className="flex items-center gap-1.5">
+            <span className="size-2 rounded-[2px] bg-accent-500" />
+            Conversions
+          </span>
+        )}
         <span className="ml-auto font-mono tabular-nums">
           {active
-            ? `${DAY.format(new Date(`${active.date}T00:00:00Z`))}  ${active.clicks} clicks  ${active.conversions} conv.`
-            : `peak ${peak}`}
+            ? `${DAY.format(new Date(`${active.date}T00:00:00Z`))}  ${format(active[field])} ${LABEL[
+                field
+              ].toLowerCase()}${nested ? `  ${active.conversions} conv.` : ""}`
+            : `peak ${format(peak)}`}
         </span>
       </div>
 
@@ -64,15 +92,13 @@ export function BarChart({ series, className = "" }: { series: DayPoint[]; class
             onMouseEnter={() => setHovered(i)}
             className="group/bar flex h-full flex-1 cursor-default flex-col justify-end"
           >
-            {/* The click bar is the full height for that day; conversions sit
-                inside it, since every conversion started as a click. */}
             <div
               className={`relative w-full rounded-[3px] transition-colors duration-150 ease-[var(--ease-out)] ${
                 hovered === i ? "bg-muted-foreground/50" : "bg-muted-foreground/25"
               }`}
-              style={{ height: `${Math.max((day.clicks / max) * 100, day.clicks > 0 ? 4 : 2)}%` }}
+              style={{ height: `${Math.max((day[field] / max) * 100, day[field] > 0 ? 4 : 2)}%` }}
             >
-              {day.conversions > 0 && (
+              {nested && day.conversions > 0 && (
                 <span
                   className="absolute inset-x-0 bottom-0 rounded-[3px] bg-accent-500"
                   style={{

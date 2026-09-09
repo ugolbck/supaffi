@@ -34,6 +34,7 @@ export function Section({
   title,
   actions,
   scroll = false,
+  fill = false,
   flush = false,
   className,
   children,
@@ -41,6 +42,8 @@ export function Section({
   title?: ReactNode;
   actions?: ReactNode;
   scroll?: boolean;
+  /** Body stretches to the card's height: a chart draws into whatever it is given. */
+  fill?: boolean;
   /** Body runs to the card's edge: a list or a table brings its own row padding. */
   flush?: boolean;
   className?: string;
@@ -50,7 +53,7 @@ export function Section({
     <section
       className={cn(
         "flex flex-col rounded-xl border border-black/[0.08] bg-elevated",
-        scroll && "min-h-0 flex-1",
+        (scroll || fill) && "min-h-0 flex-1",
         className
       )}
     >
@@ -64,7 +67,8 @@ export function Section({
         className={cn(
           !flush && "px-5 pb-5",
           !flush && !title && !actions && "pt-5",
-          scroll && "min-h-0 flex-1 overflow-auto"
+          (scroll || fill) && "flex min-h-0 flex-1 flex-col",
+          scroll && "overflow-auto"
         )}
       >
         {children}
