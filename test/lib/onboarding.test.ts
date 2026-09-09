@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stepIds, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain } from "@/lib/onboarding";
+import { stepIds, stepIndex, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain } from "@/lib/onboarding";
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 
@@ -92,6 +92,13 @@ describe("stepStates", () => {
   it("product stays current while the user is on it", () => {
     const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: null, current: "product" });
     expect(states.find((s) => s.id === "product")?.state).toBe("current");
+  });
+});
+
+describe("stepIndex", () => {
+  it("counts from one and shifts once email drops out", () => {
+    expect(stepIndex("stripe-key", true)).toBe(3);
+    expect(stepIndex("terms", false)).toBe(5);
   });
 });
 

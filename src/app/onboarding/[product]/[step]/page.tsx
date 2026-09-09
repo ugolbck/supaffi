@@ -4,6 +4,8 @@ import { isStepId, stepIds, stepPath, stepStates, type StepId } from "@/lib/onbo
 import { Rail } from "../../Rail";
 import { loadStepContext } from "../checks";
 import { Subdomain } from "../steps/Subdomain";
+import { StripeKey } from "../steps/StripeKey";
+import { StripeWebhook } from "../steps/StripeWebhook";
 
 type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
 
@@ -41,6 +43,10 @@ function stepBody(step: StepId, ctx: Ctx) {
   switch (step) {
     case "subdomain":
       return <Subdomain ctx={ctx} />;
+    case "stripe-key":
+      return <StripeKey ctx={ctx} />;
+    case "stripe-webhook":
+      return <StripeWebhook ctx={ctx} />;
     default:
       notFound();
   }

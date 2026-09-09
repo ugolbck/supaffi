@@ -48,6 +48,11 @@ export function stepLabel(id: StepId): string {
   return LABELS[id];
 }
 
+/** The step's 1-based position among the steps the instance actually has. */
+export function stepIndex(id: StepId, emailRequired: boolean): number {
+  return stepIds(emailRequired).indexOf(id) + 1;
+}
+
 export function stepPath(productSlug: string, id: StepId): string {
   return `/onboarding/${productSlug}/${id}`;
 }

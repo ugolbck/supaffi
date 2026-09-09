@@ -3,11 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwner, updateMerchant } from "@/lib/merchant";
+import { getMerchantForOwner, updateMerchant, connectStripe, connectEmailProvider } from "@/lib/merchant";
 import { validateProductInput, normalizeDomain } from "@/app/dashboard/products/new/validation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stepPath } from "@/lib/onboarding";
+import { stripeKeyWorks } from "@/lib/checks/stripe";
+import { resendKeyWorks } from "@/lib/checks/email";
 
 async function owner(): Promise<string> {
   const session = await auth();
@@ -36,4 +38,45 @@ export async function updateSubdomainAction(
   }
   revalidatePath(stepPath(product.slug, "subdomain"));
   return { error: "" };
+}
+
+export async function saveStripeKeyAction(
+  product: { id: string; slug: string },
+  _prev: { error: string },
+  formData: FormData
+): Promise<{ error: string }> {
+  const ownerId = await owner();
+  const key = String(formData.get("value") ?? "").trim();
+  // Checked before it is stored: a key that fails here fails on the screen
+  // that can fix it, not on the first sale weeks later.
+  const check = await stripeKeyWorks(key);
+  if (!check.ok) return { error: check.detail };
+  await connectStripe(ownerId, product.id, { secretKey: key });
+  redirect(stepPath(product.slug, "stripe-webhook"));
+}
+
+export async function saveWebhookSecretAction(
+  product: { id: string; slug: string },
+  _prev: { error: string },
+  formData: FormData
+): Promise<{ error: string }> {
+  const ownerId = await owner();
+  const secret = String(formData.get("value") ?? "").trim();
+  if (!secret.startsWith("whsec_")) return { error: "The signing secret starts with whsec_" };
+  await connectStripe(ownerId, product.id, { webhookSecret: secret });
+  revalidatePath(stepPath(product.slug, "stripe-webhook"));
+  return { error: "" };
+}
+
+export async function saveEmailKeyAction(
+  product: { id: string; slug: string },
+  _prev: { error: string },
+  formData: FormData
+): Promise<{ error: string }> {
+  const ownerId = await owner();
+  const key = String(formData.get("value") ?? "").trim();
+  const check = await resendKeyWorks(key);
+  if (!check.ok) return { error: check.detail };
+  await connectEmailProvider(ownerId, product.id, key);
+  redirect(stepPath(product.slug, "email-domain"));
 }
