@@ -74,7 +74,7 @@ export function AffiliateTable({
         <TableRow>
           <TableHead>Name</TableHead>
           <TableHead>Code</TableHead>
-          <TableHead>Plan</TableHead>
+          <TableHead>Program</TableHead>
           <TableHead className="text-right">Clicks</TableHead>
           <TableHead className="text-right">Sales</TableHead>
           <TableHead className="text-right">Earned</TableHead>
@@ -83,12 +83,11 @@ export function AffiliateTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row, i) => (
+        {rows.map((row) => (
           <TableRow
             key={row.id}
             data-state={row.id === selectedId ? "selected" : undefined}
-            className="relative animate-in fade-in fill-mode-both duration-300"
-            style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
+            className="relative"
           >
             <TableCell className="max-w-56">
               {/* One link, stretched over the row by its own overlay: a table
