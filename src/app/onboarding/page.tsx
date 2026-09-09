@@ -14,8 +14,7 @@ export default async function OnboardingStart() {
   const emailRequired = deliveryMode() === "send";
   const ids = stepIds(emailRequired);
 
-  // Install and account are shown as done so the user starts with progress
-  // rather than at zero.
+  // The two rows above these, install and account, are the rail's own.
   const steps = ids.map((id, i) => ({
     id,
     label: stepLabel(id),

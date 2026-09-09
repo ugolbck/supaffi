@@ -4,6 +4,22 @@ import { cn } from "@/lib/utils";
 import type { Step } from "@/lib/onboarding";
 import { stepPath } from "@/lib/onboarding";
 
+// The two rows above the steps. Whoever is reading this rail has already
+// installed Supaffi and made an account, so the flow opens with progress
+// behind it rather than at zero. They are never links: neither is a screen.
+const ALREADY_DONE = ["Install", "Account"];
+
+// A row is a flex box the full width of the rail, so a clickable one is
+// clickable everywhere, not just on its label.
+function rowClass(state: Step["state"], clickable: boolean): string {
+  return cn(
+    "flex h-9 items-center gap-3 rounded-lg px-3 text-sm",
+    state === "current" && "bg-accent-50 font-medium text-accent-700",
+    state === "upcoming" && "text-muted-foreground/60",
+    clickable && "cursor-pointer hover:bg-black/[0.04]"
+  );
+}
+
 // Steps already done are links, so someone can go back and change something.
 // Upcoming steps are not: the order is the product.
 export function Rail({ steps, productSlug, backHref }: { steps: Step[]; productSlug: string | null; backHref: string | null }) {
@@ -15,24 +31,29 @@ export function Rail({ steps, productSlug, backHref }: { steps: Step[]; productS
         </Link>
       )}
       <ol className="flex flex-col gap-1">
+        {ALREADY_DONE.map((label) => (
+          <li key={label}>
+            <span className={rowClass("done", false)}>
+              <Marker state="done" />
+              {label}
+            </span>
+          </li>
+        ))}
         {steps.map((step) => {
           const clickable = productSlug !== null && (step.state === "done" || step.state === "waiting");
-          const row = (
-            <span
-              className={cn(
-                "flex h-9 items-center gap-3 rounded-lg px-3 text-sm",
-                step.state === "current" && "bg-accent-50 font-medium text-accent-700",
-                step.state === "upcoming" && "text-muted-foreground/60",
-                clickable && "cursor-pointer hover:bg-black/[0.04]"
-              )}
-            >
-              <Marker state={step.state} />
-              {step.label}
-            </span>
-          );
           return (
             <li key={step.id}>
-              {clickable ? <Link href={stepPath(productSlug, step.id)}>{row}</Link> : row}
+              {clickable ? (
+                <Link href={stepPath(productSlug, step.id)} className={rowClass(step.state, true)}>
+                  <Marker state={step.state} />
+                  {step.label}
+                </Link>
+              ) : (
+                <span className={rowClass(step.state, false)}>
+                  <Marker state={step.state} />
+                  {step.label}
+                </span>
+              )}
             </li>
           );
         })}
