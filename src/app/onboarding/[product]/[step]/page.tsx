@@ -10,6 +10,7 @@ import { EmailKey } from "../steps/EmailKey";
 import { EmailDomain } from "../steps/EmailDomain";
 import { Terms } from "../steps/Terms";
 import { Tracking } from "../steps/Tracking";
+import { YourLink } from "../steps/YourLink";
 
 type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
 
@@ -42,7 +43,7 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
   );
 }
 
-// Later tasks add a case per step.
+// "product" never reaches here: it is redirected to subdomain above.
 function stepBody(step: StepId, ctx: Ctx) {
   switch (step) {
     case "subdomain":
@@ -59,6 +60,8 @@ function stepBody(step: StepId, ctx: Ctx) {
       return <Terms ctx={ctx} />;
     case "tracking":
       return <Tracking ctx={ctx} />;
+    case "link":
+      return <YourLink ctx={ctx} />;
     default:
       notFound();
   }

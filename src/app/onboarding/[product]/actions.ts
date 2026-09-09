@@ -3,7 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwner, updateMerchant, connectStripe, connectEmailProvider } from "@/lib/merchant";
+import {
+  getMerchantForOwner,
+  updateMerchant,
+  connectStripe,
+  connectEmailProvider,
+  markOnboardingComplete,
+} from "@/lib/merchant";
 import { validateProductInput, normalizeDomain } from "@/app/dashboard/products/new/validation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
@@ -109,4 +115,11 @@ export async function saveTermsAction(
     await createProgram(ownerId, product.id, result.parsed);
   }
   redirect(stepPath(product.slug, "tracking"));
+}
+
+export async function finishOnboardingAction(product: { id: string; slug: string }): Promise<void> {
+  const ownerId = await owner();
+  await markOnboardingComplete(ownerId, product.id);
+  revalidatePath("/dashboard", "layout");
+  redirect(`/dashboard/products/${product.slug}`);
 }
