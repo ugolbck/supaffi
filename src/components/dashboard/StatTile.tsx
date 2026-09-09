@@ -28,7 +28,7 @@ export function StatTile({
   }[tone];
 
   return (
-    <div className="flex flex-col justify-between gap-2 rounded-(--radius-lg) border border-border/70 bg-elevated [background-image:var(--elevated-surface)] px-3.5 py-3 shadow-[var(--edge-light),var(--shadow-xs)]">
+    <div className="flex flex-col justify-between gap-2 rounded-(--radius-md) border border-border/70 bg-elevated [background-image:var(--elevated-surface)] px-3.5 py-3 shadow-[var(--edge-light),var(--shadow-xs)]">
       <div className="flex flex-col gap-0.5">
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
         <span

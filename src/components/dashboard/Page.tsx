@@ -52,7 +52,7 @@ export function Section({
   return (
     <section
       className={cn(
-        "flex flex-col rounded-xl border border-black/[0.08] bg-elevated",
+        "flex flex-col rounded-(--radius-md) border border-black/[0.08] bg-elevated",
         (scroll || fill) && "min-h-0 flex-1",
         className
       )}

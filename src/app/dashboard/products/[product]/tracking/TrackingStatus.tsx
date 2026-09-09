@@ -49,7 +49,7 @@ export function TrackingStatus({
       <Tiles>
         {/* A light, not a number: the only honest answer here is found or not,
             and it is always followed by a few words. */}
-        <div className="flex flex-col justify-between gap-2 rounded-(--radius-lg) border border-border/70 bg-elevated [background-image:var(--elevated-surface)] px-3.5 py-3 shadow-[var(--edge-light),var(--shadow-xs)]">
+        <div className="flex flex-col justify-between gap-2 rounded-(--radius-md) border border-border/70 bg-elevated [background-image:var(--elevated-surface)] px-3.5 py-3 shadow-[var(--edge-light),var(--shadow-xs)]">
           <span className="text-xs font-medium text-muted-foreground">Script</span>
           <Light result={script} label={script.ok ? "Found" : "Not found"} />
         </div>

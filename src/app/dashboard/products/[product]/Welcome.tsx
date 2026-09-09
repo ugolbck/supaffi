@@ -19,7 +19,7 @@ export function Welcome({
   link: string;
 }) {
   return (
-    <div className="relative flex flex-col gap-3 rounded-xl border border-accent-200 bg-accent-50 p-5">
+    <div className="relative flex flex-col gap-3 rounded-(--radius-md) border border-accent-200 bg-accent-50 p-5">
       <form action={dismissWelcomeAction.bind(null, product)} className="absolute top-3 right-3">
         <Button type="submit" variant="ghost" size="sm" className="cursor-pointer" aria-label="Dismiss">
           <X className="size-4" />

@@ -12,7 +12,7 @@ import type { Ctx } from "../checks";
 
 function Snippet({ code }: { code: string }) {
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border/70 bg-muted/40 p-3">
+    <div className="flex flex-col gap-2 rounded-(--radius-md) border border-border/70 bg-muted/40 p-3">
       <pre className="overflow-x-auto font-mono text-xs leading-relaxed">
         <code>{code}</code>
       </pre>
@@ -55,7 +55,7 @@ await stripe.checkout.sessions.create({
       <AutoRefresh active={!checks.tracking.script.ok} />
       <p className="text-sm">Paste this in the head of every page an affiliate link can land on.</p>
       <Snippet code={scriptTag} />
-      <div className="rounded-xl border border-border/70 p-4">
+      <div className="rounded-(--radius-md) border border-border/70 p-4">
         <Light result={checks.tracking.script} label={`Script found on ${siteHost(merchant.websiteUrl)}`} />
       </div>
 
@@ -63,7 +63,7 @@ await stripe.checkout.sessions.create({
       <Snippet code={checkoutSnippet} />
       <p className="-mt-3 text-xs text-muted-foreground">Confirms itself on the first sale.</p>
 
-      <div className="flex items-center gap-3 rounded-xl border border-dashed border-border p-4">
+      <div className="flex items-center gap-3 rounded-(--radius-md) border border-dashed border-border p-4">
         <p className="flex-1 text-sm">Not the person who touches the code?</p>
         <CopyLinkButton link={brief} size="sm" label="Copy a brief for a developer" />
       </div>

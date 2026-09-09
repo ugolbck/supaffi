@@ -33,7 +33,7 @@ export function StripeWebhook({ ctx }: { ctx: Ctx }) {
 
       {setup.stripeWebhookStored ? (
         <>
-          <div className="flex flex-col gap-2 rounded-xl border border-border/70 p-4">
+          <div className="flex flex-col gap-2 rounded-(--radius-md) border border-border/70 p-4">
             <Light result={checks.stripe.webhook} label="Stripe is sending events" />
             {!checks.stripe.webhook.ok && (
               <p className="pl-6 text-xs text-muted-foreground">

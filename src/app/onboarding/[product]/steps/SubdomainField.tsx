@@ -11,7 +11,7 @@ export function SubdomainField({ product, value }: { product: { id: string; slug
 
   if (!editing) {
     return (
-      <div className="flex items-center justify-between rounded-xl border border-border/70 px-4 py-3">
+      <div className="flex items-center justify-between rounded-(--radius-md) border border-border/70 px-4 py-3">
         <span className="font-mono text-sm">{value}</span>
         <Button variant="ghost" size="sm" className="cursor-pointer" onClick={() => setEditing(true)}>
           Edit

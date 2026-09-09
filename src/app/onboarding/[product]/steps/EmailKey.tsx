@@ -19,7 +19,7 @@ export function EmailKey({ ctx }: { ctx: Ctx }) {
         Create key in Resend
       </Button>
       {setup.emailConnected && (
-        <div className="rounded-xl border border-border/70 p-4">
+        <div className="rounded-(--radius-md) border border-border/70 p-4">
           <Light result={checks.email.key} label="Key works" />
         </div>
       )}

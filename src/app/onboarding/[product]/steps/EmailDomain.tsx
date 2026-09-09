@@ -22,7 +22,7 @@ export function EmailDomain({ ctx }: { ctx: Ctx }) {
         Add domain in Resend
       </Button>
       <p className="-mt-3 text-xs text-muted-foreground">Resend has its own one click for Cloudflare.</p>
-      <div className="rounded-xl border border-border/70 p-4">
+      <div className="rounded-(--radius-md) border border-border/70 p-4">
         <Light result={checks.email.domain} label="Domain verified in Resend" />
       </div>
       <div className="flex items-center gap-4">

@@ -27,7 +27,7 @@ export function StripeKey({ ctx }: { ctx: Ctx }) {
       <p className="-mt-3 text-xs text-muted-foreground">Opens Stripe with the right permissions already set.</p>
       {stored ? (
         <>
-          <div className="rounded-xl border border-border/70 p-4">
+          <div className="rounded-(--radius-md) border border-border/70 p-4">
             <Light result={checks.stripe.key} label="Key works" />
           </div>
           <div>

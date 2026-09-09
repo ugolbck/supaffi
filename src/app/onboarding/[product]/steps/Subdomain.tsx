@@ -35,7 +35,7 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
           </p>
           {provider === "cloudflare" && <span className="text-xs text-muted-foreground">detected from your DNS</span>}
         </div>
-        <div className="grid grid-cols-[64px_1fr] gap-y-2 rounded-xl border border-border/70 p-4 text-sm">
+        <div className="grid grid-cols-[64px_1fr] gap-y-2 rounded-(--radius-md) border border-border/70 p-4 text-sm">
           <span className="text-muted-foreground">Type</span>
           <span className="font-mono">A</span>
           <span className="text-muted-foreground">Name</span>
@@ -58,7 +58,7 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
         )}
       </div>
 
-      <div className="flex flex-col gap-2 rounded-xl border border-border/70 p-4">
+      <div className="flex flex-col gap-2 rounded-(--radius-md) border border-border/70 p-4">
         <Light result={checks.dns.resolves} label="Resolves to this server" />
         <Light result={checks.dns.https} label="Answers over HTTPS" />
         <Light result={checks.dns.certificate} label="Certificate issued" />

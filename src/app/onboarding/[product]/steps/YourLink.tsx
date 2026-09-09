@@ -23,7 +23,7 @@ export async function YourLink({ ctx }: { ctx: Ctx }) {
   return (
     <StepFrame index={ctx.total} total={ctx.total} title="That is it. Here is your link.">
       <AutoRefresh active={!ready} />
-      <div className="flex flex-col gap-3 rounded-xl border border-accent-200 bg-accent-50 p-4">
+      <div className="flex flex-col gap-3 rounded-(--radius-md) border border-accent-200 bg-accent-50 p-4">
         <code className="break-all font-mono text-sm text-accent-800">{link}</code>
         <div className="flex gap-2">
           <CopyLinkButton link={link} size="sm" label="Copy" />
