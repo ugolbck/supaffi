@@ -16,6 +16,13 @@ export default auth((req) => {
   if (redirectPath) {
     return NextResponse.redirect(new URL(redirectPath, req.nextUrl.origin));
   }
+
+  // A layout is never told which child segment is rendering below it, and the
+  // onboarding rail has to highlight the step the URL names. Forwarding the
+  // path as a request header is the one way to hand it down.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", req.nextUrl.pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 });
 
 export const config = {
