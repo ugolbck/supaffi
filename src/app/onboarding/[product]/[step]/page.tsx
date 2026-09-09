@@ -6,6 +6,8 @@ import { loadStepContext } from "../checks";
 import { Subdomain } from "../steps/Subdomain";
 import { StripeKey } from "../steps/StripeKey";
 import { StripeWebhook } from "../steps/StripeWebhook";
+import { EmailKey } from "../steps/EmailKey";
+import { EmailDomain } from "../steps/EmailDomain";
 
 type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
 
@@ -47,6 +49,10 @@ function stepBody(step: StepId, ctx: Ctx) {
       return <StripeKey ctx={ctx} />;
     case "stripe-webhook":
       return <StripeWebhook ctx={ctx} />;
+    case "email-key":
+      return <EmailKey ctx={ctx} />;
+    case "email-domain":
+      return <EmailDomain ctx={ctx} />;
     default:
       notFound();
   }
