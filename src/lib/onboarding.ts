@@ -119,13 +119,13 @@ export function stepStates(input: {
   const currentIndex = ids.indexOf(input.current);
   return ids.map((id, index) => {
     let state: StepState;
-    // Ahead of the user is always upcoming, whatever its own data says.
-    // Otherwise a verified step reads as done even when it is the one the
-    // user is standing on: revisiting a finished step should not hide that
-    // it is finished. Only an unverified current step reads as current.
-    if (index > currentIndex) state = "upcoming";
-    else if (verified(id, input.checks, input.setup, input.onboardingCompletedAt)) state = "done";
+    // The current step reads current, full stop, with one exception: link
+    // is the finished state itself, so once onboarding is complete it reads
+    // done even while the user is standing on it.
+    if (id === "link" && input.onboardingCompletedAt) state = "done";
     else if (id === input.current) state = "current";
+    else if (index > currentIndex) state = "upcoming";
+    else if (verified(id, input.checks, input.setup, input.onboardingCompletedAt)) state = "done";
     else state = "waiting";
     return { id, label: LABELS[id], index: index + 1, state };
   });

@@ -78,6 +78,21 @@ describe("stepStates", () => {
     const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: new Date(), current: "link" });
     expect(states.find((s) => s.id === "link")?.state).toBe("done");
   });
+
+  it("stays current even once its own check has passed", () => {
+    const states = stepStates({
+      setup: setup({ stripeConnected: true }),
+      checks: checks({ stripe: { key: ok, webhook: no } }),
+      onboardingCompletedAt: null,
+      current: "stripe-key",
+    });
+    expect(states.find((s) => s.id === "stripe-key")?.state).toBe("current");
+  });
+
+  it("product stays current while the user is on it", () => {
+    const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: null, current: "product" });
+    expect(states.find((s) => s.id === "product")?.state).toBe("current");
+  });
 });
 
 describe("navigation", () => {
