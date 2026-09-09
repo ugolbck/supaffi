@@ -143,6 +143,16 @@ export function previousStep(current: StepId, emailRequired: boolean): StepId | 
   return i > 0 ? ids[i - 1] : null;
 }
 
+/** The subdomain to propose from the website address: affiliates. on the site's own domain, www dropped. */
+export function suggestSubdomain(websiteUrl: string): string {
+  try {
+    const host = new URL(websiteUrl).hostname.replace(/^www\./, "");
+    return host ? `affiliates.${host}` : "";
+  } catch {
+    return "";
+  }
+}
+
 /** Where to drop someone who left partway. The first step whose data is not stored, after product. */
 export function resumeStep(setup: ProductSetup, onboardingCompletedAt: Date | null): StepId {
   const ids = stepIds(setup.emailRequired).filter((id) => id !== "product");

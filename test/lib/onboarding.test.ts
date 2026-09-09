@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stepIds, stepStates, nextStep, previousStep, resumeStep, stepPath } from "@/lib/onboarding";
+import { stepIds, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain } from "@/lib/onboarding";
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 
@@ -121,5 +121,15 @@ describe("resumeStep", () => {
   });
   it("lands on the link when email is not required and the rest is stored", () => {
     expect(resumeStep(setup({ emailRequired: false, stripeConnected: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBe("link");
+  });
+});
+
+describe("suggestSubdomain", () => {
+  it("prefixes affiliates to the site's host", () => {
+    expect(suggestSubdomain("https://instantgradient.com")).toBe("affiliates.instantgradient.com");
+    expect(suggestSubdomain("https://www.mokkit.co/pricing")).toBe("affiliates.mokkit.co");
+  });
+  it("gives nothing for an address it cannot read", () => {
+    expect(suggestSubdomain("not a url")).toBe("");
   });
 });
