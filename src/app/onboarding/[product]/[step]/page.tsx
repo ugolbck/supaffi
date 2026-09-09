@@ -8,6 +8,7 @@ import { StripeKey } from "../steps/StripeKey";
 import { StripeWebhook } from "../steps/StripeWebhook";
 import { EmailKey } from "../steps/EmailKey";
 import { EmailDomain } from "../steps/EmailDomain";
+import { Terms } from "../steps/Terms";
 
 type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
 
@@ -53,6 +54,8 @@ function stepBody(step: StepId, ctx: Ctx) {
       return <EmailKey ctx={ctx} />;
     case "email-domain":
       return <EmailDomain ctx={ctx} />;
+    case "terms":
+      return <Terms ctx={ctx} />;
     default:
       notFound();
   }

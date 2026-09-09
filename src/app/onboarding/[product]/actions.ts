@@ -8,6 +8,8 @@ import { validateProductInput, normalizeDomain } from "@/app/dashboard/products/
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stepPath } from "@/lib/onboarding";
+import { createProgram, updateProgram, listProgramsForMerchant } from "@/lib/program";
+import { validateProgramInput } from "@/app/dashboard/products/[product]/programs/new/validation";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
 import { resendKeyWorks } from "@/lib/checks/email";
 
@@ -79,4 +81,32 @@ export async function saveEmailKeyAction(
   if (!check.ok) return { error: check.detail };
   await connectEmailProvider(ownerId, product.id, key);
   redirect(stepPath(product.slug, "email-domain"));
+}
+
+export async function saveTermsAction(
+  product: { id: string; slug: string },
+  _prev: { error: string },
+  formData: FormData
+): Promise<{ error: string }> {
+  const ownerId = await owner();
+  const result = validateProgramInput({
+    name: String(formData.get("name") ?? ""),
+    defaultCommissionRate: String(formData.get("defaultCommissionRate") ?? ""),
+    commissionDurationType: String(formData.get("commissionDurationType") ?? ""),
+    commissionDurationMonths: String(formData.get("commissionDurationMonths") ?? ""),
+    attributionWindowDays: String(formData.get("attributionWindowDays") ?? ""),
+    holdingPeriodDays: String(formData.get("holdingPeriodDays") ?? ""),
+  });
+  if (result.error !== null) return { error: result.error };
+
+  // The onboarding step edits the first program if one exists rather than
+  // adding a second, so going back and changing a number does not leave a
+  // trail of near identical programs.
+  const existing = await listProgramsForMerchant(ownerId, product.id);
+  if (existing.length > 0) {
+    await updateProgram(ownerId, product.id, existing[0].id, result.parsed);
+  } else {
+    await createProgram(ownerId, product.id, result.parsed);
+  }
+  redirect(stepPath(product.slug, "tracking"));
 }
