@@ -12,6 +12,7 @@ import {
   markCommissionsPaid,
   confirmCommissionFraud,
   dismissCommissionFlag,
+  voidCommission,
   type CommissionFilters,
 } from "@/lib/commission";
 
@@ -441,6 +442,67 @@ describe.skipIf(!hasDatabase)("commission", () => {
     const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
     expect(updated.status).toBe("PAYABLE");
     expect(updated.flagReason).toBeNull();
+  });
+
+  it("voidCommission voids a pending commission and records the reason", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const commission = await makeCommission(affiliate.id, click.id, { status: "PENDING" });
+
+    await voidCommission(ownerId, merchantId, commission.id, "buyer refunded outside Stripe");
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("VOIDED");
+    expect(updated.voidReason).toBe("buyer refunded outside Stripe");
+    expect(updated.voidedAt).not.toBeNull();
+  });
+
+  it("voidCommission voids a payable commission too", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const commission = await makeCommission(affiliate.id, click.id, { status: "PAYABLE" });
+
+    await voidCommission(ownerId, merchantId, commission.id, "voided by owner");
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("VOIDED");
+  });
+
+  it("voidCommission refuses a paid commission, since paid is terminal", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const commission = await makeCommission(affiliate.id, click.id, { status: "PAID" });
+
+    await expect(
+      voidCommission(ownerId, merchantId, commission.id, "changed my mind")
+    ).rejects.toThrow();
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("PAID");
+    expect(updated.voidReason).toBeNull();
+  });
+
+  it("voidCommission refuses a commission that is already voided", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const commission = await makeCommission(affiliate.id, click.id, { status: "VOIDED" });
+
+    await expect(
+      voidCommission(ownerId, merchantId, commission.id, "again")
+    ).rejects.toThrow();
+  });
+
+  it("voidCommission refuses a commission belonging to another Merchant", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const commission = await makeCommission(affiliate.id, click.id, { status: "PENDING" });
+
+    await expect(
+      voidCommission(ownerId, otherMerchantId, commission.id, "wrong product")
+    ).rejects.toThrow();
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("PENDING");
   });
 
   it("throws when the Merchant belongs to a different Owner", async () => {

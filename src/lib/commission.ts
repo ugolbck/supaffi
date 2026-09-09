@@ -38,6 +38,7 @@ export type CommissionRow = {
   createdAt: Date;
   payableAt: Date;
   paidAt: Date | null;
+  voidedAt: Date | null;
   flagReason: string | null;
   voidReason: string | null;
   stripePaymentRef: string | null;
@@ -102,6 +103,7 @@ export async function listCommissions(
         createdAt: true,
         payableAt: true,
         paidAt: true,
+        voidedAt: true,
         flagReason: true,
         voidReason: true,
         stripePaymentRef: true,
@@ -126,6 +128,7 @@ export async function listCommissions(
       createdAt: c.createdAt,
       payableAt: c.payableAt,
       paidAt: c.paidAt,
+      voidedAt: c.voidedAt,
       flagReason: c.flagReason,
       voidReason: c.voidReason,
       stripePaymentRef: c.stripePaymentRef,
@@ -302,6 +305,40 @@ export async function confirmCommissionFraud(
   await db.commission.update({
     where: { id: commissionId },
     data: { status: "VOIDED", voidedAt: new Date(), voidReason: "confirmed self-referral" },
+  });
+}
+
+/**
+ * Cancel a commission the Owner has decided not to pay, with a reason.
+ *
+ * PAID is terminal: money that has already gone out cannot be taken back by
+ * editing a row, and a refund arrives as its own negative adjustment instead.
+ * Voiding twice is refused for the same reason it is refused elsewhere, so a
+ * double submit cannot overwrite the reason the first one recorded.
+ */
+export async function voidCommission(
+  ownerId: string,
+  merchantId: string,
+  commissionId: string,
+  reason: string
+): Promise<void> {
+  await assertMerchantOwnership(ownerId, merchantId);
+
+  const existing = await db.commission.findFirst({
+    where: {
+      id: commissionId,
+      status: { in: ["PENDING", "PAYABLE", "FLAGGED"] },
+      affiliate: { merchantId },
+    },
+    select: { id: true },
+  });
+  if (!existing) {
+    throw new Error("Commission not found, or already paid or voided");
+  }
+
+  await db.commission.update({
+    where: { id: commissionId },
+    data: { status: "VOIDED", voidedAt: new Date(), voidReason: reason },
   });
 }
 

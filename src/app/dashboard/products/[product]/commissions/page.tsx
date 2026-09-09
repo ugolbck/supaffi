@@ -1,6 +1,5 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { Radio } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import {
@@ -11,8 +10,10 @@ import {
   COMMISSIONS_PAGE_SIZE,
   type CommissionRow,
   type CommissionStatus,
+  type StatusTotal,
 } from "@/lib/commission";
-import { getPayableGroups, getProductMetrics, toWeeks } from "@/lib/analytics";
+import { getPayableGroups, type CurrencyTotal } from "@/lib/analytics";
+import { money, moneyHint } from "@/lib/format";
 import {
   Pagination,
   PaginationContent,
@@ -21,13 +22,21 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { PageShell, PageHeader, Band } from "@/components/dashboard/PageGrid";
-import { DashboardCard, CardEmpty } from "@/components/dashboard/DashboardCard";
-import { BarChart } from "@/components/charts/BarChart";
-import { StatusTiles } from "./StatusTiles";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { CommissionFilters } from "./CommissionFilters";
 import { CommissionTable, type LedgerRow } from "./CommissionTable";
-import { PayableRail } from "./PayableRail";
+import { CommissionSheet, type SheetCommission } from "./CommissionSheet";
+import { PayBar } from "./PayBar";
+
+/**
+ * Every referred sale and what it is waiting on.
+ *
+ * Four tabs over one ledger, and one commission read in a sheet the URL
+ * selects, so the panel is rendered here rather than held on the client: a
+ * payout or a void lands back on this page and the sheet is simply drawn again
+ * from the new rows. Flagged is a tab, never a page of its own.
+ */
 
 const DATE = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -36,13 +45,17 @@ const DATE = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
+const TABS: { label: string; status: CommissionStatus | null }[] = [
+  { label: "All", status: null },
+  { label: "Payable", status: "PAYABLE" },
+  { label: "Flagged", status: "FLAGGED" },
+  { label: "Paid", status: "PAID" },
+];
+
 function parseStatus(raw: string | undefined): CommissionStatus | null {
   const upper = raw?.toUpperCase();
   return COMMISSION_STATUSES.find((s) => s === upper) ?? null;
 }
-
-const VOLUME_WEEKS = 12;
-const VOLUME_WINDOW_DAYS = VOLUME_WEEKS * 7;
 
 // What this commission is waiting on, or what happened to it. One column for
 // all five states, so a flagged row explains itself in the same place a paid
@@ -57,9 +70,39 @@ function stateLabel(row: CommissionRow): string {
       return row.flagReason ?? "Flagged for review";
     case "PAID":
       return row.paidAt ? `Paid ${DATE.format(row.paidAt)}` : "Paid";
-    case "VOIDED":
-      return row.voidReason ?? "Voided";
+    case "VOIDED": {
+      const when = row.voidedAt ? `Voided ${DATE.format(row.voidedAt)}` : "Voided";
+      return row.voidReason ? `${when}, ${row.voidReason}` : when;
+    }
   }
+}
+
+// A Stripe reference is worth following, so it is a link into the dashboard
+// the owner already has open. Anything that is not a payment or an invoice id
+// is shown as it came, rather than guessed into a URL that would 404.
+function referenceFor(ref: string | null): { text: string; href: string | null } | null {
+  if (!ref) return null;
+  if (ref.startsWith("pi_")) return { text: ref, href: `https://dashboard.stripe.com/payments/${ref}` };
+  if (ref.startsWith("in_")) return { text: ref, href: `https://dashboard.stripe.com/invoices/${ref}` };
+  return { text: ref, href: null };
+}
+
+// Money is never converted, so a total is a list, one entry per currency.
+function totalFor(totals: StatusTotal[], statuses: CommissionStatus[]): CurrencyTotal[] {
+  const cents = new Map<string, number>();
+  for (const status of statuses) {
+    for (const amount of totals.find((t) => t.status === status)?.amounts ?? []) {
+      cents.set(amount.currency, (cents.get(amount.currency) ?? 0) + Math.round(Number(amount.total) * 100));
+    }
+  }
+  return [...cents.entries()]
+    .map(([currency, total]) => ({ currency, total: (total / 100).toFixed(2) }))
+    .sort((a, b) => a.currency.localeCompare(b.currency));
+}
+
+function amountText(totals: CurrencyTotal[]): string {
+  const hint = moneyHint(totals);
+  return hint ? `${money(totals)} and ${hint}` : money(totals);
 }
 
 export default async function CommissionsPage({
@@ -73,6 +116,8 @@ export default async function CommissionsPage({
     currency?: string;
     q?: string;
     page?: string;
+    commission?: string;
+    error?: string;
   }>;
 }) {
   const { product } = await params;
@@ -80,9 +125,11 @@ export default async function CommissionsPage({
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
+  const ownerId = session.user.id;
+  const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 
+  const base = `/dashboard/products/${merchant.slug}`;
   const filters = {
     status: parseStatus(query.status),
     affiliateId: query.affiliate ?? null,
@@ -91,33 +138,28 @@ export default async function CommissionsPage({
   };
   const page = Math.max(1, Math.floor(Number(query.page)) || 1);
 
-  const [{ rows, total }, totals, options, payableGroups, volume] = await Promise.all([
-    listCommissions(session.user.id, merchant.id, filters, {
-      page,
-      pageSize: COMMISSIONS_PAGE_SIZE,
-    }),
-    getCommissionTotals(session.user.id, merchant.id),
-    getCommissionFilterOptions(session.user.id, merchant.id),
-    getPayableGroups(session.user.id, merchant.id),
-    getProductMetrics(session.user.id, merchant.id, VOLUME_WINDOW_DAYS),
+  const [{ rows, total }, totals, options] = await Promise.all([
+    listCommissions(ownerId, merchant.id, filters, { page, pageSize: COMMISSIONS_PAGE_SIZE }),
+    getCommissionTotals(ownerId, merchant.id),
+    getCommissionFilterOptions(ownerId, merchant.id),
   ]);
-
-  const weeklyVolume = toWeeks(volume.series);
 
   const totalPages = Math.max(1, Math.ceil(total / COMMISSIONS_PAGE_SIZE));
 
   // Same hole as the affiliates list: a page number past the end rendered an
   // empty ledger under a label counting rows that are not there.
   if (page > totalPages) {
-    const query = hrefWith({ page: totalPages > 1 ? String(totalPages) : null });
-    redirect(`/dashboard/products/${merchant.slug}/commissions${query === "?" ? "" : query}`);
+    const corrected = hrefWith({ page: totalPages > 1 ? String(totalPages) : null });
+    redirect(`${base}/commissions${corrected === "?" ? "" : corrected}`);
   }
+
   const anyFilterActive = Boolean(
     filters.status || filters.affiliateId || filters.currency || filters.query
   );
 
-  // Every href keeps the filters that are already on and changes one thing,
-  // so switching status does not silently drop the affiliate you picked.
+  // Every href keeps what is already on and changes one thing, so switching
+  // tab does not silently drop the affiliate you picked. The selected
+  // commission is not one of them: it is added by the row that owns it.
   function hrefWith(changes: Record<string, string | null>): string {
     const params = new URLSearchParams();
     const current: Record<string, string | null> = {
@@ -125,6 +167,7 @@ export default async function CommissionsPage({
       affiliate: filters.affiliateId,
       currency: filters.currency,
       q: filters.query,
+      page: page > 1 ? String(page) : null,
       ...changes,
     };
     for (const [key, value] of Object.entries(current)) {
@@ -136,113 +179,146 @@ export default async function CommissionsPage({
 
   const ledgerRows: LedgerRow[] = rows.map((row) => ({
     id: row.id,
-    amount: row.amount,
-    currency: row.currency,
+    amount: `${row.amount} ${row.currency.toUpperCase()}`,
     status: row.status,
-    affiliateId: row.affiliateId,
     affiliateName: row.affiliateName,
     affiliateEmail: row.affiliateEmail,
-    stripePaymentRef: row.stripePaymentRef,
     isAdjustment: row.isAdjustment,
     createdLabel: DATE.format(row.createdAt),
     stateLabel: stateLabel(row),
+    reference: row.stripePaymentRef,
+    href: hrefWith({ commission: row.id }),
   }));
+
+  // Only a commission on the page being read can be opened: the id in the URL
+  // is a selection within this list, not a route of its own.
+  const selected = query.commission ? rows.find((r) => r.id === query.commission) ?? null : null;
+  const sheetCommission: SheetCommission | null = selected
+    ? {
+        id: selected.id,
+        status: selected.status,
+        amount: `${selected.amount} ${selected.currency.toUpperCase()}`,
+        affiliate: selected.affiliateName ?? selected.affiliateEmail,
+        affiliateEmail: selected.affiliateEmail,
+        createdLabel: DATE.format(selected.createdAt),
+        payableLabel: DATE.format(selected.payableAt),
+        stateLabel: stateLabel(selected),
+        reference: referenceFor(selected.stripePaymentRef),
+      }
+    : null;
+
+  // Only the payable tab can pay, and only in the groups a payout is allowed
+  // to cover, so the groups are read only when that tab is on.
+  const payableGroups =
+    filters.status === "PAYABLE" ? await getPayableGroups(ownerId, merchant.id) : [];
+
+  const owed = totalFor(totals, ["PENDING", "PAYABLE", "FLAGGED"]);
+  const payableNow = totalFor(totals, ["PAYABLE"]);
 
   const firstShown = total === 0 ? 0 : (page - 1) * COMMISSIONS_PAGE_SIZE + 1;
   const lastShown = Math.min(page * COMMISSIONS_PAGE_SIZE, total);
 
-  // Built here, not passed as a function: a function prop can't cross the
-  // server/client boundary to PayableRail, and building the href server-side
-  // keeps the one navigation rule (clicking an affiliate row filters the
-  // ledger, preserving whatever else is on) in the same place hrefWith
-  // already lives for every other control on this page.
-  const railGroups = payableGroups.map((group) => ({
-    ...group,
-    href: hrefWith({ affiliate: group.affiliateId }),
-  }));
+  // What closing the sheet goes back to: this same list, tab and filters kept.
+  const unselected = hrefWith({});
+  const listHref = `${base}/commissions${unselected === "?" ? "" : unselected}`;
 
   return (
-    <PageShell>
-      <PageHeader
+    <Page>
+      <PageTitle
         title="Commissions"
-        subtitle={`${merchant.name} · every referred sale and what it is waiting on`}
+        subtitle={`${amountText(owed)} owed, ${amountText(payableNow)} payable now`}
+        actions={
+          <Tabs value={filters.status ?? "all"}>
+            <TabsList variant="line">
+              {TABS.map((tab) => (
+                <TabsTrigger
+                  key={tab.label}
+                  value={tab.status ?? "all"}
+                  render={
+                    <Link
+                      href={hrefWith({ status: tab.status, page: null })}
+                      className="cursor-pointer"
+                    />
+                  }
+                >
+                  {tab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        }
       />
 
-      <StatusTiles
-        totals={totals}
-        activeStatus={filters.status}
-        hrefFor={(status) => hrefWith({ status })}
-      />
+      {query.error && <p className="shrink-0 text-[13px] text-status-warning">{query.error}</p>}
 
-      <Band columns={12}>
-        <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-(--radius-xl) border border-border/70 bg-card [background-image:var(--card-surface)] shadow-[var(--edge-light),var(--shadow-sm)] lg:col-span-9">
-          <div className="shrink-0 border-b border-border/60 px-4 py-3">
-            <CommissionFilters
-              affiliates={options.affiliates}
-              currencies={options.currencies}
-              affiliateId={filters.affiliateId}
-              currency={filters.currency}
-              query={filters.query ?? ""}
-              anyFilterActive={anyFilterActive}
-            />
-          </div>
+      {/* Flush and clipped: the rows are the card, and the table scrolls
+          inside it so the page never does. */}
+      <Section
+        flush
+        scroll
+        className="overflow-hidden"
+        actions={
+          <CommissionFilters
+            affiliates={options.affiliates}
+            currencies={options.currencies}
+            affiliateId={filters.affiliateId}
+            currency={filters.currency}
+            query={filters.query ?? ""}
+            anyFilterActive={anyFilterActive}
+          />
+        }
+      >
+        <CommissionTable
+          rows={ledgerRows}
+          selectedId={selected?.id ?? null}
+          filtered={anyFilterActive}
+        />
+      </Section>
 
-          <CommissionTable merchantId={merchant.id} rows={ledgerRows} filtered={anyFilterActive} />
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <PayBar product={{ id: merchant.id, slug: merchant.slug }} groups={payableGroups} />
+        {total > 0 && (
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {`${firstShown}-${lastShown} of ${total}`}
+          </p>
+        )}
+        {totalPages > 1 && (
+          <Pagination className="mx-0 w-auto justify-end">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  render={<Link href={hrefWith({ page: String(Math.max(1, page - 1)) })} />}
+                  aria-disabled={page <= 1}
+                />
+              </PaginationItem>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <PaginationItem key={p}>
+                  <PaginationLink
+                    render={<Link href={hrefWith({ page: String(p) })} />}
+                    isActive={p === page}
+                  >
+                    {p}
+                  </PaginationLink>
+                </PaginationItem>
+              ))}
+              <PaginationItem>
+                <PaginationNext
+                  render={<Link href={hrefWith({ page: String(Math.min(totalPages, page + 1)) })} />}
+                  aria-disabled={page >= totalPages}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        )}
+      </div>
 
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border/60 px-4 py-2.5">
-            <p className="text-xs text-muted-foreground tabular-nums">
-              {total === 0 ? "No results" : `${firstShown}-${lastShown} of ${total}`}
-            </p>
-            {totalPages > 1 && (
-              <Pagination className="mx-0 w-auto justify-end">
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious
-                      render={<Link href={hrefWith({ page: String(Math.max(1, page - 1)) })} />}
-                      aria-disabled={page <= 1}
-                    />
-                  </PaginationItem>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <PaginationItem key={p}>
-                      <PaginationLink
-                        render={<Link href={hrefWith({ page: String(p) })} />}
-                        isActive={p === page}
-                      >
-                        {p}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                  <PaginationItem>
-                    <PaginationNext
-                      render={<Link href={hrefWith({ page: String(Math.min(totalPages, page + 1)) })} />}
-                      aria-disabled={page >= totalPages}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            )}
-          </div>
-        </section>
-
-        {/* Grid, not flex: the top card's `h-full` needs a row with a
-            resolved size to stretch into. A flex column with one flex-1 child
-            and one fixed child fights that same class, since `h-full` sets
-            height:100% while `flex-1` sets flex-basis, and Tailwind's
-            generated stylesheet order (not JSX order) decides which wins. A
-            1fr/auto row template gives each card a size before `h-full` is
-            ever evaluated, so there is nothing to race. */}
-        <div className="grid grid-rows-[1fr_auto] gap-4 lg:col-span-3 lg:h-full lg:min-h-0">
-          <PayableRail merchantId={merchant.id} groups={railGroups} />
-
-          <DashboardCard title={`Volume, ${VOLUME_WEEKS} weeks`}>
-            {volume.clicks === 0 ? (
-              <CardEmpty icon={Radio} title="No activity in the last 12 weeks" />
-            ) : (
-              <BarChart series={weeklyVolume} />
-            )}
-          </DashboardCard>
-        </div>
-      </Band>
-    </PageShell>
+      {sheetCommission && (
+        <CommissionSheet
+          commission={sheetCommission}
+          product={{ id: merchant.id, slug: merchant.slug }}
+          listHref={listHref}
+        />
+      )}
+    </Page>
   );
 }
