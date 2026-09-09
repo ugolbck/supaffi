@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronsUpDown, LogOut } from "lucide-react";
+import Link from "next/link";
+import { ChevronsUpDown, LogOut, UserRound } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -39,8 +40,18 @@ export function AccountMenu({ email }: { email: string }) {
               <p className="truncate text-xs text-muted-foreground">{email}</p>
             </div>
             <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer"
+              render={<Link href="/dashboard/account" />}
+            >
+              <UserRound />
+              <span>Account</span>
+            </DropdownMenuItem>
             <form action={signOutAction}>
-              <DropdownMenuItem render={<button type="submit" className="w-full" />}>
+              <DropdownMenuItem
+                className="cursor-pointer"
+                render={<button type="submit" className="w-full" />}
+              >
                 <LogOut />
                 <span>Log out</span>
               </DropdownMenuItem>
