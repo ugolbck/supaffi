@@ -1,39 +1,14 @@
-import { redirect, notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { getMerchantForOwnerBySlug } from "@/lib/merchant";
-import { MerchantForm } from "../../new/MerchantForm";
-import { updateMerchantAction } from "./updateMerchant";
+import { redirect } from "next/navigation";
 
-export default async function EditMerchantPage({
+/**
+ * A product's details are edited on its settings page now. This route stays as
+ * the redirect to it, for bookmarks and for older links.
+ */
+export default async function EditProductPage({
   params,
 }: {
   params: Promise<{ product: string }>;
 }) {
   const { product } = await params;
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-
-  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
-  if (!merchant) notFound();
-
-  const productRef = { id: merchant.id, slug: merchant.slug };
-
-  const boundAction = updateMerchantAction.bind(null, productRef);
-
-  return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-heading text-2xl font-extrabold tracking-tight">{merchant.name}</h1>
-        <p className="text-sm text-muted-foreground">
-          Keys live under Integrations.
-        </p>
-      </div>
-
-      <MerchantForm
-        action={boundAction}
-        initial={{ name: merchant.name, domain: merchant.domain, websiteUrl: merchant.websiteUrl }}
-        submitLabel="Save changes"
-      />
-    </div>
-  );
+  redirect(`/dashboard/products/${product}/settings`);
 }

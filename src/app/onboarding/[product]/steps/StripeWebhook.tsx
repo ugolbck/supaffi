@@ -6,7 +6,7 @@ import { StepFrame } from "../../StepFrame";
 import { Light } from "@/components/dashboard/Light";
 import { AutoRefresh } from "../../AutoRefresh";
 import { Copyable } from "../../Copyable";
-import { PasteField } from "./PasteField";
+import { PasteField } from "@/components/PasteField";
 import { saveWebhookSecretAction } from "../actions";
 import type { Ctx } from "../checks";
 

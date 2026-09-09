@@ -4,7 +4,7 @@ import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
 import { stepIndex, stepPath } from "@/lib/onboarding";
 import { StepFrame } from "../../StepFrame";
 import { Light } from "@/components/dashboard/Light";
-import { PasteField } from "./PasteField";
+import { PasteField } from "@/components/PasteField";
 import { saveStripeKeyAction } from "../actions";
 import type { Ctx } from "../checks";
 
