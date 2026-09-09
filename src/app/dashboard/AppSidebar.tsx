@@ -112,7 +112,7 @@ export function AppSidebar({
       <SidebarContent className="px-3">
         <SidebarGroup className="p-0">
           <SidebarGroupContent>
-            <SidebarMenu className="gap-1">
+            <SidebarMenu className="gap-2">
               {nav.map((item) => {
                 const current =
                   item.href === base ? pathname === base : pathname.startsWith(item.href);
