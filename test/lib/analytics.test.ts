@@ -5,9 +5,7 @@ import { db } from "@/lib/db";
 import {
   getProductMetrics,
   getTopAffiliates,
-  getRecentActivity,
   getPayableGroups,
-  getOwnerMetrics,
   toWeeks,
   type DayPoint,
 } from "@/lib/analytics";
@@ -263,17 +261,6 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(groups.map((g) => g.currency).sort()).toEqual(["eur", "usd"]);
   });
 
-  it("interleaves commissions and signups, newest first", async () => {
-    const affiliate = await makeAffiliate("a");
-    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
-
-    const activity = await getRecentActivity(ownerId, merchantId, 10);
-
-    expect(activity.map((a) => a.kind)).toEqual(["commission", "signup"]);
-    expect(activity[0].amount).toBe("10.00");
-    expect(activity[1].amount).toBeNull();
-  });
-
   it("sums revenue by currency and counts signups in the window", async () => {
     const affiliate = await makeAffiliate("rev");
     const click = await makeClick(affiliate.id);
@@ -314,42 +301,6 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(metrics.series.reduce((sum, d) => sum + d.signups, 0)).toBe(1);
   });
 
-  it("rolls every product up for the owner-level view", async () => {
-    const affiliate = await makeAffiliate("a");
-    await makeClick(affiliate.id);
-    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
-      amount: "12.00",
-      status: "FLAGGED",
-    });
-
-    const metrics = await getOwnerMetrics(ownerId, 30);
-
-    expect(metrics.products).toBe(2);
-    expect(metrics.affiliates).toBe(1);
-    expect(metrics.clicks).toBe(2);
-    expect(metrics.flagged).toBe(1);
-  });
-
-  it("carries revenue and signups on the owner-level series", async () => {
-    const affiliate = await makeAffiliate("rev");
-    const click = await makeClick(affiliate.id);
-    await db.commission.create({
-      data: {
-        affiliateId: affiliate.id,
-        clickId: click.id,
-        amount: 10,
-        saleAmount: 50,
-        currency: "usd",
-        status: "PENDING",
-        payableAt: new Date(),
-      },
-    });
-
-    const metrics = await getOwnerMetrics(ownerId, 30);
-
-    expect(metrics.series.reduce((sum, d) => sum + d.revenue, 0)).toBe(50);
-    expect(metrics.series.reduce((sum, d) => sum + d.signups, 0)).toBe(1);
-  });
 });
 
 // Pure function, no database: builds synthetic day series and checks the

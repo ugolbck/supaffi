@@ -72,9 +72,9 @@ export function AffiliateTable({
     <Table>
       <TableHeader className="sticky top-0 z-10 bg-elevated">
         <TableRow>
-          <TableHead>Affiliate</TableHead>
+          <TableHead>Name</TableHead>
           <TableHead>Code</TableHead>
-          <TableHead>Program</TableHead>
+          <TableHead>Plan</TableHead>
           <TableHead className="text-right">Clicks</TableHead>
           <TableHead className="text-right">Sales</TableHead>
           <TableHead className="text-right">Earned</TableHead>

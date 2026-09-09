@@ -27,8 +27,7 @@ export function AccountMenu({ email }: { email: string }) {
               <AvatarFallback>{initial}</AvatarFallback>
             </Avatar>
             <span className="flex min-w-0 flex-1 flex-col leading-tight">
-              <span className="truncate text-sm font-medium">Owner</span>
-              <span className="truncate text-xs text-muted-foreground">{email}</span>
+              <span className="truncate text-sm font-medium">{email}</span>
             </span>
             <ChevronsUpDown className="ml-auto size-4 shrink-0 opacity-60" />
           </DropdownMenuTrigger>
@@ -36,8 +35,7 @@ export function AccountMenu({ email }: { email: string }) {
               off the bottom of the viewport. */}
           <DropdownMenuContent side="top" align="start" className="min-w-56">
             <div className="px-2 py-1.5">
-              <p className="truncate text-sm font-medium">Owner</p>
-              <p className="truncate text-xs text-muted-foreground">{email}</p>
+              <p className="truncate text-sm font-medium">{email}</p>
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem

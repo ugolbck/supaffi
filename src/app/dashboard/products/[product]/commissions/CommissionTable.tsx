@@ -86,7 +86,7 @@ export function CommissionTable({
       <TableHeader className="sticky top-0 z-10 bg-elevated">
         <TableRow>
           <TableHead>Date</TableHead>
-          <TableHead>Affiliate</TableHead>
+          <TableHead>Name</TableHead>
           <TableHead className="text-right">Amount</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Detail</TableHead>

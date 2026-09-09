@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
 import { db } from "@/lib/db";
-import { getProductSetup, setupSteps, stepAfter } from "@/lib/productSetup";
+import { getProductSetup } from "@/lib/productSetup";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
@@ -141,46 +141,5 @@ describe.skipIf(!hasDatabase)("product setup", () => {
     expect(setup.trackingStatus).toBe("awaiting-sale");
     expect(setup.doneCount).toBe(3);
     expect(setup.complete).toBe(true);
-  });
-});
-
-describe("setup step order", () => {
-  const base: Awaited<ReturnType<typeof getProductSetup>> = {
-    stripeConnected: true,
-    stripeKeyStored: true,
-    stripeWebhookStored: true,
-    emailConnected: true,
-    emailRequired: true,
-    integrationsConnected: true,
-    firstProgramSlug: "p1",
-    trackingStatus: "not-started",
-    affiliateCount: 0,
-    doneCount: 2,
-    totalSteps: 3,
-    complete: false,
-  };
-
-  it("sends every step forward, never back at itself", () => {
-    // The dead end this exists to prevent: a "first unfinished" lookup would
-    // point the tracking screen at the tracking screen and offer no way on.
-    expect(stepAfter("m1", base, 2)?.href).toBe("/dashboard/products/m1/tracking");
-    expect(stepAfter("m1", base, 3)).toBeNull();
-  });
-
-  it("skips steps already done", () => {
-    expect(stepAfter("m1", base, 1)?.href).toBe("/dashboard/products/m1/tracking");
-  });
-
-  it("counts tracking as handled once clicks arrive", () => {
-    // Nothing the Owner can do moves it further, so it must not block the way
-    // forward for the steps behind it.
-    const arriving = { ...base, trackingStatus: "awaiting-sale" as const };
-    expect(setupSteps("m1", arriving).find((s) => s.id === "tracking")?.done).toBe(true);
-  });
-
-  it("is null at the end of the sequence", () => {
-    const tracked = { ...base, trackingStatus: "awaiting-sale" as const };
-    expect(stepAfter("m1", tracked, 2)).toBeNull();
-    expect(stepAfter("m1", base, 3)).toBeNull();
   });
 });

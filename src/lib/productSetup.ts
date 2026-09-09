@@ -22,8 +22,6 @@ import { deliveryMode } from "@/lib/email/transport";
  * Both the home page's product list and the product page read this, so the two
  * screens cannot disagree about how far along a product is.
  */
-export type SetupStepId = "integrations" | "program" | "tracking";
-
 export type ProductSetup = {
   stripeConnected: boolean;
   /** The Stripe secret key is on file, whether or not the webhook secret is. */
@@ -105,88 +103,3 @@ export async function getProductSetup(
   };
 }
 
-/**
- * The three steps in order, each knowing where it lives and whether it is done.
- *
- * One list, so the stepper on the product page, the "Step N of 3" on each setup
- * screen and the forward button in their footers can never disagree about what
- * the sequence is.
- */
-export function setupSteps(
-  productSlug: string,
-  setup: ProductSetup
-): { id: SetupStepId; index: number; label: string; href: string; done: boolean }[] {
-  const base = `/dashboard/products/${productSlug}`;
-  return [
-    {
-      id: "integrations",
-      index: 1,
-      label: "Connect your tools",
-      href: `${base}/integrations`,
-      done: setup.integrationsConnected,
-    },
-    {
-      id: "program",
-      index: 2,
-      label: "Set your commission terms",
-      href: `${base}/programs/new`,
-      done: setup.firstProgramSlug !== null,
-    },
-    {
-      id: "tracking",
-      index: 3,
-      label: "Install tracking",
-      href: `${base}/tracking`,
-      // Counts as handled once clicks arrive: waiting on a customer to buy is
-      // not something the Owner can act on, so it never blocks the way forward.
-      done: setup.trackingStatus !== "not-started",
-    },
-  ];
-}
-
-export type ProductSection = "programs" | "tracking" | "affiliates" | "commissions";
-
-/**
- * Which product sections can actually do something yet.
- *
- * Overview, Integrations and Settings are always open: they are where an
- * Owner goes to change the very state these gates read. The other four have a
- * prerequisite, and before it is met every control on them is a dead end, so
- * they read as locked in the sidebar and redirect if the URL is typed.
- *
- * One definition, read by the sidebar and by each gated page, so a section can
- * never render while its row says locked, or the other way round.
- */
-export function sectionGates(setup: ProductSetup): Record<ProductSection, boolean> {
-  return {
-    programs: setup.stripeConnected,
-    tracking: setup.firstProgramSlug !== null,
-    affiliates: setup.firstProgramSlug !== null,
-    commissions: setup.trackingStatus !== "not-started",
-  };
-}
-
-/** The step that unlocks a section, as a path under the product. */
-export const SECTION_UNLOCKED_BY: Record<ProductSection, string> = {
-  programs: "/integrations",
-  tracking: "/programs/new",
-  affiliates: "/programs/new",
-  commissions: "/tracking",
-};
-
-/**
- * Where a given step leads.
- *
- * Strictly forward, never back to itself. A screen whose own step is the
- * outstanding one would otherwise offer no way on at all, which is exactly the
- * dead end that makes an Owner bounce off to the product page and lose the
- * thread of setup.
- */
-export function stepAfter(
-  productSlug: string,
-  setup: ProductSetup,
-  index: number
-): { label: string; href: string } | null {
-  const steps = setupSteps(productSlug, setup);
-  return steps.find((step) => step.index > index && !step.done) ?? null;
-}

@@ -78,9 +78,9 @@ export function AffiliateSheet({
             action={changeProgramAction.bind(null, product, affiliate.id)}
             className="flex items-center justify-between gap-3 text-sm"
           >
-            <span className="text-muted-foreground">Program</span>
+            <span className="text-muted-foreground">Plan</span>
             <Select name="programId" items={programNames} defaultValue={affiliate.programId}>
-              <SelectTrigger className="w-40 cursor-pointer" aria-label="Program">
+              <SelectTrigger className="w-40 cursor-pointer" aria-label="Plan">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
