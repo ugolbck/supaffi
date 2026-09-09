@@ -34,12 +34,15 @@ export function Section({
   title,
   actions,
   scroll = false,
+  flush = false,
   className,
   children,
 }: {
   title?: ReactNode;
   actions?: ReactNode;
   scroll?: boolean;
+  /** Body runs to the card's edge: a list or a table brings its own row padding. */
+  flush?: boolean;
   className?: string;
   children: ReactNode;
 }) {
@@ -57,7 +60,13 @@ export function Section({
           {actions}
         </div>
       )}
-      <div className={cn("px-5 pb-5", !title && !actions && "pt-5", scroll && "min-h-0 flex-1 overflow-auto")}>
+      <div
+        className={cn(
+          !flush && "px-5 pb-5",
+          !flush && !title && !actions && "pt-5",
+          scroll && "min-h-0 flex-1 overflow-auto"
+        )}
+      >
         {children}
       </div>
     </section>
