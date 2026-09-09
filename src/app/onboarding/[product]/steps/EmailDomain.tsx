@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { resendDomainsUrl } from "@/lib/checks/email";
 import { nextStep, stepPath, stepIndex } from "@/lib/onboarding";
 import { StepFrame } from "../../StepFrame";
-import { Light } from "../../Light";
+import { Light } from "@/components/dashboard/Light";
 import { AutoRefresh } from "../../AutoRefresh";
 import type { Ctx } from "../checks";
 

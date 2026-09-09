@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { webhookCreateUrl, webhookEndpointUrl, WEBHOOK_EVENTS } from "@/lib/stripeWebhookLink";
 import { nextStep, stepPath, stepIndex } from "@/lib/onboarding";
 import { StepFrame } from "../../StepFrame";
-import { Light } from "../../Light";
+import { Light } from "@/components/dashboard/Light";
 import { AutoRefresh } from "../../AutoRefresh";
 import { Copyable } from "../../Copyable";
 import { PasteField } from "./PasteField";

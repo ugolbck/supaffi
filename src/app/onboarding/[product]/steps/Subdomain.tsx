@@ -4,7 +4,7 @@ import { detectDnsProvider } from "@/lib/checks/dns";
 import { cloudflareDnsRecordsUrl } from "@/lib/dnsProviderLinks";
 import { nextStep, stepPath } from "@/lib/onboarding";
 import { StepFrame } from "../../StepFrame";
-import { Light } from "../../Light";
+import { Light } from "@/components/dashboard/Light";
 import { AutoRefresh } from "../../AutoRefresh";
 import { Copyable } from "../../Copyable";
 import { SubdomainField } from "./SubdomainField";

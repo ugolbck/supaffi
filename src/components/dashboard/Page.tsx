@@ -1,0 +1,65 @@
+import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
+
+/**
+ * Cards are content sized. Air is allowed. A page that comes up short is a
+ * page with less to say, not a layout bug to pad over. The one height rule
+ * left is that a table scrolls inside its card, so the page never does.
+ */
+export function Page({ children }: { children: ReactNode }) {
+  return <div className="flex h-full min-h-0 w-full flex-col gap-6">{children}</div>;
+}
+
+export function PageTitle({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
+  return (
+    <header className="flex shrink-0 items-start justify-between gap-4">
+      <div className="flex flex-col gap-0.5">
+        <h1 className="text-[22px] font-semibold tracking-tight text-balance">{title}</h1>
+        {subtitle && <p className="text-[13px] text-muted-foreground">{subtitle}</p>}
+      </div>
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+    </header>
+  );
+}
+
+export function Tiles({ children, columns = 4 }: { children: ReactNode; columns?: 3 | 4 }) {
+  return (
+    <div className={cn("grid shrink-0 grid-cols-2 gap-3", columns === 3 ? "lg:grid-cols-3" : "lg:grid-cols-4")}>
+      {children}
+    </div>
+  );
+}
+
+export function Section({
+  title,
+  actions,
+  scroll = false,
+  className,
+  children,
+}: {
+  title?: ReactNode;
+  actions?: ReactNode;
+  scroll?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={cn(
+        "flex flex-col rounded-xl border border-black/[0.08] bg-elevated",
+        scroll && "min-h-0 flex-1",
+        className
+      )}
+    >
+      {(title || actions) && (
+        <div className="flex shrink-0 items-center justify-between px-5 pt-4 pb-3">
+          {title && <h2 className="text-sm font-medium">{title}</h2>}
+          {actions}
+        </div>
+      )}
+      <div className={cn("px-5 pb-5", !title && !actions && "pt-5", scroll && "min-h-0 flex-1 overflow-auto")}>
+        {children}
+      </div>
+    </section>
+  );
+}

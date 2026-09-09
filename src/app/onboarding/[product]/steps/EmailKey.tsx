@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { stepIndex } from "@/lib/onboarding";
 import { StepFrame } from "../../StepFrame";
-import { Light } from "../../Light";
+import { Light } from "@/components/dashboard/Light";
 import { PasteField } from "./PasteField";
 import { saveEmailKeyAction } from "../actions";
 import type { Ctx } from "../checks";

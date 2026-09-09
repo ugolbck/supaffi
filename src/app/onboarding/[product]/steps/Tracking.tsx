@@ -6,7 +6,7 @@ import { REFERRAL_COOKIE, REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { nextStep, siteHost, stepIndex, stepPath } from "@/lib/onboarding";
 import { originFor } from "@/lib/url";
 import { StepFrame } from "../../StepFrame";
-import { Light } from "../../Light";
+import { Light } from "@/components/dashboard/Light";
 import { AutoRefresh } from "../../AutoRefresh";
 import type { Ctx } from "../checks";
 
