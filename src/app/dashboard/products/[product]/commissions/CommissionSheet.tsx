@@ -39,6 +39,10 @@ export type SheetCommission = {
   payableLabel: string;
   /** What it is waiting on, or what happened to it. */
   stateLabel: string;
+  /** When the click this sale was attributed to happened. */
+  clickLabel: string;
+  /** The link that click came through, when it still has one. */
+  linkLabel: string | null;
   reference: { text: string; href: string | null } | null;
 };
 
@@ -108,6 +112,12 @@ export function CommissionSheet({
                 <span className="text-muted-foreground">No reference</span>
               )}
             </Line>
+            <Line label="Click">{commission.clickLabel}</Line>
+            {commission.linkLabel && (
+              <Line label="Link">
+                <span className="font-mono text-xs">{commission.linkLabel}</span>
+              </Line>
+            )}
           </div>
 
           {commission.status === "PAYABLE" && (
@@ -127,7 +137,7 @@ export function CommissionSheet({
             >
               <span className="text-sm font-medium">Void this commission</span>
               <div className="flex gap-2">
-                <Input name="reason" placeholder="Reason" className="flex-1" />
+                <Input name="reason" placeholder="Reason" maxLength={200} className="flex-1" />
                 <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
                   Void
                 </Button>

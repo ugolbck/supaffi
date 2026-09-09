@@ -61,7 +61,9 @@ export async function voidAction(
   id: string,
   formData: FormData
 ): Promise<void> {
-  const reason = String(formData.get("reason") ?? "").trim() || "voided by owner";
+  // Capped: the reason is read back months later in a table cell, and the
+  // field is a free text input on a page anybody with the session can post to.
+  const reason = String(formData.get("reason") ?? "").trim().slice(0, 200) || "voided by owner";
   await voidCommission(await owner(), product.id, id, reason);
   back(product);
 }

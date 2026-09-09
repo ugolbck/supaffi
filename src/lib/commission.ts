@@ -47,6 +47,8 @@ export type CommissionRow = {
   affiliateEmail: string;
   /** A negative clawback row for a refund that landed after payout. */
   isAdjustment: boolean;
+  /** The click this sale was attributed to, and the link it arrived through. */
+  click: { at: Date; linkCode: string | null; destinationPath: string | null };
 };
 
 export const COMMISSIONS_PAGE_SIZE = 25;
@@ -109,6 +111,14 @@ export async function listCommissions(
         stripePaymentRef: true,
         adjustsCommissionId: true,
         affiliate: { select: { id: true, name: true, email: true } },
+        click: {
+          select: {
+            createdAt: true,
+            // Nullable: deleting a link leaves its clicks behind, and
+            // attribution reads the affiliate, not the link.
+            link: { select: { code: true, destinationPath: true } },
+          },
+        },
       },
       // Newest first: the ledger is read to find out what just happened far
       // more often than to audit the beginning of time.
@@ -136,6 +146,11 @@ export async function listCommissions(
       affiliateName: c.affiliate.name,
       affiliateEmail: c.affiliate.email,
       isAdjustment: c.adjustsCommissionId !== null,
+      click: {
+        at: c.click.createdAt,
+        linkCode: c.click.link?.code ?? null,
+        destinationPath: c.click.link?.destinationPath ?? null,
+      },
     })),
   };
 }
@@ -315,6 +330,10 @@ export async function confirmCommissionFraud(
  * editing a row, and a refund arrives as its own negative adjustment instead.
  * Voiding twice is refused for the same reason it is refused elsewhere, so a
  * double submit cannot overwrite the reason the first one recorded.
+ *
+ * An adjustment row is refused outright. It is a debt, not a payout: the
+ * commission it claws back stays PAID, so voiding the clawback would quietly
+ * write off money the Affiliate owes back.
  */
 export async function voidCommission(
   ownerId: string,
@@ -328,12 +347,13 @@ export async function voidCommission(
     where: {
       id: commissionId,
       status: { in: ["PENDING", "PAYABLE", "FLAGGED"] },
+      adjustsCommissionId: null,
       affiliate: { merchantId },
     },
     select: { id: true },
   });
   if (!existing) {
-    throw new Error("Commission not found, or already paid or voided");
+    throw new Error("Commission not found, or already paid, voided, or a refund adjustment");
   }
 
   await db.commission.update({

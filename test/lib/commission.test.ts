@@ -103,6 +103,7 @@ async function makeCommission(
     payableAt: Date;
     flagReason: string;
     stripePaymentRef: string;
+    adjustsCommissionId: string;
   }>
 ) {
   return db.commission.create({
@@ -115,6 +116,7 @@ async function makeCommission(
       payableAt: overrides.payableAt ?? new Date(Date.now() - 1000),
       flagReason: overrides.flagReason,
       stripePaymentRef: overrides.stripePaymentRef,
+      adjustsCommissionId: overrides.adjustsCommissionId,
     },
   });
 }
@@ -490,6 +492,27 @@ describe.skipIf(!hasDatabase)("commission", () => {
     await expect(
       voidCommission(ownerId, merchantId, commission.id, "again")
     ).rejects.toThrow();
+  });
+
+  it("voidCommission refuses a refund adjustment, which is a debt and not a payout", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const original = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      status: "PAID",
+    });
+    const adjustment = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "-10.00",
+      adjustsCommissionId: original.id,
+    });
+
+    await expect(
+      voidCommission(ownerId, merchantId, adjustment.id, "looks wrong")
+    ).rejects.toThrow();
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: adjustment.id } });
+    expect(updated.status).toBe("PAYABLE");
+    expect((await db.commission.findUniqueOrThrow({ where: { id: original.id } })).status).toBe(
+      "PAID"
+    );
   });
 
   it("voidCommission refuses a commission belonging to another Merchant", async () => {

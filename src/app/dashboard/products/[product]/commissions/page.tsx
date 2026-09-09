@@ -204,6 +204,10 @@ export default async function CommissionsPage({
         payableLabel: DATE.format(selected.payableAt),
         stateLabel: stateLabel(selected),
         reference: referenceFor(selected.stripePaymentRef),
+        clickLabel: DATE.format(selected.click.at),
+        linkLabel: selected.click.linkCode
+          ? `${selected.click.linkCode} · ${selected.click.destinationPath ?? "/"}`
+          : null,
       }
     : null;
 
