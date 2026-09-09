@@ -38,7 +38,7 @@ describe("validateProgramInput", () => {
         commissionDurationType: "FIXED_MONTHS",
         commissionDurationMonths: "",
       }).error
-    ).toBe("Enter the number of months for a fixed-duration Program");
+    ).toBe("Enter how many months the commission is paid for");
   });
 
   it("accepts FIXED_MONTHS with a positive commissionDurationMonths", () => {

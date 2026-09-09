@@ -81,7 +81,7 @@ export function TermsForm({
             value={duration}
             onValueChange={(value) => setDuration(String(value))}
           >
-            <SelectTrigger className="flex-1 cursor-pointer">
+            <SelectTrigger className="flex-1 cursor-pointer" aria-label="How long commission is paid">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

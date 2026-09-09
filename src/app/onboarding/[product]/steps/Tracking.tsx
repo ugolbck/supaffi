@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { developerBrief } from "@/lib/developerBrief";
 import { REFERRAL_COOKIE, REFERRAL_METADATA_KEY } from "@/lib/referral";
-import { nextStep, stepIndex, stepPath } from "@/lib/onboarding";
+import { nextStep, siteHost, stepIndex, stepPath } from "@/lib/onboarding";
 import { originFor } from "@/lib/url";
 import { StepFrame } from "../../StepFrame";
 import { Light } from "../../Light";
@@ -56,7 +56,7 @@ await stripe.checkout.sessions.create({
       <p className="text-sm">Paste this in the head of every page an affiliate link can land on.</p>
       <Snippet code={scriptTag} />
       <div className="rounded-xl border border-border/70 p-4">
-        <Light result={checks.tracking.script} label={`Script found on ${new URL(merchant.websiteUrl).hostname}`} />
+        <Light result={checks.tracking.script} label={`Script found on ${siteHost(merchant.websiteUrl)}`} />
       </div>
 
       <p className="text-sm">Then, wherever you create the Stripe Checkout session.</p>

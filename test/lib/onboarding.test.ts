@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stepIds, stepIndex, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor } from "@/lib/onboarding";
+import { stepIds, stepIndex, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor, siteHost } from "@/lib/onboarding";
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 
@@ -167,5 +167,12 @@ describe("checkSectionFor", () => {
     expect(checkSectionFor("tracking")).toBe("tracking");
     expect(checkSectionFor("product")).toBeNull();
     expect(checkSectionFor("terms")).toBeNull();
+  });
+});
+
+describe("siteHost", () => {
+  it("is the hostname, or the raw address when it cannot be read", () => {
+    expect(siteHost("https://www.instantgradient.com/pricing")).toBe("www.instantgradient.com");
+    expect(siteHost("instantgradient.com")).toBe("instantgradient.com");
   });
 });

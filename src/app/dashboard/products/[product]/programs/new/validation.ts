@@ -28,7 +28,7 @@ export function validateProgramInput(
   if (durationType === "FIXED_MONTHS") {
     const months = Number(input.commissionDurationMonths);
     if (!Number.isFinite(months) || months <= 0 || !Number.isInteger(months)) {
-      return { error: "Enter the number of months for a fixed-duration Program" };
+      return { error: "Enter how many months the commission is paid for" };
     }
     commissionDurationMonths = months;
   }

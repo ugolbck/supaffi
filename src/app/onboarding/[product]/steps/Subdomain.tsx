@@ -41,7 +41,9 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
           <span className="text-muted-foreground">Name</span>
           <Copyable value={name} />
           <span className="text-muted-foreground">Value</span>
-          <Copyable value={hostIp} />
+          {/* Nothing to copy, and an empty copy button reads as a bug rather
+              than as the instance not knowing its own address. */}
+          {hostIp ? <Copyable value={hostIp} /> : <span>Not configured on this server</span>}
           <span className="text-muted-foreground">Proxy</span>
           <span>off. Grey cloud, this matters.</span>
         </div>

@@ -18,6 +18,10 @@ export async function createProductAction(
   const name = String(formData.get("name") ?? "").trim();
   const websiteUrl = String(formData.get("websiteUrl") ?? "").trim();
   const domain = suggestSubdomain(websiteUrl);
+  // Nothing readable came out of the address, so there is no subdomain to
+  // validate. Say what is actually wrong instead of complaining about a
+  // field the form never showed.
+  if (!domain) return { error: "Enter the full website address, starting with https://" };
 
   const error = validateProductInput({ name, domain, websiteUrl }, instanceDomain());
   if (error) return { error };

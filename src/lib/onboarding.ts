@@ -183,6 +183,19 @@ export function suggestSubdomain(websiteUrl: string): string {
 }
 
 /**
+ * The site's hostname for showing in a sentence. The raw value when it cannot
+ * be parsed: a screen that says the address back is more use than one that
+ * throws on a Merchant whose website was stored before it was validated.
+ */
+export function siteHost(websiteUrl: string): string {
+  try {
+    return new URL(websiteUrl).hostname || websiteUrl;
+  } catch {
+    return websiteUrl;
+  }
+}
+
+/**
  * Where the rail's way out leads, or null when there is none.
  *
  * Only a product that finished onboarding has a dashboard worth landing on;

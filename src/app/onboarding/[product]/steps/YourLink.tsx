@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { listProgramsForMerchant } from "@/lib/program";
-import { stepPath } from "@/lib/onboarding";
+import { siteHost, stepPath } from "@/lib/onboarding";
 import { originFor } from "@/lib/url";
 import { StepFrame } from "../../StepFrame";
 import { AutoRefresh } from "../../AutoRefresh";
@@ -18,7 +18,7 @@ export async function YourLink({ ctx }: { ctx: Ctx }) {
 
   const link = `${originFor(merchant.domain)}/affiliates/signup/${program.slug}`;
   const ready = checks.dns.resolves.ok && checks.dns.https.ok && checks.dns.certificate.ok;
-  const site = new URL(merchant.websiteUrl).hostname;
+  const site = siteHost(merchant.websiteUrl);
 
   return (
     <StepFrame index={ctx.total} total={ctx.total} title="That is it. Here is your link.">
@@ -54,7 +54,8 @@ export async function YourLink({ ctx }: { ctx: Ctx }) {
         </Button>
         {!ready && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Waiting for your subdomain to resolve. The link will not open until it does.
+            Waiting for your subdomain to resolve. The link will not open until it does. If the subdomain is wrong,
+            change it from the Subdomain step in the rail.
           </p>
         )}
       </form>
