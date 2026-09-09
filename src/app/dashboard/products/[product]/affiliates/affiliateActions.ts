@@ -37,11 +37,20 @@ export async function setCustomRateAction(
   formData: FormData
 ): Promise<void> {
   const ownerId = await owner();
-  // Empty means "use the program default": the override is cleared, not set
-  // to zero.
+
+  // "Use default" carries its own field. Reading an empty `rate` instead
+  // would never fire: the button and the input share a form, and the value
+  // already typed into the input is the one FormData hands back.
+  if (formData.get("intent") === "default") {
+    await updateAffiliate(ownerId, product.id, affiliateId, { customCommissionRate: null });
+    revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
+    return;
+  }
+
   const raw = String(formData.get("rate") ?? "").trim();
-  const rate = raw === "" ? null : Number(raw);
-  if (rate !== null && (!Number.isFinite(rate) || rate <= 0 || rate > 100)) return;
+  if (raw === "") return;
+  const rate = Number(raw);
+  if (!Number.isFinite(rate) || rate <= 0 || rate > 100) return;
   await updateAffiliate(ownerId, product.id, affiliateId, { customCommissionRate: rate });
   revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
 }

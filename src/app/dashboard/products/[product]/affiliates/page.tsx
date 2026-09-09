@@ -139,6 +139,7 @@ export default async function AffiliatesPage({
     earnedHint: moneyHint(row.earned) ?? null,
     rate: `${row.commissionRate}%`,
     rateIsOverride: row.rateIsOverride,
+    joined: DATE.format(row.createdAt),
     href: hrefWith({ affiliate: row.id }),
   }));
 

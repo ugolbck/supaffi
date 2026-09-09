@@ -120,14 +120,16 @@ export function AffiliateSheet({
                 Set
               </Button>
               {affiliate.rateIsOverride && (
-                // Submits an empty rate, which clears the override.
+                // Its own field, not an empty `rate`: a submit button sharing
+                // the input's name loses to whatever was typed in it, so
+                // clearing the override says so instead.
                 <Button
                   type="submit"
                   size="sm"
                   variant="ghost"
                   className="cursor-pointer"
-                  name="rate"
-                  value=""
+                  name="intent"
+                  value="default"
                 >
                   Use default
                 </Button>

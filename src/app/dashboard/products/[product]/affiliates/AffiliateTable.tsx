@@ -31,6 +31,8 @@ export type AffiliateRowView = {
   /** Already carries its percent sign. */
   rate: string;
   rateIsOverride: boolean;
+  /** Formatted on the server, so the row and the sheet read the same date. */
+  joined: string;
   /** The list URL with this affiliate selected. */
   href: string;
 };
@@ -77,6 +79,7 @@ export function AffiliateTable({
           <TableHead className="text-right">Sales</TableHead>
           <TableHead className="text-right">Earned</TableHead>
           <TableHead className="text-right">Rate</TableHead>
+          <TableHead className="text-right">Joined</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -127,6 +130,9 @@ export function AffiliateTable({
                   </>
                 )}
               </span>
+            </TableCell>
+            <TableCell className="text-right text-sm whitespace-nowrap text-muted-foreground tabular-nums">
+              {row.joined}
             </TableCell>
           </TableRow>
         ))}
