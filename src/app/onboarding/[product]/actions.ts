@@ -15,7 +15,7 @@ import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stepPath } from "@/lib/onboarding";
 import { createProgram, updateProgram, listProgramsForMerchant } from "@/lib/program";
-import { validateProgramInput } from "@/app/dashboard/products/[product]/programs/new/validation";
+import { validateProgramInput } from "@/lib/programValidation";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
 import { resendKeyWorks } from "@/lib/checks/email";
 

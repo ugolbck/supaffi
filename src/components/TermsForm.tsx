@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { ProgramFormValues } from "@/app/dashboard/products/[product]/programs/new/validation";
+import type { ProgramFormValues } from "@/lib/programValidation";
 
 type Action = (prev: { error: string }, formData: FormData) => Promise<{ error: string }>;
 
