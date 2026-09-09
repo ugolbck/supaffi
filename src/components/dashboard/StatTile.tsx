@@ -5,7 +5,8 @@ import { Sparkline } from "@/components/charts/Sparkline";
  *
  * The sparkline is not decoration. A tile carrying a bare number is short
  * enough to leave a gap in the signal row, and the trend answers the question
- * the number provokes anyway.
+ * the number provokes anyway. A series of nothing but zeros has no trend to
+ * draw, so it draws none: a flat line along the floor reads as data.
  */
 export function StatTile({
   label,
@@ -37,7 +38,7 @@ export function StatTile({
           {value}
         </span>
       </div>
-      {series && series.length > 1 ? (
+      {series && series.length > 1 && series.some((n) => n !== 0) ? (
         <Sparkline points={series} className="h-6 w-full text-accent-500" />
       ) : (
         <span className="truncate font-mono text-[11px] text-muted-foreground tabular-nums">

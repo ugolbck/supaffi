@@ -169,7 +169,7 @@ export default async function ProductOverviewPage({
         </Section>
       )}
 
-      {empty && !showWelcome && (
+      {empty && (
         <Section>
           <div className="flex items-center gap-3 text-sm">
             <Light result={{ ok: setup.trackingStatus !== "not-started", detail: "" }} label="Tracking" />

@@ -10,7 +10,7 @@ import {
   connectEmailProvider,
   markOnboardingComplete,
 } from "@/lib/merchant";
-import { validateProductInput, normalizeDomain } from "@/app/dashboard/products/new/validation";
+import { validateProductInput, normalizeDomain } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stepPath } from "@/lib/onboarding";

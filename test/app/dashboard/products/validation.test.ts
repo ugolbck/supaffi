@@ -4,7 +4,7 @@ import {
   validateStripeCredentials,
   validateEmailProviderKey,
   normalizeDomain,
-} from "@/app/dashboard/products/new/validation";
+} from "@/lib/productValidation";
 
 const validInput = {
   name: "InstantGradient",

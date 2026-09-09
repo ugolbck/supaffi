@@ -11,7 +11,7 @@ import {
   getMerchantForOwner,
   type ProductRef,
 } from "@/lib/merchant";
-import { validateProductInput, normalizeDomain } from "@/app/dashboard/products/new/validation";
+import { validateProductInput, normalizeDomain } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stripeKeyWorks } from "@/lib/checks/stripe";

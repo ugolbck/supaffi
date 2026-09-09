@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { createMerchant } from "@/lib/merchant";
-import { validateProductInput, normalizeDomain } from "@/app/dashboard/products/new/validation";
+import { validateProductInput, normalizeDomain } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { suggestSubdomain, stepPath } from "@/lib/onboarding";

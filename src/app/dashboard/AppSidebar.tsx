@@ -97,7 +97,16 @@ export function AppSidebar({
             icon: Code2,
             label: "Tracking",
             badge: null,
-            dot: activeCounts.tracking !== "not-started" ? "ok" : "waiting",
+            // Green means a sale came through, amber means the script is on
+            // the site and nothing has sold yet, and nothing at all means
+            // tracking has not started. A dot for the last one would claim
+            // there is something to look at.
+            dot:
+              activeCounts.tracking === "verified"
+                ? "ok"
+                : activeCounts.tracking === "awaiting-sale"
+                  ? "waiting"
+                  : undefined,
           },
           { href: `${base}/settings`, icon: Settings, label: "Settings", badge: null },
         ]
