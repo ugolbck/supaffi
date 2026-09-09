@@ -93,7 +93,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     expect(raw.stripeSecretKeyEnc).toBeNull();
     expect(raw.stripeWebhookSecretEnc).toBeNull();
     expect(raw.emailProviderConfigEnc).toBeNull();
-    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, email: false });
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, stripeKey: false, stripeWebhook: false, email: false });
   });
 
   it("connectStripe encrypts both Stripe secrets at rest", async () => {
@@ -112,7 +112,24 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     expect(raw.stripeSecretKeyEnc).not.toBe("sk_test_abc123");
     expect(raw.stripeSecretKeyEnc).toContain(":"); // iv:authTag:ciphertext format
     expect(raw.stripeWebhookSecretEnc).not.toBe("whsec_abc123");
-    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: true, email: false });
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: true, stripeKey: true, stripeWebhook: true, email: false });
+  });
+
+  it("reports the two Stripe halves separately when only the key is on file", async () => {
+    const { id } = await createMerchant(ownerId, {
+      name: "InstantGradient",
+      domain: "half-stripe.example.com",
+      websiteUrl: "https://example.com",
+    });
+
+    await connectStripe(ownerId, id, { secretKey: "sk_test_abc123" });
+
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({
+      stripe: false,
+      stripeKey: true,
+      stripeWebhook: false,
+      email: false,
+    });
   });
 
   it("connectEmailProvider encrypts the key and is independent of Stripe", async () => {
@@ -127,7 +144,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     const raw = await db.merchant.findUniqueOrThrow({ where: { id } });
     expect(raw.emailProviderConfigEnc).not.toBe("resend_api_key_abc");
     expect(raw.stripeSecretKeyEnc).toBeNull();
-    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, email: true });
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, stripeKey: false, stripeWebhook: false, email: true });
   });
 
   it("connectStripe throws when the Merchant belongs to a different Owner", async () => {

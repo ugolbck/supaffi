@@ -26,6 +26,10 @@ export type SetupStepId = "integrations" | "program" | "tracking";
 
 export type ProductSetup = {
   stripeConnected: boolean;
+  /** The Stripe secret key is on file, whether or not the webhook secret is. */
+  stripeKeyStored: boolean;
+  /** The Stripe webhook signing secret is on file, whether or not the key is. */
+  stripeWebhookStored: boolean;
   /** A real email provider is on file. False in console mode, where none is needed. */
   emailConnected: boolean;
   /**
@@ -87,6 +91,8 @@ export async function getProductSetup(
 
   return {
     stripeConnected: integrations.stripe,
+    stripeKeyStored: integrations.stripeKey,
+    stripeWebhookStored: integrations.stripeWebhook,
     emailConnected: integrations.email,
     emailRequired,
     integrationsConnected,

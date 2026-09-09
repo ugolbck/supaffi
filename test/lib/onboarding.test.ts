@@ -8,6 +8,8 @@ const no = { ok: false, detail: "" };
 
 const setup = (over: Partial<ProductSetup> = {}): ProductSetup => ({
   stripeConnected: false,
+  stripeKeyStored: false,
+  stripeWebhookStored: false,
   emailConnected: false,
   emailRequired: true,
   integrationsConnected: false,
@@ -48,7 +50,7 @@ describe("stepStates", () => {
 
   it("shows a stored but unverified step as waiting once it is behind the user", () => {
     const states = stepStates({
-      setup: setup({ stripeConnected: true }),
+      setup: setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }),
       checks: checks({ stripe: { key: ok, webhook: no } }),
       onboardingCompletedAt: null,
       current: "email-key",
@@ -81,7 +83,7 @@ describe("stepStates", () => {
 
   it("stays current even once its own check has passed", () => {
     const states = stepStates({
-      setup: setup({ stripeConnected: true }),
+      setup: setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }),
       checks: checks({ stripe: { key: ok, webhook: no } }),
       onboardingCompletedAt: null,
       current: "stripe-key",
@@ -118,16 +120,21 @@ describe("navigation", () => {
 
 describe("resumeStep", () => {
   it("lands on the first step whose stored data is missing", () => {
-    expect(resumeStep(setup(), null)).toBe("subdomain");
-    expect(resumeStep(setup({ stripeConnected: true }), null)).toBe("email-key");
-    expect(resumeStep(setup({ stripeConnected: true, emailConnected: true }), null)).toBe("terms");
-    expect(resumeStep(setup({ stripeConnected: true, emailConnected: true, firstProgramSlug: "standard" }), null)).toBe("tracking");
+    // Nothing is stored for the subdomain, so it never holds a resume up: the
+    // first thing anyone can still owe is the Stripe key.
+    expect(resumeStep(setup(), null)).toBe("stripe-key");
+    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }), null)).toBe("email-key");
+    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true }), null)).toBe("terms");
+    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true, firstProgramSlug: "standard" }), null)).toBe("tracking");
+  });
+  it("lands on the webhook step when only the Stripe key is stored", () => {
+    expect(resumeStep(setup({ stripeKeyStored: true, stripeWebhookStored: false }), null)).toBe("stripe-webhook");
   });
   it("lands on the link when everything is stored but the owner never saw it", () => {
-    expect(resumeStep(setup({ stripeConnected: true, emailConnected: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBe("link");
+    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBe("link");
   });
   it("lands on the link when email is not required and the rest is stored", () => {
-    expect(resumeStep(setup({ emailRequired: false, stripeConnected: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBe("link");
+    expect(resumeStep(setup({ emailRequired: false, stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBe("link");
   });
 });
 

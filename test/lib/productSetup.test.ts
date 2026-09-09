@@ -147,6 +147,8 @@ describe.skipIf(!hasDatabase)("product setup", () => {
 describe("setup step order", () => {
   const base: Awaited<ReturnType<typeof getProductSetup>> = {
     stripeConnected: true,
+    stripeKeyStored: true,
+    stripeWebhookStored: true,
     emailConnected: true,
     emailRequired: true,
     integrationsConnected: true,

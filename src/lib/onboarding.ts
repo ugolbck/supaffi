@@ -70,18 +70,17 @@ function stored(id: StepId, setup: ProductSetup, onboardingCompletedAt: Date | n
     case "product":
       return true;
     case "subdomain":
-      // No field records it directly. Its DNS state is a live check, not
-      // stored data, so treat it as handled once anything past it exists:
-      // reaching those steps means the domain was already live.
-      return (
-        setup.stripeConnected ||
-        setup.emailConnected ||
-        setup.firstProgramSlug !== null ||
-        setup.trackingStatus !== "not-started"
-      );
+      // Nothing is stored for it. The subdomain is written when the product
+      // is created and its DNS state is a live check, not stored data, so it
+      // never holds anyone up: the rail's light says whether it resolves.
+      return true;
+    // The two Stripe halves are stored one at a time, and each step owns its
+    // own. Reading both from one flag stranded anyone who had pasted the key
+    // but not the signing secret on a step that thought it was finished.
     case "stripe-key":
+      return setup.stripeKeyStored;
     case "stripe-webhook":
-      return setup.stripeConnected;
+      return setup.stripeWebhookStored;
     case "email-key":
     case "email-domain":
       return setup.emailConnected;

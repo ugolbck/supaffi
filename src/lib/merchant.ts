@@ -83,16 +83,25 @@ export async function connectEmailProvider(
 
 // Which integrations are live, without ever handing the ciphertext to a
 // caller that only needs to render a checkmark.
+//
+// The two halves of Stripe are reported separately as well as together. A
+// screen that treats "key and secret" as one thing cannot tell someone who
+// has pasted the key and still owes the webhook secret where they are, and
+// onboarding has a step for each.
 export async function getIntegrationStatus(
   ownerId: string,
   merchantId: string
-): Promise<{ stripe: boolean; email: boolean }> {
+): Promise<{ stripe: boolean; stripeKey: boolean; stripeWebhook: boolean; email: boolean }> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
     select: { stripeSecretKeyEnc: true, stripeWebhookSecretEnc: true, emailProviderConfigEnc: true },
   });
+  const stripeKey = Boolean(merchant?.stripeSecretKeyEnc);
+  const stripeWebhook = Boolean(merchant?.stripeWebhookSecretEnc);
   return {
-    stripe: Boolean(merchant?.stripeSecretKeyEnc && merchant?.stripeWebhookSecretEnc),
+    stripe: stripeKey && stripeWebhook,
+    stripeKey,
+    stripeWebhook,
     email: Boolean(merchant?.emailProviderConfigEnc),
   };
 }

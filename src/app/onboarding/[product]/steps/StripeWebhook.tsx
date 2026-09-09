@@ -14,10 +14,13 @@ type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
 
 export function StripeWebhook({ ctx }: { ctx: Ctx }) {
   const { merchant, checks, setup } = ctx;
+  // The signing secret alone. A stored key says nothing about this step, and
+  // reading both from one flag hid the paste form from the one person who
+  // still needed it.
   const next = nextStep("stripe-webhook", ctx.emailRequired)!;
   return (
     <StepFrame index={stepIndex("stripe-webhook", ctx.emailRequired)} total={ctx.total} title="Let Stripe tell Supaffi about sales">
-      <AutoRefresh active={setup.stripeConnected && !checks.stripe.webhook.ok} />
+      <AutoRefresh active={setup.stripeWebhookStored && !checks.stripe.webhook.ok} />
       <Button variant="secondary" className="w-fit cursor-pointer" render={<a href={webhookCreateUrl(merchant.domain)} target="_blank" rel="noreferrer" />}>
         Create webhook in Stripe
       </Button>
@@ -30,7 +33,7 @@ export function StripeWebhook({ ctx }: { ctx: Ctx }) {
         </div>
       </details>
 
-      {setup.stripeConnected ? (
+      {setup.stripeWebhookStored ? (
         <>
           <div className="flex flex-col gap-2 rounded-xl border border-border/70 p-4">
             <Light result={checks.stripe.webhook} label="Stripe is sending events" />
