@@ -58,8 +58,11 @@ export default async function ProductsPage() {
         }
       />
       {/* Flush, and clipped, so the rows are the card: they carry their own
-          padding and their hover fill has to stop at the rounded corners. */}
-      <Section flush className="overflow-hidden">
+          padding and their hover fill has to stop at the rounded corners.
+          Scrolls inside itself because the dashboard layout is
+          overflow-hidden, so a long list would otherwise be cut off with no
+          way to reach the rest of it. */}
+      <Section flush scroll className="overflow-hidden">
         <ul className="divide-y divide-border/60">
           {rows.map((row) => (
             <li key={row.id}>
