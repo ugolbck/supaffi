@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { listMerchantsForOwner } from "@/lib/merchant";
-import { isStepId, stepIds, stepPath, stepStates, type StepId } from "@/lib/onboarding";
+import { backToDashboardHref, isStepId, stepIds, stepPath, stepStates, type StepId } from "@/lib/onboarding";
 import { Rail } from "../../Rail";
 import { loadStepContext } from "../checks";
 import { Subdomain } from "../steps/Subdomain";
@@ -37,7 +37,7 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
 
   return (
     <>
-      <Rail steps={steps} productSlug={ctx.merchant.slug} backHref={others.length > 0 ? "/dashboard" : null} />
+      <Rail steps={steps} productSlug={ctx.merchant.slug} backHref={backToDashboardHref(others)} />
       {stepBody(step, ctx)}
     </>
   );

@@ -157,6 +157,20 @@ export function suggestSubdomain(websiteUrl: string): string {
   }
 }
 
+/**
+ * Where the rail's way out leads, or null when there is none.
+ *
+ * Only a product that finished onboarding has a dashboard worth landing on;
+ * offering "Back to dashboard" while every product is half-built drops
+ * someone onto screens that can do nothing yet, and the flow they left is
+ * the only place that can fix that.
+ */
+export function backToDashboardHref(
+  others: { onboardingCompletedAt: Date | null }[]
+): string | null {
+  return others.some((m) => m.onboardingCompletedAt !== null) ? "/dashboard" : null;
+}
+
 /** Where to drop someone who left partway. The first step whose data is not stored, after product. */
 export function resumeStep(setup: ProductSetup, onboardingCompletedAt: Date | null): StepId {
   const ids = stepIds(setup.emailRequired).filter((id) => id !== "product");

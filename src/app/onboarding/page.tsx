@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { deliveryMode } from "@/lib/email/transport";
-import { stepIds, stepLabel } from "@/lib/onboarding";
+import { backToDashboardHref, stepIds, stepLabel } from "@/lib/onboarding";
 import { Rail } from "./Rail";
 import { StepFrame } from "./StepFrame";
 import { ProductForm } from "./ProductForm";
@@ -25,7 +25,7 @@ export default async function OnboardingStart() {
 
   return (
     <>
-      <Rail steps={steps} productSlug={null} backHref={existing.length > 0 ? "/dashboard" : null} />
+      <Rail steps={steps} productSlug={null} backHref={backToDashboardHref(existing)} />
       <StepFrame index={1} total={ids.length} title="What are you promoting?">
         <ProductForm />
       </StepFrame>

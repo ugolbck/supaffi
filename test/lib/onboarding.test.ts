@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stepIds, stepIndex, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain } from "@/lib/onboarding";
+import { stepIds, stepIndex, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref } from "@/lib/onboarding";
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 
@@ -145,5 +145,13 @@ describe("suggestSubdomain", () => {
   });
   it("gives nothing for an address it cannot read", () => {
     expect(suggestSubdomain("not a url")).toBe("");
+  });
+});
+
+describe("backToDashboardHref", () => {
+  it("offers the dashboard only when another product has finished onboarding", () => {
+    expect(backToDashboardHref([])).toBeNull();
+    expect(backToDashboardHref([{ onboardingCompletedAt: null }])).toBeNull();
+    expect(backToDashboardHref([{ onboardingCompletedAt: null }, { onboardingCompletedAt: new Date() }])).toBe("/dashboard");
   });
 });
