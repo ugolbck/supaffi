@@ -1,10 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import type { CommissionStatus } from "@/lib/commission";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { useRouter } from "next/navigation";
 import {
   Sheet,
   SheetContent,
@@ -12,185 +8,169 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { changeProgramAction, setCustomRateAction } from "./affiliateActions";
 
 /**
- * One affiliate, opened from a row.
+ * Everything about one affiliate, in one place, without leaving the list.
  *
- * A sheet rather than a route, so the list keeps its filters, its page and its
- * scroll position behind it. Read-only: reassigning a program and overriding a
- * rate are writes, and they belong with the rest of the affiliate mutations
- * rather than bolted onto a panel that exists to answer "who is this".
+ * The list selects with `?affiliate=<id>` and the panel is rendered on the
+ * server from that, so there is no client copy of an affiliate to keep in step
+ * with a write. Closing is a navigation back to the list, which is why the URL
+ * it returns to arrives as a prop: the filters and the page were already in it.
  */
 
-export type SheetCommission = {
-  id: string;
-  amount: string;
-  currency: string;
-  status: CommissionStatus;
-  /** Pre-formatted on the server, so both sides render the same date. */
-  dateLabel: string;
-};
-
-export type AffiliateRowView = {
+export type SheetAffiliate = {
   id: string;
   name: string | null;
   email: string;
-  referralCode: string;
+  joinedAt: string;
+  programId: string;
   programName: string;
-  programHref: string;
-  clicks: number;
-  conversions: number;
-  earned: string;
-  earnedHint: string | null;
-  /** Already carries its percent sign. */
+  /** Without the percent sign. */
   rate: string;
   rateIsOverride: boolean;
-  joinedLabel: string;
-  referralLink: string;
   payoutDetails: string | null;
-  commissions: SheetCommission[];
+  links: { url: string; clicks: number }[];
+  commissions: { id: string; date: string; amount: string; status: string }[];
 };
-
-const STATUS_STYLES: Record<CommissionStatus, string> = {
-  PENDING: "bg-muted text-muted-foreground",
-  PAYABLE: "bg-status-success-bg text-status-success",
-  FLAGGED: "bg-status-warning-bg text-status-warning",
-  PAID: "bg-accent-100 text-accent-800",
-  VOIDED: "bg-muted text-muted-foreground line-through",
-};
-
-const STATUS_LABELS: Record<CommissionStatus, string> = {
-  PENDING: "Pending",
-  PAYABLE: "Payable",
-  FLAGGED: "Flagged",
-  PAID: "Paid",
-  VOIDED: "Voided",
-};
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      {children}
-    </div>
-  );
-}
-
-function Metric({ label, value, hint }: { label: string; value: string; hint?: string | null }) {
-  return (
-    <div className="flex flex-col gap-0.5 rounded-(--radius-lg) border border-border/70 bg-elevated [background-image:var(--elevated-surface)] px-3 py-2.5">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <span className="font-heading truncate text-base leading-tight font-semibold tracking-tight tabular-nums">
-        {value}
-      </span>
-      {hint && (
-        <span className="truncate font-mono text-[11px] text-muted-foreground tabular-nums">
-          {hint}
-        </span>
-      )}
-    </div>
-  );
-}
 
 export function AffiliateSheet({
-  row,
-  open,
-  onOpenChange,
+  affiliate,
+  programs,
+  product,
+  listHref,
 }: {
-  row: AffiliateRowView | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  affiliate: SheetAffiliate;
+  programs: { id: string; name: string }[];
+  product: { id: string; slug: string };
+  listHref: string;
 }) {
-  if (!row) return null;
+  const router = useRouter();
+  // The trigger shows a program name rather than the cuid the form submits.
+  const programNames = Object.fromEntries(programs.map((p) => [p.id, p.name]));
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="gap-0 data-[side=right]:sm:max-w-md">
-        <SheetHeader className="shrink-0 border-b border-border/60 pr-12">
-          <SheetTitle className="truncate">{row.name ?? row.email}</SheetTitle>
-          <SheetDescription className="truncate">{row.email}</SheetDescription>
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) router.push(listHref);
+      }}
+    >
+      <SheetContent className="w-[420px] overflow-y-auto data-[side=right]:sm:max-w-[420px]">
+        <SheetHeader className="pr-12">
+          <SheetTitle className="truncate">{affiliate.name ?? affiliate.email}</SheetTitle>
+          <SheetDescription className="truncate">
+            {affiliate.email} · joined {affiliate.joinedAt}
+          </SheetDescription>
         </SheetHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
-          <div className="grid grid-cols-3 gap-2">
-            <Metric label="Clicks" value={String(row.clicks)} />
-            <Metric label="Conversions" value={String(row.conversions)} />
-            <Metric label="Earned" value={row.earned} hint={row.earnedHint} />
-          </div>
-
-          <Field label="Referral link">
-            <div className="flex items-center gap-2">
-              <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
-                {row.referralLink}
-              </code>
-              <CopyLinkButton size="sm" link={row.referralLink} />
-            </div>
-          </Field>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Program">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-sm font-medium">{row.programName}</span>
-                <Link href={row.programHref}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 cursor-pointer px-1.5 text-xs text-muted-foreground"
-                  >
-                    Terms
-                  </Button>
-                </Link>
-              </div>
-            </Field>
-            <Field label="Rate">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-sm tabular-nums">{row.rate}</span>
-                <Badge variant="outline" className="text-[11px]">
-                  {row.rateIsOverride ? "Override" : "Program default"}
-                </Badge>
-              </div>
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Referral code">
-              <span className="truncate font-mono text-sm">{row.referralCode}</span>
-            </Field>
-            <Field label="Joined">
-              <span className="text-sm tabular-nums">{row.joinedLabel}</span>
-            </Field>
-          </div>
-
-          <Field label="Payout details">
-            <p className="rounded-md bg-muted px-2 py-1.5 text-sm break-words whitespace-pre-wrap text-muted-foreground">
-              {row.payoutDetails ?? "None"}
-            </p>
-          </Field>
-
-          <Field label="Recent commissions">
-            {row.commissions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">None yet</p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {row.commissions.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex items-center gap-2.5 rounded-lg border border-border/60 px-2.5 py-1.5 text-sm"
-                  >
-                    <span className="w-16 shrink-0 text-xs text-muted-foreground tabular-nums">
-                      {c.dateLabel}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-mono text-sm tabular-nums">
-                      {c.amount} {c.currency.toUpperCase()}
-                    </span>
-                    <Badge className={`shrink-0 ${STATUS_STYLES[c.status]}`}>
-                      {STATUS_LABELS[c.status]}
-                    </Badge>
-                  </li>
+        <div className="flex flex-col gap-6 px-4 pb-4">
+          <form
+            action={changeProgramAction.bind(null, product, affiliate.id)}
+            className="flex items-center justify-between gap-3 text-sm"
+          >
+            <span className="text-muted-foreground">Program</span>
+            <Select name="programId" items={programNames} defaultValue={affiliate.programId}>
+              <SelectTrigger className="w-40 cursor-pointer" aria-label="Program">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {programs.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="cursor-pointer">
+                    {p.name}
+                  </SelectItem>
                 ))}
-              </ul>
-            )}
-          </Field>
+              </SelectContent>
+            </Select>
+            <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
+              Change
+            </Button>
+          </form>
+
+          <form
+            action={setCustomRateAction.bind(null, product, affiliate.id)}
+            className="flex flex-col gap-2 text-sm"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Rate</span>
+              <span className="tabular-nums">
+                {affiliate.rate}% {affiliate.rateIsOverride ? "(custom)" : "(program default)"}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                name="rate"
+                type="number"
+                min="0.01"
+                max="100"
+                step="0.01"
+                placeholder="Custom rate"
+                className="w-32"
+              />
+              <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
+                Set
+              </Button>
+              {affiliate.rateIsOverride && (
+                // Submits an empty rate, which clears the override.
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="ghost"
+                  className="cursor-pointer"
+                  name="rate"
+                  value=""
+                >
+                  Use default
+                </Button>
+              )}
+            </div>
+          </form>
+
+          <div className="flex items-start justify-between gap-3 text-sm">
+            <span className="text-muted-foreground">Payout</span>
+            <span className="max-w-60 text-right break-words">
+              {affiliate.payoutDetails ?? "Not given yet"}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium">Links</p>
+            <ul className="flex flex-col gap-1 text-sm">
+              {affiliate.links.map((l) => (
+                <li key={l.url} className="flex justify-between gap-3">
+                  <code className="truncate font-mono text-xs">{l.url}</code>
+                  <span className="shrink-0 text-muted-foreground tabular-nums">
+                    {l.clicks} clicks
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium">Commissions</p>
+            <ul className="flex flex-col gap-1 text-sm">
+              {affiliate.commissions.length === 0 && (
+                <li className="text-muted-foreground">None yet</li>
+              )}
+              {affiliate.commissions.map((c) => (
+                <li key={c.id} className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{c.date}</span>
+                  <span className="tabular-nums">{c.amount}</span>
+                  <span className="w-16 text-right text-muted-foreground">{c.status}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </SheetContent>
     </Sheet>

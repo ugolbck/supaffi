@@ -48,8 +48,10 @@ export function AffiliateFilters({
         params.set(key, value);
       }
     }
-    // Any change to what is being shown invalidates which page of it you were on.
+    // Any change to what is being shown invalidates which page of it you were
+    // on, and the row that was open may not be in the new list at all.
     params.delete("page");
+    params.delete("affiliate");
     const next = params.toString();
     router.push(next ? `${pathname}?${next}` : pathname);
   }
