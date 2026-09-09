@@ -13,7 +13,6 @@ import {
   type CommissionStatus,
 } from "@/lib/commission";
 import { getPayableGroups, getProductMetrics, toWeeks } from "@/lib/analytics";
-import { getProductSetup, sectionGates, SECTION_UNLOCKED_BY } from "@/lib/productSetup";
 import {
   Pagination,
   PaginationContent,
@@ -83,13 +82,6 @@ export default async function CommissionsPage({
 
   const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
   if (!merchant) notFound();
-
-  // Nothing can be attributed until a click has been recorded, so the ledger
-  // has nothing to show and nothing it could ever show.
-  const setup = await getProductSetup(session.user.id, merchant.id);
-  if (!sectionGates(setup).commissions) {
-    redirect(`/dashboard/products/${merchant.slug}${SECTION_UNLOCKED_BY.commissions}`);
-  }
 
   const filters = {
     status: parseStatus(query.status),
