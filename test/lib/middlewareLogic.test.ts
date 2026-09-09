@@ -32,4 +32,10 @@ describe("resolveLoginRedirect", () => {
     expect(resolveLoginRedirect("/setup", null)).toBe(null);
     expect(resolveLoginRedirect("/", null)).toBe(null);
   });
+
+  it("sends a visitor with no session away from onboarding", () => {
+    expect(resolveLoginRedirect("/onboarding", null)).toBe("/login");
+    expect(resolveLoginRedirect("/onboarding/instantgradient/terms", "affiliate")).toBe("/login");
+    expect(resolveLoginRedirect("/onboarding", "owner")).toBeNull();
+  });
 });

@@ -15,6 +15,7 @@ const PROTECTED_ROUTES: ReadonlyArray<{
 }> = [
   { prefix: "/dashboard", role: "owner", loginPath: "/login" },
   { prefix: "/affiliates/dashboard", role: "affiliate", loginPath: "/affiliates/login" },
+  { prefix: "/onboarding", role: "owner", loginPath: "/login" },
 ];
 
 // Returns the path to redirect to, or null if the request may proceed.
