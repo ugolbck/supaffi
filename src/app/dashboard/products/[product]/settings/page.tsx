@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getStripeKeyKind } from "@/lib/merchant";
-import { runProductChecks } from "@/lib/checks/product";
+import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { resendDomainsUrl } from "@/lib/checks/email";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
 import { webhookCreateUrl } from "@/lib/stripeWebhookLink";
@@ -26,12 +26,21 @@ import {
  * The lights are live rather than a stored flag, so a key revoked in Stripe
  * this morning says so here this afternoon. `runProductChecks` serves a
  * section it ran less than a minute ago from its cache, which is what keeps
- * this page off Stripe and Resend on every visit.
+ * this page off Stripe and Resend on every visit. `?fresh=<section>` is how a
+ * write says its section is worth re-running: without it the light for the
+ * thing just replaced would keep reading from a result taken before the fix.
  *
  * Replacing a credential opens the matching sheet from `?replace=`, which is
  * where the two connect screens and the four routes that used to lead to them
  * ended up.
  */
+
+const SECTIONS: CheckSection[] = ["dns", "stripe", "email", "tracking"];
+
+/** A section name in the URL, or nothing when it names none. */
+function freshSection(raw: string | undefined): CheckSection | null {
+  return SECTIONS.find((section) => section === raw) ?? null;
+}
 
 const KEY_LABEL = {
   restricted: "Restricted key",
@@ -72,7 +81,7 @@ export default async function SettingsPage({
   searchParams,
 }: {
   params: Promise<{ product: string }>;
-  searchParams: Promise<{ replace?: string }>;
+  searchParams: Promise<{ replace?: string; fresh?: string }>;
 }) {
   const { product } = await params;
   const query = await searchParams;
@@ -83,8 +92,9 @@ export default async function SettingsPage({
   const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 
+  const fresh = freshSection(query.fresh);
   const [checks, keyKind] = await Promise.all([
-    runProductChecks(ownerId, merchant.id),
+    runProductChecks(ownerId, merchant.id, fresh ? { fresh: new Set([fresh]) } : {}),
     getStripeKeyKind(ownerId, merchant.id),
   ]);
 

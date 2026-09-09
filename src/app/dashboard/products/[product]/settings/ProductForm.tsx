@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ReactNode } from "react";
+import { useActionState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,10 +10,11 @@ import { updateProductAction } from "./settingsActions";
 /**
  * Name, website and subdomain, edited in place.
  *
- * The action returns an error or nothing, so "Saved" is drawn from having
- * submitted at least once rather than from a flag in the state: the fields
- * keep whatever was typed either way, and a stale confirmation cannot outlive
- * a later failure.
+ * A save that works redirects to `?fresh=dns`, so the page comes back with the
+ * two lights beside the subdomain re-run rather than served from the cache: a
+ * subdomain changed here resolves somewhere else, and the old result would be
+ * about the old name. Only a failure returns, which is why there is no "saved"
+ * line to draw.
  */
 
 function Row({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
@@ -40,14 +41,6 @@ export function ProductForm({
   const [state, action, pending] = useActionState(updateProductAction.bind(null, product), {
     error: "",
   });
-  // Watched off the transition rather than an onSubmit handler, so nothing
-  // depends on a submit listener running beside a form action.
-  const [submitted, setSubmitted] = useState(false);
-  useEffect(() => {
-    if (pending) setSubmitted(true);
-  }, [pending]);
-  const saved = submitted && !pending && !state.error;
-
   return (
     <form action={action} className="flex flex-col gap-4">
       <Row label="Name" htmlFor="name">
@@ -85,7 +78,6 @@ export function ProductForm({
         <Button type="submit" size="sm" className="cursor-pointer" disabled={pending}>
           {pending ? "Saving" : "Save"}
         </Button>
-        {saved && <span className="text-sm text-muted-foreground">Saved</span>}
       </div>
     </form>
   );

@@ -26,6 +26,11 @@ import { resendKeyWorks } from "@/lib/checks/email";
  * fix it rather than on the first sale weeks later. They redirect back to
  * settings instead of forward into the next onboarding step, which is the one
  * thing that separates them from their onboarding twins.
+ *
+ * Each redirect names the section it just changed. `runProductChecks` serves a
+ * section it ran less than a minute ago from its cache, so without this the
+ * light for the very thing that was just fixed can still read "not connected"
+ * on the page the owner lands on.
  */
 
 async function owner(): Promise<string> {
@@ -34,7 +39,9 @@ async function owner(): Promise<string> {
   return session.user.id;
 }
 
-const settings = (slug: string) => `/dashboard/products/${slug}/settings`;
+/** The settings URL, optionally asking for one section of checks to be re-run. */
+const settings = (slug: string, fresh?: "dns" | "stripe" | "email") =>
+  `/dashboard/products/${slug}/settings${fresh ? `?fresh=${fresh}` : ""}`;
 
 export async function updateProductAction(
   product: ProductRef,
@@ -58,7 +65,7 @@ export async function updateProductAction(
   // The sidebar and the product switcher are rendered by the dashboard layout,
   // which a soft navigation reuses from cache.
   revalidatePath("/dashboard", "layout");
-  return { error: "" };
+  redirect(settings(product.slug, "dns"));
 }
 
 export async function replaceStripeKeyAction(
@@ -71,7 +78,7 @@ export async function replaceStripeKeyAction(
   const check = await stripeKeyWorks(key);
   if (!check.ok) return { error: check.detail };
   await connectStripe(ownerId, product.id, { secretKey: key });
-  redirect(settings(product.slug));
+  redirect(settings(product.slug, "stripe"));
 }
 
 export async function replaceWebhookSecretAction(
@@ -83,7 +90,7 @@ export async function replaceWebhookSecretAction(
   const secret = String(formData.get("value") ?? "").trim();
   if (!secret.startsWith("whsec_")) return { error: "The signing secret starts with whsec_" };
   await connectStripe(ownerId, product.id, { webhookSecret: secret });
-  redirect(settings(product.slug));
+  redirect(settings(product.slug, "stripe"));
 }
 
 export async function replaceEmailKeyAction(
@@ -96,7 +103,7 @@ export async function replaceEmailKeyAction(
   const check = await resendKeyWorks(key);
   if (!check.ok) return { error: check.detail };
   await connectEmailProvider(ownerId, product.id, key);
-  redirect(settings(product.slug));
+  redirect(settings(product.slug, "email"));
 }
 
 export async function deleteProductAction(product: ProductRef, formData: FormData): Promise<void> {

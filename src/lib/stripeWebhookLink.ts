@@ -11,7 +11,7 @@ import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/stripeWebhookEvents";
  *
  * The event list itself is not duplicated here: it is
  * `REQUIRED_STRIPE_WEBHOOK_EVENTS`, the same list `src/lib/worker/dispatch.ts`
- * handles and `StripeConnectForm.tsx` already shows the owner.
+ * handles.
  */
 export const WEBHOOK_EVENTS = REQUIRED_STRIPE_WEBHOOK_EVENTS;
 
