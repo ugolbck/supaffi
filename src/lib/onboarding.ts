@@ -95,10 +95,18 @@ function stored(id: StepId, setup: ProductSetup, onboardingCompletedAt: Date | n
     case "product":
       return true;
     case "subdomain":
-      // Nothing is stored for it. The subdomain is written when the product
-      // is created and its DNS state is a live check, not stored data, so it
-      // never holds anyone up: the rail's light says whether it resolves.
-      return true;
+      // No field records it directly: its DNS state is a live check, not
+      // stored data. So it is inferred from what came after. Anything stored
+      // by a later step means the Owner walked past this screen, and nothing
+      // stored at all means they never reached it, which is where a resume
+      // should put them back.
+      return (
+        setup.stripeKeyStored ||
+        setup.stripeWebhookStored ||
+        setup.emailConnected ||
+        setup.firstProgramSlug !== null ||
+        setup.trackingStatus !== "not-started"
+      );
     // The two Stripe halves are stored one at a time, and each step owns its
     // own. Reading both from one flag stranded anyone who had pasted the key
     // but not the signing secret on a step that thought it was finished.

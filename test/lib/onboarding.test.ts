@@ -120,9 +120,8 @@ describe("navigation", () => {
 
 describe("resumeStep", () => {
   it("lands on the first step whose stored data is missing", () => {
-    // Nothing is stored for the subdomain, so it never holds a resume up: the
-    // first thing anyone can still owe is the Stripe key.
-    expect(resumeStep(setup(), null)).toBe("stripe-key");
+    // Nothing stored anywhere means the Owner never got past the subdomain.
+    expect(resumeStep(setup(), null)).toBe("subdomain");
     expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }), null)).toBe("email-key");
     expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true }), null)).toBe("terms");
     expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true, firstProgramSlug: "standard" }), null)).toBe("tracking");

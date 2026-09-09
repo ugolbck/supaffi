@@ -50,21 +50,35 @@ function settle<T>(promise: Promise<T>, fallback: T): Promise<T> {
 
 export type CheckSection = keyof ProductChecks;
 
+type Timed<T> = { value: T; at: number };
+
 /**
- * The last result per product, so a page that only cares about one section
- * does not re-run the other three. Module level, which is per server process:
- * a wrong entry costs at most a minute of a stale light, and the step the
- * Owner is standing on always asks for its own section fresh.
+ * The last result per product, section by section, so a page that only cares
+ * about one section does not re-run the other three. Module level, which is
+ * per server process: a wrong entry costs at most a minute of a stale light,
+ * and the step the Owner is standing on always asks for its own section fresh.
+ *
+ * Each section carries its own timestamp. One timestamp for the whole product
+ * would be pushed forward by every poll of the current step, and the three
+ * sections nobody asked for would then never expire at all.
  */
-const recent = new Map<string, { checks: ProductChecks; at: number }>();
+type SectionCache = {
+  dns?: Timed<ProductChecks["dns"]>;
+  stripe?: Timed<ProductChecks["stripe"]>;
+  email?: Timed<ProductChecks["email"]>;
+  tracking?: Timed<ProductChecks["tracking"]>;
+};
+
+const recent = new Map<string, SectionCache>();
 const MAX_AGE_MS = 60_000;
-const SECTIONS = ["dns", "stripe", "email", "tracking"] as const;
 
 export type RunOptions = {
   /** Sections to run no matter how recent the last result is. */
   fresh?: ReadonlySet<CheckSection>;
   /** Test injection. Nothing in the app passes these. */
   overrides?: Partial<CheckDeps>;
+  /** Test seam: the clock the sixty second window is measured against. */
+  now?: () => number;
 };
 
 /**
@@ -86,12 +100,21 @@ export async function runProductChecks(
   options: RunOptions = {}
 ): Promise<ProductChecks> {
   const deps = { ...defaults, ...options.overrides };
-  const cached = recent.get(merchantId);
-  const warm = cached && Date.now() - cached.at < MAX_AGE_MS ? cached.checks : null;
-  const runs = (section: CheckSection) => warm === null || (options.fresh?.has(section) ?? false);
+  const stamp = (options.now ?? Date.now)();
+  const cached = recent.get(merchantId) ?? {};
+  const usable = <T>(entry: Timed<T> | undefined, section: CheckSection): T | null => {
+    if (!entry || options.fresh?.has(section)) return null;
+    return stamp - entry.at < MAX_AGE_MS ? entry.value : null;
+  };
+  const warmDns = usable(cached.dns, "dns");
+  const warmStripe = usable(cached.stripe, "stripe");
+  const warmEmail = usable(cached.email, "email");
+  const warmTracking = usable(cached.tracking, "tracking");
 
   // Nothing to run: no database round trip either, which is the point.
-  if (warm && !SECTIONS.some(runs)) return warm;
+  if (warmDns && warmStripe && warmEmail && warmTracking) {
+    return { dns: warmDns, stripe: warmStripe, email: warmEmail, tracking: warmTracking };
+  }
 
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
@@ -104,43 +127,45 @@ export async function runProductChecks(
   const resendKey = safeDecrypt(merchant.emailProviderConfigEnc);
 
   const [dns, stripe, email, tracking] = await Promise.all([
-    runs("dns")
-      ? (async () => {
-          const [resolves, https] = await Promise.all([
-            hostIp ? settle(deps.resolvesTo(merchant.domain, hostIp), FAILED) : Promise.resolve(NO_ADDRESS),
-            settle(deps.httpsReachable(merchant.domain), { reachable: FAILED, certificate: FAILED }),
-          ]);
-          return { resolves, https: https.reachable, certificate: https.certificate };
-        })()
-      : Promise.resolve(warm!.dns),
-    runs("stripe")
-      ? (async () => {
-          const [key, webhook] = await Promise.all([
-            stripeKey ? settle(deps.stripeKeyWorks(stripeKey), FAILED) : Promise.resolve(NOT_CONNECTED),
-            settle(deps.webhookEventReceived(ownerId, merchantId), FAILED),
-          ]);
-          return { key, webhook };
-        })()
-      : Promise.resolve(warm!.stripe),
-    runs("email")
-      ? (async () => {
-          const [key, domain] = await Promise.all([
-            resendKey ? settle(deps.resendKeyWorks(resendKey), FAILED) : Promise.resolve(NOT_CONNECTED),
-            resendKey
-              ? settle(deps.sendingDomainVerified(resendKey, merchant.domain), FAILED)
-              : Promise.resolve(NOT_CONNECTED),
-          ]);
-          return { key, domain };
-        })()
-      : Promise.resolve(warm!.email),
-    runs("tracking")
-      ? (async () => ({ script: await settle(deps.scriptFound(merchant.websiteUrl, merchant.domain), FAILED) }))()
-      : Promise.resolve(warm!.tracking),
+    warmDns ??
+      (async () => {
+        const [resolves, https] = await Promise.all([
+          hostIp ? settle(deps.resolvesTo(merchant.domain, hostIp), FAILED) : Promise.resolve(NO_ADDRESS),
+          settle(deps.httpsReachable(merchant.domain), { reachable: FAILED, certificate: FAILED }),
+        ]);
+        return { resolves, https: https.reachable, certificate: https.certificate };
+      })(),
+    warmStripe ??
+      (async () => {
+        const [key, webhook] = await Promise.all([
+          stripeKey ? settle(deps.stripeKeyWorks(stripeKey), FAILED) : Promise.resolve(NOT_CONNECTED),
+          settle(deps.webhookEventReceived(ownerId, merchantId), FAILED),
+        ]);
+        return { key, webhook };
+      })(),
+    warmEmail ??
+      (async () => {
+        const [key, domain] = await Promise.all([
+          resendKey ? settle(deps.resendKeyWorks(resendKey), FAILED) : Promise.resolve(NOT_CONNECTED),
+          resendKey
+            ? settle(deps.sendingDomainVerified(resendKey, merchant.domain), FAILED)
+            : Promise.resolve(NOT_CONNECTED),
+        ]);
+        return { key, domain };
+      })(),
+    warmTracking ??
+      (async () => ({ script: await settle(deps.scriptFound(merchant.websiteUrl, merchant.domain), FAILED) }))(),
   ]);
 
-  const checks: ProductChecks = { dns, stripe, email, tracking };
-  recent.set(merchantId, { checks, at: Date.now() });
-  return checks;
+  // A section that was served from the cache keeps the timestamp of the run
+  // that produced it, so it still expires a minute after it was really run.
+  recent.set(merchantId, {
+    dns: warmDns ? cached.dns : { value: dns, at: stamp },
+    stripe: warmStripe ? cached.stripe : { value: stripe, at: stamp },
+    email: warmEmail ? cached.email : { value: email, at: stamp },
+    tracking: warmTracking ? cached.tracking : { value: tracking, at: stamp },
+  });
+  return { dns, stripe, email, tracking };
 }
 
 function safeDecrypt(ciphertext: string | null): string | null {

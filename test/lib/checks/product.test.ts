@@ -187,6 +187,79 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     expect(calls).toEqual([]);
   });
 
+  it("expires each section on its own clock, so polling one does not keep the rest alive", async () => {
+    const owner = await db.owner.create({ data: { email: "c@example.com", passwordHash: "x" } });
+    const merchant = await createMerchant(owner.id, {
+      name: "C",
+      domain: "affiliates.c.test",
+      websiteUrl: "https://c.test",
+    });
+    await connectStripe(owner.id, merchant.id, { secretKey: "rk_test_1", webhookSecret: "whsec_1" });
+    await connectEmailProvider(owner.id, merchant.id, "re_1");
+    process.env.SUPAFFI_HOST_IP = "146.59.195.140";
+
+    const calls: string[] = [];
+    const overrides = {
+      resolvesTo: async () => {
+        calls.push("resolvesTo");
+        return ok;
+      },
+      httpsReachable: async () => {
+        calls.push("httpsReachable");
+        return { reachable: ok, certificate: ok };
+      },
+      stripeKeyWorks: async () => {
+        calls.push("stripeKeyWorks");
+        return ok;
+      },
+      webhookEventReceived: async () => {
+        calls.push("webhookEventReceived");
+        return ok;
+      },
+      resendKeyWorks: async () => {
+        calls.push("resendKeyWorks");
+        return ok;
+      },
+      sendingDomainVerified: async () => {
+        calls.push("sendingDomainVerified");
+        return ok;
+      },
+      scriptFound: async () => {
+        calls.push("scriptFound");
+        return ok;
+      },
+    };
+    const email = new Set(["email"] as const);
+
+    let clock = 1_000_000;
+    const now = () => clock;
+
+    // Warms every section.
+    await runProductChecks(owner.id, merchant.id, { fresh: email, overrides, now });
+
+    // Still inside the minute: only the email section runs.
+    calls.length = 0;
+    clock += 30_000;
+    await runProductChecks(owner.id, merchant.id, { fresh: email, overrides, now });
+    expect(calls.sort()).toEqual(["resendKeyWorks", "sendingDomainVerified"]);
+
+    // Sixty-one seconds after the first run. The email section has been asked
+    // for on every poll, but the other three have not been run since, so they
+    // are stale and run again rather than living forever on the email poll.
+    calls.length = 0;
+    clock += 31_000;
+    await runProductChecks(owner.id, merchant.id, { fresh: email, overrides, now });
+    expect(calls.sort()).toEqual([
+      "httpsReachable",
+      "resendKeyWorks",
+      "resolvesTo",
+      "scriptFound",
+      "sendingDomainVerified",
+      "stripeKeyWorks",
+      "webhookEventReceived",
+    ]);
+  });
+
   it("degrades one failing check to its own failed result instead of losing every light", async () => {
     const owner = await db.owner.create({ data: { email: "c@example.com", passwordHash: "x" } });
     const merchant = await createMerchant(owner.id, {
