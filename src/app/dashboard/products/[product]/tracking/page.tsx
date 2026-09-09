@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { getTrackingTimestamps } from "@/lib/tracking";
 import { getProductMetrics } from "@/lib/analytics";
-import { scriptFound } from "@/lib/checks/script";
+import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { developerBrief } from "@/lib/developerBrief";
 import { originFor } from "@/lib/url";
 import { CHECKOUT_SNIPPET } from "./TrackingSteps";
@@ -13,46 +13,63 @@ import { TrackingStatus } from "./TrackingStatus";
 /**
  * Where tracking stands, and the two snippets that fix it when it does not.
  *
- * The script check is one fetch of the owner's homepage, run here rather than
- * through `runProductChecks`: the other six checks on that path are about
- * Stripe, email and DNS, and none of them belongs on this screen.
+ * The script light comes from the same cache the rest of the dashboard reads,
+ * so opening this screen right after settings does not fetch the owner's
+ * homepage twice. "Check the site again" is the one thing that overrides it:
+ * it lands on `?fresh=1`, which asks for the tracking section and only that
+ * section to be run for real.
  */
 
 export default async function TrackingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ product: string }>;
+  searchParams: Promise<{ fresh?: string }>;
 }) {
   const { product } = await params;
+  const query = await searchParams;
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
-  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
+  const ownerId = session.user.id;
+  const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
   const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
 
-  const [script, timestamps, metrics] = await Promise.all([
-    scriptFound(merchant.websiteUrl, merchant.domain),
+  // A flag, not a value: anything but the one string it is set to reads as
+  // off, so a URL somebody made up cannot ask for anything else.
+  const forceFresh = query.fresh === "1";
+
+  const [checks, timestamps, metrics] = await Promise.all([
+    runProductChecks(
+      ownerId,
+      merchant.id,
+      forceFresh ? { fresh: new Set<CheckSection>(["tracking"]) } : {}
+    ),
     getTrackingTimestamps(merchant.id),
-    getProductMetrics(session.user.id, merchant.id),
+    getProductMetrics(ownerId, merchant.id),
   ]);
 
   // Nothing to write: the check runs at render time, so asking again is asking
-  // for this page to be rendered again.
+  // for this page to be rendered again, with the cached tracking result
+  // skipped.
+  const trackingHref = `/dashboard/products/${merchant.slug}/tracking`;
   async function checkAgain(): Promise<void> {
     "use server";
     const session = await auth();
     if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-    revalidatePath(`/dashboard/products/${product}/tracking`);
+    revalidatePath(trackingHref);
+    redirect(`${trackingHref}?fresh=1`);
   }
 
   return (
     <TrackingStatus
       merchant={merchant}
-      script={script}
+      script={checks.tracking.script}
       clicks={metrics.clicks}
       series={metrics.series}
       lastClickAt={timestamps.lastClickAt}

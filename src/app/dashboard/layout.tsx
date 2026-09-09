@@ -67,7 +67,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
         update={update && { version: update.version, url: update.url, security: update.security }}
       />
       <SidebarInset>
-        <div className="flex h-svh flex-col overflow-hidden p-8">
+        {/* Views are built to fit, so this should never scroll. It is a
+            safety net, not a layout: a view that does overflow scrolls rather
+            than losing whatever sat below the fold. */}
+        <div className="flex h-svh flex-col overflow-y-auto p-8">
           {/* The sidebar is a sheet below md, so it needs something to open
               it. Above md it is always on screen and this would be noise. */}
           <SidebarTrigger className="-mt-2 mb-2 self-start md:hidden" />

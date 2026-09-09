@@ -11,9 +11,9 @@ import { Snippet } from "./TrackingSteps";
  * Tracking, as a status page: is the script on the site, is anything arriving,
  * and the two snippets to copy again if it is not.
  *
- * The light comes from a live read of the owner's homepage at render time, not
- * from what the database last saw. An owner who has just pasted the tag wants
- * to know whether it took, and clicks only prove it after somebody visits.
+ * The light comes from the shared check cache, which the page refreshes on
+ * demand. An owner who has just pasted the tag wants to know whether it took,
+ * and clicks only prove it after somebody visits.
  */
 
 const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
@@ -69,8 +69,11 @@ export function TrackingStatus({
         <Snippet code={scriptTag} />
       </Section>
 
-      <Section title="Checkout">
-        <p className="mb-2 text-[13px] text-muted-foreground">
+      {/* The longer of the two snippets, and the only thing on this page tall
+          enough to push the buttons under it off an 800px screen: it scrolls
+          inside its own card so the page never does. */}
+      <Section title="Checkout" scroll>
+        <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">
           Wherever you create the Stripe Checkout Session, server side.
         </p>
         <Snippet code={checkoutSnippet} />
