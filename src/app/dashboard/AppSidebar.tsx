@@ -5,13 +5,12 @@ import { usePathname } from "next/navigation";
 import {
   Building2,
   Code2,
-  LayoutDashboard,
+  LayoutGrid,
   Percent,
-  Plus,
-  Plug,
   Receipt,
   Settings,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Sidebar,
@@ -19,169 +18,154 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
+import { ProductSwitcher } from "./ProductSwitcher";
 import { AccountMenu } from "./AccountMenu";
 import { VersionNotice, type UpdateInfo } from "./VersionNotice";
 
 type Merchant = { id: string; slug: string; name: string; domain: string };
 
-// One product's nav. Rendered only while a product is open: onboarding owns
-// everything before that, so there is nothing left to grey out or lock. A
-// section that has no product to point at is simply not on screen.
-const MERCHANT_NAV = [
-  { key: "overview", icon: Building2, label: "Overview" },
-  { key: "integrations", icon: Plug, label: "Integrations" },
-  { key: "programs", icon: Percent, label: "Programs" },
-  { key: "affiliates", icon: Users, label: "Affiliates" },
-  { key: "commissions", icon: Receipt, label: "Commissions" },
-  { key: "tracking", icon: Code2, label: "Tracking" },
-  { key: "settings", icon: Settings, label: "Settings" },
-] as const;
+export type Counts = {
+  affiliates: number;
+  programs: number;
+  payable: number;
+  tracking: "not-started" | "awaiting-sale" | "verified";
+};
 
+type NavItem = {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  badge: number | null;
+  dot?: "ok" | "waiting";
+};
+
+// The active product comes from the URL, read here rather than in the layout:
+// a layout does not re-render when the user moves between two products, so a
+// server-picked active product would go stale on the first switch.
 export function AppSidebar({
   merchants,
+  counts,
   email,
   version,
   update,
 }: {
   merchants: Merchant[];
+  counts: Record<string, Counts>;
   email: string;
   version: string;
   update: UpdateInfo | null;
 }) {
   const pathname = usePathname();
-  const merchantMatch = pathname.match(/^\/dashboard\/products\/([^/]+)/);
-  const activeSlug = merchantMatch?.[1];
-  const activeMerchant = merchants.find((m) => m.slug === activeSlug);
-  const base = activeMerchant ? `/dashboard/products/${activeMerchant.slug}` : "";
+  const activeSlug = pathname.match(/^\/dashboard\/products\/([^/]+)/)?.[1];
+  const active = merchants.find((m) => m.slug === activeSlug) ?? null;
+  const activeCounts = active ? counts[active.slug] : undefined;
+  const base = active ? `/dashboard/products/${active.slug}` : null;
 
-  const merchantHrefs: Record<(typeof MERCHANT_NAV)[number]["key"], string> = {
-    overview: base,
-    integrations: `${base}/integrations`,
-    programs: `${base}/programs`,
-    affiliates: `${base}/affiliates`,
-    commissions: `${base}/commissions`,
-    tracking: `${base}/tracking`,
-    settings: `${base}/edit`,
-  };
-
-  // Flagged used to be its own row pointing at ?status=FLAGGED. It is a filter
-  // on the commissions ledger, not a place, and having both meant two rows
-  // fighting over the same screen.
-  function isActiveNav(key: (typeof MERCHANT_NAV)[number]["key"]): boolean {
-    if (key === "overview") return pathname === base;
-    if (key === "integrations") return pathname.startsWith(`${base}/integrations`);
-    if (key === "tracking") return pathname === `${base}/tracking`;
-    if (key === "settings") return pathname === `${base}/edit`;
-    if (key === "programs") return pathname.startsWith(`${base}/programs`);
-    if (key === "affiliates") return pathname.startsWith(`${base}/affiliates`);
-    if (key === "commissions") return pathname.startsWith(`${base}/commissions`);
-    return false;
-  }
+  // Rows for a product that is not open would point nowhere, so there are
+  // none. Nothing is greyed out or padlocked; it is simply absent.
+  const nav: NavItem[] =
+    base && activeCounts
+      ? [
+          { href: base, icon: Building2, label: "Overview", badge: null },
+          {
+            href: `${base}/affiliates`,
+            icon: Users,
+            label: "Affiliates",
+            badge: activeCounts.affiliates || null,
+          },
+          {
+            href: `${base}/programs`,
+            icon: Percent,
+            label: "Programs",
+            badge: activeCounts.programs || null,
+          },
+          {
+            href: `${base}/commissions`,
+            icon: Receipt,
+            label: "Commissions",
+            badge: activeCounts.payable || null,
+          },
+          {
+            href: `${base}/tracking`,
+            icon: Code2,
+            label: "Tracking",
+            badge: null,
+            dot: activeCounts.tracking !== "not-started" ? "ok" : "waiting",
+          },
+          { href: `${base}/settings`, icon: Settings, label: "Settings", badge: null },
+        ]
+      : [];
 
   return (
-    <Sidebar>
-      <SidebarHeader className="p-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              className="gap-2.5 hover:bg-transparent active:bg-transparent"
-              render={<Link href="/dashboard" />}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/logo.svg"
-                alt=""
-                className="size-8 shrink-0 rounded-lg shadow-[var(--edge-strong),0_1px_2px_hsl(var(--shadow-color)/0.20)]"
-              />
-              <span className="flex min-w-0 flex-col leading-tight">
-                <span className="font-heading truncate text-sm font-semibold tracking-tight">
-                  Supaffi
-                </span>
-                <span className="truncate text-xs text-muted-foreground">
-                  Affiliate programs
-                </span>
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+    <Sidebar variant="floating" collapsible="offcanvas" className="p-3">
+      <SidebarHeader className="p-3">
+        <ProductSwitcher merchants={merchants} active={active} />
       </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
+      <SidebarContent className="px-3">
+        <SidebarGroup className="p-0">
           <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={pathname === "/dashboard"}
-                  render={<Link href="/dashboard" />}
-                >
-                  <LayoutDashboard />
-                  <span>Home</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Your products</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {merchants.map((m) => (
-                <SidebarMenuItem key={m.id}>
-                  <SidebarMenuButton
-                    isActive={m.slug === activeSlug}
-                    render={<Link href={`/dashboard/products/${m.slug}`} />}
-                  >
-                    <Building2 />
-                    <span>{m.name}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={pathname === "/dashboard/products/new"}
-                  className="text-muted-foreground"
-                  render={<Link href="/dashboard/products/new" />}
-                >
-                  <Plus />
-                  <span>{merchants.length === 0 ? "Add your product" : "Add a product"}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {activeMerchant && (
-          <SidebarGroup>
-            <SidebarGroupLabel>{activeMerchant.name}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {MERCHANT_NAV.map((item) => (
-                  <SidebarMenuItem key={item.key}>
+            <SidebarMenu className="gap-1">
+              {nav.map((item) => {
+                const current =
+                  item.href === base ? pathname === base : pathname.startsWith(item.href);
+                return (
+                  <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
-                      isActive={isActiveNav(item.key)}
-                      render={<Link href={merchantHrefs[item.key]} />}
+                      isActive={current}
+                      className="h-9 cursor-pointer gap-3 rounded-lg px-3 text-sm hover:bg-black/[0.04] data-active:bg-accent-50 data-active:text-accent-700"
+                      render={<Link href={item.href} />}
                     >
-                      <item.icon />
+                      <item.icon className="size-4" />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
+                    {item.badge !== null && (
+                      <SidebarMenuBadge className="text-muted-foreground tabular-nums">
+                        {item.badge}
+                      </SidebarMenuBadge>
+                    )}
+                    {item.dot && (
+                      <SidebarMenuBadge>
+                        <span
+                          className={cn(
+                            "block size-2 rounded-full",
+                            item.dot === "ok"
+                              ? "bg-status-success"
+                              : "border-2 border-status-warning"
+                          )}
+                        />
+                      </SidebarMenuBadge>
+                    )}
                   </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-2">
+      <SidebarFooter className="gap-1 p-3">
+        {merchants.length > 1 && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname === "/dashboard"}
+                className="h-9 cursor-pointer gap-3 rounded-lg px-3 text-sm hover:bg-black/[0.04] data-active:bg-accent-50 data-active:text-accent-700"
+                render={<Link href="/dashboard" />}
+              >
+                <LayoutGrid className="size-4" />
+                <span>All products</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
         <VersionNotice installed={version} update={update} />
         <AccountMenu email={email} />
       </SidebarFooter>
