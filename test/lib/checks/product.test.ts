@@ -27,6 +27,8 @@ if (!hasDatabase) {
 const ok = { ok: true, detail: "ok" };
 const no = { ok: false, detail: "no" };
 
+const ALL_SECTIONS = new Set(["dns", "stripe", "email", "tracking"] as const);
+
 describe.skipIf(!hasDatabase)("runProductChecks", () => {
   let previousHostIp: string | undefined;
 
@@ -58,16 +60,18 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
 
     const webhookArgs: string[][] = [];
     const result = await runProductChecks(owner.id, merchant.id, {
-      resolvesTo: async () => ok,
-      httpsReachable: async () => ({ reachable: ok, certificate: no }),
-      stripeKeyWorks: async () => ok,
-      webhookEventReceived: async (ownerId: string, merchantId: string) => {
-        webhookArgs.push([ownerId, merchantId]);
-        return no;
+      overrides: {
+        resolvesTo: async () => ok,
+        httpsReachable: async () => ({ reachable: ok, certificate: no }),
+        stripeKeyWorks: async () => ok,
+        webhookEventReceived: async (ownerId: string, merchantId: string) => {
+          webhookArgs.push([ownerId, merchantId]);
+          return no;
+        },
+        resendKeyWorks: async () => ok,
+        sendingDomainVerified: async () => ok,
+        scriptFound: async () => no,
       },
-      resendKeyWorks: async () => ok,
-      sendingDomainVerified: async () => ok,
-      scriptFound: async () => no,
     });
 
     expect(result.dns.resolves.ok).toBe(true);
@@ -82,17 +86,105 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
 
     await connectStripe(owner.id, merchant.id, { secretKey: "rk_test_1", webhookSecret: "whsec_1" });
     await connectEmailProvider(owner.id, merchant.id, "re_1");
+    // Credentials that were not there a moment ago, so every section is asked
+    // for fresh rather than served from the run above.
     const after = await runProductChecks(owner.id, merchant.id, {
-      resolvesTo: async () => ok,
-      httpsReachable: async () => ({ reachable: ok, certificate: ok }),
-      stripeKeyWorks: async () => ok,
-      webhookEventReceived: async () => ok,
-      resendKeyWorks: async () => ok,
-      sendingDomainVerified: async () => ok,
-      scriptFound: async () => ok,
+      fresh: ALL_SECTIONS,
+      overrides: {
+        resolvesTo: async () => ok,
+        httpsReachable: async () => ({ reachable: ok, certificate: ok }),
+        stripeKeyWorks: async () => ok,
+        webhookEventReceived: async () => ok,
+        resendKeyWorks: async () => ok,
+        sendingDomainVerified: async () => ok,
+        scriptFound: async () => ok,
+      },
     });
     expect(after.stripe.key.ok).toBe(true);
     expect(after.email.domain.ok).toBe(true);
+  });
+
+  it("runs every section on a cold cache and only the named ones on a warm one", async () => {
+    const owner = await db.owner.create({ data: { email: "c@example.com", passwordHash: "x" } });
+    const merchant = await createMerchant(owner.id, {
+      name: "C",
+      domain: "affiliates.c.test",
+      websiteUrl: "https://c.test",
+    });
+    await connectStripe(owner.id, merchant.id, { secretKey: "rk_test_1", webhookSecret: "whsec_1" });
+    await connectEmailProvider(owner.id, merchant.id, "re_1");
+    process.env.SUPAFFI_HOST_IP = "146.59.195.140";
+
+    const calls: string[] = [];
+    const overrides = {
+      resolvesTo: async () => {
+        calls.push("resolvesTo");
+        return ok;
+      },
+      httpsReachable: async () => {
+        calls.push("httpsReachable");
+        return { reachable: ok, certificate: ok };
+      },
+      stripeKeyWorks: async () => {
+        calls.push("stripeKeyWorks");
+        return ok;
+      },
+      webhookEventReceived: async () => {
+        calls.push("webhookEventReceived");
+        return ok;
+      },
+      resendKeyWorks: async () => {
+        calls.push("resendKeyWorks");
+        return no;
+      },
+      sendingDomainVerified: async () => {
+        calls.push("sendingDomainVerified");
+        return no;
+      },
+      scriptFound: async () => {
+        calls.push("scriptFound");
+        return ok;
+      },
+    };
+
+    // Cold: this product has never been checked in this process.
+    await runProductChecks(owner.id, merchant.id, { fresh: new Set(["email"] as const), overrides });
+    expect(calls.sort()).toEqual([
+      "httpsReachable",
+      "resendKeyWorks",
+      "resolvesTo",
+      "scriptFound",
+      "sendingDomainVerified",
+      "stripeKeyWorks",
+      "webhookEventReceived",
+    ]);
+
+    // Warm: only the email section is asked for fresh, so only it runs, and
+    // the other three lights come back exactly as they were.
+    calls.length = 0;
+    const warm = await runProductChecks(owner.id, merchant.id, {
+      fresh: new Set(["email"] as const),
+      overrides: {
+        ...overrides,
+        resendKeyWorks: async () => {
+          calls.push("resendKeyWorks");
+          return ok;
+        },
+        sendingDomainVerified: async () => {
+          calls.push("sendingDomainVerified");
+          return ok;
+        },
+      },
+    });
+    expect(calls.sort()).toEqual(["resendKeyWorks", "sendingDomainVerified"]);
+    expect(warm.email.key.ok).toBe(true);
+    expect(warm.dns.resolves.ok).toBe(true);
+    expect(warm.tracking.script.ok).toBe(true);
+
+    // Nothing named fresh at all: nothing runs.
+    calls.length = 0;
+    await runProductChecks(owner.id, merchant.id, { overrides });
+    expect(calls).toEqual([]);
   });
 
   it("degrades one failing check to its own failed result instead of losing every light", async () => {
@@ -105,15 +197,17 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     process.env.SUPAFFI_HOST_IP = "146.59.195.140";
 
     const result = await runProductChecks(owner.id, merchant.id, {
-      resolvesTo: async () => ok,
-      httpsReachable: async () => ({ reachable: ok, certificate: ok }),
-      stripeKeyWorks: async () => ok,
-      webhookEventReceived: async () => {
-        throw new Error("db down");
+      overrides: {
+        resolvesTo: async () => ok,
+        httpsReachable: async () => ({ reachable: ok, certificate: ok }),
+        stripeKeyWorks: async () => ok,
+        webhookEventReceived: async () => {
+          throw new Error("db down");
+        },
+        resendKeyWorks: async () => ok,
+        sendingDomainVerified: async () => ok,
+        scriptFound: async () => ok,
       },
-      resendKeyWorks: async () => ok,
-      sendingDomainVerified: async () => ok,
-      scriptFound: async () => ok,
     });
 
     expect(result.dns.resolves.ok).toBe(true);

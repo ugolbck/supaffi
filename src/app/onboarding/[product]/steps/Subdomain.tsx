@@ -8,9 +8,7 @@ import { Light } from "../../Light";
 import { AutoRefresh } from "../../AutoRefresh";
 import { Copyable } from "../../Copyable";
 import { SubdomainField } from "./SubdomainField";
-import type { loadStepContext } from "../checks";
-
-type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
+import type { Ctx } from "../checks";
 
 export async function Subdomain({ ctx }: { ctx: Ctx }) {
   const { merchant, checks } = ctx;

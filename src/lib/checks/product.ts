@@ -48,18 +48,51 @@ function settle<T>(promise: Promise<T>, fallback: T): Promise<T> {
   return promise.catch(() => fallback);
 }
 
+export type CheckSection = keyof ProductChecks;
+
+/**
+ * The last result per product, so a page that only cares about one section
+ * does not re-run the other three. Module level, which is per server process:
+ * a wrong entry costs at most a minute of a stale light, and the step the
+ * Owner is standing on always asks for its own section fresh.
+ */
+const recent = new Map<string, { checks: ProductChecks; at: number }>();
+const MAX_AGE_MS = 60_000;
+const SECTIONS = ["dns", "stripe", "email", "tracking"] as const;
+
+export type RunOptions = {
+  /** Sections to run no matter how recent the last result is. */
+  fresh?: ReadonlySet<CheckSection>;
+  /** Test injection. Nothing in the app passes these. */
+  overrides?: Partial<CheckDeps>;
+};
+
 /**
  * Every light on the onboarding rail and the settings page, from one call.
  * Credentials are decrypted here and handed to the checks; they never leave
  * this function. A decrypt failure reads as not connected, which is what the
  * settings page should say when the master key has been lost.
+ *
+ * The onboarding steps poll every 15 seconds. Running all seven checks each
+ * time meant a Stripe, a Resend and two outbound HTTP requests per tick for
+ * lights nobody was looking at, which is how an instance gets rate limited
+ * during the one hour it matters. So a section that was run less than a
+ * minute ago is served from the last result unless the caller names it in
+ * `fresh`.
  */
 export async function runProductChecks(
   ownerId: string,
   merchantId: string,
-  overrides: Partial<CheckDeps> = {}
+  options: RunOptions = {}
 ): Promise<ProductChecks> {
-  const deps = { ...defaults, ...overrides };
+  const deps = { ...defaults, ...options.overrides };
+  const cached = recent.get(merchantId);
+  const warm = cached && Date.now() - cached.at < MAX_AGE_MS ? cached.checks : null;
+  const runs = (section: CheckSection) => warm === null || (options.fresh?.has(section) ?? false);
+
+  // Nothing to run: no database round trip either, which is the point.
+  if (warm && !SECTIONS.some(runs)) return warm;
+
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
     select: { domain: true, websiteUrl: true, stripeSecretKeyEnc: true, emailProviderConfigEnc: true },
@@ -70,22 +103,44 @@ export async function runProductChecks(
   const stripeKey = safeDecrypt(merchant.stripeSecretKeyEnc);
   const resendKey = safeDecrypt(merchant.emailProviderConfigEnc);
 
-  const [resolves, https, stripeKeyResult, webhook, emailKey, emailDomain, script] = await Promise.all([
-    hostIp ? settle(deps.resolvesTo(merchant.domain, hostIp), FAILED) : Promise.resolve(NO_ADDRESS),
-    settle(deps.httpsReachable(merchant.domain), { reachable: FAILED, certificate: FAILED }),
-    stripeKey ? settle(deps.stripeKeyWorks(stripeKey), FAILED) : Promise.resolve(NOT_CONNECTED),
-    settle(deps.webhookEventReceived(ownerId, merchantId), FAILED),
-    resendKey ? settle(deps.resendKeyWorks(resendKey), FAILED) : Promise.resolve(NOT_CONNECTED),
-    resendKey ? settle(deps.sendingDomainVerified(resendKey, merchant.domain), FAILED) : Promise.resolve(NOT_CONNECTED),
-    settle(deps.scriptFound(merchant.websiteUrl, merchant.domain), FAILED),
+  const [dns, stripe, email, tracking] = await Promise.all([
+    runs("dns")
+      ? (async () => {
+          const [resolves, https] = await Promise.all([
+            hostIp ? settle(deps.resolvesTo(merchant.domain, hostIp), FAILED) : Promise.resolve(NO_ADDRESS),
+            settle(deps.httpsReachable(merchant.domain), { reachable: FAILED, certificate: FAILED }),
+          ]);
+          return { resolves, https: https.reachable, certificate: https.certificate };
+        })()
+      : Promise.resolve(warm!.dns),
+    runs("stripe")
+      ? (async () => {
+          const [key, webhook] = await Promise.all([
+            stripeKey ? settle(deps.stripeKeyWorks(stripeKey), FAILED) : Promise.resolve(NOT_CONNECTED),
+            settle(deps.webhookEventReceived(ownerId, merchantId), FAILED),
+          ]);
+          return { key, webhook };
+        })()
+      : Promise.resolve(warm!.stripe),
+    runs("email")
+      ? (async () => {
+          const [key, domain] = await Promise.all([
+            resendKey ? settle(deps.resendKeyWorks(resendKey), FAILED) : Promise.resolve(NOT_CONNECTED),
+            resendKey
+              ? settle(deps.sendingDomainVerified(resendKey, merchant.domain), FAILED)
+              : Promise.resolve(NOT_CONNECTED),
+          ]);
+          return { key, domain };
+        })()
+      : Promise.resolve(warm!.email),
+    runs("tracking")
+      ? (async () => ({ script: await settle(deps.scriptFound(merchant.websiteUrl, merchant.domain), FAILED) }))()
+      : Promise.resolve(warm!.tracking),
   ]);
 
-  return {
-    dns: { resolves, https: https.reachable, certificate: https.certificate },
-    stripe: { key: stripeKeyResult, webhook },
-    email: { key: emailKey, domain: emailDomain },
-    tracking: { script },
-  };
+  const checks: ProductChecks = { dns, stripe, email, tracking };
+  recent.set(merchantId, { checks, at: Date.now() });
+  return checks;
 }
 
 function safeDecrypt(ciphertext: string | null): string | null {

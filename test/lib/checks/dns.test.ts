@@ -84,6 +84,18 @@ describe("detectDnsProvider", () => {
     expect(await detectDnsProvider("affiliates.mokkit.co", async () => ["ns1.ovh.net"])).toBe("unknown");
   });
 
+  it("gives up on a resolver that never answers instead of holding the page open", async () => {
+    vi.useFakeTimers();
+    try {
+      const answer = detectDnsProvider("affiliates.mokkit.co", () => new Promise<string[]>(() => {}));
+      // Both candidates time out, three seconds each.
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(await answer).toBe("unknown");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("answers unknown when lookup fails", async () => {
     expect(await detectDnsProvider("affiliates.mokkit.co", async () => { throw new Error("x"); })).toBe("unknown");
   });

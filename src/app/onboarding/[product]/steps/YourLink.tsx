@@ -7,9 +7,7 @@ import { originFor } from "@/lib/url";
 import { StepFrame } from "../../StepFrame";
 import { AutoRefresh } from "../../AutoRefresh";
 import { finishOnboardingAction } from "../actions";
-import type { loadStepContext } from "../checks";
-
-type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
+import type { Ctx } from "../checks";
 
 export async function YourLink({ ctx }: { ctx: Ctx }) {
   const { merchant, checks, ownerId } = ctx;

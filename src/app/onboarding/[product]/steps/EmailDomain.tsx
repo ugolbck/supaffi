@@ -5,9 +5,7 @@ import { nextStep, stepPath, stepIndex } from "@/lib/onboarding";
 import { StepFrame } from "../../StepFrame";
 import { Light } from "../../Light";
 import { AutoRefresh } from "../../AutoRefresh";
-import type { loadStepContext } from "../checks";
-
-type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
+import type { Ctx } from "../checks";
 
 export function EmailDomain({ ctx }: { ctx: Ctx }) {
   const { merchant, checks } = ctx;

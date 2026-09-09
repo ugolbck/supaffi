@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stepIds, stepIndex, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref } from "@/lib/onboarding";
+import { stepIds, stepIndex, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor } from "@/lib/onboarding";
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 
@@ -153,5 +153,19 @@ describe("backToDashboardHref", () => {
     expect(backToDashboardHref([])).toBeNull();
     expect(backToDashboardHref([{ onboardingCompletedAt: null }])).toBeNull();
     expect(backToDashboardHref([{ onboardingCompletedAt: null }, { onboardingCompletedAt: new Date() }])).toBe("/dashboard");
+  });
+});
+
+describe("checkSectionFor", () => {
+  it("names the one group of checks the step's screen shows", () => {
+    expect(checkSectionFor("subdomain")).toBe("dns");
+    expect(checkSectionFor("link")).toBe("dns");
+    expect(checkSectionFor("stripe-key")).toBe("stripe");
+    expect(checkSectionFor("stripe-webhook")).toBe("stripe");
+    expect(checkSectionFor("email-key")).toBe("email");
+    expect(checkSectionFor("email-domain")).toBe("email");
+    expect(checkSectionFor("tracking")).toBe("tracking");
+    expect(checkSectionFor("product")).toBeNull();
+    expect(checkSectionFor("terms")).toBeNull();
   });
 });

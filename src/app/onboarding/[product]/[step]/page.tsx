@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { backToDashboardHref, isStepId, stepIds, stepPath, stepStates, type StepId } from "@/lib/onboarding";
 import { Rail } from "../../Rail";
-import { loadStepContext } from "../checks";
+import { loadChecks, loadStepContext, type Ctx } from "../checks";
 import { Subdomain } from "../steps/Subdomain";
 import { StripeKey } from "../steps/StripeKey";
 import { StripeWebhook } from "../steps/StripeWebhook";
@@ -12,16 +12,19 @@ import { Terms } from "../steps/Terms";
 import { Tracking } from "../steps/Tracking";
 import { YourLink } from "../steps/YourLink";
 
-type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
-
 export default async function StepPage({ params }: { params: Promise<{ product: string; step: string }> }) {
   const { product, step } = await params;
   if (!isStepId(step)) notFound();
-  const ctx = await loadStepContext(product);
+  const context = await loadStepContext(product);
   // A step the instance does not have — the email pair in console mode —
   // is not a 404, it is a URL that stopped existing. Land on the one after it.
-  if (!stepIds(ctx.emailRequired).includes(step)) redirect(stepPath(product, "terms"));
+  if (!stepIds(context.emailRequired).includes(step)) redirect(stepPath(product, "terms"));
   if (step === "product") redirect(stepPath(product, "subdomain"));
+
+  // Only this step's own section is re-run; the rest of the rail is whatever
+  // the last run found, which is what makes a 15 second poll cheap.
+  const checks = await loadChecks(context.ownerId, context.merchant.id, step);
+  const ctx: Ctx = { ...context, checks };
 
   // The rail is rendered here, not by the layout above. A layout is not
   // re-rendered when only the child segment changes, so a rail up there would
@@ -29,7 +32,7 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
   // links.
   const steps = stepStates({
     setup: ctx.setup,
-    checks: ctx.checks,
+    checks,
     onboardingCompletedAt: ctx.onboardingCompletedAt,
     current: step,
   });

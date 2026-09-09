@@ -4,9 +4,7 @@ import { StepFrame } from "../../StepFrame";
 import { Light } from "../../Light";
 import { PasteField } from "./PasteField";
 import { saveEmailKeyAction } from "../actions";
-import type { loadStepContext } from "../checks";
-
-type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
+import type { Ctx } from "../checks";
 
 export function EmailKey({ ctx }: { ctx: Ctx }) {
   const { merchant, checks, setup } = ctx;

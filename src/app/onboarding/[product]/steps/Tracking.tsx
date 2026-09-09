@@ -8,9 +8,7 @@ import { originFor } from "@/lib/url";
 import { StepFrame } from "../../StepFrame";
 import { Light } from "../../Light";
 import { AutoRefresh } from "../../AutoRefresh";
-import type { loadStepContext } from "../checks";
-
-type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
+import type { Ctx } from "../checks";
 
 function Snippet({ code }: { code: string }) {
   return (

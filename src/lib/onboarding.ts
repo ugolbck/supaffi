@@ -53,6 +53,31 @@ export function stepIndex(id: StepId, emailRequired: boolean): number {
   return stepIds(emailRequired).indexOf(id) + 1;
 }
 
+/**
+ * Which group of checks a step's screen actually shows, or null when it shows
+ * none. What the polling on that step has to re-run, and nothing else.
+ */
+export function checkSectionFor(id: StepId): keyof ProductChecks | null {
+  switch (id) {
+    case "subdomain":
+    // The link step waits on the same three DNS lights before it lets anyone
+    // finish, so it refreshes them too.
+    case "link":
+      return "dns";
+    case "stripe-key":
+    case "stripe-webhook":
+      return "stripe";
+    case "email-key":
+    case "email-domain":
+      return "email";
+    case "tracking":
+      return "tracking";
+    case "product":
+    case "terms":
+      return null;
+  }
+}
+
 export function stepPath(productSlug: string, id: StepId): string {
   return `/onboarding/${productSlug}/${id}`;
 }

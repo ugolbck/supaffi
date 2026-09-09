@@ -87,6 +87,8 @@ export async function httpsReachable(
   }
 }
 
+const NS_TIMEOUT_MS = 3000;
+
 /**
  * Which DNS provider hosts the domain, from the nameservers of the
  * registrable domain. Only Cloudflare is recognised today, because it is the
@@ -97,6 +99,22 @@ export async function detectDnsProvider(
   hostname: string,
   resolve: (h: string) => Promise<string[]> = resolveNs
 ): Promise<"cloudflare" | "unknown"> {
+  // A resolver that never answers would otherwise hold the whole subdomain
+  // step open: this runs during the render, and the answer only decides
+  // whether one deep link is shown.
+  const withTimeout = async (h: string) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        resolve(h),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Nameserver lookup timed out")), NS_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   const parts = hostname.split(".");
   // Two labels is the common case (instantgradient.com). Three covers
   // registrable domains under a public suffix like co.uk without pulling in
@@ -104,7 +122,7 @@ export async function detectDnsProvider(
   const candidates = [parts.slice(-2).join("."), parts.slice(-3).join(".")];
   for (const candidate of candidates) {
     try {
-      const servers = await resolve(candidate);
+      const servers = await withTimeout(candidate);
       if (servers.some((s) => s.toLowerCase().endsWith(".ns.cloudflare.com"))) return "cloudflare";
     } catch {
       // try the next candidate

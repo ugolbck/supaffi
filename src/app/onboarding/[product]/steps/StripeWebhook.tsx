@@ -8,9 +8,7 @@ import { AutoRefresh } from "../../AutoRefresh";
 import { Copyable } from "../../Copyable";
 import { PasteField } from "./PasteField";
 import { saveWebhookSecretAction } from "../actions";
-import type { loadStepContext } from "../checks";
-
-type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
+import type { Ctx } from "../checks";
 
 export function StripeWebhook({ ctx }: { ctx: Ctx }) {
   const { merchant, checks, setup } = ctx;

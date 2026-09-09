@@ -3,9 +3,7 @@ import { stepIndex } from "@/lib/onboarding";
 import { StepFrame } from "../../StepFrame";
 import { TermsForm, TERMS_DEFAULTS } from "@/components/TermsForm";
 import { saveTermsAction } from "../actions";
-import type { loadStepContext } from "../checks";
-
-type Ctx = Awaited<ReturnType<typeof loadStepContext>>;
+import type { Ctx } from "../checks";
 
 export async function Terms({ ctx }: { ctx: Ctx }) {
   const { merchant, ownerId } = ctx;
