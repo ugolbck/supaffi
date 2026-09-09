@@ -15,9 +15,12 @@ import { markPaidAction } from "./commissionActions";
 export function PayBar({
   product,
   groups,
+  listHref,
 }: {
   product: { id: string; slug: string };
   groups: PayableGroup[];
+  /** The list as it is being read, so a payout lands back on this same tab. */
+  listHref: string;
 }) {
   if (groups.length === 0) return null;
 
@@ -41,7 +44,7 @@ export function PayBar({
         return (
           <form
             key={`${group.affiliateId}:${group.currency}`}
-            action={markPaidAction.bind(null, product, group.commissionIds)}
+            action={markPaidAction.bind(null, listHref, product, group.commissionIds)}
             className="flex items-center gap-2"
           >
             {groups.length > 1 && (

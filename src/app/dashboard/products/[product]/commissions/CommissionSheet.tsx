@@ -121,7 +121,7 @@ export function CommissionSheet({
           </div>
 
           {commission.status === "PAYABLE" && (
-            <form action={markPaidAction.bind(null, product, [commission.id])}>
+            <form action={markPaidAction.bind(null, listHref, product, [commission.id])}>
               <Button type="submit" size="sm" className="cursor-pointer">
                 Mark paid
               </Button>
@@ -132,7 +132,7 @@ export function CommissionSheet({
             // A reason, because a voided commission is read months later by
             // somebody asking why an affiliate was not paid for a sale.
             <form
-              action={voidAction.bind(null, product, commission.id)}
+              action={voidAction.bind(null, listHref, product, commission.id)}
               className="flex flex-col gap-2"
             >
               <span className="text-sm font-medium">Void this commission</span>
@@ -149,7 +149,7 @@ export function CommissionSheet({
             <div className="flex flex-col gap-2">
               <span className="text-sm font-medium">{commission.stateLabel}</span>
               <div className="flex gap-2">
-                <form action={confirmFraudAction.bind(null, product, commission.id)}>
+                <form action={confirmFraudAction.bind(null, listHref, product, commission.id)}>
                   <Button
                     type="submit"
                     size="sm"
@@ -159,7 +159,7 @@ export function CommissionSheet({
                     Confirm self referral
                   </Button>
                 </form>
-                <form action={dismissFlagAction.bind(null, product, commission.id)}>
+                <form action={dismissFlagAction.bind(null, listHref, product, commission.id)}>
                   <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
                     Dismiss flag
                   </Button>

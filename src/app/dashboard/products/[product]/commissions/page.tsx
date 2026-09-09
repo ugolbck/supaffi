@@ -45,6 +45,20 @@ const DATE = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
+/**
+ * The refusals the ledger can hand back, as sentences. The action puts a code
+ * in the URL rather than its own text, so the only thing a form can do is pick
+ * one of these; a code that is not here is ignored rather than shown.
+ */
+const REFUSALS: Record<string, string> = {
+  empty: "Nothing was selected, so there was nothing to pay.",
+  partial: "Some of those commissions are no longer payable. Reload and try again.",
+  mixed: "A payout covers one affiliate and one currency at a time.",
+  clawback: "This affiliate has a refund adjustment outstanding. Include it in the payout.",
+  negative: "That selection owes money back. It carries to the next payout.",
+  refused: "The ledger refused that payout.",
+};
+
 const TABS: { label: string; status: CommissionStatus | null }[] = [
   { label: "All", status: null },
   { label: "Payable", status: "PAYABLE" },
@@ -226,6 +240,8 @@ export default async function CommissionsPage({
   const unselected = hrefWith({});
   const listHref = `${base}/commissions${unselected === "?" ? "" : unselected}`;
 
+  const refusal = query.error ? REFUSALS[query.error] ?? null : null;
+
   return (
     <Page>
       <PageTitle
@@ -253,7 +269,7 @@ export default async function CommissionsPage({
         }
       />
 
-      {query.error && <p className="shrink-0 text-[13px] text-status-warning">{query.error}</p>}
+      {refusal && <p className="shrink-0 text-[13px] text-status-warning">{refusal}</p>}
 
       {/* Flush and clipped: the rows are the card, and the table scrolls
           inside it so the page never does. */}
@@ -280,7 +296,11 @@ export default async function CommissionsPage({
       </Section>
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <PayBar product={{ id: merchant.id, slug: merchant.slug }} groups={payableGroups} />
+        <PayBar
+          product={{ id: merchant.id, slug: merchant.slug }}
+          groups={payableGroups}
+          listHref={listHref}
+        />
         {total > 0 && (
           <p className="text-xs text-muted-foreground tabular-nums">
             {`${firstShown}-${lastShown} of ${total}`}
