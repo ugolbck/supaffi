@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { safeListHref } from "@/lib/commissionRedirect";
 import {
   markCommissionsPaid,
   confirmCommissionFraud,
@@ -17,9 +18,9 @@ import {
  *
  * "Back" is the list the Owner was looking at, tab and filters and page
  * included, so a payout does not quietly drop them onto the unfiltered ledger.
- * The page builds that URL and binds it to the form, and it is checked here
- * before the redirect: a bound argument is a value the browser posts, so it is
- * not trusted to be a URL on this list at all.
+ * The page builds that URL and binds it to the form, and `safeListHref` checks
+ * it before the redirect: a bound argument is a value the browser posts, so it
+ * is not trusted to be a URL on this list at all.
  */
 
 async function owner(): Promise<string> {
@@ -48,7 +49,7 @@ function refusalCode(error: string): string {
 // that did nothing.
 function back(product: { slug: string }, listHref: string, error?: string): never {
   const list = `/dashboard/products/${product.slug}/commissions`;
-  const target = listHref.startsWith(list) ? listHref : list;
+  const target = safeListHref(listHref, list);
   const query = error ? `${target.includes("?") ? "&" : "?"}error=${error}` : "";
   revalidatePath("/dashboard", "layout");
   redirect(`${target}${query}`);
