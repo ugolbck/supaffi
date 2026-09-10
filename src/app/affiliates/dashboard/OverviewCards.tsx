@@ -158,15 +158,18 @@ export function OverviewScreen({
                     key={row.id}
                     className="flex items-center gap-2.5 border-b border-neutral-200 py-2.5 last:border-0"
                   >
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground tabular-nums">
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                       {row.dateLabel}
                     </span>
-                    <Badge className={cn("shrink-0", STATUS_STYLES[row.status])}>
+                    {/* The badge is what gives way in a narrow rail: a cut date
+                        or a cut amount is a wrong fact, a cut status word is
+                        still the right colour. */}
+                    <Badge className={cn("min-w-0 truncate", STATUS_STYLES[row.status])}>
                       {STATUS_LABELS[row.status]}
                     </Badge>
                     <span
                       className={cn(
-                        "shrink-0 text-right font-mono text-[13px] font-semibold tabular-nums",
+                        "ml-auto shrink-0 text-right font-mono text-[13px] font-semibold tabular-nums",
                         row.isAdjustment ? "text-destructive" : "text-neutral-900",
                         row.status === "VOIDED" && "font-normal text-muted-foreground"
                       )}
