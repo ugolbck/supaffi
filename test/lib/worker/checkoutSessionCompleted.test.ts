@@ -128,6 +128,11 @@ describe("handleCheckoutSessionCompleted", () => {
 
     const commissions = await db.commission.findMany({ where: { clickId: click.id } });
     expect(commissions).toHaveLength(2);
+    // grossAmount is what a later partial refund prorates against, so it has
+    // to be written at creation, equal to the commission itself.
+    for (const commission of commissions) {
+      expect(commission.grossAmount?.toString()).toBe(commission.amount.toString());
+    }
   });
 
   it("creates nothing on a redelivery of the same session", async () => {

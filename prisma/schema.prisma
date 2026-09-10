@@ -38,6 +38,10 @@ model Merchant {
   // attached. Anything that spends these must handle the unconnected case.
   stripeSecretKeyEnc      String?
   stripeWebhookSecretEnc  String?
+  // Set only when Supaffi created the endpoint itself, which it does as soon
+  // as the restricted key carries write access to webhook endpoints. Used to
+  // avoid creating a second endpoint on a repeat connect.
+  stripeWebhookEndpointId String?
   emailProviderConfigEnc  String? // Resend API key, for Affiliate magic links
 
   // The tracking integration is the one part of setup Supaffi cannot do for
@@ -200,6 +204,12 @@ model Commission {
   amount         Decimal @db.Decimal(10, 2) // negative for adjustment rows
   currency       String  // ISO code, e.g. "usd", "eur" — never converted (see CONTEXT.md)
   saleAmount     Decimal? @db.Decimal(10, 2) // what the customer paid, major units, same currency; null for adjustments and pre-existing rows
+
+  // What this commission was before any refund reduced it. Set equal to
+  // `amount` at creation and never changed again, so a second partial refund
+  // prorates against the original rather than compounding against an already
+  // reduced figure. Nullable for rows written before this existed.
+  grossAmount Decimal? @db.Decimal(10, 2)
 
   status     CommissionStatus @default(PENDING)
   payableAt  DateTime         // createdAt + Program.holdingPeriodDays

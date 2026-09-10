@@ -100,6 +100,7 @@ export async function handleCheckoutSessionCompleted(
         amount,
         currency: session.currency,
         saleAmount: saleAmountFor(session.amount_total, session.currency),
+        grossAmount: amount, // the figure a later refund prorates against
         status: flagReason ? "FLAGGED" : "PENDING",
         payableAt: computePayableAt(program),
         flagReason,

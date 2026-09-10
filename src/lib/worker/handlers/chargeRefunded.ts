@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import type { Merchant, Commission } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
@@ -11,17 +12,56 @@ export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Ch
   const commission = await db.commission.findUnique({ where: { stripePaymentRef: paymentRef } });
   if (!commission) return; // this payment never generated a Commission (excluded, unattributed, etc.)
 
+  const gross = Number(commission.grossAmount ?? commission.amount);
+  const outcome = prorateCommission({
+    gross,
+    chargeTotal: charge.amount,
+    refunded: charge.amount_refunded,
+  });
+
   if (commission.status === "PAID") {
-    await createClawbackAdjustment(commission);
+    await createClawbackAdjustment(commission, outcome);
     return;
   }
   if (commission.status === "PENDING" || commission.status === "PAYABLE" || commission.status === "FLAGGED") {
+    if (outcome.void) {
+      await db.commission.update({
+        where: { id: commission.id },
+        data: { status: "VOIDED", voidedAt: new Date(), voidReason: "refund" },
+      });
+      return;
+    }
     await db.commission.update({
       where: { id: commission.id },
-      data: { status: "VOIDED", voidedAt: new Date(), voidReason: "refund" },
+      data: { amount: new Prisma.Decimal(outcome.amount), voidReason: "partial refund" },
     });
   }
   // already VOIDED — idempotent no-op (redelivered event)
+}
+
+/**
+ * What a commission is worth after a refund.
+ *
+ * `refunded` and `chargeTotal` are Stripe's minor units off the Charge, and
+ * `refunded` is cumulative, which is why this prorates against the original
+ * commission rather than the current one: two partial refunds in a row would
+ * otherwise take their cut of an already reduced figure.
+ *
+ * Voiding only on a full refund is the point of the change. Merchants issue
+ * small partial refunds constantly, and taking the affiliate's entire
+ * commission for a late discount is not defensible; see finding 17.
+ */
+export function prorateCommission(input: {
+  gross: number;
+  chargeTotal: number;
+  refunded: number;
+}): { void: true } | { void: false; amount: number } {
+  if (input.chargeTotal <= 0) return { void: true };
+  const remaining = input.chargeTotal - input.refunded;
+  if (remaining <= 0) return { void: true };
+  const amount = Math.round(input.gross * (remaining / input.chargeTotal) * 100) / 100;
+  if (amount <= 0) return { void: true };
+  return { void: false, amount };
 }
 
 // Traces a Charge back to the Invoice (subscription payments) or, for a
@@ -55,14 +95,22 @@ async function resolvePaymentReferenceId(stripe: Stripe, charge: Stripe.Charge):
   return paymentIntentId;
 }
 
-async function createClawbackAdjustment(original: Commission): Promise<void> {
+// Claws back only what the refund actually took: on a partial refund that is
+// the difference between the original commission and what survives, on a full
+// refund the whole thing.
+async function createClawbackAdjustment(
+  original: Commission,
+  outcome: ReturnType<typeof prorateCommission>
+): Promise<void> {
+  const gross = Number(original.grossAmount ?? original.amount);
+  const clawedBack = outcome.void ? gross : Math.round((gross - outcome.amount) * 100) / 100;
   await db.commission.create({
     data: {
       affiliateId: original.affiliateId,
       clickId: original.clickId,
       adjustsCommissionId: original.id,
       stripePaymentRef: null, // not tied to a new payment
-      amount: original.amount.negated(),
+      amount: new Prisma.Decimal(clawedBack).negated(),
       currency: original.currency,
       // Ready to net against the Affiliate's next payout immediately, no
       // Holding Period — this isn't new money that itself needs time to

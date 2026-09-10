@@ -62,6 +62,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
         amount,
         currency: invoice.currency,
         saleAmount: saleAmountFor(invoice.amount_paid, invoice.currency),
+        grossAmount: amount, // the figure a later refund prorates against
         status: flagReason ? "FLAGGED" : "PENDING",
         payableAt: computePayableAt(program),
         flagReason,
