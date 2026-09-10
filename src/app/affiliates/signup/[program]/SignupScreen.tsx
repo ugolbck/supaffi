@@ -93,10 +93,13 @@ function Tile({ label, value, hint }: { label: string; value: string; hint: stri
 export function SignupScreen({
   merchantName,
   terms,
+  linkHost,
   action,
 }: {
   merchantName: string;
   terms: SignupTerms;
+  /** Host the affiliate's link points at, e.g. "mokkit.co". No scheme, no trailing slash. */
+  linkHost: string;
   action: SignupFormAction;
 }) {
   const recurring = recurringTerm(terms);
@@ -124,7 +127,7 @@ export function SignupScreen({
       </TaskCard>
 
       <div className="mt-8">
-        <SignupForm action={action} />
+        <SignupForm action={action} linkHost={linkHost} />
       </div>
     </div>
   );

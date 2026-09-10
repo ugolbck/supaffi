@@ -76,6 +76,16 @@ function formDataFor(name: string, email: string): FormData {
   return fd;
 }
 
+// A chosen code is only "chosen" when codeTouched is set, matching the
+// SignupForm client: the live preview always carries some value, and only a
+// touched one is a deliberate pick the server must never silently swap out.
+function formDataWithChosenCode(name: string, email: string, code: string): FormData {
+  const fd = formDataFor(name, email);
+  fd.set("code", code);
+  fd.set("codeTouched", "1");
+  return fd;
+}
+
 describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
   let merchantId: string;
   let programSlug: string;
@@ -191,5 +201,61 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     const affiliates = await db.affiliate.findMany({ where: { merchantId } });
     expect(affiliates).toHaveLength(1); // no new row — treated as a login for the existing one
     expect(sendAffiliateMagicLinkEmailMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates the Affiliate with the exact code they chose, not a name-derived one", async () => {
+    const result = await createAffiliateSignup(
+      programSlug,
+      { status: "form", error: "" },
+      formDataWithChosenCode("Sarah", "sarah@example.com", "my-own-code")
+    );
+
+    expect(result.status).toBe("sent");
+    const affiliate = await db.affiliate.findFirst({
+      where: { merchantId },
+      select: { links: { where: { isPrimary: true }, select: { code: true } } },
+    });
+    expect(affiliate?.links[0]?.code).toBe("my-own-code");
+    // generateLinkCode is never consulted for a chosen code.
+    expect(referralCodeQueue).toHaveLength(0);
+  });
+
+  it("reports a chosen code that is already taken, instead of silently swapping it for another", async () => {
+    referralCodeQueue.push("taken-code");
+    await createAffiliateSignup(
+      programSlug,
+      { status: "form", error: "" },
+      formDataFor("First", "first@example.com")
+    );
+
+    const result = await createAffiliateSignup(
+      programSlug,
+      { status: "form", error: "" },
+      formDataWithChosenCode("Second", "second@example.com", "taken-code")
+    );
+
+    expect(result.status).toBe("form");
+    expect(result.error).toBe("That code is already taken. Try another.");
+
+    // No Affiliate was created for the rejected attempt, and no magic link
+    // email went out for it — only the one from the first, successful signup.
+    const affiliates = await db.affiliate.findMany({ where: { merchantId } });
+    expect(affiliates).toHaveLength(1);
+    expect(sendAffiliateMagicLinkEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a chosen code that fails the format rule before ever touching the database", async () => {
+    const result = await createAffiliateSignup(
+      programSlug,
+      { status: "form", error: "" },
+      formDataWithChosenCode("Sarah", "sarah@example.com", "Not A Valid Code!")
+    );
+
+    expect(result.status).toBe("form");
+    expect(result.error).toBe(
+      "Use lowercase letters, numbers and hyphens, with no hyphen at either end."
+    );
+    const affiliates = await db.affiliate.findMany({ where: { merchantId } });
+    expect(affiliates).toHaveLength(0);
   });
 });

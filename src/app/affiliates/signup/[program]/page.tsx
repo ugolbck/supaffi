@@ -19,6 +19,10 @@ export default async function AffiliateSignupPage({
   if (!program) notFound();
 
   const action = createAffiliateSignup.bind(null, programSlug);
+  // What the affiliate's link is a link on, not where the signup page itself
+  // is hosted: the two domains differ whenever the program runs on its own
+  // subdomain.
+  const linkHost = merchant.websiteUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
 
   return (
     <main className="min-h-dvh bg-background px-4 py-14 sm:py-20">
@@ -30,6 +34,7 @@ export default async function AffiliateSignupPage({
           durationType: program.commissionDurationType,
           durationMonths: program.commissionDurationMonths,
         }}
+        linkHost={linkHost}
         action={action}
       />
     </main>
