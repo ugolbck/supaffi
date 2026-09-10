@@ -14,6 +14,7 @@ import {
 } from "@/lib/commission";
 import { getPayableGroups, type CurrencyTotal } from "@/lib/analytics";
 import { money, moneyHint } from "@/lib/format";
+import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
   Pagination,
   PaginationContent,
@@ -74,19 +75,31 @@ function parseStatus(raw: string | undefined): CommissionStatus | null {
 // What this commission is waiting on, or what happened to it. One column for
 // all five states, so a flagged row explains itself in the same place a paid
 // one does rather than needing a screen of its own.
+//
+// Both flagReason and voidReason are internal tokens the worker writes, never
+// shown raw: they always go through commissionReason.ts, so a stored token
+// like "refund" or "email:buyer@x.com affiliate@x.com" never leaks into the
+// ledger as-is.
 function stateLabel(row: CommissionRow): string {
+  // A live row a partial refund reduced carries its own reason regardless of
+  // which pre-void status it is otherwise in.
+  if (row.status !== "VOIDED" && row.voidReason === "partial refund") {
+    return voidReasonText(row.voidReason, "owner") ?? "Reduced, part of the sale was refunded";
+  }
   switch (row.status) {
     case "PENDING":
       return `Payable ${DATE.format(row.payableAt)}`;
     case "PAYABLE":
       return row.isAdjustment ? "Refund adjustment, carries forward" : "Ready to pay";
     case "FLAGGED":
-      return row.flagReason ?? "Flagged for review";
+      return flagReasonText(row.flagReason)?.title ?? "Flagged for review";
     case "PAID":
       return row.paidAt ? `Paid ${DATE.format(row.paidAt)}` : "Paid";
     case "VOIDED": {
-      const when = row.voidedAt ? `Voided ${DATE.format(row.voidedAt)}` : "Voided";
-      return row.voidReason ? `${when}, ${row.voidReason}` : when;
+      const cause = voidReasonText(row.voidReason, "owner");
+      const when = row.voidedAt ? DATE.format(row.voidedAt) : null;
+      if (cause && when) return `${cause} · ${when}`;
+      return cause ?? (when ? `Voided ${when}` : "Voided");
     }
   }
 }
@@ -212,10 +225,19 @@ export default async function CommissionsPage({
         id: selected.id,
         status: selected.status,
         amount: `${selected.amount} ${selected.currency.toUpperCase()}`,
+        // Only carried when it actually differs, so the sheet can tell "was
+        // reduced" from "was always this" with a single null check.
+        grossAmount:
+          selected.grossAmount && selected.grossAmount !== selected.amount
+            ? `${selected.grossAmount} ${selected.currency.toUpperCase()}`
+            : null,
         affiliate: selected.affiliateName ?? selected.affiliateEmail,
         affiliateEmail: selected.affiliateEmail,
         createdLabel: DATE.format(selected.createdAt),
         payableLabel: DATE.format(selected.payableAt),
+        voidedLabel: selected.voidedAt ? DATE.format(selected.voidedAt) : null,
+        voidReason: selected.voidReason,
+        flagReason: selected.flagReason,
         stateLabel: stateLabel(selected),
         reference: referenceFor(selected.stripePaymentRef),
         clickLabel: DATE.format(selected.click.at),

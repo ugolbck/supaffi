@@ -41,6 +41,8 @@ export type CommissionRow = {
   voidedAt: Date | null;
   flagReason: string | null;
   voidReason: string | null;
+  /** What this commission was before a partial refund reduced it. Null when unchanged. */
+  grossAmount: string | null;
   stripePaymentRef: string | null;
   affiliateId: string;
   affiliateName: string | null;
@@ -108,6 +110,7 @@ export async function listCommissions(
         voidedAt: true,
         flagReason: true,
         voidReason: true,
+        grossAmount: true,
         stripePaymentRef: true,
         adjustsCommissionId: true,
         affiliate: { select: { id: true, name: true, email: true } },
@@ -141,6 +144,7 @@ export async function listCommissions(
       voidedAt: c.voidedAt,
       flagReason: c.flagReason,
       voidReason: c.voidReason,
+      grossAmount: c.grossAmount ? c.grossAmount.toFixed(2) : null,
       stripePaymentRef: c.stripePaymentRef,
       affiliateId: c.affiliate.id,
       affiliateName: c.affiliate.name,
