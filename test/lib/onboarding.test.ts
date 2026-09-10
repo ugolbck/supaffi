@@ -60,14 +60,17 @@ describe("stepStates", () => {
     expect(states.find((s) => s.id === "stripe-webhook")?.state).toBe("waiting");
   });
 
-  it("subdomain is done only when all three lights are green", () => {
+  it("a step the user walked past reads done, green lights or not", () => {
+    // Only the current step's section is re-run, so a half green subdomain
+    // three screens back is as likely to be a minute-old cache as the truth.
+    // The rail cannot tell those apart, so it stops pretending it can.
     const partial = stepStates({
       setup: setup(),
       checks: checks({ dns: { resolves: ok, https: ok, certificate: no } }),
       onboardingCompletedAt: null,
       current: "terms",
     });
-    expect(partial.find((s) => s.id === "subdomain")?.state).toBe("waiting");
+    expect(partial.find((s) => s.id === "subdomain")?.state).toBe("done");
     const full = stepStates({
       setup: setup(),
       checks: checks({ dns: { resolves: ok, https: ok, certificate: ok } }),
@@ -120,6 +123,31 @@ describe("stepStates", () => {
       current: "terms",
     });
     expect(states.find((s) => s.id === "stripe-webhook")?.state).toBe("waiting");
+  });
+
+  it("the webhook waits, and only a real sale finishes it", () => {
+    // The one row whose light is not the Owner's to earn. Amber next to
+    // seven green rows read as a fault, so it gets its own settled state.
+    const waiting = stepStates({
+      setup: setup({ stripeKeyStored: true, stripeWebhookStored: true }),
+      checks: checks({ stripe: { key: ok, webhook: no } }),
+      onboardingCompletedAt: null,
+      current: "terms",
+    });
+    expect(waiting.find((s) => s.id === "stripe-webhook")?.state).toBe("waiting");
+    const sold = stepStates({
+      setup: setup({ stripeKeyStored: true, stripeWebhookStored: true }),
+      checks: checks({ stripe: { key: ok, webhook: ok } }),
+      onboardingCompletedAt: null,
+      current: "terms",
+    });
+    expect(sold.find((s) => s.id === "stripe-webhook")?.state).toBe("done");
+  });
+
+  it("a step nobody has reached is still upcoming", () => {
+    const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: null, current: "subdomain" });
+    expect(states.find((s) => s.id === "stripe-webhook")?.state).toBe("upcoming");
+    expect(states.find((s) => s.id === "tracking")?.state).toBe("upcoming");
   });
 
   it("product stays current while the user is on it", () => {

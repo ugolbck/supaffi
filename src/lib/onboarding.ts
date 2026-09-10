@@ -12,6 +12,11 @@ export type StepId =
   | "terms"
   | "tracking";
 
+/**
+ * "waiting" is not "unfinished": it is the one row (the Stripe webhook) whose
+ * light waits on the outside world rather than on the Owner. Everything else
+ * is done, current or upcoming.
+ */
 export type StepState = "done" | "waiting" | "current" | "upcoming";
 export type Step = { id: StepId; label: string; index: number; state: StepState };
 
@@ -167,17 +172,28 @@ export function stepStates(input: {
   const ids = stepIds(input.setup.emailRequired);
   const currentIndex = ids.indexOf(input.current);
   return ids.map((id, index) => {
+    const behind = index < currentIndex;
+    const reached = stored(id, input.setup, input.onboardingCompletedAt) || behind;
     let state: StepState;
     if (id === input.current) state = "current";
-    // Whether a step is finished is a fact about its data, not about where
-    // the user happens to be standing. Testing position first was the bug:
-    // going back to an earlier step demoted every finished step after it to
-    // "upcoming", which greyed them out and made them unclickable, so the
-    // only way forward was to press Continue through the whole flow again.
-    else if (verified(id, input.checks, input.setup, input.onboardingCompletedAt)) state = "done";
-    // Reached but not confirmed: either its data is stored, or the user is
-    // standing somewhere after it, which means they walked past it.
-    else if (stored(id, input.setup, input.onboardingCompletedAt) || index < currentIndex) state = "waiting";
+    // The webhook is the only row whose green light is not the Owner's to
+    // earn: it turns when a real sale arrives, which can be days away. Left
+    // in the same amber as unfinished work it sat there beside seven green
+    // rows reading as a fault, so it gets its own settled, neutral state.
+    else if (id === "stripe-webhook") {
+      state = verified(id, input.checks, input.setup, input.onboardingCompletedAt)
+        ? "done"
+        : reached
+          ? "waiting"
+          : "upcoming";
+    }
+    // Every other row: reaching it is finishing it. The work behind these
+    // steps happens once (a key was saved, a record was added), and only the
+    // section the current step names is re-run on this request, so a row from
+    // a minute-old cache cannot be told apart from a fresh one. Drawing that
+    // distinction is what made finished steps flicker amber and flip green
+    // while the Owner was three screens away.
+    else if (verified(id, input.checks, input.setup, input.onboardingCompletedAt) || reached) state = "done";
     else state = "upcoming";
     return { id, label: LABELS[id], index: index + 1, state };
   });

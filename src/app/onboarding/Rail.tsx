@@ -9,14 +9,19 @@ import { stepPath } from "@/lib/onboarding";
 // behind it rather than at zero. They are never links: neither is a screen.
 const ALREADY_DONE = ["Install", "Account"];
 
+// The one row that cannot turn green on its own: the webhook is set up and
+// correct, and stays this way until a real sale comes through it. Without
+// these words a neutral row sitting under seven green ones reads as a fault.
+const WAITING_NOTE = "Ready, waiting for your first sale";
+
 // A row is a flex box the full width of the rail, so a clickable one is
 // clickable everywhere, not just on its label.
 function rowClass(state: Step["state"], clickable: boolean): string {
   return cn(
-    "flex h-9 items-center gap-3 rounded-lg px-3 text-sm",
+    "flex min-h-9 items-center gap-3 rounded-lg px-3 py-1.5 text-sm",
     state === "current" && "bg-accent-50 font-medium text-accent-700",
     state === "upcoming" && "text-muted-foreground/60",
-    clickable && "cursor-pointer hover:bg-black/[0.04]"
+    clickable && "cursor-pointer transition-colors hover:bg-black/[0.04]"
   );
 }
 
@@ -46,12 +51,12 @@ export function Rail({ steps, productSlug, backHref }: { steps: Step[]; productS
               {clickable ? (
                 <Link href={stepPath(productSlug, step.id)} className={rowClass(step.state, true)}>
                   <Marker state={step.state} />
-                  {step.label}
+                  <RowLabel step={step} />
                 </Link>
               ) : (
                 <span className={rowClass(step.state, false)}>
                   <Marker state={step.state} />
-                  {step.label}
+                  <RowLabel step={step} />
                 </span>
               )}
             </li>
@@ -62,15 +67,35 @@ export function Rail({ steps, productSlug, backHref }: { steps: Step[]; productS
   );
 }
 
+function RowLabel({ step }: { step: Step }) {
+  if (step.state !== "waiting") return <span className="truncate">{step.label}</span>;
+  return (
+    <span className="flex min-w-0 flex-col gap-px leading-tight">
+      <span className="truncate">{step.label}</span>
+      <span className="truncate text-[11px] text-muted-foreground">{WAITING_NOTE}</span>
+    </span>
+  );
+}
+
 function Marker({ state }: { state: Step["state"] }) {
   if (state === "done") {
     return (
-      <span className="flex size-4 items-center justify-center rounded-full bg-status-success text-white">
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-status-success text-white">
         <Check className="size-3" strokeWidth={3} />
       </span>
     );
   }
-  if (state === "waiting") return <span className="size-4 rounded-full border-2 border-status-warning" />;
-  if (state === "current") return <span className="size-4 rounded-full border-2 border-accent-700" />;
-  return <span className="size-4 rounded-full border border-border" />;
+  // Settled, not unfinished: the same tick as a done row, kept quiet so the
+  // green ones still read as the progress and this one reads as at rest. It
+  // sits on the label's line rather than in the middle of the two, so the
+  // column of markers stays a column.
+  if (state === "waiting") {
+    return (
+      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center self-start rounded-full bg-neutral-400 text-white">
+        <Check className="size-3" strokeWidth={3} />
+      </span>
+    );
+  }
+  if (state === "current") return <span className="size-4 shrink-0 rounded-full border-2 border-accent-700" />;
+  return <span className="size-4 shrink-0 rounded-full border border-border" />;
 }
