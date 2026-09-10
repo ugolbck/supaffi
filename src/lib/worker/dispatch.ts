@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { handleCheckoutSessionCompleted } from "./handlers/checkoutSessionCompleted";
 import { handleInvoicePaid } from "./handlers/invoicePaid";
 import { handleChargeRefunded } from "./handlers/chargeRefunded";
+import { handleSubscriptionDeleted } from "./handlers/subscriptionDeleted";
 
 export async function processWebhookEvent(row: WebhookEvent): Promise<void> {
   const event = row.payload as unknown as Stripe.Event;
@@ -20,7 +21,7 @@ export async function processWebhookEvent(row: WebhookEvent): Promise<void> {
     case "charge.refunded":
       return handleChargeRefunded(merchant, event.data.object as Stripe.Charge);
     case "customer.subscription.deleted":
-      return; // no-op, nothing retroactive (CONTEXT.md)
+      return handleSubscriptionDeleted(merchant, event.data.object as Stripe.Subscription);
     default:
       // A Merchant's webhook endpoint may be subscribed to more event types
       // than Supaffi cares about — expected, not a failure.

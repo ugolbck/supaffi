@@ -549,3 +549,16 @@ export async function getAffiliateDetails(
     ])
   );
 }
+
+/** How many referred customers there are, and how many are still paying. */
+export async function referralCounts(
+  affiliateId: string
+): Promise<{ total: number; active: number }> {
+  const [total, active] = await Promise.all([
+    db.click.count({ where: { affiliateId, commissions: { some: {} } } }),
+    db.click.count({
+      where: { affiliateId, commissions: { some: {} }, subscriptionCancelledAt: null },
+    }),
+  ]);
+  return { total, active };
+}

@@ -172,6 +172,12 @@ model Click {
   // event after the first is matched via this Customer ID instead, not the token.
   stripeCustomerId String? @unique
 
+  // When the subscription this click brought was cancelled, if it ever was.
+  // Nothing retroactive happens to commissions already earned; this exists so
+  // both dashboards can say a referral stopped paying instead of leaving an
+  // affiliate to watch their income end with no explanation.
+  subscriptionCancelledAt DateTime?
+
   commissions Commission[]
 
   @@index([stripeCustomerId])
