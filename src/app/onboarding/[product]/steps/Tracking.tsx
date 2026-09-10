@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { CheckList } from "@/components/onboarding/CheckList";
+import { CheckList, checkState, trackingPending } from "@/components/onboarding/CheckList";
 import { CodeBlock } from "@/components/onboarding/CodeBlock";
 import { StepShell, StepLabel } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";
@@ -59,7 +59,7 @@ await stripe.checkout.sessions.create({
             rows={[
               {
                 id: "script",
-                state: found ? "ok" : "failed",
+                state: checkState(checks.tracking.script, trackingPending),
                 pending: `Looking for the script on ${site}`,
                 passed: `Script is live on ${site}`,
                 failed: checks.tracking.script.detail,

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { CheckList } from "@/components/onboarding/CheckList";
+import { CheckList, checkState, emailKeyPending } from "@/components/onboarding/CheckList";
 import { StepShell } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { PasteField } from "@/components/PasteField";
@@ -48,7 +48,7 @@ export function EmailKey({ ctx }: { ctx: Ctx }) {
               rows={[
                 {
                   id: "key",
-                  state: checks.email.key.ok ? "ok" : "failed",
+                  state: checkState(checks.email.key, emailKeyPending),
                   pending: "Checking the key",
                   passed: "Supaffi can send email",
                   failed: "Resend rejected that key",

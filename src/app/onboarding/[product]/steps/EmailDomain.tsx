@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { CheckList, checkState } from "@/components/onboarding/CheckList";
+import { CheckList, checkState, emailDomainPending, type CheckState } from "@/components/onboarding/CheckList";
 import { StepShell } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { resendDomainsUrl } from "@/lib/checks/email";
@@ -14,7 +14,14 @@ export function EmailDomain({ ctx }: { ctx: Ctx }) {
   const { merchant, checks } = ctx;
   const product = { id: merchant.id, slug: merchant.slug };
   const next = nextStep("email-domain", ctx.emailRequired)!;
-  const domainState = checkState(checks.email.domain, (detail) => detail.startsWith("Add ") || detail.startsWith("Added, "));
+  // The domain comes before the key, and asking Resend anything needs the
+  // key, so until one is stored the check answers "Not connected yet" and
+  // there is nothing to report. Without this guard the first email screen
+  // opened on a red cross before the owner had done a thing.
+  const connected = ctx.setup.emailConnected;
+  const domainState: CheckState = connected
+    ? checkState(checks.email.domain, emailDomainPending)
+    : "pending";
 
   return (
     <StepShell
@@ -27,7 +34,7 @@ export function EmailDomain({ ctx }: { ctx: Ctx }) {
         </Button>
       }
     >
-      <AutoRefresh active={domainState !== "ok"} />
+      <AutoRefresh active={connected && domainState !== "ok"} />
       <TaskCard>
         <TaskCardHeader
           title="Add the domain in Resend"
@@ -48,13 +55,15 @@ export function EmailDomain({ ctx }: { ctx: Ctx }) {
               {
                 id: "domain",
                 state: domainState,
-                pending: `Waiting for Resend to verify ${merchant.domain}`,
+                pending: connected
+                  ? `Waiting for Resend to verify ${merchant.domain}`
+                  : "Confirmed once you add your key",
                 passed: `Resend can send from ${merchant.domain}`,
                 failed: checks.email.domain.detail,
                 hint: "Open Resend and check the record it asked for.",
               },
             ]}
-            onRecheck={recheckAction.bind(null, product, "email-domain")}
+            onRecheck={connected ? recheckAction.bind(null, product, "email-domain") : undefined}
           />
         </TaskCardSection>
       </TaskCard>
