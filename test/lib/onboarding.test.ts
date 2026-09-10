@@ -144,7 +144,7 @@ describe("stepIndex", () => {
 
 describe("navigation", () => {
   it("walks forward and back, skipping email when not required", () => {
-    expect(nextStep("stripe-webhook", true)).toBe("email-key");
+    expect(nextStep("stripe-webhook", true)).toBe("email-domain");
     expect(nextStep("stripe-webhook", false)).toBe("terms");
     expect(previousStep("terms", false)).toBe("stripe-webhook");
     expect(nextStep("tracking", true)).toBeNull();
@@ -160,7 +160,7 @@ describe("resumeStep", () => {
   it("lands on the first step whose stored data is missing", () => {
     // Nothing stored anywhere means the Owner never got past the subdomain.
     expect(resumeStep(setup(), null)).toBe("subdomain");
-    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }), null)).toBe("email-key");
+    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }), null)).toBe("email-domain");
     expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true }), null)).toBe("terms");
     expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true, firstProgramSlug: "standard" }), null)).toBe("tracking");
   });

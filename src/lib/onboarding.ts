@@ -20,8 +20,11 @@ const ALL: StepId[] = [
   "subdomain",
   "stripe-key",
   "stripe-webhook",
-  "email-key",
+  // The domain has to exist before a key can be scoped to it: Resend's key
+  // form asks which domain the key may send from, so asking for the domain
+  // first is what makes that question answerable rather than backwards.
   "email-domain",
+  "email-key",
   "terms",
   "tracking",
 ];

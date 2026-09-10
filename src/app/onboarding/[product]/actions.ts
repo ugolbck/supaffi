@@ -189,7 +189,9 @@ export async function saveEmailKeyAction(
   const check = await resendKeyWorks(key);
   if (!check.ok) return { error: check.detail };
   await connectEmailProvider(ownerId, product.id, key);
-  redirect(stepPath(product.slug, "email-domain"));
+  // Not a hardcoded "email-domain": that was only ever true while the key
+  // came before the domain in the step order, and now it comes after.
+  redirect(stepPath(product.slug, nextStep("email-key", setupEmailRequired())!));
 }
 
 export async function saveTermsAction(
