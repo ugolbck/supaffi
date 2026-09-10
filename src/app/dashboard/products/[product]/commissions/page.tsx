@@ -84,7 +84,8 @@ function stateLabel(row: CommissionRow): string {
   // A live row a partial refund reduced carries its own reason regardless of
   // which pre-void status it is otherwise in.
   if (row.status !== "VOIDED" && row.voidReason === "partial refund") {
-    return voidReasonText(row.voidReason, "owner") ?? "Reduced, part of the sale was refunded";
+    const reduced = voidReasonText(row.voidReason, "owner");
+    if (reduced) return reduced;
   }
   switch (row.status) {
     case "PENDING":

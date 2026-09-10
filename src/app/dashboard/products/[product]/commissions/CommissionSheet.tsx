@@ -73,7 +73,22 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-/** A labelled value, half of an evidence or before/after pair. */
+/**
+ * Splits one `flagReasonText` evidence entry into its label and its value.
+ *
+ * The contract with `src/lib/commissionReason.ts`: every entry is
+ * `"<one-word label> <value>"`, e.g. `"Buyer sarah@northwind.example"`, and
+ * the value never contains a space, so the first space is the split. The copy
+ * for a flag lives there and only there, which is why this reads the string
+ * apart instead of writing its own words for the two halves.
+ */
+function splitEvidence(entry: string): { label: string; value: string } {
+  const spaceAt = entry.indexOf(" ");
+  if (spaceAt <= 0) return { label: "", value: entry };
+  return { label: entry.slice(0, spaceAt), value: entry.slice(spaceAt + 1) };
+}
+
+/** A labelled amount, half of a before/after pair. */
 function Figure({
   label,
   value,
@@ -111,7 +126,10 @@ export function CommissionSheet({
   const router = useRouter();
 
   const flag = commission.status === "FLAGGED" ? flagReasonText(commission.flagReason) : null;
-  const voidCause = commission.status === "VOIDED" ? voidReasonText(commission.voidReason, "owner") : null;
+  // The same sentence covers both cases: a void states its cause, and a live
+  // row a partial refund reduced states why it shrank.
+  const reasonText = voidReasonText(commission.voidReason, "owner");
+  const voidCause = commission.status === "VOIDED" ? reasonText : null;
   const reduced = commission.status !== "VOIDED" && commission.grossAmount !== null;
 
   return (
@@ -141,15 +159,26 @@ export function CommissionSheet({
           {flag && (
             <div className="flex flex-col gap-3 rounded-(--radius-md) border border-status-warning/30 bg-status-warning-bg px-4 py-3.5">
               <p className="text-sm font-medium text-neutral-900">{flag.title}</p>
-              {flag.evidence.length === 2 && (
-                <div className="grid grid-cols-2 gap-4">
+              {flag.evidence.length > 0 && (
+                // Stacked, not side by side: these are the exact values the
+                // accusation rests on, so they are never shortened. One under
+                // the other on a shared left edge also makes the pair easier
+                // to compare character by character than two columns would.
+                <dl className="flex flex-col gap-2">
                   {flag.evidence.map((entry) => {
-                    const spaceAt = entry.indexOf(" ");
-                    const label = entry.slice(0, spaceAt);
-                    const value = entry.slice(spaceAt + 1);
-                    return <Figure key={label} label={label} value={value} />;
+                    const { label, value } = splitEvidence(entry);
+                    return (
+                      <div key={entry} className="flex items-baseline gap-3">
+                        <dt className="w-16 shrink-0 text-[11px] font-medium tracking-wide text-neutral-500 uppercase">
+                          {label}
+                        </dt>
+                        <dd className="min-w-0 flex-1 font-mono text-[13px] leading-snug font-semibold break-all text-neutral-900">
+                          {value}
+                        </dd>
+                      </div>
+                    );
                   })}
-                </div>
+                </dl>
               )}
             </div>
           )}
@@ -165,7 +194,7 @@ export function CommissionSheet({
 
           {reduced && commission.grossAmount && (
             <div className="flex flex-col gap-3 rounded-(--radius-md) border border-neutral-200 bg-neutral-50 px-4 py-3.5">
-              <p className="text-sm text-neutral-900">{voidReasonText(commission.voidReason, "owner")}</p>
+              <p className="text-sm text-neutral-900">{reasonText}</p>
               <div className="grid grid-cols-2 gap-4">
                 <Figure label="What it was" value={commission.grossAmount} muted />
                 <Figure label="What it is now" value={commission.amount} />
