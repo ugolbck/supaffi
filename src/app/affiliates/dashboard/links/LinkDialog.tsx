@@ -141,6 +141,11 @@ export function LinkDialog({
               spellCheck={false}
               maxLength={30}
             />
+            {/* The rule belongs at the field, not in a card of instructions
+                beside the table. */}
+            <p className="text-xs text-muted-foreground">
+              Lowercase letters, numbers and hyphens.
+            </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -158,7 +163,7 @@ export function LinkDialog({
             <p className="text-xs text-muted-foreground">Blank is the site root.</p>
           </div>
 
-          <p className="truncate rounded-lg bg-muted px-3 py-2 font-mono text-xs text-muted-foreground">
+          <p className="truncate rounded-(--radius) bg-muted px-3 py-2 font-mono text-xs text-muted-foreground">
             {preview}
           </p>
 
@@ -169,7 +174,7 @@ export function LinkDialog({
           )}
 
           {codeChanged && (
-            <p className="rounded-lg bg-status-warning-bg px-3 py-2 text-xs text-status-warning">
+            <p className="rounded-(--radius) bg-status-warning-bg px-3 py-2 text-xs text-status-warning">
               Anyone who already has your old link will stop earning you commission. Clicks
               already recorded are safe.
             </p>

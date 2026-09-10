@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useId } from "react";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { DashboardCard } from "@/components/dashboard/DashboardCard";
+import { Section } from "@/components/dashboard/Page";
 import { updatePayoutDetailsAction } from "./updatePayoutDetails";
 
 type FormState = { error?: string; saved?: boolean };
@@ -16,46 +17,73 @@ async function submit(_prevState: FormState, formData: FormData): Promise<FormSt
 }
 
 /**
- * Sits inside a `DashboardCard` rather than carrying its own `Card`, so it
- * stretches with the rest of the band instead of sizing to its own content.
+ * Whatever the merchant pays against, in the affiliate's own words: a PayPal
+ * address, an IBAN, a wallet. Freeform because no two merchants pay the same
+ * way and Supaffi moves no money itself.
  *
- * `form` renders as `display: contents`: its child `DashboardCard` is what
- * the grid actually places and stretches (the `className` grid-span lands on
- * that card, same as every other card on this screen), while the form itself
- * still owns submission, so the Save button in the footer can reach the
- * textarea in the body even though they are card siblings.
+ * The field is the onboarding field treatment (a white hairline surface, mono,
+ * the accent focus ring) and the save action sits in the card's band, the way
+ * every task card in the flow carries the one action it owns. The button
+ * reaches the form by `form=` rather than by nesting, since the band and the
+ * body are siblings.
  */
-export function PayoutDetailsForm({ initial, className }: { initial: string; className?: string }) {
-  const [state, formAction] = useActionState(submit, {});
+export function PayoutDetailsForm({
+  initial,
+  className,
+}: {
+  initial: string;
+  className?: string;
+}) {
+  const [state, formAction, pending] = useActionState(submit, {});
+  const formId = useId();
+
+  // Only true on arrival: once they have saved, the notice would be telling
+  // them off for a state they just left.
+  const missing = initial.trim() === "";
 
   return (
-    <form action={formAction} className="contents">
-      <DashboardCard
-        title="Payout details"
-        className={className}
-        footer={
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs" aria-live="polite">
-              {state.error && (
-                <span role="alert" className="text-status-danger">
-                  {state.error}
-                </span>
-              )}
-              {state.saved && <span className="text-status-success">Saved.</span>}
-            </p>
-            <Button type="submit" size="sm" className="cursor-pointer">
-              Save
-            </Button>
-          </div>
-        }
-      >
+    <Section
+      title="Payout details"
+      // The field takes the height of the card, so it matches the card beside
+      // it and gives someone pasting an IBAN and a note room to see both.
+      fill
+      className={className}
+      actions={
+        <div className="flex items-center gap-2.5">
+          {state.saved && (
+            <span className="flex items-center gap-1 text-xs font-medium text-status-success">
+              <Check className="size-3.5" />
+              Saved
+            </span>
+          )}
+          <Button type="submit" form={formId} size="sm" disabled={pending}>
+            {pending ? "Saving" : "Save"}
+          </Button>
+        </div>
+      }
+    >
+      <form id={formId} action={formAction} className="flex min-h-0 flex-1 flex-col gap-2.5">
+        {/* The one consequence this screen has that nothing on it shows: an
+            empty field means the merchant has nowhere to send the money. Said
+            here, where it is fixed, and nowhere else. */}
+        {missing && (
+          <p className="shrink-0 rounded-(--radius) bg-status-warning-bg px-3 py-2 text-[13px] text-status-warning">
+            Until this is filled in, your merchant has nowhere to send your money.
+          </p>
+        )}
         <Textarea
           name="payoutDetails"
           defaultValue={initial}
-          placeholder="e.g. PayPal: you@example.com"
-          className="flex-1 resize-none"
+          aria-label="Payout details"
+          placeholder={"PayPal: you@example.com\nor an IBAN, or whatever your merchant pays with"}
+          className="min-h-40 flex-1 resize-none border-neutral-300 bg-white font-mono text-[13px] shadow-xs focus-visible:border-accent-400"
         />
-      </DashboardCard>
-    </form>
+        {state.error && (
+          <p role="alert" className="shrink-0 text-[13px] text-status-danger">
+            {state.error}
+          </p>
+        )}
+      </form>
+    </Section>
   );
 }
