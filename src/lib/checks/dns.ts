@@ -1,8 +1,77 @@
-import { resolve4, resolveNs } from "node:dns/promises";
+import { Resolver, resolve4, resolveNs } from "node:dns/promises";
 
 export type CheckResult = { ok: boolean; detail: string };
 
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+/**
+ * The registrable domain, guessed. Two labels covers mokkit.co; three covers
+ * a registrable domain under a public suffix like co.uk without pulling the
+ * whole suffix list into the bundle.
+ */
+export function registrableCandidates(hostname: string): string[] {
+  const parts = hostname.split(".");
+  return [parts.slice(-2).join("."), parts.slice(-3).join(".")];
+}
+
+export type AuthoritativeDeps = {
+  resolveNs: (h: string) => Promise<string[]>;
+  resolve4: (h: string) => Promise<string[]>;
+  makeResolver: (servers: string[]) => { resolve4: (h: string) => Promise<string[]> };
+};
+
+const authoritativeDefaults: AuthoritativeDeps = {
+  resolveNs,
+  resolve4,
+  makeResolver: (servers) => {
+    const resolver = new Resolver();
+    resolver.setServers(servers);
+    return resolver;
+  },
+};
+
+/**
+ * Resolves a name by asking the zone's own nameservers, skipping every cache
+ * between here and them.
+ *
+ * The onboarding step polls this name before the owner has created the
+ * record, so the first answer is always "does not exist". A recursive
+ * resolver is entitled to remember that for the zone's SOA minimum, which at
+ * Cloudflare is half an hour, and the host's resolver sits outside the
+ * containers so no restart or redeploy clears it. The flow was reliably
+ * poisoning itself; see finding 3.
+ *
+ * Falls back to the ordinary resolver whenever the authoritative path cannot
+ * be established, because a slow or unusual zone must not make the check
+ * worse than it was.
+ */
+export async function resolveAuthoritative(
+  hostname: string,
+  deps: AuthoritativeDeps = authoritativeDefaults
+): Promise<string[]> {
+  for (const zone of registrableCandidates(hostname)) {
+    let nameservers: string[];
+    try {
+      nameservers = await deps.resolveNs(zone);
+    } catch {
+      continue;
+    }
+    if (nameservers.length === 0) continue;
+
+    const addresses: string[] = [];
+    for (const ns of nameservers) {
+      try {
+        addresses.push(...(await deps.resolve4(ns)));
+      } catch {
+        // One unreachable nameserver out of four is normal.
+      }
+    }
+    if (addresses.length === 0) continue;
+
+    return deps.makeResolver(addresses).resolve4(hostname);
+  }
+  return deps.resolve4(hostname);
+}
 
 /**
  * Whether the hostname's A record points at this server. `expected` is
@@ -13,7 +82,7 @@ const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 export async function resolvesTo(
   hostname: string,
   expected: string,
-  resolve: (h: string) => Promise<string[]> = resolve4
+  resolve: (h: string) => Promise<string[]> = resolveAuthoritative
 ): Promise<CheckResult> {
   let addresses: string[];
   try {
@@ -57,8 +126,24 @@ const CERT_CODES = new Set([
  */
 export async function httpsReachable(
   hostname: string,
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = fetch,
+  resolve: (h: string) => Promise<string[]> = resolveAuthoritative
 ): Promise<{ reachable: CheckResult; certificate: CheckResult }> {
+  try {
+    const addresses = await resolve(hostname);
+    if (addresses.length === 0) {
+      return {
+        reachable: { ok: false, detail: "No record found yet" },
+        certificate: { ok: false, detail: "Waiting for the record" },
+      };
+    }
+  } catch {
+    return {
+      reachable: { ok: false, detail: "No record found yet" },
+      certificate: { ok: false, detail: "Waiting for the record" },
+    };
+  }
+
   try {
     const response = await fetchFn(`https://${hostname}/track.js`, {
       method: "HEAD",
@@ -115,12 +200,7 @@ export async function detectDnsProvider(
       clearTimeout(timer);
     }
   };
-  const parts = hostname.split(".");
-  // Two labels is the common case (instantgradient.com). Three covers
-  // registrable domains under a public suffix like co.uk without pulling in
-  // the whole suffix list.
-  const candidates = [parts.slice(-2).join("."), parts.slice(-3).join(".")];
-  for (const candidate of candidates) {
+  for (const candidate of registrableCandidates(hostname)) {
     try {
       const servers = await withTimeout(candidate);
       if (servers.some((s) => s.toLowerCase().endsWith(".ns.cloudflare.com"))) return "cloudflare";
