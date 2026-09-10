@@ -1,4 +1,5 @@
 import { originFor } from "@/lib/url";
+import { emailShell } from "@/components/email/shell";
 import { sendEmail, type MerchantForEmail } from "./transport";
 
 type AffiliateForEmail = { email: string };
@@ -17,9 +18,11 @@ export async function sendAffiliateMagicLinkEmail(
   await sendEmail(merchant, {
     to: affiliate.email,
     subject: `Log in to ${merchant.name}'s affiliate program`,
-    html: `
-      <p>Click the link below to log in. This link expires in 15 minutes and can only be used once.</p>
-      <p><a href="${verifyUrl}">Log in to your affiliate dashboard</a></p>
-    `,
+    html: emailShell({
+      merchantName: merchant.name,
+      heading: "Log in to your affiliate account",
+      body: "This link expires in 15 minutes and can only be used once.",
+      action: { label: "Log in", href: verifyUrl },
+    }),
   });
 }
