@@ -20,7 +20,6 @@ export async function handleCheckoutSessionCompleted(
     include: { affiliate: { include: { program: true } } },
   });
   if (!click) return; // token doesn't match a known Click
-  if (click.stripeCustomerId) return; // already processed — redelivery
 
   // A stale/reused token past its Attribution Window doesn't count, even
   // on the very first purchase.
@@ -42,8 +41,18 @@ export async function handleCheckoutSessionCompleted(
   // ends up excluded or flagged below — exclusion isn't retroactive or
   // blanket, a Merchant might exclude this one purchase but still want
   // ordinary renewals to earn commission later.
-  if (stripeCustomerId) {
-    await db.click.update({ where: { id: click.id }, data: { stripeCustomerId } });
+  //
+  // Only the click that first brought this customer holds them. Renewals are
+  // matched by customer id, so moving the link would silently reassign every
+  // future renewal to whichever affiliate they clicked most recently.
+  // The column is globally unique, so a second click's attempt would throw
+  // anyway; refusing it here says why.
+  if (stripeCustomerId && !click.stripeCustomerId) {
+    try {
+      await db.click.update({ where: { id: click.id }, data: { stripeCustomerId } });
+    } catch (err) {
+      if (!isUniqueConstraintError(err)) throw err;
+    }
   }
 
   const stripe = stripeClientFor(merchant);
@@ -56,6 +65,11 @@ export async function handleCheckoutSessionCompleted(
   // PaymentIntent ID is stored instead — chargeRefunded.ts knows to fall
   // back to this when a Charge has no traceable Invoice.
   const stripePaymentRef = invoiceId ?? paymentIntentId;
+
+  // Idempotency rides on Commission.stripePaymentRef being unique. A session
+  // with neither an invoice nor a payment intent gives us no key, and a
+  // redelivery would duplicate. Nothing was paid on such a session anyway.
+  if (!stripePaymentRef) return;
 
   const excluded = await isExcluded(stripe, {
     invoiceMetadata: null, // the Session doesn't embed Invoice metadata inline
