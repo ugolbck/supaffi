@@ -174,13 +174,13 @@ describe("handleChargeRefunded", () => {
   it("leaves a flagged commission flagged, with its reason intact", async () => {
     const commission = await givenCommission({
       status: "FLAGGED",
-      flagReason: "buyer email matches affiliate email",
+      flagReason: "card",
     });
     await handleChargeRefunded(merchant, chargeFixture(3900));
 
     const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
     expect(updated.status).toBe("FLAGGED");
-    expect(updated.flagReason).toBe("buyer email matches affiliate email");
+    expect(updated.flagReason).toBe("card");
     expect(updated.amount.toString()).toBe("7.8");
     expect(updated.voidReason).toBe("partial refund");
   });

@@ -138,7 +138,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
         amount: "9.00",
         currency: "usd",
         status: "FLAGGED",
-        flagReason: "buyer email matches affiliate email",
+        flagReason: "card",
         payableAt: new Date(),
         stripePaymentRef: crypto.randomUUID(),
       },

@@ -402,7 +402,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     const click = await makeClick(affiliate.id);
     const commission = await makeCommission(affiliate.id, click.id, {
       status: "FLAGGED",
-      flagReason: "buyer email matches affiliate email",
+      flagReason: "card",
     });
 
     await confirmCommissionFraud(ownerId, merchantId, commission.id);
@@ -411,7 +411,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect(updated.status).toBe("VOIDED");
     expect(updated.voidReason).toBe("confirmed self-referral");
     expect(updated.voidedAt).not.toBeNull();
-    expect(updated.flagReason).toBe("buyer email matches affiliate email");
+    expect(updated.flagReason).toBe("card");
   });
 
   it("dismissCommissionFlag returns a still-holding commission to PENDING and clears the flag", async () => {
@@ -419,7 +419,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     const click = await makeClick(affiliate.id);
     const commission = await makeCommission(affiliate.id, click.id, {
       status: "FLAGGED",
-      flagReason: "buyer email matches affiliate email",
+      flagReason: "card",
       payableAt: new Date(Date.now() + 1000 * 60 * 60 * 24), // still in the future
     });
 
@@ -435,7 +435,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     const click = await makeClick(affiliate.id);
     const commission = await makeCommission(affiliate.id, click.id, {
       status: "FLAGGED",
-      flagReason: "buyer email matches affiliate email",
+      flagReason: "card",
       payableAt: new Date(Date.now() - 1000), // already past the Holding Period
     });
 

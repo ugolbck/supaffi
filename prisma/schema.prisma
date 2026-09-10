@@ -222,7 +222,7 @@ model Commission {
   paidAt     DateTime?
   voidedAt   DateTime?
   voidReason String?          // e.g. "refund", "confirmed self-referral"
-  flagReason String?          // e.g. "buyer email matches affiliate email"
+  flagReason String?          // e.g. "email:buyer@x.com=affiliate@x.com" or "card"
 
   createdAt DateTime @default(now())
 

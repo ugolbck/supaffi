@@ -9,7 +9,7 @@ function normalize(email: string): string {
 // carry the buyer's email inline in the payload already, no extra API call.
 export function checkSelfReferralEmail(affiliate: Affiliate, buyerEmail: string | null): string | null {
   if (buyerEmail && normalize(buyerEmail) === normalize(affiliate.email)) {
-    return "buyer email matches affiliate email";
+    return `email:${buyerEmail}=${affiliate.email}`;
   }
   return null;
 }
@@ -71,7 +71,7 @@ export async function checkPaymentMethodOverlap(
       if (candidate.id === buyerCustomerId) continue;
       const methods = await stripe.paymentMethods.list({ customer: candidate.id, type: "card" });
       if (methods.data.some((m) => m.card?.fingerprint === buyerFingerprint)) {
-        return "payment method matches a Stripe Customer sharing the affiliate's email";
+        return "card";
       }
     }
   } catch (err) {

@@ -262,7 +262,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
             currency: "usd",
             status: i === 0 ? "FLAGGED" : "PENDING",
             payableAt: new Date(),
-            flagReason: i === 0 ? "buyer email matches affiliate email" : null,
+            flagReason: i === 0 ? "card" : null,
             createdAt: new Date(Date.now() + i * 1000),
           },
         });
