@@ -1,5 +1,6 @@
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
+import { registrableCandidates } from "@/lib/checks/dns";
 
 export type StepId =
   | "product"
@@ -9,8 +10,7 @@ export type StepId =
   | "email-key"
   | "email-domain"
   | "terms"
-  | "tracking"
-  | "link";
+  | "tracking";
 
 export type StepState = "done" | "waiting" | "current" | "upcoming";
 export type Step = { id: StepId; label: string; index: number; state: StepState };
@@ -24,7 +24,6 @@ const ALL: StepId[] = [
   "email-domain",
   "terms",
   "tracking",
-  "link",
 ];
 
 const LABELS: Record<StepId, string> = {
@@ -36,7 +35,6 @@ const LABELS: Record<StepId, string> = {
   "email-domain": "Sending domain",
   terms: "Terms",
   tracking: "Tracking",
-  link: "Your link",
 };
 
 /** The steps in order. The two email steps exist only when the instance sends real email. */
@@ -54,15 +52,28 @@ export function stepIndex(id: StepId, emailRequired: boolean): number {
 }
 
 /**
+ * The rail opens with two rows already ticked: the install, and the account
+ * the setup screen created. They are real work the user did, so the counter
+ * counts them. Leaving them out is what made a rail of nine rows sit under
+ * the words "step 2 of 7".
+ */
+export const STEPS_ALREADY_DONE = 2;
+
+/** What the counter shows: position and total, both including the ticked rows. */
+export function displayStep(id: StepId, emailRequired: boolean): { index: number; total: number } {
+  return {
+    index: stepIndex(id, emailRequired) + STEPS_ALREADY_DONE,
+    total: stepIds(emailRequired).length + STEPS_ALREADY_DONE,
+  };
+}
+
+/**
  * Which group of checks a step's screen actually shows, or null when it shows
  * none. What the polling on that step has to re-run, and nothing else.
  */
 export function checkSectionFor(id: StepId): keyof ProductChecks | null {
   switch (id) {
     case "subdomain":
-    // The link step waits on the same three DNS lights before it lets anyone
-    // finish, so it refreshes them too.
-    case "link":
       return "dns";
     case "stripe-key":
     case "stripe-webhook":
@@ -121,8 +132,6 @@ function stored(id: StepId, setup: ProductSetup, onboardingCompletedAt: Date | n
       return setup.firstProgramSlug !== null;
     case "tracking":
       return setup.trackingStatus !== "not-started";
-    case "link":
-      return onboardingCompletedAt !== null;
   }
 }
 
@@ -156,14 +165,17 @@ export function stepStates(input: {
   const currentIndex = ids.indexOf(input.current);
   return ids.map((id, index) => {
     let state: StepState;
-    // The current step reads current, full stop, with one exception: link
-    // is the finished state itself, so once onboarding is complete it reads
-    // done even while the user is standing on it.
-    if (id === "link" && input.onboardingCompletedAt) state = "done";
-    else if (id === input.current) state = "current";
-    else if (index > currentIndex) state = "upcoming";
+    if (id === input.current) state = "current";
+    // Whether a step is finished is a fact about its data, not about where
+    // the user happens to be standing. Testing position first was the bug:
+    // going back to an earlier step demoted every finished step after it to
+    // "upcoming", which greyed them out and made them unclickable, so the
+    // only way forward was to press Continue through the whole flow again.
     else if (verified(id, input.checks, input.setup, input.onboardingCompletedAt)) state = "done";
-    else state = "waiting";
+    // Reached but not confirmed: either its data is stored, or the user is
+    // standing somewhere after it, which means they walked past it.
+    else if (stored(id, input.setup, input.onboardingCompletedAt) || index < currentIndex) state = "waiting";
+    else state = "upcoming";
     return { id, label: LABELS[id], index: index + 1, state };
   });
 }
@@ -188,6 +200,62 @@ export function suggestSubdomain(websiteUrl: string): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * The editable label and the fixed tail of a product's address.
+ *
+ * The root belongs to the product's own website and is set on the product
+ * step, so the subdomain step only ever lets someone change the label in
+ * front of it. Retyping the root here would let the program's address drift
+ * away from the site it sends people to.
+ *
+ * Null when the stored address is not a subdomain of the product's site at
+ * all, which is the case on a local instance and for anything set by hand
+ * before this rule existed. Those are edited whole.
+ */
+export function splitSubdomain(domain: string, websiteUrl: string): { prefix: string; suffix: string } | null {
+  const root = siteHost(websiteUrl).replace(/^www\./, "");
+  if (!root || !domain.endsWith(`.${root}`)) return null;
+  const prefix = domain.slice(0, -(root.length + 1));
+  return prefix ? { prefix, suffix: `.${root}` } : null;
+}
+
+// Second-level labels that are commonly used as a suffix under a two-letter
+// country code (co.uk, com.au, ...). Not a suffix list: just enough to keep
+// the go.example.co.uk case out of registrableCandidates' two-label guess.
+const COMMON_SECOND_LEVEL_SUFFIXES = new Set(["co", "com", "org", "net", "ac", "gov", "edu"]);
+
+/**
+ * The record name Cloudflare wants, relative to the zone it will host the
+ * record in. The subdomain step only shows the editable prefix, which is the
+ * whole story on a bare domain but not when the product's website is itself
+ * a subdomain (dev.mokkit.co): the zone there is mokkit.co, so the record
+ * for affiliates.dev.mokkit.co is affiliates.dev, not affiliates.
+ */
+export function dnsRecordName(domain: string): string {
+  const [twoLabel, threeLabel] = registrableCandidates(domain);
+  const [first, second] = twoLabel.split(".");
+  const looksLikeCoUk = Boolean(second) && COMMON_SECOND_LEVEL_SUFFIXES.has(first) && /^[a-z]{2}$/i.test(second);
+  const zone = looksLikeCoUk ? threeLabel : twoLabel;
+  if (domain === zone || !domain.endsWith(`.${zone}`)) return domain;
+  return domain.slice(0, -(zone.length + 1));
+}
+
+/**
+ * The address to keep when the product's website changes.
+ *
+ * Someone who fixed a wrong website URL should not silently lose a subdomain
+ * label they chose, so the label is carried across onto the new root. Only
+ * when there was no label to carry does this fall back to the default.
+ */
+export function rehomeSubdomain(currentDomain: string, previousWebsiteUrl: string, nextWebsiteUrl: string): string {
+  const suggestion = suggestSubdomain(nextWebsiteUrl);
+  if (!suggestion) return currentDomain;
+  const split = splitSubdomain(currentDomain, previousWebsiteUrl);
+  if (!split) return suggestion;
+  const nextRoot = siteHost(nextWebsiteUrl).replace(/^www\./, "");
+  return `${split.prefix}.${nextRoot}`;
 }
 
 /**
@@ -217,11 +285,15 @@ export function backToDashboardHref(
   return others.some((m) => m.onboardingCompletedAt !== null) ? "/dashboard" : null;
 }
 
-/** Where to drop someone who left partway. The first step whose data is not stored, after product. */
-export function resumeStep(setup: ProductSetup, onboardingCompletedAt: Date | null): StepId {
+/**
+ * Where to drop someone who left partway: the first step whose data is not
+ * stored. Null once there is nothing left to set up, which is the caller's
+ * cue to send them to the finished screen rather than back into the flow.
+ */
+export function resumeStep(setup: ProductSetup, onboardingCompletedAt: Date | null): StepId | null {
   const ids = stepIds(setup.emailRequired).filter((id) => id !== "product");
   for (const id of ids) {
     if (!stored(id, setup, onboardingCompletedAt)) return id;
   }
-  return "link";
+  return null;
 }

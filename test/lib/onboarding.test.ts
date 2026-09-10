@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stepIds, stepIndex, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor, siteHost } from "@/lib/onboarding";
+import { stepIds, stepIndex, displayStep, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor, siteHost, splitSubdomain, rehomeSubdomain, dnsRecordName } from "@/lib/onboarding";
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 
@@ -31,8 +31,9 @@ const checks = (over: Partial<ProductChecks> = {}): ProductChecks => ({
 });
 
 describe("stepIds", () => {
-  it("has nine steps when email is required", () => {
-    expect(stepIds(true)).toHaveLength(9);
+  it("has eight steps when email is required, the finished screen not being one", () => {
+    expect(stepIds(true)).toHaveLength(8);
+    expect(stepIds(true)).not.toContain("link");
   });
   it("drops both email steps when the instance prints emails", () => {
     expect(stepIds(false)).not.toContain("email-key");
@@ -76,11 +77,6 @@ describe("stepStates", () => {
     expect(full.find((s) => s.id === "subdomain")?.state).toBe("done");
   });
 
-  it("link is done once onboarding was completed", () => {
-    const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: new Date(), current: "link" });
-    expect(states.find((s) => s.id === "link")?.state).toBe("done");
-  });
-
   it("stays current even once its own check has passed", () => {
     const states = stepStates({
       setup: setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }),
@@ -91,9 +87,51 @@ describe("stepStates", () => {
     expect(states.find((s) => s.id === "stripe-key")?.state).toBe("current");
   });
 
+  it("keeps finished steps finished when the user navigates back to an earlier one", () => {
+    // The trap: standing on subdomain used to demote every completed step
+    // after it to "upcoming", which the rail renders grey and unclickable.
+    const states = stepStates({
+      setup: setup({
+        stripeConnected: true,
+        stripeKeyStored: true,
+        stripeWebhookStored: true,
+        emailConnected: true,
+        firstProgramSlug: "standard",
+        trackingStatus: "verified",
+      }),
+      checks: checks({
+        stripe: { key: ok, webhook: ok },
+        email: { key: ok, domain: ok },
+        tracking: { script: ok },
+      }),
+      onboardingCompletedAt: null,
+      current: "subdomain",
+    });
+    for (const id of ["stripe-key", "stripe-webhook", "email-key", "email-domain", "terms", "tracking"]) {
+      expect(states.find((s) => s.id === id)?.state, id).toBe("done");
+    }
+  });
+
+  it("a step that was walked past but never confirmed reads as waiting, not upcoming", () => {
+    const states = stepStates({
+      setup: setup({ stripeKeyStored: true }),
+      checks: checks(),
+      onboardingCompletedAt: null,
+      current: "terms",
+    });
+    expect(states.find((s) => s.id === "stripe-webhook")?.state).toBe("waiting");
+  });
+
   it("product stays current while the user is on it", () => {
     const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: null, current: "product" });
     expect(states.find((s) => s.id === "product")?.state).toBe("current");
+  });
+});
+
+describe("displayStep", () => {
+  it("counts the two rows the rail already shows as ticked", () => {
+    expect(displayStep("product", true)).toEqual({ index: 3, total: 10 });
+    expect(displayStep("subdomain", false)).toEqual({ index: 4, total: 8 });
   });
 });
 
@@ -109,7 +147,7 @@ describe("navigation", () => {
     expect(nextStep("stripe-webhook", true)).toBe("email-key");
     expect(nextStep("stripe-webhook", false)).toBe("terms");
     expect(previousStep("terms", false)).toBe("stripe-webhook");
-    expect(nextStep("link", true)).toBeNull();
+    expect(nextStep("tracking", true)).toBeNull();
     expect(previousStep("product", true)).toBeNull();
   });
 
@@ -130,10 +168,10 @@ describe("resumeStep", () => {
     expect(resumeStep(setup({ stripeKeyStored: true, stripeWebhookStored: false }), null)).toBe("stripe-webhook");
   });
   it("lands on the link when everything is stored but the owner never saw it", () => {
-    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBe("link");
+    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBeNull();
   });
   it("lands on the link when email is not required and the rest is stored", () => {
-    expect(resumeStep(setup({ emailRequired: false, stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBe("link");
+    expect(resumeStep(setup({ emailRequired: false, stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBeNull();
   });
 });
 
@@ -158,7 +196,6 @@ describe("backToDashboardHref", () => {
 describe("checkSectionFor", () => {
   it("names the one group of checks the step's screen shows", () => {
     expect(checkSectionFor("subdomain")).toBe("dns");
-    expect(checkSectionFor("link")).toBe("dns");
     expect(checkSectionFor("stripe-key")).toBe("stripe");
     expect(checkSectionFor("stripe-webhook")).toBe("stripe");
     expect(checkSectionFor("email-key")).toBe("email");
@@ -173,5 +210,62 @@ describe("siteHost", () => {
   it("is the hostname, or the raw address when it cannot be read", () => {
     expect(siteHost("https://www.instantgradient.com/pricing")).toBe("www.instantgradient.com");
     expect(siteHost("instantgradient.com")).toBe("instantgradient.com");
+  });
+});
+
+describe("splitSubdomain", () => {
+  it("splits the label a user may change from the root they may not", () => {
+    expect(splitSubdomain("affiliates.instantgradient.com", "https://instantgradient.com")).toEqual({
+      prefix: "affiliates",
+      suffix: ".instantgradient.com",
+    });
+  });
+
+  it("ignores www on the website when matching the root", () => {
+    expect(splitSubdomain("partners.mokkit.co", "https://www.mokkit.co")).toEqual({
+      prefix: "partners",
+      suffix: ".mokkit.co",
+    });
+  });
+
+  it("refuses to split an address that is not under the product's own site", () => {
+    expect(splitSubdomain("affiliates.somewhereelse.com", "https://instantgradient.com")).toBeNull();
+    expect(splitSubdomain("localhost:3600", "http://localhost:3600")).toBeNull();
+  });
+});
+
+describe("dnsRecordName", () => {
+  it("keeps the middle labels when the site is on a subdomain", () => {
+    // The zone is mokkit.co, so Cloudflare wants affiliates.dev, and the
+    // prefix alone would create affiliates.mokkit.co instead.
+    expect(dnsRecordName("affiliates.dev.mokkit.co")).toBe("affiliates.dev");
+  });
+
+  it("is just the prefix on a bare domain", () => {
+    expect(dnsRecordName("go.mokkit.co")).toBe("go");
+  });
+
+  it("handles a public suffix without a suffix list", () => {
+    expect(dnsRecordName("go.example.co.uk")).toBe("go");
+  });
+
+  it("returns the whole name when there is no zone to strip", () => {
+    expect(dnsRecordName("mokkit.co")).toBe("mokkit.co");
+  });
+});
+
+describe("rehomeSubdomain", () => {
+  it("carries a chosen label onto the new site when the website is corrected", () => {
+    expect(rehomeSubdomain("partners.instantgradient.com", "https://instantgradient.com", "https://mokkit.co")).toBe(
+      "partners.mokkit.co"
+    );
+  });
+
+  it("falls back to the default label when there was none to carry", () => {
+    expect(rehomeSubdomain("localhost:3600", "http://localhost:3600", "https://mokkit.co")).toBe("affiliates.mokkit.co");
+  });
+
+  it("leaves the address alone when the new website yields nothing usable", () => {
+    expect(rehomeSubdomain("affiliates.mokkit.co", "https://mokkit.co", "not a url")).toBe("affiliates.mokkit.co");
   });
 });
