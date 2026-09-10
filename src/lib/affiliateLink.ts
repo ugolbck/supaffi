@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import type { CurrencyTotal } from "@/lib/analytics";
 import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
+import { validateCode } from "@/lib/linkCode";
 
 export type AffiliateLinkRow = {
   id: string;
@@ -41,8 +42,6 @@ export async function listLinks(affiliateId: string): Promise<AffiliateLinkRow[]
  */
 export const MAX_LINKS_PER_AFFILIATE = 20;
 
-const CODE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
 export type LinkInput = { code: string; destinationPath: string };
 
 // Shaped like validateSignupInput: both arms carry `error`, so a plain
@@ -56,13 +55,9 @@ export type ValidatedLink = { code: string; destinationPath: string | null; erro
 export function validateLinkInput(
   input: LinkInput
 ): ValidatedLink | { code?: undefined; destinationPath?: undefined; error: string } {
-  const code = input.code.trim().toLowerCase();
-  if (code.length < 2 || code.length > 30) {
-    return { error: "A code is between 2 and 30 characters." };
-  }
-  if (!CODE_PATTERN.test(code)) {
-    return { error: "Use lowercase letters, numbers and hyphens, with no hyphen at either end." };
-  }
+  const validatedCode = validateCode(input.code);
+  if (validatedCode.error !== null) return { error: validatedCode.error };
+  const code = validatedCode.code;
 
   const raw = input.destinationPath.trim();
   if (raw === "") return { code, destinationPath: null, error: null };

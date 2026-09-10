@@ -32,8 +32,15 @@ export function recurringTerm(terms: SignupTerms): { value: string; hint: string
   if (terms.durationType === "FOREVER") {
     return { value: "Every payment", hint: "for as long as they stay" };
   }
-  if (terms.durationType === "FIXED_MONTHS" && terms.durationMonths) {
-    return { value: plural(terms.durationMonths, "month"), hint: "of everything they pay" };
+  if (terms.durationType === "FIXED_MONTHS") {
+    // `durationMonths` is only ever null when durationType isn't
+    // FIXED_MONTHS (see prisma/schema.prisma), so this is defensive, not
+    // expected. Either way, a FIXED_MONTHS program must never fall through
+    // to the one-time wording below, which reads as a weaker plan than it is.
+    if (terms.durationMonths) {
+      return { value: plural(terms.durationMonths, "month"), hint: "of everything they pay" };
+    }
+    return { value: "For a set period", hint: "of everything they pay" };
   }
   return { value: "First payment", hint: "one commission per customer" };
 }

@@ -13,13 +13,29 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * Escapes only the character that could break out of a double-quoted HTML
+ * attribute. Not full HTML-escaping: `&` is left alone on purpose, so a
+ * query string (`?token=abc&ref=1`) still reaches the link verbatim, which
+ * is what makes it work. Every caller in this codebase builds `href` from
+ * trusted, already-encoded URLs, but this module is a general shell for
+ * whatever mail comes next, so the one genuinely dangerous character is
+ * escaped defensively rather than assumed away.
+ */
+function escapeHrefAttribute(value: string): string {
+  return value.replace(/"/g, "&quot;");
+}
+
 const FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
 
 export type EmailShellInput = {
   merchantName: string;
   heading: string;
   body: string;
-  /** `href` is emitted verbatim, not escaped: it is a URL, not display text. */
+  /**
+   * A URL, not display text: emitted verbatim except for a double quote,
+   * which is escaped so it cannot end the `href` attribute early.
+   */
   action?: { label: string; href: string };
 };
 
@@ -39,7 +55,7 @@ export function emailShell(input: EmailShellInput): string {
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 28px 0 0; border-collapse: collapse;">
                 <tr>
                   <td bgcolor="#232dbe" style="background-color: #232dbe; border-radius: 10px;">
-                    <a href="${input.action.href}" style="display: inline-block; padding: 11px 22px; font-family: ${FONT_STACK}; font-size: 14px; font-weight: 600; color: #f2f4fe; text-decoration: none; border-radius: 10px;">${escapeHtml(input.action.label)}</a>
+                    <a href="${escapeHrefAttribute(input.action.href)}" style="display: inline-block; padding: 11px 22px; font-family: ${FONT_STACK}; font-size: 14px; font-weight: 600; color: #f2f4fe; text-decoration: none; border-radius: 10px;">${escapeHtml(input.action.label)}</a>
                   </td>
                 </tr>
               </table>`

@@ -14,6 +14,18 @@ describe("emailShell", () => {
     expect(html).toContain(`href="${href}"`);
   });
 
+  it("escapes a double quote in the href so it cannot end the attribute early", () => {
+    const html = emailShell({
+      merchantName: "InstantGradient",
+      heading: "Log in to your affiliate account",
+      body: "Body text.",
+      action: { label: "Log in", href: `https://example.com/verify?x="><script>` },
+    });
+
+    expect(html).toContain(`href="https://example.com/verify?x=&quot;><script>"`);
+    expect(html).not.toContain(`href="https://example.com/verify?x="`);
+  });
+
   it("escapes the merchant name", () => {
     const html = emailShell({
       merchantName: `Bob's <Widgets> & "Co"`,
