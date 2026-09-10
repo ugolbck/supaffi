@@ -3,13 +3,15 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getStripeKeyKind } from "@/lib/merchant";
+import { getProductSetup } from "@/lib/productSetup";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { resendDomainsUrl } from "@/lib/checks/email";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
-import { webhookCreateUrl } from "@/lib/stripeWebhookLink";
 import { Button } from "@/components/ui/button";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
-import { Light } from "@/components/dashboard/Light";
+import { CheckList, checkState, type CheckRow } from "@/components/onboarding/CheckList";
+import { isDevInstance } from "@/lib/instanceMode";
+import { isLocalDomain } from "@/lib/url";
 import { ProductForm } from "./ProductForm";
 import { ConnectionSheet } from "./ConnectionSheet";
 import { DeleteProduct } from "./DeleteProduct";
@@ -47,35 +49,6 @@ const KEY_LABEL = {
   secret: "Full account key",
 } as const;
 
-function ConnectionRow({
-  label,
-  detail,
-  children,
-}: {
-  label: string;
-  detail: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[7rem_1fr] sm:gap-4">
-      <div className="flex flex-col gap-0.5">
-        <span className="text-sm">{label}</span>
-        <span className="text-xs text-muted-foreground">{detail}</span>
-      </div>
-      <div className="flex flex-col gap-2">{children}</div>
-    </div>
-  );
-}
-
-function CheckLine({ children, action }: { children: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="flex min-h-7 items-center justify-between gap-4">
-      {children}
-      {action}
-    </div>
-  );
-}
-
 export default async function SettingsPage({
   params,
   searchParams,
@@ -93,24 +66,94 @@ export default async function SettingsPage({
   if (!merchant) notFound();
 
   const fresh = freshSection(query.fresh);
-  const [checks, keyKind] = await Promise.all([
+  const [checks, keyKind, setup] = await Promise.all([
     runProductChecks(ownerId, merchant.id, fresh ? { fresh: new Set([fresh]) } : {}),
     getStripeKeyKind(ownerId, merchant.id),
+    getProductSetup(ownerId, merchant.id),
   ]);
+  const local = isDevInstance() || isLocalDomain(merchant.domain);
 
   const productRef = { id: merchant.id, slug: merchant.slug };
   const settingsHref = `/dashboard/products/${merchant.slug}/settings`;
 
-  const replaceLink = (which: string, label: string) => (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="cursor-pointer"
-      render={<Link href={`${settingsHref}?replace=${which}`} />}
-    >
-      {label}
+  const replaceLink = (which: string) => (
+    <Button variant="secondary" size="sm" render={<Link href={`${settingsHref}?replace=${which}`} />}>
+      Replace
     </Button>
   );
+
+  // Every row says what is true right now, in that order: connected, still
+  // being checked, or wrong. "Key works" sitting next to an amber ring was
+  // the label of a check, not a statement about the key, and read as either.
+  const stripeRows: CheckRow[] = [
+    {
+      id: "stripe-key",
+      state: !setup.stripeKeyStored ? "pending" : checks.stripe.key.ok ? "ok" : "failed",
+      pending: "No Stripe key yet",
+      passed: "Connected to Stripe",
+      failed: "Stripe rejected the key",
+      hint: "Replace it with a new one.",
+      action: replaceLink("stripe-key"),
+    },
+    {
+      id: "stripe-webhook",
+      state: !setup.stripeWebhookStored ? "pending" : checks.stripe.webhook.ok ? "ok" : "pending",
+      pending: setup.stripeWebhookStored ? "Waiting for the first event from Stripe" : "No webhook yet",
+      passed: "Receiving events from Stripe",
+      action: replaceLink("stripe-webhook"),
+    },
+  ];
+  const emailRows: CheckRow[] = [
+    {
+      id: "email-key",
+      state: !setup.emailConnected ? "pending" : checks.email.key.ok ? "ok" : "failed",
+      pending: "No Resend key yet",
+      passed: "Connected to Resend",
+      failed: "Resend rejected the key",
+      hint: "Replace it with a new one.",
+      action: replaceLink("email-key"),
+    },
+    {
+      id: "email-domain",
+      state: !setup.emailConnected
+        ? "pending"
+        : checkState(checks.email.domain, (detail) => detail.startsWith("Add ") || detail.startsWith("Added, ")),
+      pending: setup.emailConnected ? `Waiting for Resend to verify ${merchant.domain}` : "No sending domain yet",
+      passed: `Sending from ${merchant.domain}`,
+      failed: checks.email.domain.detail,
+      hint: "Open Resend and check the record it asked for.",
+      action: (
+        <Button variant="secondary" size="sm" render={<a href={resendDomainsUrl()} target="_blank" rel="noreferrer" />}>
+          Open Resend
+        </Button>
+      ),
+    },
+  ];
+  const dnsRows: CheckRow[] = local
+    ? []
+    : [
+        {
+          id: "dns",
+          state: checkState(checks.dns.resolves, (detail) => detail.startsWith("No record")),
+          pending: "Waiting for your DNS to update",
+          passed: "Your subdomain points here",
+          failed: checks.dns.resolves.detail,
+          hint: "Check the name and the address on the record above.",
+        },
+        {
+          id: "cert",
+          state:
+            checks.dns.https.ok && checks.dns.certificate.ok
+              ? "ok"
+              : checks.dns.https.ok
+                ? "pending"
+                : checkState(checks.dns.https, (detail) => detail.startsWith("No record")),
+          pending: "Securing it with HTTPS",
+          passed: "Secured with HTTPS",
+          failed: checks.dns.https.detail,
+          hint: "Make sure your site answers over https, then check again.",
+        },
+      ];
 
   const sheets = {
     "stripe-key": {
@@ -125,8 +168,8 @@ export default async function SettingsPage({
     "stripe-webhook": {
       title: "Replace the signing secret",
       lede: "Stripe signs every event it sends with this.",
-      createLabel: "Create webhook in Stripe",
-      createUrl: webhookCreateUrl(merchant.domain),
+      createLabel: "Open Stripe webhooks",
+      createUrl: "https://dashboard.stripe.com/webhooks",
       fieldLabel: "Paste the signing secret",
       placeholder: "whsec_...",
       action: replaceWebhookSecretAction.bind(null, productRef),
@@ -159,61 +202,38 @@ export default async function SettingsPage({
             domain: merchant.domain,
             websiteUrl: merchant.websiteUrl,
           }}
-          lights={
-            <>
-              <Light result={checks.dns.resolves} label="Resolves" />
-              <Light result={checks.dns.https} label="HTTPS" />
-            </>
-          }
+          lights={dnsRows.length > 0 ? <CheckList rows={dnsRows} /> : null}
         />
       </Section>
 
-      <Section title="Connections">
-        <div className="flex flex-col gap-5">
-          <ConnectionRow
-            label="Stripe"
-            detail={keyKind ? KEY_LABEL[keyKind] : "Not connected"}
-          >
-            <CheckLine action={replaceLink("stripe-key", "Replace")}>
-              <Light result={checks.stripe.key} label="Key works" />
-            </CheckLine>
-            <CheckLine action={replaceLink("stripe-webhook", "Replace")}>
-              <Light result={checks.stripe.webhook} label="Stripe is sending events" />
-            </CheckLine>
-            {keyKind === "secret" && (
-              <p className="text-xs text-muted-foreground">
-                This is a full account key. A restricted key is safer.{" "}
-                <a
-                  className="cursor-pointer underline"
-                  href={restrictedKeyUrl(merchant.name)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Create one in Stripe
-                </a>
-              </p>
-            )}
-          </ConnectionRow>
-
-          <ConnectionRow label="Email" detail="Resend">
-            <CheckLine action={replaceLink("email-key", "Replace")}>
-              <Light result={checks.email.key} label="Key works" />
-            </CheckLine>
-            <CheckLine
-              action={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="cursor-pointer"
-                  render={<a href={resendDomainsUrl()} target="_blank" rel="noreferrer" />}
-                >
-                  Open Resend
-                </Button>
-              }
-            >
-              <Light result={checks.email.domain} label="Sending domain verified" />
-            </CheckLine>
-          </ConnectionRow>
+      <Section title="Connections" flush>
+        <div className="divide-y divide-neutral-200">
+          <div className="grid grid-cols-[7rem_1fr] gap-4 px-5 py-4">
+            <div className="flex flex-col gap-0.5 pt-3">
+              <span className="text-sm">Stripe</span>
+              <span className="text-xs text-muted-foreground">{keyKind ? KEY_LABEL[keyKind] : "Not connected"}</span>
+            </div>
+            <div className="rounded-(--radius) border border-neutral-200 bg-neutral-50">
+              <CheckList rows={stripeRows} />
+            </div>
+          </div>
+          {keyKind === "secret" && (
+            <p className="px-5 py-3 text-xs text-muted-foreground">
+              This is a full account key. A restricted key is safer.{" "}
+              <a className="cursor-pointer underline" href={restrictedKeyUrl(merchant.name)} target="_blank" rel="noreferrer">
+                Create one in Stripe
+              </a>
+            </p>
+          )}
+          <div className="grid grid-cols-[7rem_1fr] gap-4 px-5 py-4">
+            <div className="flex flex-col gap-0.5 pt-3">
+              <span className="text-sm">Email</span>
+              <span className="text-xs text-muted-foreground">Resend</span>
+            </div>
+            <div className="rounded-(--radius) border border-neutral-200 bg-neutral-50">
+              <CheckList rows={emailRows} />
+            </div>
+          </div>
         </div>
       </Section>
 

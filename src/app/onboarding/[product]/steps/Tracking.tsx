@@ -1,35 +1,24 @@
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CopyLinkButton } from "@/components/CopyLinkButton";
-import { developerBrief } from "@/lib/developerBrief";
+import { CheckList } from "@/components/onboarding/CheckList";
+import { CodeBlock } from "@/components/onboarding/CodeBlock";
+import { StepShell, StepLabel } from "@/components/onboarding/StepShell";
+import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";
+import { trackingScriptPrompt, checkoutPrompt } from "@/lib/integrationPrompt";
 import { REFERRAL_COOKIE, REFERRAL_METADATA_KEY } from "@/lib/referral";
-import { nextStep, siteHost, stepIndex, stepPath } from "@/lib/onboarding";
+import { displayStep, siteHost } from "@/lib/onboarding";
 import { originFor } from "@/lib/url";
-import { StepFrame } from "../../StepFrame";
-import { Light } from "@/components/dashboard/Light";
+import { FinishedModal } from "@/components/onboarding/FinishedModal";
+import { listProgramsForMerchant } from "@/lib/program";
 import { AutoRefresh } from "../../AutoRefresh";
+import { finishOnboardingAction } from "../actions";
 import type { Ctx } from "../checks";
 
-function Snippet({ code }: { code: string }) {
-  return (
-    <div className="flex flex-col gap-2 rounded-(--radius-md) border border-border/70 bg-muted/40 p-3">
-      <pre className="overflow-x-auto font-mono text-xs leading-relaxed">
-        <code>{code}</code>
-      </pre>
-      <div className="flex justify-end">
-        <CopyLinkButton link={code} size="sm" label="Copy" />
-      </div>
-    </div>
-  );
-}
-
-export function Tracking({ ctx }: { ctx: Ctx }) {
+export async function Tracking({ ctx }: { ctx: Ctx }) {
   const { merchant, checks } = ctx;
   // originFor, not a hardcoded https, so the snippet is a working URL on a
-  // local instance too. Same builder as the dashboard's tracking screen.
+  // local instance too.
   const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
-  const checkoutSnippet = `// Wherever you create the Checkout Session, server side.
-const referralToken = cookies.get("${REFERRAL_COOKIE}");
+  const checkoutSnippet = `const referralToken = cookies.get("${REFERRAL_COOKIE}");
 
 await stripe.checkout.sessions.create({
   // ...your existing options
@@ -38,41 +27,56 @@ await stripe.checkout.sessions.create({
     ...(referralToken && { ${REFERRAL_METADATA_KEY}: referralToken }),
   },
 });`;
-  const brief = developerBrief({
-    productName: merchant.name,
-    websiteUrl: merchant.websiteUrl,
-    scriptTag,
-    checkoutSnippet,
-  });
-  const next = nextStep("tracking", ctx.emailRequired)!;
+  const site = siteHost(merchant.websiteUrl);
+  const found = checks.tracking.script.ok;
+  // Finishing happens on this screen, so the reward does too. The step stays
+  // rendered behind the glass rather than being replaced by a new page.
+  const [program] = ctx.onboardingCompletedAt ? await listProgramsForMerchant(ctx.ownerId, merchant.id) : [];
 
   return (
-    <StepFrame
-      index={stepIndex("tracking", ctx.emailRequired)}
-      total={ctx.total}
+    <StepShell
+      step={displayStep("tracking", ctx.emailRequired)}
       title="Put the tracking script on your site"
+      lede="Paste this in the head of every page an affiliate link can land on."
+      action={
+        <form action={finishOnboardingAction.bind(null, { id: merchant.id, slug: merchant.slug })}>
+          <Button type="submit" size="lg">
+            Finish
+          </Button>
+        </form>
+      }
     >
-      <AutoRefresh active={!checks.tracking.script.ok} />
-      <p className="text-sm">Paste this in the head of every page an affiliate link can land on.</p>
-      <Snippet code={scriptTag} />
-      <div className="rounded-(--radius-md) border border-border/70 p-4">
-        <Light result={checks.tracking.script} label={`Script found on ${siteHost(merchant.websiteUrl)}`} />
-      </div>
+      <AutoRefresh active={!found} />
+      <CodeBlock
+        title="Tracking script"
+        code={scriptTag}
+        prompt={trackingScriptPrompt({ websiteUrl: merchant.websiteUrl, scriptTag })}
+      />
+      <TaskCard>
+        <TaskCardSection sunken>
+          <CheckList
+            rows={[
+              {
+                id: "script",
+                state: found ? "ok" : "failed",
+                pending: `Looking for the script on ${site}`,
+                passed: `Script is live on ${site}`,
+                failed: checks.tracking.script.detail,
+                hint: "Paste the script above into the page, then check again.",
+              },
+            ]}
+          />
+        </TaskCardSection>
+      </TaskCard>
 
-      <p className="text-sm">Then, wherever you create the Stripe Checkout session.</p>
-      <Snippet code={checkoutSnippet} />
-      <p className="-mt-3 text-xs text-muted-foreground">Confirms itself on the first sale.</p>
-
-      <div className="flex items-center gap-3 rounded-(--radius-md) border border-dashed border-border p-4">
-        <p className="flex-1 text-sm">Not the person who touches the code?</p>
-        <CopyLinkButton link={brief} size="sm" label="Copy a brief for a developer" />
-      </div>
-
-      <div>
-        <Button size="lg" className="cursor-pointer" render={<Link href={stepPath(merchant.slug, next)} />}>
-          Continue
-        </Button>
-      </div>
-    </StepFrame>
+      <StepLabel>Then, wherever you create the Stripe checkout session.</StepLabel>
+      <CodeBlock title="Checkout session" code={checkoutSnippet} prompt={checkoutPrompt({ checkoutSnippet })} />
+      {program && (
+        <FinishedModal
+          link={`${originFor(merchant.domain)}/affiliates/signup/${program.slug}`}
+          dashboardHref={`/dashboard/products/${merchant.slug}`}
+        />
+      )}
+    </StepShell>
   );
 }

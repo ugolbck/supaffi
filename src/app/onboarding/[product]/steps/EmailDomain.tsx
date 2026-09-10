@@ -1,36 +1,63 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import { CheckList, checkState } from "@/components/onboarding/CheckList";
+import { StepShell } from "@/components/onboarding/StepShell";
+import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { resendDomainsUrl } from "@/lib/checks/email";
-import { nextStep, stepPath, stepIndex } from "@/lib/onboarding";
-import { StepFrame } from "../../StepFrame";
-import { Light } from "@/components/dashboard/Light";
+import { displayStep, nextStep, stepPath } from "@/lib/onboarding";
 import { AutoRefresh } from "../../AutoRefresh";
 import type { Ctx } from "../checks";
 
 export function EmailDomain({ ctx }: { ctx: Ctx }) {
   const { merchant, checks } = ctx;
   const next = nextStep("email-domain", ctx.emailRequired)!;
+  const verified = checks.email.domain.ok;
+
   return (
-    <StepFrame
-      index={stepIndex("email-domain", ctx.emailRequired)}
-      total={ctx.total}
+    <StepShell
+      step={displayStep("email-domain", ctx.emailRequired)}
       title="Let Resend send from your domain"
-      lede={`Emails come from affiliates@${merchant.domain}. Resend needs to know that domain is yours.`}
-    >
-      <AutoRefresh active={!checks.email.domain.ok} />
-      <Button variant="secondary" className="w-fit cursor-pointer" render={<a href={resendDomainsUrl()} target="_blank" rel="noreferrer" />}>
-        Add domain in Resend
-      </Button>
-      <p className="-mt-3 text-xs text-muted-foreground">Resend has its own one click for Cloudflare.</p>
-      <div className="rounded-(--radius-md) border border-border/70 p-4">
-        <Light result={checks.email.domain} label="Domain verified in Resend" />
-      </div>
-      <div className="flex items-center gap-4">
-        <Button size="lg" className="cursor-pointer" render={<Link href={stepPath(merchant.slug, next)} />}>
+      lede={`Emails to your affiliates come from affiliates@${merchant.domain}.`}
+      action={
+        <Button size="lg" render={<Link href={stepPath(merchant.slug, next)} />}>
           Continue
         </Button>
-        {!checks.email.domain.ok && <span className="text-xs text-muted-foreground">Checks again every 15 seconds</span>}
-      </div>
-    </StepFrame>
+      }
+    >
+      <AutoRefresh active={!verified} />
+      <TaskCard>
+        <TaskCardHeader
+          title="Add the domain in Resend"
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              render={<a href={resendDomainsUrl()} target="_blank" rel="noreferrer" />}
+            >
+              <Image src="/logos/resend.svg" alt="" width={16} height={16} className="size-4" />
+              Open Resend
+            </Button>
+          }
+        />
+        <TaskCardSection sunken>
+          <CheckList
+            rows={[
+              {
+                id: "domain",
+                state: checkState(
+                  checks.email.domain,
+                  (detail) => detail.startsWith("Add ") || detail.startsWith("Added, ")
+                ),
+                pending: `Waiting for Resend to verify ${merchant.domain}`,
+                passed: `Resend can send from ${merchant.domain}`,
+                failed: checks.email.domain.detail,
+                hint: "Open Resend and check the record it asked for.",
+              },
+            ]}
+          />
+        </TaskCardSection>
+      </TaskCard>
+    </StepShell>
   );
 }
