@@ -95,22 +95,41 @@ async function resolvePaymentReferenceId(stripe: Stripe, charge: Stripe.Charge):
   return paymentIntentId;
 }
 
-// Claws back only what the refund actually took: on a partial refund that is
-// the difference between the original commission and what survives, on a full
-// refund the whole thing.
+// Claws back only what the refund actually took, and only the part that has
+// not been clawed back already.
+//
+// The basis is what the affiliate was paid, `amount` on the PAID row, not the
+// gross: a commission reduced by an earlier partial refund was paid out at the
+// reduced figure, so charging the gross back would take more than they ever
+// received.
+//
+// `charge.amount_refunded` is cumulative, so the total owed back is recomputed
+// from scratch on every delivery and only the difference against the existing
+// adjustment rows is written. Two partial refunds therefore stop overlapping,
+// and a redelivered event writes nothing at all.
 async function createClawbackAdjustment(
   original: Commission,
   outcome: ReturnType<typeof prorateCommission>
 ): Promise<void> {
-  const gross = Number(original.grossAmount ?? original.amount);
-  const clawedBack = outcome.void ? gross : Math.round((gross - outcome.amount) * 100) / 100;
+  const paid = Number(original.amount);
+  const owed = outcome.void ? paid : Math.round((paid - outcome.amount) * 100) / 100;
+
+  const existing = await db.commission.findMany({
+    where: { adjustsCommissionId: original.id },
+    select: { amount: true },
+  });
+  // Adjustment rows carry a negative amount; the magnitude is what it took back.
+  const alreadyClawedBack = existing.reduce((total, row) => total + Math.abs(Number(row.amount)), 0);
+  const delta = Math.round((owed - alreadyClawedBack) * 100) / 100;
+  if (delta <= 0) return;
+
   await db.commission.create({
     data: {
       affiliateId: original.affiliateId,
       clickId: original.clickId,
       adjustsCommissionId: original.id,
       stripePaymentRef: null, // not tied to a new payment
-      amount: new Prisma.Decimal(clawedBack).negated(),
+      amount: new Prisma.Decimal(delta).negated(),
       currency: original.currency,
       // Ready to net against the Affiliate's next payout immediately, no
       // Holding Period — this isn't new money that itself needs time to
