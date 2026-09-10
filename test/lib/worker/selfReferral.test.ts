@@ -20,14 +20,14 @@ describe("checkSelfReferralEmail", () => {
   it("flags a match, keyed with the raw buyer email and the affiliate's stored email", () => {
     const affiliate = affiliateFixture({ email: "sarah@example.com" });
     expect(checkSelfReferralEmail(affiliate, "sarah@example.com")).toBe(
-      "email:sarah@example.com=sarah@example.com"
+      "email:sarah@example.com sarah@example.com"
     );
   });
 
   it("matches case-insensitively but keeps the raw buyer email in the token", () => {
     const affiliate = affiliateFixture({ email: "sarah@example.com" });
     expect(checkSelfReferralEmail(affiliate, "Sarah@Example.com")).toBe(
-      "email:Sarah@Example.com=sarah@example.com"
+      "email:Sarah@Example.com sarah@example.com"
     );
   });
 

@@ -41,8 +41,11 @@ export function flagReasonText(reason: string | null): { title: string; evidence
   }
 
   if (reason.startsWith("email:")) {
-    const [buyer, affiliate] = reason.slice("email:".length).split("=");
-    if (buyer && affiliate) {
+    const rest = reason.slice("email:".length);
+    const spaceAt = rest.indexOf(" ");
+    if (spaceAt > 0 && spaceAt < rest.length - 1) {
+      const buyer = rest.slice(0, spaceAt);
+      const affiliate = rest.slice(spaceAt + 1);
       return {
         title: "The buyer used the affiliate's own email address",
         evidence: [`Buyer ${buyer}`, `Affiliate ${affiliate}`],

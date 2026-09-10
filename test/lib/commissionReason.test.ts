@@ -65,9 +65,16 @@ describe("voidReasonText", () => {
 
 describe("flagReasonText", () => {
   it("puts the two addresses side by side", () => {
-    expect(flagReasonText("email:sarah@x.com=sarah@x.com")).toEqual({
+    expect(flagReasonText("email:sarah@x.com sarah@x.com")).toEqual({
       title: "The buyer used the affiliate's own email address",
       evidence: ["Buyer sarah@x.com", "Affiliate sarah@x.com"],
+    });
+  });
+
+  it("keeps both halves intact when the buyer's local part contains an equals sign", () => {
+    expect(flagReasonText("email:john=smith@example.com sarah@x.com")).toEqual({
+      title: "The buyer used the affiliate's own email address",
+      evidence: ["Buyer john=smith@example.com", "Affiliate sarah@x.com"],
     });
   });
 
