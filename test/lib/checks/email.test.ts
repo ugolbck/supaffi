@@ -24,10 +24,12 @@ describe("sendingDomainVerified", () => {
       client([{ name: "affiliates.instantgradient.com", status: "verified" }]));
     expect(result.ok).toBe(true);
   });
-  it("passes when the parent domain is verified", async () => {
+  it("fails when only the parent domain is verified", async () => {
+    // Resend covers the exact domain only; a subdomain has to be added and
+    // verified on its own.
     const result = await sendingDomainVerified("re_x", "affiliates.instantgradient.com",
       client([{ name: "instantgradient.com", status: "verified" }]));
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
   });
   it("fails when the domain is added but pending", async () => {
     const result = await sendingDomainVerified("re_x", "affiliates.instantgradient.com",
@@ -38,7 +40,43 @@ describe("sendingDomainVerified", () => {
   it("fails when the domain is not in Resend at all", async () => {
     const result = await sendingDomainVerified("re_x", "affiliates.instantgradient.com", client([]));
     expect(result.ok).toBe(false);
-    expect(result.detail).toMatch(/not added/i);
+    expect(result.detail).toMatch(/add/i);
+  });
+
+  it("refuses a verified parent domain", async () => {
+    // Resend covers addresses at the exact domain. A subdomain has to be
+    // added and verified on its own, so a parent is not a pass.
+    const result = await sendingDomainVerified(
+      "re_x",
+      "affiliates.dev.mokkit.co",
+      client([{ name: "mokkit.co", status: "verified" }])
+    );
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain("affiliates.dev.mokkit.co");
+  });
+
+  it("passes only on the exact domain", async () => {
+    const result = await sendingDomainVerified(
+      "re_x",
+      "affiliates.dev.mokkit.co",
+      client([{ name: "affiliates.dev.mokkit.co", status: "verified" }])
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("does not depend on which domain Resend lists first", async () => {
+    const both = [
+      { name: "mokkit.co", status: "verified" },
+      { name: "affiliates.dev.mokkit.co", status: "pending" },
+    ];
+    const forwards = await sendingDomainVerified("re_x", "affiliates.dev.mokkit.co", client(both));
+    const backwards = await sendingDomainVerified(
+      "re_x",
+      "affiliates.dev.mokkit.co",
+      client([...both].reverse())
+    );
+    expect(forwards).toEqual(backwards);
+    expect(forwards.ok).toBe(false);
   });
 });
 

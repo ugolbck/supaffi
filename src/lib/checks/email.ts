@@ -33,9 +33,11 @@ export async function resendKeyWorks(
 }
 
 /**
- * Whether Resend will send from affiliates@<domain>. Resend verifies the
- * exact domain or a parent of it, so both count. This step is what makes the
- * magic links deliverable at all; without it every affiliate login fails.
+ * Whether Resend will send from affiliates@<domain>. Resend only covers the
+ * exact domain that was verified; a verified parent does not cover its
+ * subdomains, they have to be added and verified on their own. This step is
+ * what makes the magic links deliverable at all; without it every affiliate
+ * login fails.
  */
 export async function sendingDomainVerified(
   apiKey: string,
@@ -46,9 +48,11 @@ export async function sendingDomainVerified(
     const response = await makeClient(apiKey).domains.list();
     if (response.error) return { ok: false, detail: "Resend says this key is not valid" };
     const domains = response.data?.data ?? [];
-    const match = domains.find((d) => domain === d.name || domain.endsWith(`.${d.name}`));
-    if (!match) return { ok: false, detail: "Not added in Resend yet" };
-    if (match.status !== "verified") return { ok: false, detail: `Added, ${match.status}. Check the records in Resend.` };
+    const match = domains.find((d) => d.name === domain);
+    if (!match) return { ok: false, detail: `Add ${domain} in Resend` };
+    if (match.status !== "verified") {
+      return { ok: false, detail: `Added, ${match.status}. Check the records in Resend.` };
+    }
     return { ok: true, detail: `Verified as ${match.name}` };
   } catch {
     return { ok: false, detail: "Could not reach Resend" };
