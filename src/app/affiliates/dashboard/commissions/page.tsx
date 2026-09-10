@@ -6,8 +6,8 @@ import {
   getAffiliateCommissionTotals,
   type AffiliateCommissionStatus,
 } from "@/lib/affiliate";
-import { PageShell, PageHeader, Band } from "@/components/dashboard/PageGrid";
-import { DashboardCard } from "@/components/dashboard/DashboardCard";
+import { Page, PageTitle, Section } from "@/components/dashboard/Page";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Pagination,
   PaginationContent,
@@ -16,12 +16,17 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { STATUS_LABELS, commissionStateLabel } from "../OverviewCards";
-import { CommissionLedger, type LedgerRow } from "./CommissionLedger";
+import { CommissionLedger, STATUS_LABELS, toLedgerRow, type LedgerRow } from "./CommissionLedger";
+
+/**
+ * Every commission, and why each one is the amount it is.
+ *
+ * The owner's commissions screen minus everything an affiliate cannot do: no
+ * checkboxes, no bulk actions, no flag controls, no payment references. Same
+ * tabs over one ledger, same card, so the two sides read as one product.
+ */
 
 const PAGE_SIZE = 25;
-
-const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
 const STATUSES: readonly AffiliateCommissionStatus[] = ["PENDING", "PAYABLE", "PAID", "VOIDED"];
 
@@ -34,34 +39,6 @@ function sanitizePage(raw: string | undefined): number {
   const n = Math.floor(Number(raw));
   if (!Number.isFinite(n) || n < 1) return 1;
   return Math.min(n, 1_000_000);
-}
-
-function Tile({
-  label,
-  count,
-  href,
-  active,
-}: {
-  label: string;
-  count: number;
-  href: string;
-  active: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`group flex cursor-pointer flex-col gap-1 rounded-(--radius-lg) border px-3.5 py-3 transition-[border-color,background-color] duration-200 ease-[var(--ease-out)] ${
-        active
-          ? "border-primary/60 bg-elevated [background-image:var(--elevated-surface)] shadow-[var(--edge-light),var(--shadow-xs)]"
-          : "border-border/70 bg-card/50 hover:border-border hover:bg-card"
-      }`}
-    >
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <span className="font-heading text-xl leading-none font-semibold tracking-tight tabular-nums">
-        {count}
-      </span>
-    </Link>
-  );
 }
 
 export default async function AffiliateCommissionsPage({
@@ -101,84 +78,86 @@ export default async function AffiliateCommissionsPage({
   }
 
   const allCount = totals.reduce((sum, t) => sum + t.count, 0);
+  const tabs: { label: string; count: number; status: AffiliateCommissionStatus | null }[] = [
+    { label: "All", count: allCount, status: null },
+    ...totals.map((t) => ({ label: STATUS_LABELS[t.status], count: t.count, status: t.status })),
+  ];
 
-  const ledgerRows: LedgerRow[] = rows.map((row) => ({
-    id: row.id,
-    dateLabel: DATE.format(row.createdAt),
-    amount: row.amount,
-    currency: row.currency,
-    status: row.status,
-    linkCode: row.linkCode,
-    isAdjustment: row.isAdjustment,
-    whenLabel: commissionStateLabel(row),
-  }));
+  const ledgerRows: LedgerRow[] = rows.map(toLedgerRow);
+
+  const statusTabs = (
+    <Tabs value={status ?? "all"}>
+      <TabsList variant="line">
+        {tabs.map((tab) => (
+          <TabsTrigger
+            key={tab.label}
+            value={tab.status ?? "all"}
+            render={
+              <Link href={hrefWith({ status: tab.status, page: null })} className="cursor-pointer" />
+            }
+          >
+            {tab.label}
+            <span className="ml-1.5 text-muted-foreground tabular-nums">{tab.count}</span>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
+  );
 
   const firstShown = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const lastShown = Math.min(page * PAGE_SIZE, total);
 
   return (
-    <PageShell>
-      <PageHeader title="Commissions" />
+    <Page>
+      <PageTitle title="Commissions" actions={<div className="hidden md:block">{statusTabs}</div>} />
 
-      <div className="grid shrink-0 grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-        <Tile label="All" count={allCount} href={hrefWith({ status: null })} active={status === null} />
-        {totals.map((t) => (
-          <Tile
-            key={t.status}
-            label={STATUS_LABELS[t.status]}
-            count={t.count}
-            href={hrefWith({ status: t.status })}
-            active={status === t.status}
-          />
-        ))}
-      </div>
+      {/* The same tabs get their own row on a phone, where five of them plus a
+          heading do not fit on one line and would push the page sideways. */}
+      <div className="-mx-8 shrink-0 overflow-x-auto px-8 md:hidden">{statusTabs}</div>
 
-      <Band columns={12}>
-        <DashboardCard
-          title="Ledger"
-          className="lg:col-span-12"
-          bodyPadding={ledgerRows.length === 0}
-          footer={
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground tabular-nums">
-                {total === 0 ? "No results" : `${firstShown}-${lastShown} of ${total}`}
-              </p>
-              {totalPages > 1 && (
-                <Pagination className="mx-0 w-auto justify-end">
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        render={<Link href={hrefWith({ page: String(Math.max(1, page - 1)) })} />}
-                        aria-disabled={page <= 1}
-                      />
-                    </PaginationItem>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                      <PaginationItem key={p}>
-                        <PaginationLink
-                          render={<Link href={hrefWith({ page: String(p) })} />}
-                          isActive={p === page}
-                        >
-                          {p}
-                        </PaginationLink>
-                      </PaginationItem>
-                    ))}
-                    <PaginationItem>
-                      <PaginationNext
-                        render={
-                          <Link href={hrefWith({ page: String(Math.min(totalPages, page + 1)) })} />
-                        }
-                        aria-disabled={page >= totalPages}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              )}
-            </div>
-          }
-        >
-          <CommissionLedger rows={ledgerRows} filtered={status !== null} />
-        </DashboardCard>
-      </Band>
-    </PageShell>
+      {/* Flush and clipped: the rows are the card, and the table scrolls
+          inside it so the page never does. */}
+      <Section flush scroll className="overflow-hidden">
+        <CommissionLedger rows={ledgerRows} filtered={status !== null} />
+      </Section>
+
+      {total > 0 && (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {`${firstShown}-${lastShown} of ${total}`}
+          </p>
+          {totalPages > 1 && (
+            <Pagination className="mx-0 w-auto justify-end">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    render={<Link href={hrefWith({ page: String(Math.max(1, page - 1)) })} />}
+                    aria-disabled={page <= 1}
+                  />
+                </PaginationItem>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <PaginationItem key={p}>
+                    <PaginationLink
+                      render={<Link href={hrefWith({ page: String(p) })} />}
+                      isActive={p === page}
+                    >
+                      {p}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    render={
+                      <Link href={hrefWith({ page: String(Math.min(totalPages, page + 1)) })} />
+                    }
+                    aria-disabled={page >= totalPages}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
+        </div>
+      )}
+    </Page>
   );
 }

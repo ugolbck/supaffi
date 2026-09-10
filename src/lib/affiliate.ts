@@ -125,6 +125,15 @@ export type AffiliateCommissionRow = {
   linkCode: string | null;
   /** A negative clawback row netting against a refund, not new money. */
   isAdjustment: boolean;
+  /**
+   * What this commission was before a partial refund reduced it, and null when
+   * nothing reduced it. The affiliate's ledger shows both figures on a row that
+   * shrank, so it needs the difference, not just the current amount.
+   */
+  grossAmount: string | null;
+  /** Internal token. Only ever rendered through `voidReasonText`. */
+  voidReason: string | null;
+  voidedAt: Date | null;
 };
 
 /**
@@ -161,6 +170,9 @@ export async function listAffiliateCommissions(
         createdAt: true,
         payableAt: true,
         paidAt: true,
+        grossAmount: true,
+        voidReason: true,
+        voidedAt: true,
         adjustsCommissionId: true,
         click: { select: { link: { select: { code: true } } } },
       },
@@ -173,17 +185,26 @@ export async function listAffiliateCommissions(
 
   return {
     total,
-    rows: rows.map((r) => ({
-      id: r.id,
-      currency: r.currency,
-      createdAt: r.createdAt,
-      payableAt: r.payableAt,
-      paidAt: r.paidAt,
-      amount: r.amount.toFixed(2),
-      status: toDisplayStatus(r.status),
-      linkCode: r.click.link?.code ?? null,
-      isAdjustment: r.adjustsCommissionId !== null,
-    })),
+    rows: rows.map((r) => {
+      const amount = r.amount.toFixed(2);
+      const gross = r.grossAmount?.toFixed(2) ?? null;
+      return {
+        id: r.id,
+        currency: r.currency,
+        createdAt: r.createdAt,
+        payableAt: r.payableAt,
+        paidAt: r.paidAt,
+        amount,
+        // Only carried when it actually differs, so a screen can tell "was
+        // reduced" from "was always this" with a single null check.
+        grossAmount: gross !== null && gross !== amount ? gross : null,
+        voidReason: r.voidReason,
+        voidedAt: r.voidedAt,
+        status: toDisplayStatus(r.status),
+        linkCode: r.click.link?.code ?? null,
+        isAdjustment: r.adjustsCommissionId !== null,
+      };
+    }),
   };
 }
 
