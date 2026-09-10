@@ -3,46 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { CheckResult } from "@/lib/checks/dns";
+import type { CheckRow, CheckState } from "./checkRows";
 
-export type CheckState = "pending" | "ok" | "failed";
-
-/**
- * One place for the ternary every call site was repeating: ok is ok, and
- * otherwise `pendingWhen` decides whether the check's own detail describes
- * something that has simply not appeared yet (pending) or an answer that
- * arrived and is wrong (failed). Without this, a wrongly pointed record and
- * one that was never created read as the same pulsing grey line.
- */
-export function checkState(result: CheckResult, pendingWhen: (detail: string) => boolean): CheckState {
-  if (result.ok) return "ok";
-  return pendingWhen(result.detail) ? "pending" : "failed";
-}
-
-/**
- * A check carries one line of copy per state, never one line written in the
- * passed tense and shown in all three.
- *
- * That was the bug worth naming: a grey, still-waiting row that read "Script
- * found on your site" told the user the opposite of the truth, and a red row
- * saying "nothing there yet" could not be told apart from one still working.
- * Waiting says it is waiting, passing says it worked, failing says what is
- * wrong.
- */
-export type CheckRow = {
-  id: string;
-  state: CheckState;
-  /** While we are still looking. */
-  pending: string;
-  /** Once it worked. Confirms, rather than merely naming the check. */
-  passed: string;
-  /** Only when it is definitely wrong, not merely not-yet. */
-  failed?: string;
-  /** What to do about a failure. Never rendered in any other state. */
-  hint?: string;
-  /** Sits at the row's right edge: the one thing you can do about this row. */
-  action?: React.ReactNode;
-};
+// The pure half of this component lives next door, so it can be imported by a
+// server module and by a test without dragging React in. Re-exported here so
+// a call site still has one import for the list and the rows it feeds it.
+export { checkState, dnsCheckRows, dnsPending, emailDomainPending, emailKeyPending, trackingPending } from "./checkRows";
+export type { CheckRow, CheckState } from "./checkRows";
 
 /**
  * Which rows flipped to passing since the last render. Without it, every
@@ -102,12 +69,18 @@ export function CheckList({ rows, onRecheck }: { rows: CheckRow[]; onRecheck?: (
                 className={cn(
                   "text-sm",
                   row.state === "pending" && "text-muted-foreground",
-                  row.state === "ok" && "font-medium text-neutral-900"
+                  // A failure carries the same weight as a pass: the row that
+                  // needs reading should not be the quietest one on the list.
+                  row.state !== "pending" && "font-medium text-neutral-900"
                 )}
               >
                 {row.state === "ok" ? row.passed : row.state === "failed" ? (row.failed ?? row.pending) : row.pending}
               </span>
-              {row.state === "failed" && row.hint && <span className="text-[13px] text-status-danger">{row.hint}</span>}
+              {/* The hint is an instruction, not a second error: the red cross and the
+                  failed line have already said something is wrong. */}
+              {row.state === "failed" && row.hint && (
+                <span className="text-[13px] text-muted-foreground">{row.hint}</span>
+              )}
             </div>
             {row.action && <div className="-my-1 shrink-0">{row.action}</div>}
           </li>

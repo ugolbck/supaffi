@@ -9,7 +9,7 @@ import { resendDomainsUrl } from "@/lib/checks/email";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
 import { Button } from "@/components/ui/button";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
-import { CheckList, checkState, type CheckRow } from "@/components/onboarding/CheckList";
+import { CheckList, checkState, dnsCheckRows, emailDomainPending, type CheckRow } from "@/components/onboarding/CheckList";
 import { isDevInstance } from "@/lib/instanceMode";
 import { isLocalDomain } from "@/lib/url";
 import { ProductForm } from "./ProductForm";
@@ -117,7 +117,7 @@ export default async function SettingsPage({
       id: "email-domain",
       state: !setup.emailConnected
         ? "pending"
-        : checkState(checks.email.domain, (detail) => detail.startsWith("Add ") || detail.startsWith("Added, ")),
+        : checkState(checks.email.domain, emailDomainPending),
       pending: setup.emailConnected ? `Waiting for Resend to verify ${merchant.domain}` : "No sending domain yet",
       passed: `Sending from ${merchant.domain}`,
       failed: checks.email.domain.detail,
@@ -129,31 +129,7 @@ export default async function SettingsPage({
       ),
     },
   ];
-  const dnsRows: CheckRow[] = local
-    ? []
-    : [
-        {
-          id: "dns",
-          state: checkState(checks.dns.resolves, (detail) => detail.startsWith("No record")),
-          pending: "Waiting for your DNS to update",
-          passed: "Your subdomain points here",
-          failed: checks.dns.resolves.detail,
-          hint: "Check the name and the address on the record above.",
-        },
-        {
-          id: "cert",
-          state:
-            checks.dns.https.ok && checks.dns.certificate.ok
-              ? "ok"
-              : checks.dns.https.ok
-                ? "pending"
-                : checkState(checks.dns.https, (detail) => detail.startsWith("No record")),
-          pending: "Securing it with HTTPS",
-          passed: "Secured with HTTPS",
-          failed: checks.dns.https.detail,
-          hint: "Make sure your site answers over https, then check again.",
-        },
-      ];
+  const dnsRows: CheckRow[] = local ? [] : dnsCheckRows(checks.dns);
 
   const sheets = {
     "stripe-key": {

@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CheckList, checkState, type CheckRow } from "@/components/onboarding/CheckList";
+import { CheckList, dnsCheckRows } from "@/components/onboarding/CheckList";
 import { EditableField } from "@/components/onboarding/EditableField";
 import { RecordTable } from "@/components/onboarding/RecordTable";
 import { StepShell } from "@/components/onboarding/StepShell";
@@ -57,29 +57,7 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
 
   const provider = await detectDnsProvider(merchant.domain);
   const hostIp = process.env.SUPAFFI_HOST_IP?.trim() || null;
-  const rows: CheckRow[] = [
-    {
-      id: "dns",
-      state: checkState(checks.dns.resolves, (detail) => detail.startsWith("No record")),
-      pending: "Waiting for your DNS to update",
-      passed: "Your subdomain points here",
-      failed: checks.dns.resolves.detail,
-      hint: "Check the name and the address on the record above.",
-    },
-    {
-      id: "cert",
-      state:
-        checks.dns.https.ok && checks.dns.certificate.ok
-          ? "ok"
-          : checks.dns.https.ok
-            ? "pending"
-            : checkState(checks.dns.https, (detail) => detail.startsWith("No record")),
-      pending: "Securing it with HTTPS",
-      passed: "Secured with HTTPS",
-      failed: checks.dns.https.detail,
-      hint: "Make sure your site answers over https, then check again.",
-    },
-  ];
+  const rows = dnsCheckRows(checks.dns);
   const settled = rows.every((r) => r.state === "ok");
 
   return (
