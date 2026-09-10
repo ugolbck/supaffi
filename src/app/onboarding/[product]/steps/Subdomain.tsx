@@ -12,7 +12,7 @@ import { displayStep, dnsRecordName, nextStep, splitSubdomain, stepPath } from "
 import { isLocalDomain } from "@/lib/url";
 import { isDevInstance } from "@/lib/instanceMode";
 import { AutoRefresh } from "../../AutoRefresh";
-import { updateSubdomainAction } from "../actions";
+import { recheckAction, updateSubdomainAction } from "../actions";
 import type { Ctx } from "../checks";
 
 export async function Subdomain({ ctx }: { ctx: Ctx }) {
@@ -122,7 +122,7 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
           />
         </TaskCardSection>
         <TaskCardSection sunken>
-          <CheckList rows={rows} />
+          <CheckList rows={rows} onRecheck={recheckAction.bind(null, product, "subdomain")} />
         </TaskCardSection>
       </TaskCard>
     </StepShell>

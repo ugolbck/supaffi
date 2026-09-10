@@ -10,11 +10,12 @@ import { originFor } from "@/lib/url";
 import { FinishedModal } from "@/components/onboarding/FinishedModal";
 import { listProgramsForMerchant } from "@/lib/program";
 import { AutoRefresh } from "../../AutoRefresh";
-import { finishOnboardingAction } from "../actions";
+import { finishOnboardingAction, recheckAction } from "../actions";
 import type { Ctx } from "../checks";
 
 export async function Tracking({ ctx }: { ctx: Ctx }) {
   const { merchant, checks } = ctx;
+  const product = { id: merchant.id, slug: merchant.slug };
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
   const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
@@ -65,6 +66,7 @@ await stripe.checkout.sessions.create({
                 hint: "Paste the script above into the page, then check again.",
               },
             ]}
+            onRecheck={recheckAction.bind(null, product, "tracking")}
           />
         </TaskCardSection>
       </TaskCard>

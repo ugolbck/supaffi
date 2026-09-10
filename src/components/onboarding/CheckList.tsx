@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { CheckResult } from "@/lib/checks/dns";
 
@@ -69,36 +70,61 @@ function useJustPassed(rows: CheckRow[]): Set<string> {
   return flipped;
 }
 
-export function CheckList({ rows }: { rows: CheckRow[] }) {
+/**
+ * `onRecheck`, when given, is a server action bound to the product and the
+ * current step, wired as a form action so it works without client JS. It
+ * renders as one row under the list, only while something has not settled:
+ * the page already polls every 15 seconds (`AutoRefresh`), and without this
+ * the only obvious move was to reload, which is exactly the habit not to
+ * teach.
+ */
+export function CheckList({ rows, onRecheck }: { rows: CheckRow[]; onRecheck?: (formData: FormData) => void | Promise<void> }) {
   const justPassed = useJustPassed(rows);
+  // Pending or failed, either way the list is not done: the owner still has
+  // a reason to reach for "check now" rather than reload, whether they are
+  // waiting on DNS or fixing what a failed row told them was wrong.
+  const unsettled = rows.some((row) => row.state !== "ok");
 
   return (
-    <ul className="divide-y divide-neutral-200">
-      {rows.map((row, i) => (
-        <li
-          key={row.id}
-          className={cn("flex items-start gap-3 px-4 py-3", justPassed.has(row.id) && "supaffi-flash")}
-          // Staggered so several rows flipping at once read as a sequence
-          // rather than as one simultaneous blink.
-          style={justPassed.has(row.id) ? { animationDelay: `${i * 60}ms` } : undefined}
+    <div>
+      <ul className="divide-y divide-neutral-200">
+        {rows.map((row, i) => (
+          <li
+            key={row.id}
+            className={cn("flex items-start gap-3 px-4 py-3", justPassed.has(row.id) && "supaffi-flash")}
+            // Staggered so several rows flipping at once read as a sequence
+            // rather than as one simultaneous blink.
+            style={justPassed.has(row.id) ? { animationDelay: `${i * 60}ms` } : undefined}
+          >
+            <Marker state={row.state} />
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span
+                className={cn(
+                  "text-sm",
+                  row.state === "pending" && "text-muted-foreground",
+                  row.state === "ok" && "font-medium text-neutral-900"
+                )}
+              >
+                {row.state === "ok" ? row.passed : row.state === "failed" ? (row.failed ?? row.pending) : row.pending}
+              </span>
+              {row.state === "failed" && row.hint && <span className="text-[13px] text-status-danger">{row.hint}</span>}
+            </div>
+            {row.action && <div className="-my-1 shrink-0">{row.action}</div>}
+          </li>
+        ))}
+      </ul>
+      {unsettled && onRecheck && (
+        <form
+          action={onRecheck}
+          className="flex items-center justify-between gap-3 border-t border-neutral-200 px-4 py-2"
         >
-          <Marker state={row.state} />
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span
-              className={cn(
-                "text-sm",
-                row.state === "pending" && "text-muted-foreground",
-                row.state === "ok" && "font-medium text-neutral-900"
-              )}
-            >
-              {row.state === "ok" ? row.passed : row.state === "failed" ? (row.failed ?? row.pending) : row.pending}
-            </span>
-            {row.state === "failed" && row.hint && <span className="text-[13px] text-status-danger">{row.hint}</span>}
-          </div>
-          {row.action && <div className="-my-1 shrink-0">{row.action}</div>}
-        </li>
-      ))}
-    </ul>
+          <span className="text-[13px] text-muted-foreground">Checking every 15 seconds</span>
+          <Button type="submit" variant="ghost" size="sm">
+            Check now
+          </Button>
+        </form>
+      )}
+    </div>
   );
 }
 

@@ -7,12 +7,14 @@ import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboardi
 import { resendDomainsUrl } from "@/lib/checks/email";
 import { displayStep, nextStep, stepPath } from "@/lib/onboarding";
 import { AutoRefresh } from "../../AutoRefresh";
+import { recheckAction } from "../actions";
 import type { Ctx } from "../checks";
 
 export function EmailDomain({ ctx }: { ctx: Ctx }) {
   const { merchant, checks } = ctx;
+  const product = { id: merchant.id, slug: merchant.slug };
   const next = nextStep("email-domain", ctx.emailRequired)!;
-  const verified = checks.email.domain.ok;
+  const domainState = checkState(checks.email.domain, (detail) => detail.startsWith("Add ") || detail.startsWith("Added, "));
 
   return (
     <StepShell
@@ -25,7 +27,7 @@ export function EmailDomain({ ctx }: { ctx: Ctx }) {
         </Button>
       }
     >
-      <AutoRefresh active={!verified} />
+      <AutoRefresh active={domainState !== "ok"} />
       <TaskCard>
         <TaskCardHeader
           title="Add the domain in Resend"
@@ -45,16 +47,14 @@ export function EmailDomain({ ctx }: { ctx: Ctx }) {
             rows={[
               {
                 id: "domain",
-                state: checkState(
-                  checks.email.domain,
-                  (detail) => detail.startsWith("Add ") || detail.startsWith("Added, ")
-                ),
+                state: domainState,
                 pending: `Waiting for Resend to verify ${merchant.domain}`,
                 passed: `Resend can send from ${merchant.domain}`,
                 failed: checks.email.domain.detail,
                 hint: "Open Resend and check the record it asked for.",
               },
             ]}
+            onRecheck={recheckAction.bind(null, product, "email-domain")}
           />
         </TaskCardSection>
       </TaskCard>
