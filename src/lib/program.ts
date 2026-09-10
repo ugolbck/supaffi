@@ -150,12 +150,31 @@ export async function updateProgram(
 //
 // Looked up by slug: this is the one Program identifier that appears in a
 // link sent to a stranger, and a cuid there reads like a tracking id.
+export type ProgramForSignup = {
+  id: string;
+  name: string;
+  /** Percentage, e.g. 20 for 20%. Decimal is not serialisable to a client component. */
+  defaultCommissionRate: number;
+  commissionDurationType: CommissionDurationType;
+  commissionDurationMonths: number | null;
+  attributionWindowDays: number;
+};
+
 export async function getProgramForSignup(
   merchantId: string,
   programSlug: string
-): Promise<{ id: string; name: string } | null> {
-  return db.program.findFirst({
+): Promise<ProgramForSignup | null> {
+  const program = await db.program.findFirst({
     where: { slug: programSlug, merchantId },
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      defaultCommissionRate: true,
+      commissionDurationType: true,
+      commissionDurationMonths: true,
+      attributionWindowDays: true,
+    },
   });
+  if (!program) return null;
+  return { ...program, defaultCommissionRate: Number(program.defaultCommissionRate) };
 }

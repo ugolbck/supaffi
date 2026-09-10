@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getMerchantByDomain } from "@/lib/merchant";
 import { getProgramForSignup } from "@/lib/program";
 import { createAffiliateSignup } from "./createAffiliateSignup";
-import { SignupForm } from "./SignupForm";
+import { SignupScreen } from "./SignupScreen";
 
 export default async function AffiliateSignupPage({
   params,
@@ -21,8 +21,17 @@ export default async function AffiliateSignupPage({
   const action = createAffiliateSignup.bind(null, programSlug);
 
   return (
-    <main className="mx-auto flex max-w-md flex-col justify-center px-4 py-16">
-      <SignupForm action={action} programName={program.name} merchantName={merchant.name} />
+    <main className="min-h-dvh bg-background px-4 py-14 sm:py-20">
+      <SignupScreen
+        merchantName={merchant.name}
+        terms={{
+          rate: program.defaultCommissionRate,
+          attributionWindowDays: program.attributionWindowDays,
+          durationType: program.commissionDurationType,
+          durationMonths: program.commissionDurationMonths,
+        }}
+        action={action}
+      />
     </main>
   );
 }
