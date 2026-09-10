@@ -7,6 +7,7 @@ import {
   listAffiliatesForMerchant,
   getAffiliateSignals,
   getAffiliateDetails,
+  referralCounts,
   AFFILIATES_PAGE_SIZE,
 } from "@/lib/affiliate";
 import { getProductMetrics } from "@/lib/analytics";
@@ -127,21 +128,40 @@ export default async function AffiliatesPage({
     return search ? `?${search}` : "?";
   }
 
-  const view: AffiliateRowView[] = rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    referralCode: row.referralCode,
-    programName: row.programName,
-    clicks: row.clicks,
-    conversions: row.conversions,
-    earned: money(row.earned),
-    earnedHint: moneyHint(row.earned) ?? null,
-    rate: `${row.commissionRate}%`,
-    rateIsOverride: row.rateIsOverride,
-    joined: DATE.format(row.createdAt),
-    href: hrefWith({ affiliate: row.id }),
-  }));
+  // Task D3: how many of an affiliate's referrals still pay. Batched behind a
+  // single Promise.all keyed on this page's own ids (referralCounts, Task
+  // A5), never called per row inside the render below. programs is already
+  // fetched above for the filter bar, so which program even has a "still
+  // paying" question to answer costs no extra query.
+  const counts = await Promise.all(rows.map((row) => referralCounts(row.id)));
+  const referralCountsById = new Map(rows.map((row, i) => [row.id, counts[i]]));
+  const recurringByProgramId = new Map(
+    programs.map((p) => [p.id, p.commissionDurationType !== "ONE_TIME"])
+  );
+
+  const view: AffiliateRowView[] = rows.map((row) => {
+    const counts = referralCountsById.get(row.id);
+    const recurring = recurringByProgramId.get(row.programId) ?? false;
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      referralCode: row.referralCode,
+      programName: row.programName,
+      clicks: row.clicks,
+      conversions: row.conversions,
+      earned: money(row.earned),
+      earnedHint: moneyHint(row.earned) ?? null,
+      rate: `${row.commissionRate}%`,
+      rateIsOverride: row.rateIsOverride,
+      // Nothing when the program has no recurring commission to churn out of,
+      // or when nobody has converted yet.
+      retention:
+        recurring && counts && counts.total > 0 ? `${counts.active} of ${counts.total} still paying` : null,
+      joined: DATE.format(row.createdAt),
+      href: hrefWith({ affiliate: row.id }),
+    };
+  });
 
   // Only an affiliate on the page being read can be opened: the id in the URL
   // is a selection within this list, not a route of its own.

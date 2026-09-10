@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, Users } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -31,6 +31,12 @@ export type AffiliateRowView = {
   /** Already carries its percent sign. */
   rate: string;
   rateIsOverride: boolean;
+  /**
+   * "8 of 11 still paying", from referralCounts (Task A5) batched on the page
+   * that builds this row. Null when the program has no recurring commission
+   * to churn out of, or when nobody has converted yet.
+   */
+  retention: string | null;
   /** Formatted on the server, so the row and the sheet read the same date. */
   joined: string;
   /** The list URL with this affiliate selected. */
@@ -54,11 +60,12 @@ export function AffiliateTable({
   if (rows.length === 0) {
     // The card is flush, so an empty state brings the padding the rows carry.
     return (
-      <div className="px-5">
+      <div className="flex h-full flex-col">
         {filtered ? (
-          <EmptyState title="Nothing matches" body="Widen the filters to see more." />
+          <EmptyState icon={<Users />} title="Nothing matches" body="Widen the filters to see more." />
         ) : (
           <EmptyState
+            icon={<Users />}
             title="Nobody has signed up yet"
             body="Share the signup link and whoever joins shows up here."
             action={emptyAction}
@@ -79,6 +86,7 @@ export function AffiliateTable({
           <TableHead className="text-right">Sales</TableHead>
           <TableHead className="text-right">Earned</TableHead>
           <TableHead className="text-right">Rate</TableHead>
+          <TableHead className="text-right">Retention</TableHead>
           <TableHead className="text-right">Joined</TableHead>
         </TableRow>
       </TableHeader>
@@ -129,6 +137,9 @@ export function AffiliateTable({
                   </>
                 )}
               </span>
+            </TableCell>
+            <TableCell className="text-right text-sm whitespace-nowrap text-muted-foreground tabular-nums">
+              {row.retention}
             </TableCell>
             <TableCell className="text-right text-sm whitespace-nowrap text-muted-foreground tabular-nums">
               {row.joined}
