@@ -150,6 +150,45 @@ describe("stepStates", () => {
     expect(states.find((s) => s.id === "tracking")?.state).toBe("upcoming");
   });
 
+  it("the other half of the current pair uses the check that just ran, not the fact it was walked past", () => {
+    // Standing on the key step re-runs the whole email section, so the domain
+    // row beside it is carrying an answer from a moment ago. Calling it done
+    // because it is behind the user painted a failing check green one row
+    // above where they stand.
+    const states = stepStates({
+      setup: setup({ emailConnected: true }),
+      checks: checks({ email: { key: ok, domain: no } }),
+      onboardingCompletedAt: null,
+      current: "email-key",
+    });
+    expect(states.find((s) => s.id === "email-domain")?.state).toBe("waiting");
+    expect(states.find((s) => s.id === "email-domain")?.note).toBeUndefined();
+  });
+
+  it("a section nobody re-ran this request still reads done once it is behind", () => {
+    // Same failing domain, but the user is on terms: the email section came
+    // from a cache up to a minute old, so the rail cannot tell a stale no
+    // from a fresh one and does not pretend to.
+    const states = stepStates({
+      setup: setup({ emailConnected: true }),
+      checks: checks({ email: { key: ok, domain: no } }),
+      onboardingCompletedAt: null,
+      current: "terms",
+    });
+    expect(states.find((s) => s.id === "email-domain")?.state).toBe("done");
+  });
+
+  it("only the webhook row carries the waiting note", () => {
+    const states = stepStates({
+      setup: setup({ stripeKeyStored: true, stripeWebhookStored: true }),
+      checks: checks({ stripe: { key: ok, webhook: no } }),
+      onboardingCompletedAt: null,
+      current: "terms",
+    });
+    expect(states.find((s) => s.id === "stripe-webhook")?.note).toBe("Ready, waiting for your first sale");
+    expect(states.filter((s) => s.note !== undefined)).toHaveLength(1);
+  });
+
   it("product stays current while the user is on it", () => {
     const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: null, current: "product" });
     expect(states.find((s) => s.id === "product")?.state).toBe("current");

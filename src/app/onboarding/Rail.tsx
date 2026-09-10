@@ -9,11 +9,6 @@ import { stepPath } from "@/lib/onboarding";
 // behind it rather than at zero. They are never links: neither is a screen.
 const ALREADY_DONE = ["Install", "Account"];
 
-// The one row that cannot turn green on its own: the webhook is set up and
-// correct, and stays this way until a real sale comes through it. Without
-// these words a neutral row sitting under seven green ones reads as a fault.
-const WAITING_NOTE = "Ready, waiting for your first sale";
-
 // A row is a flex box the full width of the rail, so a clickable one is
 // clickable everywhere, not just on its label.
 function rowClass(state: Step["state"], clickable: boolean): string {
@@ -67,12 +62,14 @@ export function Rail({ steps, productSlug, backHref }: { steps: Step[]; productS
   );
 }
 
+// The note is the step's own, not the rail's: a row that waits on something
+// the rail knows nothing about would otherwise inherit the webhook's words.
 function RowLabel({ step }: { step: Step }) {
-  if (step.state !== "waiting") return <span className="truncate">{step.label}</span>;
+  if (!step.note) return <span className="truncate">{step.label}</span>;
   return (
     <span className="flex min-w-0 flex-col gap-px leading-tight">
       <span className="truncate">{step.label}</span>
-      <span className="truncate text-[11px] text-muted-foreground">{WAITING_NOTE}</span>
+      <span className="truncate text-[11px] text-muted-foreground">{step.note}</span>
     </span>
   );
 }
@@ -85,10 +82,11 @@ function Marker({ state }: { state: Step["state"] }) {
       </span>
     );
   }
-  // Settled, not unfinished: the same tick as a done row, kept quiet so the
-  // green ones still read as the progress and this one reads as at rest. It
-  // sits on the label's line rather than in the middle of the two, so the
-  // column of markers stays a column.
+  // Reached, not green: a quiet tick rather than the success one, so the
+  // green rows still read as the progress and this one reads as at rest
+  // without claiming a light it has not earned. It sits on the label's line
+  // rather than in the middle of the two, so the column of markers stays a
+  // column when the row carries a note.
   if (state === "waiting") {
     return (
       <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center self-start rounded-full bg-neutral-400 text-white">

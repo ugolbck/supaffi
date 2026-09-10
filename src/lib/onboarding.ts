@@ -13,12 +13,31 @@ export type StepId =
   | "tracking";
 
 /**
- * "waiting" is not "unfinished": it is the one row (the Stripe webhook) whose
- * light waits on the outside world rather than on the Owner. Everything else
- * is done, current or upcoming.
+ * The one row that cannot turn green on its own: the webhook is set up and
+ * correct, and stays this way until a real sale comes through it. Without
+ * these words a neutral row sitting under seven green ones reads as a fault.
+ */
+const WAITING_ON_FIRST_SALE = "Ready, waiting for your first sale";
+
+/**
+ * "waiting" is not "unfinished": the row is reached and its check has not
+ * come good. Either it waits on the outside world (the Stripe webhook, whose
+ * light a real sale turns) or its section was re-run this request and said
+ * no. Everything else is done, current or upcoming.
  */
 export type StepState = "done" | "waiting" | "current" | "upcoming";
-export type Step = { id: StepId; label: string; index: number; state: StepState };
+export type Step = {
+  id: StepId;
+  label: string;
+  index: number;
+  state: StepState;
+  /**
+   * The second line under a rail row, when the row's state needs one word of
+   * explanation the label cannot carry. Written here rather than in the rail
+   * so a second waiting row cannot inherit the webhook's sentence.
+   */
+  note?: string;
+};
 
 const ALL: StepId[] = [
   "product",
@@ -171,31 +190,41 @@ export function stepStates(input: {
 }): Step[] {
   const ids = stepIds(input.setup.emailRequired);
   const currentIndex = ids.indexOf(input.current);
+  // The one section that was really run for this request. Two steps can share
+  // a section, so a row the owner is not standing on can still be carrying a
+  // result from a moment ago rather than from the cache.
+  const runningSection = checkSectionFor(input.current);
   return ids.map((id, index) => {
     const behind = index < currentIndex;
     const reached = stored(id, input.setup, input.onboardingCompletedAt) || behind;
+    const isVerified = verified(id, input.checks, input.setup, input.onboardingCompletedAt);
+    const section = checkSectionFor(id);
+    const fresh = section !== null && section === runningSection;
     let state: StepState;
+    let note: string | undefined;
     if (id === input.current) state = "current";
     // The webhook is the only row whose green light is not the Owner's to
     // earn: it turns when a real sale arrives, which can be days away. Left
     // in the same amber as unfinished work it sat there beside seven green
     // rows reading as a fault, so it gets its own settled, neutral state.
     else if (id === "stripe-webhook") {
-      state = verified(id, input.checks, input.setup, input.onboardingCompletedAt)
-        ? "done"
-        : reached
-          ? "waiting"
-          : "upcoming";
+      state = isVerified ? "done" : reached ? "waiting" : "upcoming";
+      if (state === "waiting") note = WAITING_ON_FIRST_SALE;
     }
+    // The pair the current step belongs to (the two Stripe halves, the two
+    // email halves) was re-run just now, so its answer is the freshest thing
+    // on the page. Calling the other half done because the Owner walked past
+    // it would paint a failing check green one row above where they stand.
+    else if (fresh) state = isVerified ? "done" : reached ? "waiting" : "upcoming";
     // Every other row: reaching it is finishing it. The work behind these
-    // steps happens once (a key was saved, a record was added), and only the
-    // section the current step names is re-run on this request, so a row from
-    // a minute-old cache cannot be told apart from a fresh one. Drawing that
-    // distinction is what made finished steps flicker amber and flip green
-    // while the Owner was three screens away.
-    else if (verified(id, input.checks, input.setup, input.onboardingCompletedAt) || reached) state = "done";
+    // steps happens once (a key was saved, a record was added), and the
+    // section was not run on this request, so a row from a minute-old cache
+    // cannot be told apart from a fresh one. Drawing that distinction is what
+    // made finished steps flicker amber and flip green while the Owner was
+    // three screens away.
+    else if (isVerified || reached) state = "done";
     else state = "upcoming";
-    return { id, label: LABELS[id], index: index + 1, state };
+    return { id, label: LABELS[id], index: index + 1, state, note };
   });
 }
 
