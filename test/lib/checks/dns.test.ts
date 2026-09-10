@@ -64,14 +64,14 @@ describe("resolvesTo", () => {
   it("passes when SUPAFFI_HOST_IP is a hostname that resolves to the same address", async () => {
     const resolve = async (h: string) =>
       h === "affiliates.instantgradient.com" ? ["146.59.195.140"] : ["146.59.195.140"];
-    const result = await resolvesTo("affiliates.instantgradient.com", "vps.example.com", resolve);
+    const result = await resolvesTo("affiliates.instantgradient.com", "vps.example.com", resolve, resolve);
     expect(result.ok).toBe(true);
   });
 
   it("fails when a hostname SUPAFFI_HOST_IP resolves somewhere else", async () => {
     const resolve = async (h: string) =>
       h === "affiliates.instantgradient.com" ? ["104.21.0.1"] : ["146.59.195.140"];
-    const result = await resolvesTo("affiliates.instantgradient.com", "vps.example.com", resolve);
+    const result = await resolvesTo("affiliates.instantgradient.com", "vps.example.com", resolve, resolve);
     expect(result.ok).toBe(false);
     expect(result.detail).toContain("104.21.0.1");
   });
@@ -81,9 +81,30 @@ describe("resolvesTo", () => {
       if (h === "affiliates.instantgradient.com") return ["104.21.0.1"];
       throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
     };
-    const result = await resolvesTo("affiliates.instantgradient.com", "vps.example.com", resolve);
+    const result = await resolvesTo("affiliates.instantgradient.com", "vps.example.com", resolve, resolve);
     expect(result.ok).toBe(false);
     expect(result.detail).toMatch(/server's address .* could not be resolved/i);
+  });
+
+  it("resolves the polled hostname with the injected resolver and expected with the plain one", async () => {
+    const seen: Record<string, string> = {};
+    const resolve = async (h: string) => {
+      seen.hostname = h;
+      return ["146.59.195.140"];
+    };
+    const resolveExpected = async (h: string) => {
+      seen.expected = h;
+      return ["146.59.195.140"];
+    };
+    const result = await resolvesTo(
+      "affiliates.instantgradient.com",
+      "vps.example.com",
+      resolve,
+      resolveExpected
+    );
+    expect(result.ok).toBe(true);
+    expect(seen.hostname).toBe("affiliates.instantgradient.com");
+    expect(seen.expected).toBe("vps.example.com");
   });
 
   it("fails when there is no record yet", async () => {

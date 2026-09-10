@@ -76,13 +76,16 @@ export async function resolveAuthoritative(
 /**
  * Whether the hostname's A record points at this server. `expected` is
  * SUPAFFI_HOST_IP, which install.sh lets the owner set to a hostname as well
- * as to a literal address, so a non-literal is resolved with the same
- * resolver and any shared address counts as a match.
+ * as to a literal address, so a non-literal is resolved and any shared
+ * address counts as a match. `expected` is resolved with the plain resolver,
+ * not the authoritative one: it is not the name being waited on, so there is
+ * no stale-negative-cache problem to work around for it.
  */
 export async function resolvesTo(
   hostname: string,
   expected: string,
-  resolve: (h: string) => Promise<string[]> = resolveAuthoritative
+  resolve: (h: string) => Promise<string[]> = resolveAuthoritative,
+  resolveExpected: (h: string) => Promise<string[]> = resolve4
 ): Promise<CheckResult> {
   let addresses: string[];
   try {
@@ -98,7 +101,7 @@ export async function resolvesTo(
 
   let expectedAddresses: string[];
   try {
-    expectedAddresses = await resolve(expected);
+    expectedAddresses = await resolveExpected(expected);
   } catch {
     expectedAddresses = [];
   }
