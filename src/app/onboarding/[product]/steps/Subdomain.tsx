@@ -115,7 +115,7 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
           <RecordTable
             records={[
               { label: "Type", value: "A", badge: true, copyable: false },
-              { label: "Name", value: split ? split.prefix : merchant.domain },
+              { label: "Name", value: dnsRecordName(merchant.domain) },
               { label: "Value", value: hostIp, missing: "This server's address is not set yet" },
               { label: "Proxy", value: "Off", copyable: false },
             ]}
