@@ -52,8 +52,8 @@ export async function updateSubdomainAction(
   if (!merchant) redirect("/onboarding");
 
   // The field only edits the label in front of the root when the stored
-  // address sits under the product's own site. Where it does not — a local
-  // instance, or an address set by hand — the whole thing is edited.
+  // address sits under the product's own site. Where it does not, on a local
+  // instance or for an address set by hand, the whole thing is edited.
   const split = splitSubdomain(merchant.domain, merchant.websiteUrl);
   const raw = String(formData.get("value") ?? "").trim();
   if (!raw) return { error: "This cannot be empty" };
@@ -229,7 +229,9 @@ export async function saveTermsAction(
  * there is no separate cache to invalidate here.
  */
 export async function recheckAction(product: { id: string; slug: string }, step: StepId): Promise<void> {
-  await owner();
+  const ownerId = await owner();
+  const merchant = await getMerchantForOwner(ownerId, product.id);
+  if (!merchant) redirect("/onboarding");
   revalidatePath(stepPath(product.slug, step));
 }
 
