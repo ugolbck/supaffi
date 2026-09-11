@@ -37,10 +37,10 @@ export function PayoutDetailsForm({
   const [state, formAction, pending] = useActionState(submit, {});
   const formId = useId();
 
-  // The saved flag as well as the prop: the action revalidates, so `initial`
-  // arrives filled in, and the flag covers the frame before it does. Either
-  // way the notice cannot sit next to "Saved".
-  const missing = initial.trim() === "" && !state.saved;
+  // From the prop alone: the action revalidates the layout, so `initial`
+  // arrives filled in after a save and the notice goes with it. Saving an
+  // empty field leaves it up next to "Saved", which is the truth.
+  const missing = initial.trim() === "";
 
   return (
     <Section
