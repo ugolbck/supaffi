@@ -33,6 +33,11 @@ export type OverviewView = {
   paid: CurrencyTotal[];
   /** Counts only. Which customers they are is never the affiliate's to see. */
   referrals: { total: number; active: number };
+  /**
+   * Whether the program pays on a subscription. A one-time program has no
+   * "still paying" question to answer, so the card is not shown at all.
+   */
+  recurring: boolean;
 };
 
 /**
@@ -81,6 +86,7 @@ export function OverviewScreen({
   payable,
   paid,
   referrals,
+  recurring,
 }: OverviewView) {
   // Through the ledger's own mapping, so a date and an amount read the same on
   // this card as they do on the ledger the card links to.
@@ -134,10 +140,17 @@ export function OverviewScreen({
           <BarChart series={series} />
         </Section>
 
-        <div className="grid gap-4 lg:min-h-0 lg:grid-rows-[auto_1fr]">
-          <Section title="Referrals">
-            <Referrals total={referrals.total} active={referrals.active} />
-          </Section>
+        <div
+          className={cn(
+            "grid gap-4 lg:min-h-0",
+            recurring ? "lg:grid-rows-[auto_1fr]" : "lg:grid-rows-1"
+          )}
+        >
+          {recurring && (
+            <Section title="Referrals">
+              <Referrals total={referrals.total} active={referrals.active} />
+            </Section>
+          )}
 
           <Section
             scroll

@@ -289,6 +289,11 @@ export default function Kit() {
             <EOverview />
           </EViewport>
         </Frame>
+        <Frame label="Affiliate overview, one-time program" show={show("e-overview-one-time")}>
+          <EViewport>
+            <EOverview recurring={false} />
+          </EViewport>
+        </Frame>
         <Frame label="Affiliate ledger" show={show("e-ledger")}>
           <EViewport>
             <ELedger />
@@ -1089,7 +1094,7 @@ const E_RECENT = [
   },
 ];
 
-function EOverview() {
+function EOverview({ recurring = true }: { recurring?: boolean }) {
   return (
     <OverviewScreen
       referralUrl="https://instantgradient.com/?via=sarah"
@@ -1103,6 +1108,7 @@ function EOverview() {
       payable={[{ currency: "usd", total: "180.00" }]}
       paid={[{ currency: "usd", total: "980.00" }]}
       referrals={{ total: 41, active: 31 }}
+      recurring={recurring}
     />
   );
 }

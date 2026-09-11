@@ -1,3 +1,4 @@
+import { db } from "@/lib/db";
 import { requireAffiliate } from "@/lib/affiliateAuth";
 import { getAffiliateMetrics, type CurrencyTotal } from "@/lib/analytics";
 import { listAffiliateCommissions, referralCounts } from "@/lib/affiliate";
@@ -36,11 +37,17 @@ function addTotals(...lists: CurrencyTotal[][]): CurrencyTotal[] {
 export default async function AffiliateOverviewPage() {
   const { affiliateId, merchant } = await requireAffiliate();
 
-  const [metrics, links, commissions, referrals] = await Promise.all([
+  const [metrics, links, commissions, referrals, program] = await Promise.all([
     getAffiliateMetrics(affiliateId),
     listLinksWithStats(affiliateId),
     listAffiliateCommissions(affiliateId, { page: 1, pageSize: RECENT_COMMISSIONS }),
     referralCounts(affiliateId),
+    // Only for the retention card: on a one-time program nobody is "still
+    // paying", so the card is not shown.
+    db.affiliate.findUnique({
+      where: { id: affiliateId },
+      select: { program: { select: { commissionDurationType: true } } },
+    }),
   ]);
 
   // The signup link: the one the merchant's own dashboard shows and the one in
@@ -59,6 +66,7 @@ export default async function AffiliateOverviewPage() {
       payable={metrics.payable}
       paid={metrics.paid}
       referrals={referrals}
+      recurring={program?.program.commissionDurationType !== "ONE_TIME"}
     />
   );
 }
