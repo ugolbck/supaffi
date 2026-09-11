@@ -93,9 +93,14 @@ export function PayoutsScreen({
           label="Payable"
           value={money(payable)}
           hint={moneyHint(payable)}
-          tone={payable.length > 0 ? "success" : "neutral"}
+          tone={payable.length > 0 ? "accent" : "neutral"}
         />
-        <StatTile label="Paid" value={money(paid)} hint={moneyHint(paid)} />
+        <StatTile
+          label="Paid"
+          value={money(paid)}
+          hint={moneyHint(paid)}
+          tone={paid.length > 0 ? "success" : "neutral"}
+        />
       </Tiles>
 
       {/* Content sized, not stretched to the viewport: two cards holding a
@@ -110,7 +115,10 @@ export function PayoutsScreen({
           // merchant, not from here, so nobody waits on a transfer that is
           // never coming.
           actions={
-            <span className="text-right text-[13px] text-balance text-muted-foreground">
+            // Dropped on a phone: beside a title that has already wrapped it
+            // reads as a cramped third column, and the empty state carries the
+            // same fact where it is needed most.
+            <span className="hidden text-right text-[13px] text-balance text-muted-foreground sm:block">
               Paid by {merchantName} directly
             </span>
           }

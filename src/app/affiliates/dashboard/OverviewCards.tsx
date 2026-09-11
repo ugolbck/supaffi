@@ -106,9 +106,16 @@ export function OverviewScreen({
           label="Payable"
           value={money(payable)}
           hint={moneyHint(payable)}
-          tone={payable.length > 0 ? "success" : "neutral"}
+          tone={payable.length > 0 ? "accent" : "neutral"}
         />
-        <StatTile label="Paid" value={money(paid)} hint={moneyHint(paid)} />
+        {/* Green is the ledger's colour for money already paid, and it says the
+            same thing here. */}
+        <StatTile
+          label="Paid"
+          value={money(paid)}
+          hint={moneyHint(paid)}
+          tone={paid.length > 0 ? "success" : "neutral"}
+        />
       </Tiles>
 
       {/* One band, the shape the owner's own overview uses: the wide chart, and
@@ -158,15 +165,18 @@ export function OverviewScreen({
                     key={row.id}
                     className="flex items-center gap-2.5 border-b border-neutral-200 py-2.5 last:border-0"
                   >
-                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                      {row.dateLabel}
-                    </span>
-                    {/* The badge is what gives way in a narrow rail: a cut date
-                        or a cut amount is a wrong fact, a cut status word is
-                        still the right colour. */}
-                    <Badge className={cn("min-w-0 truncate", STATUS_STYLES[row.status])}>
-                      {STATUS_LABELS[row.status]}
-                    </Badge>
+                    {/* The badge is what gives way when the row runs out of
+                        room: a date and an amount are facts and are never cut,
+                        so below sm the badge drops to a line of its own rather
+                        than squeezing the two figures beside it. */}
+                    <div className="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2.5">
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {row.dateLabel}
+                      </span>
+                      <Badge className={cn("max-w-full", STATUS_STYLES[row.status])}>
+                        {STATUS_LABELS[row.status]}
+                      </Badge>
+                    </div>
                     <span
                       className={cn(
                         "ml-auto shrink-0 text-right font-mono text-[13px] font-semibold tabular-nums",
