@@ -20,10 +20,11 @@ export function StatTile({
   /** Secondary line: a currency breakdown, a comparison, a state. */
   hint?: string;
   series?: number[];
-  tone?: "neutral" | "success" | "warning";
+  tone?: "neutral" | "accent" | "success" | "warning";
 }) {
   const valueTone = {
     neutral: "",
+    accent: "text-accent-700",
     success: "text-status-success",
     warning: "text-status-warning",
   }[tone];
@@ -33,7 +34,11 @@ export function StatTile({
       <div className="flex flex-col gap-0.5">
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
         <span
-          className={`font-heading truncate text-2xl leading-none font-semibold tracking-tight tabular-nums ${valueTone}`}
+          // Never truncated, and a step smaller on a phone, where the tiles are
+          // two up: an amount cut to "1220.0…" is a wrong number. If it still
+          // will not fit it wraps at the space before the currency, which
+          // leaves both halves readable.
+          className={`font-heading text-lg leading-tight font-semibold tracking-tight tabular-nums sm:text-2xl sm:leading-none ${valueTone}`}
         >
           {value}
         </span>
