@@ -268,10 +268,10 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                   </span>
                 )}
               </TableCell>
-              <TableCell className="hidden px-4 py-3 align-top md:table-cell">
+              <TableCell className="px-4 py-3 align-top">
                 <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>
               </TableCell>
-              <TableCell className="hidden px-4 py-3 align-top md:table-cell">
+              <TableCell className="px-4 py-3 align-top">
                 <span className="block truncate font-mono text-[13px] text-muted-foreground">
                   {row.linkCode ?? "Deleted"}
                 </span>
