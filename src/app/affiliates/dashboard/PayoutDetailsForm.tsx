@@ -37,9 +37,10 @@ export function PayoutDetailsForm({
   const [state, formAction, pending] = useActionState(submit, {});
   const formId = useId();
 
-  // Only true on arrival: once they have saved, the notice would be telling
-  // them off for a state they just left.
-  const missing = initial.trim() === "";
+  // The saved flag as well as the prop: the action revalidates, so `initial`
+  // arrives filled in, and the flag covers the frame before it does. Either
+  // way the notice cannot sit next to "Saved".
+  const missing = initial.trim() === "" && !state.saved;
 
   return (
     <Section
