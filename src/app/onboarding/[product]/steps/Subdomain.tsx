@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CheckList, dnsCheckRows } from "@/components/onboarding/CheckList";
+import { CheckList } from "@/components/onboarding/CheckList";
+import { dnsCheckRows } from "@/components/onboarding/checkRows";
 import { EditableField } from "@/components/onboarding/EditableField";
 import { RecordTable } from "@/components/onboarding/RecordTable";
 import { StepShell } from "@/components/onboarding/StepShell";

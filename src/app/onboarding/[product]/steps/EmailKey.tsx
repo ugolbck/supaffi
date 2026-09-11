@@ -1,7 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { CheckList, checkState, emailKeyPending } from "@/components/onboarding/CheckList";
+import { CheckList } from "@/components/onboarding/CheckList";
+import { checkState, emailKeyPending } from "@/components/onboarding/checkRows";
 import { StepShell } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { PasteField } from "@/components/PasteField";

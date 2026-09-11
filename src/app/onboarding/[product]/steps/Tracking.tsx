@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { CheckList, checkState, trackingPending } from "@/components/onboarding/CheckList";
+import { CheckList } from "@/components/onboarding/CheckList";
+import { checkState, trackingPending } from "@/components/onboarding/checkRows";
 import { CodeBlock } from "@/components/onboarding/CodeBlock";
 import { StepShell, StepLabel } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";

@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { CheckRow, CheckState } from "./checkRows";
 
-// The pure half of this component lives next door, so it can be imported by a
-// server module and by a test without dragging React in. Re-exported here so
-// a call site still has one import for the list and the rows it feeds it.
-export { checkState, dnsCheckRows, dnsPending, emailDomainPending, emailKeyPending, trackingPending } from "./checkRows";
+// The pure half of this component lives next door in checkRows.ts. Import
+// the helpers from there, never through this file: this module is a client
+// boundary, and a function re-exported across it becomes a client reference
+// that throws when a server component calls it in a production build.
 export type { CheckRow, CheckState } from "./checkRows";
 
 /**
