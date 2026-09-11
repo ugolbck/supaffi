@@ -18,7 +18,7 @@ export function EmailKey({ ctx }: { ctx: Ctx }) {
   return (
     <StepShell
       step={displayStep("email-key", ctx.emailRequired)}
-      title="Let Supaffi email your affiliates"
+      title="Send email to your affiliates"
       lede="Affiliates log in with a link sent to their inbox."
       action={
         stored ? (
@@ -51,7 +51,7 @@ export function EmailKey({ ctx }: { ctx: Ctx }) {
                   id: "key",
                   state: checkState(checks.email.key, emailKeyPending),
                   pending: "Checking the key",
-                  passed: "Supaffi can send email",
+                  passed: "Ready to send email",
                   failed: "Resend rejected that key",
                   hint: checks.email.key.detail || "Create a new one and paste it again.",
                 },

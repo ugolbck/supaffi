@@ -533,7 +533,7 @@ function EmailKeyScreen() {
   return (
     <StepShell
       step={{ index: 6, total: 11 }}
-      title="Let Supaffi email your affiliates"
+      title="Send email to your affiliates"
       lede="Affiliates log in with a link sent to their inbox."
     >
       <TaskCard>
