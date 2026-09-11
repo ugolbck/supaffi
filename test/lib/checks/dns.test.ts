@@ -47,6 +47,62 @@ describe("resolveAuthoritative", () => {
     );
     expect(answer).toEqual(["1.1.1.1"]);
   });
+
+  it("asks the longest zone first, so a public suffix is never asked for the record", async () => {
+    // co.uk's nameservers answer a query for a name inside it with a
+    // referral, which c-ares reports as ENODATA. Asking example.co.uk first
+    // avoids the whole detour.
+    const asked: string[] = [];
+    const answer = await resolveAuthoritative("www.example.co.uk", {
+      resolveNs: async (h: string) => {
+        asked.push(h);
+        return h === "co.uk" ? ["ns1.nic.uk"] : ["ns1.registrar.test"];
+      },
+      resolve4: async (h: string) => (h.startsWith("ns1.") ? ["9.9.9.9"] : ["1.1.1.1"]),
+      makeResolver: (servers) => ({
+        resolve4: async () => {
+          if (servers.includes("9.9.9.9") && asked.includes("co.uk")) {
+            throw Object.assign(new Error("ENODATA"), { code: "ENODATA" });
+          }
+          return ["203.0.113.10"];
+        },
+      }),
+    });
+    expect(answer).toEqual(["203.0.113.10"]);
+    expect(asked).toEqual(["example.co.uk"]);
+  });
+
+  it("falls back to the plain resolver when the authoritative query times out", async () => {
+    const answer = await resolveAuthoritative(
+      "affiliates.dev.mokkit.co",
+      deps({
+        makeResolver: () => ({
+          resolve4: async () => {
+            throw Object.assign(new Error("ETIMEOUT"), { code: "ETIMEOUT" });
+          },
+        }),
+      })
+    );
+    expect(answer).toEqual(["1.1.1.1"]);
+  });
+
+  it("reports no record when the zone's own nameservers say the name does not exist", async () => {
+    const plain = vi.fn(async (h: string) => (h === "ns1.cloudflare.com" ? ["9.9.9.9"] : ["1.1.1.1"]));
+    await expect(
+      resolveAuthoritative(
+        "affiliates.dev.mokkit.co",
+        deps({
+          resolve4: plain,
+          makeResolver: () => ({
+            resolve4: async () => {
+              throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+            },
+          }),
+        })
+      )
+    ).rejects.toMatchObject({ code: "ENOTFOUND" });
+    expect(plain).not.toHaveBeenCalledWith("affiliates.dev.mokkit.co");
+  });
 });
 
 describe("resolvesTo", () => {

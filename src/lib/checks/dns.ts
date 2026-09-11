@@ -41,15 +41,22 @@ const authoritativeDefaults: AuthoritativeDeps = {
  * containers so no restart or redeploy clears it. The flow was reliably
  * poisoning itself; see finding 3.
  *
+ * Candidates are tried longest first. A name under a multi-label public
+ * suffix like co.uk has its zone at the three label form, and asking the
+ * suffix itself for the record only earns a referral, which c-ares reports
+ * as ENODATA. The three label lookup simply fails on a plain domain like
+ * dev.mokkit.co and falls through to the two label form.
+ *
  * Falls back to the ordinary resolver whenever the authoritative path cannot
  * be established, because a slow or unusual zone must not make the check
- * worse than it was.
+ * worse than it was. Only ENOTFOUND from the zone's own nameservers is taken
+ * at face value: that one really does mean the record is not there yet.
  */
 export async function resolveAuthoritative(
   hostname: string,
   deps: AuthoritativeDeps = authoritativeDefaults
 ): Promise<string[]> {
-  for (const zone of registrableCandidates(hostname)) {
+  for (const zone of [...registrableCandidates(hostname)].reverse()) {
     let nameservers: string[];
     try {
       nameservers = await deps.resolveNs(zone);
@@ -68,7 +75,12 @@ export async function resolveAuthoritative(
     }
     if (addresses.length === 0) continue;
 
-    return deps.makeResolver(addresses).resolve4(hostname);
+    try {
+      return await deps.makeResolver(addresses).resolve4(hostname);
+    } catch (err) {
+      if ((err as { code?: string })?.code === "ENOTFOUND") throw err;
+      return deps.resolve4(hostname);
+    }
   }
   return deps.resolve4(hostname);
 }
