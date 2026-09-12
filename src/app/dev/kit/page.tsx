@@ -144,8 +144,8 @@ export default function Kit() {
         <Frame label="Tracking" show={show("tracking")}>
           <TrackingScreen />
         </Frame>
-        <Frame label="Email key" show={show("b-email-key")}>
-          <EmailKeyScreen />
+        <Frame label="Email" show={show("email")}>
+          <EmailScreen />
         </Frame>
         <Frame label="Check list, the three states" show={show("checks")}>
           <div className="max-w-[640px]">
@@ -335,12 +335,6 @@ export default function Kit() {
         >
           <BCheckStates />
         </Frame>
-        <Frame
-          label="Sending domain, before the key exists"
-          show={show("b-email-domain-first")}
-        >
-          <BEmailDomainFirst />
-        </Frame>
       </div>
     </main>
   );
@@ -374,47 +368,6 @@ function BCheckStates() {
                 passed: "Script is live on instantgradient.com",
                 failed: "Could not load the site",
                 hint: "Paste the script above into the page, then check again.",
-              },
-            ]}
-            onRecheck={mockRecheck}
-          />
-        </TaskCardSection>
-      </TaskCard>
-    </div>
-  );
-}
-
-// The first email screen, before a Resend key exists. The check cannot run at
-// all without one, so the row waits instead of opening on a red cross.
-function BEmailDomainFirst() {
-  return (
-    <div className="flex max-w-[640px] flex-col gap-6">
-      <TaskCard>
-        <TaskCardHeader title="Add the domain in Resend" />
-        <TaskCardSection sunken>
-          <CheckList
-            rows={[
-              {
-                id: "domain",
-                state: "pending",
-                pending: "Confirmed once you add your key",
-                passed: "Resend can send from affiliates.instantgradient.com",
-              },
-            ]}
-          />
-        </TaskCardSection>
-      </TaskCard>
-      <TaskCard>
-        <TaskCardHeader title="Add the domain in Resend" />
-        <TaskCardSection sunken>
-          <CheckList
-            rows={[
-              {
-                id: "domain",
-                state: "pending",
-                pending:
-                  "Waiting for Resend to verify affiliates.instantgradient.com",
-                passed: "Resend can send from affiliates.instantgradient.com",
               },
             ]}
             onRecheck={mockRecheck}
@@ -482,7 +435,7 @@ function SubdomainScreen({ provider }: { provider: "cloudflare" | null }) {
   const [subdomain, saveSubdomain] = useMockSave("affiliates");
   return (
     <StepShell
-      step={{ index: 4, total: 11 }}
+      step={{ index: 2, total: 6 }}
       title="Point a subdomain here"
       lede="Your affiliate program lives on its own address, on your domain."
       action={<Button size="lg">Continue</Button>}
@@ -529,36 +482,52 @@ function SubdomainScreen({ provider }: { provider: "cloudflare" | null }) {
   );
 }
 
-function EmailKeyScreen() {
+function EmailScreen() {
   return (
     <StepShell
-      step={{ index: 6, total: 11 }}
+      step={{ index: 4, total: 6 }}
       title="Send email to your affiliates"
       lede="Affiliates log in with a link sent to their inbox."
+      action={<Button size="lg">Continue</Button>}
     >
       <TaskCard>
         <TaskCardHeader
-          title="Create a key in Resend"
-          hint="Full access, on all domains"
+          title="1. Add this domain in Resend"
           action={
             <Button variant="secondary" size="sm">
-              <Image
-                src="/logos/resend.svg"
-                alt=""
-                width={16}
-                height={16}
-                className="size-4"
-              />
+              <Image src="/logos/resend.svg" alt="" width={16} height={16} className="size-4" />
               Open Resend
             </Button>
           }
         />
+        <TaskCardSection>
+          <RecordTable records={[{ label: "Domain", value: "go.instantgradient.com" }]} />
+        </TaskCardSection>
+        <TaskCardHeader title="2. Then create a key with these settings" />
+        <TaskCardSection>
+          <RecordTable
+            records={[
+              { label: "Access", value: "Full access", copyable: false },
+              { label: "Domains", value: "All domains", copyable: false },
+            ]}
+          />
+        </TaskCardSection>
+        <TaskCardSection sunken>
+          <CheckList
+            rows={[
+              { id: "key", state: "ok", pending: "Checking your key", passed: "Your key works" },
+              {
+                id: "domain",
+                state: "pending",
+                pending: "Checking go.instantgradient.com in Resend",
+                passed: "go.instantgradient.com is ready to send email",
+                info: "Resend can take a few minutes to verify this. Carry on with the next steps, it finishes on its own. Affiliates cannot sign up until it does.",
+              },
+            ]}
+            onRecheck={mockRecheck}
+          />
+        </TaskCardSection>
       </TaskCard>
-      <PasteField
-        label="Paste the key here"
-        placeholder="re_..."
-        action={mockPasteAction}
-      />
     </StepShell>
   );
 }
@@ -566,7 +535,7 @@ function EmailKeyScreen() {
 function TrackingScreen() {
   return (
     <StepShell
-      step={{ index: 9, total: 11 }}
+      step={{ index: 6, total: 6 }}
       title="Put the tracking script on your site"
       lede="Paste this in the head of every page an affiliate link can land on."
       action={<Button size="lg">Continue</Button>}
@@ -930,12 +899,11 @@ const cSignupAction: SignupFormAction = async () => ({
 
 function CSignupScreen() {
   return (
-    <div className="mx-auto w-full max-w-[900px] rounded-(--radius-lg) bg-background p-8">
+    <div className="mx-auto w-full rounded-(--radius-lg) bg-background p-8">
       <SignupScreen
         merchantName="Mokkit"
         terms={{
           rate: 20,
-          attributionWindowDays: 60,
           durationType: "FOREVER",
           durationMonths: null,
         }}
@@ -997,6 +965,9 @@ const E_SERIES = Array.from({ length: 30 }, (_, i) => {
     conversions,
     revenue: conversions * 120,
     signups: 0,
+    amounts: (conversions > 0
+      ? { usd: { gross: conversions * 120, commission: conversions * 24, sales: conversions } }
+      : {}) as Record<string, { gross: number; commission: number; sales: number }>,
   };
 });
 
@@ -1100,6 +1071,10 @@ function EOverview({ recurring = true }: { recurring?: boolean }) {
       referralUrl="https://instantgradient.com/?via=sarah"
       recent={E_RECENT}
       series={E_SERIES}
+      bucket="day"
+      currency="usd"
+      currencies={["usd"]}
+      range="30d"
       earned={[
         { currency: "usd", total: "1220.00" },
         { currency: "eur", total: "60.00" },
@@ -1312,8 +1287,8 @@ function ELinkDialog() {
 
 function EShell() {
   return (
-    <div className="-m-10 w-[calc(100%+5rem)] overflow-hidden rounded-(--radius-md) bg-background md:h-[760px]">
-      <SidebarProvider style={{ "--sidebar-width": "240px" } as React.CSSProperties}>
+    <div className="-m-10 w-[calc(100%+5rem)] overflow-hidden rounded-(--radius-md) bg-(--shell) md:h-[760px]">
+      <SidebarProvider style={{ "--sidebar-width": "312px" } as React.CSSProperties}>
         <AffiliateSidebar
           merchantName="InstantGradient"
           merchantSite="instantgradient.com"
@@ -1322,7 +1297,7 @@ function EShell() {
           pathname="/affiliates/dashboard"
         />
         <SidebarInset>
-          <div className="flex flex-col overflow-y-auto p-8 md:h-[760px]">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-8">
             <SidebarTrigger className="-mt-2 mb-2 self-start md:hidden" />
             <EOverview />
           </div>
