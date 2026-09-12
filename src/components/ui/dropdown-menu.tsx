@@ -77,6 +77,8 @@ function DropdownMenuItem({
   className,
   inset,
   variant = "default",
+  nativeButton,
+  render,
   ...props
 }: MenuPrimitive.Item.Props & {
   inset?: boolean
@@ -85,6 +87,11 @@ function DropdownMenuItem({
   return (
     <MenuPrimitive.Item
       data-slot="dropdown-menu-item"
+      // Base UI expects a non-button here and warns on every render when the
+      // item is one. A log out item is a real submit button inside a form, so
+      // the default follows the element actually rendered, as Button does.
+      nativeButton={nativeButton ?? (React.isValidElement(render) && render.type === "button")}
+      render={render}
       data-inset={inset}
       data-variant={variant}
       className={cn(

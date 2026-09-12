@@ -70,24 +70,46 @@
   --input: var(--neutral-200);
   --ring: var(--accent-400);
 
+  /* The chart's two series. Clicks are the product's own indigo; what they
+     turned into is a warm coral. The two have to separate at a glance and no
+     second shade of blue ever does. */
+  --chart-line: var(--accent-600);
+  --chart-line-soft: var(--accent-400);
+  --chart-bar: #f2604a;
+  --chart-bar-lit: #ff7d63;
+
   --chart-1: var(--accent-600);
   --chart-2: var(--accent-300);
   --chart-3: var(--status-success);
   --chart-4: var(--status-warning);
   --chart-5: var(--neutral-400);
 
-  --sidebar: #ffffff;
+  /* The dashboard shell. The sidebar is not a panel: it sits directly on the
+     page canvas, which is a shade cooler and darker than --background so the
+     white content area beside it reads as a sheet lifted off the desk. The
+     one raised thing inside the sidebar is the selected row: an off-white
+     tile with a hairline of shade along its bottom edge and a short cast
+     shadow under it. Hover only tints; it does not lift. */
+  --shell: #e7e6ea;
+  --shell-border: #dadade;
+  --shell-shadow: 0 0 0 1px rgb(0 0 0 / 0.02), 0 2px 12px rgb(0 0 0 / 0.04), 0 8px 24px -8px rgb(0 0 0 / 0.06);
+  --nav-active: #fafafa;
+  --nav-active-shadow: inset 0 -1px 0 0 #e5e5e6, 0 0 0 1px rgb(0 0 0 / 0.03), 0 1px 2px rgb(0 0 0 / 0.08),
+    0 2px 6px -2px rgb(0 0 0 / 0.08);
+
+  --sidebar: var(--shell);
   --sidebar-foreground: var(--neutral-900);
   --sidebar-primary: var(--accent-700);
   --sidebar-primary-foreground: var(--accent-50);
-  --sidebar-accent: var(--neutral-100);
+  --sidebar-accent: rgb(0 0 0 / 0.04);
   --sidebar-accent-foreground: var(--neutral-900);
-  --sidebar-border: var(--neutral-200);
+  --sidebar-border: var(--shell-border);
   --sidebar-ring: var(--accent-400);
 
   /* macOS-style rounded shape language. Base scale, concentric per
      component: outer radius = inner radius + the padding between them.
      Tuned per-component, not just multiplied blindly. */
+  --radius-sm: 6px;
   --radius: 10px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -111,6 +133,14 @@
     0 12px 24px -6px hsl(var(--shadow-color) / 0.09), 0 28px 48px -16px hsl(var(--shadow-color) / 0.10);
   --shadow-xl: 0 1px 1px hsl(var(--shadow-color) / 0.06), 0 6px 12px -3px hsl(var(--shadow-color) / 0.08),
     0 20px 40px -10px hsl(var(--shadow-color) / 0.12), 0 48px 80px -24px hsl(var(--shadow-color) / 0.14);
+
+  /* Cards sit on the white content sheet, so their edge cannot be a grey
+     border: against white it reads as a drawn box rather than as an object.
+     A near-white hairline gives the edge its crispness and the shadow does
+     the lifting, tight at the contact point and wide underneath. */
+  --card-hairline: #e9e9ee;
+  --shadow-raised: 0 1px 1px hsl(var(--shadow-color) / 0.05), 0 2px 4px -1px hsl(var(--shadow-color) / 0.07),
+    0 6px 12px -4px hsl(var(--shadow-color) / 0.08), 0 16px 28px -12px hsl(var(--shadow-color) / 0.10);
 
   /* The other half of "light comes from the top": a 1px inset highlight on
      an element's top edge reads as the lit bevel, the drop shadow below
@@ -150,6 +180,32 @@
      visibly sits down onto the page instead of only shrinking. */
   --shadow-primary-pressed: 0 1px 0 0 var(--accent-900),
     0 1px 3px -1px color-mix(in oklch, var(--accent-950) 42%, transparent);
+
+  /* Light from the top. A faint bright line along the top edge is the lit
+     bevel, a fainter one along the bottom is the bounce off the surface it
+     sits on, and the cast shadow below is in the fill's own hue so it reads
+     as a solid object rather than a sticker. Kept well under the alpha that
+     once read as a white border: the ring people saw was the transparent
+     1px border with the fill clipped to the padding box, not the bevel. */
+  --edge-primary: inset 0 1px 0 0 rgb(255 255 255 / 0.22), inset 0 -1px 0 0 rgb(255 255 255 / 0.07);
+  --shadow-button: var(--edge-primary), 0 1px 2px 0 color-mix(in oklch, var(--accent-950) 30%, transparent),
+    0 2px 8px -2px color-mix(in oklch, var(--accent-950) 26%, transparent);
+  --shadow-button-hover: var(--edge-primary), 0 2px 4px 0 color-mix(in oklch, var(--accent-950) 32%, transparent),
+    0 6px 16px -4px color-mix(in oklch, var(--accent-950) 30%, transparent);
+  /* Pressed: the cast shadow goes, the bevel stays. The button has moved
+     down onto the page, it has not changed material. */
+  --shadow-button-pressed: var(--edge-primary);
+  /* Hover: the centre catches the light. Painted by a pseudo-element whose
+     opacity is what animates, since a gradient itself cannot transition. */
+  --sheen-primary: radial-gradient(ellipse 75% 140% at 50% 45%, rgb(255 255 255 / 0.2), transparent 74%);
+
+  /* The win moment is green, so its button needs a shadow in its own hue for
+     the same reason the primary one does: a grey shadow under a coloured fill
+     reads as a sticker laid on the page. */
+  --shadow-success: 0 1px 2px 0 color-mix(in oklch, var(--status-success) 45%, black 30%),
+    0 2px 8px -2px color-mix(in oklch, var(--status-success) 40%, black 25%);
+  --shadow-success-hover: 0 2px 4px 0 color-mix(in oklch, var(--status-success) 48%, black 30%),
+    0 6px 16px -4px color-mix(in oklch, var(--status-success) 45%, black 25%);
 
   /* Surfaces are top-lit gradients, not flat fills — a few percent of
      luminance falloff over the height is enough to stop a card reading as
@@ -253,4 +309,155 @@
   p {
     text-wrap: pretty;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Onboarding motion.
+
+   Three states, three different treatments, on purpose. Pending pulses: a
+   pulse reads as a background job, where a spinner would read as blocking
+   work the user has to wait on. Passing animates: the eye has to catch which
+   row changed. Failing snaps with no transition at all: abruptness reads as
+   certainty, and easing a failure in makes it look like it is still settling.
+--------------------------------------------------------------------------- */
+
+@keyframes supaffi-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* Plays on the row that just flipped, once. The tint fades out rather than
+   in, so the row is already correct when the animation starts and the flash
+   is pure notification. */
+@keyframes supaffi-flash {
+  from { background-color: var(--status-success-bg); }
+  to { background-color: transparent; }
+}
+
+/* The checkmark draws itself. stroke-dashoffset is the only property that
+   gets a tick to appear as a stroke rather than as a whole glyph. */
+@keyframes supaffi-draw {
+  from { stroke-dashoffset: 16; }
+  to { stroke-dashoffset: 0; }
+}
+
+.supaffi-pulse { animation: supaffi-pulse 1.8s var(--ease-in-out) infinite; }
+.supaffi-flash { animation: supaffi-flash 400ms var(--ease-out) 1; }
+.supaffi-draw { stroke-dasharray: 16; animation: supaffi-draw 280ms var(--ease-out) 1 both; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Fewer and gentler, not zero. The colour change survives because it is
+     what carries the meaning; the movement and the looping do not. */
+  .supaffi-pulse { animation: none; opacity: 0.7; }
+  .supaffi-flash { animation: none; }
+  .supaffi-draw { animation: none; stroke-dasharray: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Onboarding finished.
+
+   Once per product, ever, which is the one tier where delight is the whole
+   point rather than decoration. Pure transform and opacity so the whole thing
+   runs on the compositor, and linear because a falling scrap of paper hits
+   terminal velocity almost at once — easing it would read as a UI element
+   sliding rather than as something dropped.
+--------------------------------------------------------------------------- */
+
+@keyframes supaffi-confetti {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--confetti-dx), var(--confetti-dy), 0) rotate(var(--confetti-spin));
+    opacity: 0;
+  }
+}
+
+.supaffi-confetti {
+  animation: supaffi-confetti var(--confetti-duration) linear var(--confetti-delay) 1 both;
+}
+
+/* The modal the confetti falls over. Scale from 0.96 rather than from
+   nothing: something that grows from zero reads as a special effect, while a
+   small step up reads as an object arriving. */
+@keyframes supaffi-modal-in {
+  from {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes supaffi-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* A panel that was not on the screen a moment ago: the checks, once a key
+   exists to run them. It rises a few pixels rather than appearing, which is
+   what stops the card below it looking like it jumped. */
+@keyframes supaffi-reveal {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.supaffi-modal-in { animation: supaffi-modal-in 220ms var(--ease-out) 1 both; }
+.supaffi-fade-in { animation: supaffi-fade-in 200ms var(--ease-out) 1 both; }
+.supaffi-reveal { animation: supaffi-reveal 260ms var(--ease-out) 1 both; }
+
+/* A bar arriving. An animation rather than a transition, because the stagger
+   lives in its delay: as a transition delay it stayed on the element and
+   every later change, a hover among them, waited that long to start. */
+@keyframes supaffi-bar-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+.supaffi-bar {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: supaffi-bar-grow 420ms var(--ease-out) 1 both;
+}
+
+/* The mark the confetti is celebrating. Scales up rather than in, so it lands
+   rather than appears. */
+@keyframes supaffi-pop {
+  from {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.supaffi-pop {
+  animation: supaffi-pop 280ms var(--ease-out) 1 both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No confetti at all: it is forty things moving at once and there is no
+     gentler version of that. The mark still arrives, just without the pop. */
+  .supaffi-confetti { display: none; }
+  .supaffi-pop { animation: none; }
+  /* The modal still fades, because appearing instantly over a blurred page is
+     jarring in its own right. Only the movement goes. */
+  .supaffi-modal-in { animation: supaffi-fade-in 200ms var(--ease-out) 1 both; }
+  /* The rise goes, the fade stays: appearing instantly is its own jolt. */
+  .supaffi-reveal { animation: supaffi-fade-in 200ms var(--ease-out) 1 both; }
+  .supaffi-bar { animation: none; }
 }
