@@ -1,5 +1,3 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-
 // Gates the setup wizard, which creates the Owner account and therefore has
 // no credential of its own to check. Without this, whoever reaches a fresh
 // Instance first becomes its Owner, and with it custody of every Merchant's
@@ -28,7 +26,7 @@ const globalForSetupToken = globalThis as unknown as {
 export function mintSetupToken(): string {
   // 24 bytes is 192 bits, base64url-encoded to 32 characters with no
   // padding and nothing that needs escaping in a form field or a log line.
-  const token = randomBytes(24).toString("base64url");
+  const token = base64url(crypto.getRandomValues(new Uint8Array(24)));
   globalForSetupToken.supaffiSetupToken = token;
   return token;
 }
@@ -37,23 +35,41 @@ export function setupTokenExists(): boolean {
   return typeof globalForSetupToken.supaffiSetupToken === "string";
 }
 
-export function verifySetupToken(candidate: string): boolean {
+export async function verifySetupToken(candidate: string): Promise<boolean> {
   const expected = globalForSetupToken.supaffiSetupToken;
   // Fails closed. No token held means there is nothing a caller could
   // legitimately present, so every candidate is wrong.
   if (!expected) return false;
-  // Compared over fixed-width digests rather than the raw strings:
-  // timingSafeEqual throws outright on a length mismatch, and catching that
-  // to return false would leak the expected length through the difference
-  // between the two code paths. Hashing makes both sides 32 bytes whatever
-  // was submitted.
-  return timingSafeEqual(sha256(candidate), sha256(expected));
+  // Compared over fixed-width digests rather than the raw strings, so a wrong
+  // length costs exactly the same work as a wrong character and the expected
+  // length is not leaked by the difference between two code paths. Both sides
+  // are always the 32 bytes SHA-256 returns.
+  const [a, b] = await Promise.all([sha256(candidate), sha256(expected)]);
+  return equalFixedWidth(a, b);
 }
 
 export function clearSetupToken(): void {
   delete globalForSetupToken.supaffiSetupToken;
 }
 
-function sha256(value: string): Buffer {
-  return createHash("sha256").update(value, "utf8").digest();
+async function sha256(value: string): Promise<Uint8Array> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return new Uint8Array(digest);
+}
+
+/**
+ * Constant time for equal-length inputs: every byte is compared and the
+ * result is only read at the end, so there is no early return to time.
+ */
+function equalFixedWidth(a: Uint8Array, b: Uint8Array): boolean {
+  let difference = a.length ^ b.length;
+  for (let i = 0; i < a.length; i++) difference |= a[i] ^ b[i];
+  return difference === 0;
+}
+
+/** Base64url without padding, and without Buffer, which Edge does not have. */
+function base64url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

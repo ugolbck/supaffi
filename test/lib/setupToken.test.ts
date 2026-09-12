@@ -11,55 +11,55 @@ beforeEach(() => {
 });
 
 describe("setup token", () => {
-  it("has no token before one is minted", () => {
+  it("has no token before one is minted", async () => {
     expect(setupTokenExists()).toBe(false);
   });
 
-  it("accepts the token it minted", () => {
+  it("accepts the token it minted", async () => {
     const token = mintSetupToken();
-    expect(verifySetupToken(token)).toBe(true);
+    expect(await verifySetupToken(token)).toBe(true);
   });
 
-  it("reports that a token exists once minted", () => {
+  it("reports that a token exists once minted", async () => {
     mintSetupToken();
     expect(setupTokenExists()).toBe(true);
   });
 
-  it("rejects a different token of the same length", () => {
+  it("rejects a different token of the same length", async () => {
     const token = mintSetupToken();
     const other = token.slice(0, -1) + (token.endsWith("a") ? "b" : "a");
-    expect(verifySetupToken(other)).toBe(false);
+    expect(await verifySetupToken(other)).toBe(false);
   });
 
-  it("rejects a candidate of a different length without throwing", () => {
+  it("rejects a candidate of a different length without throwing", async () => {
     mintSetupToken();
-    expect(verifySetupToken("short")).toBe(false);
+    expect(await verifySetupToken("short")).toBe(false);
   });
 
-  it("rejects an empty candidate", () => {
+  it("rejects an empty candidate", async () => {
     mintSetupToken();
-    expect(verifySetupToken("")).toBe(false);
+    expect(await verifySetupToken("")).toBe(false);
   });
 
   // The state after setup completes, and also the state if the startup hook
   // could not reach the database to decide whether a token was needed.
-  it("fails closed when no token is held, whatever is presented", () => {
-    expect(verifySetupToken("anything")).toBe(false);
-    expect(verifySetupToken("")).toBe(false);
+  it("fails closed when no token is held, whatever is presented", async () => {
+    expect(await verifySetupToken("anything")).toBe(false);
+    expect(await verifySetupToken("")).toBe(false);
   });
 
-  it("stops accepting a token once cleared", () => {
+  it("stops accepting a token once cleared", async () => {
     const token = mintSetupToken();
     clearSetupToken();
-    expect(verifySetupToken(token)).toBe(false);
+    expect(await verifySetupToken(token)).toBe(false);
   });
 
-  it("replaces the previous token when minted again, so a restart invalidates the old one", () => {
+  it("replaces the previous token when minted again, so a restart invalidates the old one", async () => {
     const first = mintSetupToken();
     const second = mintSetupToken();
     expect(first).not.toBe(second);
-    expect(verifySetupToken(first)).toBe(false);
-    expect(verifySetupToken(second)).toBe(true);
+    expect(await verifySetupToken(first)).toBe(false);
+    expect(await verifySetupToken(second)).toBe(true);
   });
 
   it("mints a URL-safe token long enough not to be guessed", () => {

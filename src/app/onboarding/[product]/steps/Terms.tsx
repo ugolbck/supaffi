@@ -1,6 +1,6 @@
 import { listProgramsForMerchant } from "@/lib/program";
-import { stepIndex } from "@/lib/onboarding";
-import { StepFrame } from "../../StepFrame";
+import { displayStep } from "@/lib/onboarding";
+import { StepShell } from "@/components/onboarding/StepShell";
 import { TermsForm, TERMS_DEFAULTS } from "@/components/TermsForm";
 import { saveTermsAction } from "../actions";
 import type { Ctx } from "../checks";
@@ -22,16 +22,16 @@ export async function Terms({ ctx }: { ctx: Ctx }) {
     : TERMS_DEFAULTS;
 
   return (
-    <StepFrame
-      index={stepIndex("terms", ctx.emailRequired)}
-      total={ctx.total}
+    <StepShell
+      step={displayStep("terms", ctx.emailRequired)}
       title="What affiliates earn"
+      lede="Sensible defaults are already filled in. Change them now or later."
     >
       <TermsForm
         action={saveTermsAction.bind(null, { id: merchant.id, slug: merchant.slug })}
         initial={initial}
         submitLabel="Continue"
       />
-    </StepFrame>
+    </StepShell>
   );
 }

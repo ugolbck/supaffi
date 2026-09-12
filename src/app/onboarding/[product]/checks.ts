@@ -42,6 +42,11 @@ export const loadChecks = cache(
     const section = checkSectionFor(current);
     return runProductChecks(ownerId, merchantId, {
       fresh: section ? new Set([section]) : undefined,
+      // The screen does not wait for any of it. Pressing Continue used to
+      // hold the button down for two or three seconds while the step being
+      // navigated to ran a DNS lookup, a TLS handshake and a fetch of the
+      // Owner's own website, with nothing on screen to say why.
+      background: true,
     });
   }
 );

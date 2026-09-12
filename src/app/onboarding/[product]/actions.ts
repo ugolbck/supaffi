@@ -23,6 +23,8 @@ import { createWebhookEndpoint } from "@/lib/stripeWebhookEndpoint";
 import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
 import { isLocalDomain } from "@/lib/url";
 import { resendKeyWorks } from "@/lib/checks/email";
+import { runProductChecks } from "@/lib/checks/product";
+import { checkSectionFor } from "@/lib/onboarding";
 
 /** Whether this instance has the two email steps at all. */
 function setupEmailRequired(): boolean {
@@ -71,7 +73,10 @@ export async function updateSubdomainAction(
     if (isUniqueConstraintError(err)) return { error: "Another product already uses that address" };
     throw err;
   }
-  revalidatePath(stepPath(product.slug, "subdomain"));
+  // No revalidate here. Re-rendering the step from the action means the save
+  // does not answer until every DNS check has run, which is three seconds of
+  // a dead button. The field refreshes the page itself once it has its
+  // answer, so the row confirms at once and the checks catch up behind it.
   return { error: "", savedAt: Date.now() };
 }
 
@@ -120,7 +125,10 @@ export async function updateProductWebsiteAction(
     throw err;
   }
   revalidatePath(stepPath(product.slug, "product"));
-  revalidatePath(stepPath(product.slug, "subdomain"));
+  // No revalidate here. Re-rendering the step from the action means the save
+  // does not answer until every DNS check has run, which is three seconds of
+  // a dead button. The field refreshes the page itself once it has its
+  // answer, so the row confirms at once and the checks catch up behind it.
   return { error: "", savedAt: Date.now() };
 }
 
@@ -135,32 +143,46 @@ export async function saveStripeKeyAction(
   // that can fix it, not on the first sale weeks later.
   const check = await stripeKeyWorks(key);
   if (!check.ok) return { error: check.detail };
-  await connectStripe(ownerId, product.id, { secretKey: key });
 
-  // With write access on webhook endpoints, Supaffi sets its own endpoint up
-  // and the owner never sees Stripe's three-step wizard. Without it, or on a
-  // local instance Stripe cannot reach, the webhook step is still there and
-  // explains the manual path. Either way a failure here is not fatal: the key
-  // is already stored and the next step can finish the job.
   const merchant = await getMerchantForOwner(ownerId, product.id);
-  const existingEndpoint = merchant ? await getStripeWebhookEndpointId(ownerId, product.id) : null;
-  if (merchant && !isLocalDomain(merchant.domain) && !existingEndpoint) {
+  if (!merchant) redirect("/onboarding");
+
+  // Stripe cannot reach a machine on your desk, so a local instance stores
+  // the key alone and the step shows the CLI command that forwards events.
+  if (isLocalDomain(merchant.domain)) {
+    await connectStripe(ownerId, product.id, { secretKey: key });
+    revalidatePath(stepPath(product.slug, "stripe-key"));
+    return { error: "" };
+  }
+
+  // The endpoint is created before anything is stored, with the key the
+  // owner just pasted. A key that cannot create it is refused here, on the
+  // screen with the button that makes a right one, rather than stored and
+  // left for a webhook screen to explain. There is no webhook screen.
+  const existingEndpoint = await getStripeWebhookEndpointId(ownerId, product.id);
+  if (existingEndpoint) {
+    await connectStripe(ownerId, product.id, { secretKey: key });
+  } else {
     const created = await createWebhookEndpoint({
       secretKey: key,
       url: webhookEndpointUrl(merchant.domain),
       productName: merchant.name,
     });
-    if (created.ok) {
-      await connectStripe(ownerId, product.id, {
-        webhookSecret: created.secret,
-        webhookEndpointId: created.id,
-      });
-      // Nothing left for the owner to do about webhooks, so the step that
-      // would have asked them is skipped outright.
-      redirect(stepPath(product.slug, nextStep("stripe-webhook", setupEmailRequired())!));
+    if (!created.ok) {
+      return {
+        error:
+          created.reason === "permission"
+            ? "That key cannot create webhooks. Create it from the button above, with every row ticked."
+            : created.detail,
+      };
     }
+    await connectStripe(ownerId, product.id, {
+      secretKey: key,
+      webhookSecret: created.secret,
+      webhookEndpointId: created.id,
+    });
   }
-  redirect(stepPath(product.slug, "stripe-webhook"));
+  redirect(stepPath(product.slug, nextStep("stripe-key", setupEmailRequired())!));
 }
 
 export async function saveWebhookSecretAction(
@@ -175,7 +197,7 @@ export async function saveWebhookSecretAction(
   // the stored endpoint id is cleared: it must never later delete something
   // the owner made themselves.
   await connectStripe(ownerId, product.id, { webhookSecret: secret, webhookEndpointId: null });
-  revalidatePath(stepPath(product.slug, "stripe-webhook"));
+  revalidatePath(stepPath(product.slug, "stripe-key"));
   return { error: "" };
 }
 
@@ -189,9 +211,12 @@ export async function saveEmailKeyAction(
   const check = await resendKeyWorks(key);
   if (!check.ok) return { error: check.detail };
   await connectEmailProvider(ownerId, product.id, key);
-  // Not a hardcoded "email-domain": that was only ever true while the key
-  // came before the domain in the step order, and now it comes after.
-  redirect(stepPath(product.slug, nextStep("email-key", setupEmailRequired())!));
+  // Stays on the step rather than moving on. The key is what makes the
+  // domain checkable at all, so the screen the Owner is standing on is the
+  // one that has something new to show: two rows that were not there a
+  // moment ago. Continue is theirs to press.
+  revalidatePath(stepPath(product.slug, "email"));
+  return { error: "" };
 }
 
 export async function saveTermsAction(
@@ -232,6 +257,11 @@ export async function recheckAction(product: { id: string; slug: string }, step:
   const ownerId = await owner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
+  // Awaited, unlike the render's own run. This is the one moment the Owner
+  // asked to be kept waiting, and the button spins while it happens, so
+  // coming back with last minute's answer would be a lie.
+  const section = checkSectionFor(step);
+  if (section) await runProductChecks(ownerId, product.id, { fresh: new Set([section]) });
   revalidatePath(stepPath(product.slug, step));
 }
 

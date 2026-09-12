@@ -1,16 +1,16 @@
 import { notFound, redirect } from "next/navigation";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { backToDashboardHref, isStepId, stepIds, stepPath, stepStates, type StepId } from "@/lib/onboarding";
+import { isDevInstance } from "@/lib/instanceMode";
+import { isLocalDomain } from "@/lib/url";
 import { Rail } from "../../Rail";
 import { loadChecks, loadStepContext, type Ctx } from "../checks";
+import { Product } from "../steps/Product";
 import { Subdomain } from "../steps/Subdomain";
 import { StripeKey } from "../steps/StripeKey";
-import { StripeWebhook } from "../steps/StripeWebhook";
-import { EmailKey } from "../steps/EmailKey";
-import { EmailDomain } from "../steps/EmailDomain";
+import { Email } from "../steps/Email";
 import { Terms } from "../steps/Terms";
 import { Tracking } from "../steps/Tracking";
-import { YourLink } from "../steps/YourLink";
 
 export default async function StepPage({ params }: { params: Promise<{ product: string; step: string }> }) {
   const { product, step } = await params;
@@ -19,7 +19,6 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
   // A step the instance does not have — the email pair in console mode —
   // is not a 404, it is a URL that stopped existing. Land on the one after it.
   if (!stepIds(context.emailRequired).includes(step)) redirect(stepPath(product, "terms"));
-  if (step === "product") redirect(stepPath(product, "subdomain"));
 
   // Only this step's own section is re-run; the rest of the rail is whatever
   // the last run found, which is what makes a 15 second poll cheap.
@@ -35,6 +34,9 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
     checks,
     onboardingCompletedAt: ctx.onboardingCompletedAt,
     current: step,
+    // Same test the subdomain screen itself makes: where the record can
+    // never resolve, the rail does not hold the step open for it.
+    dnsUnavailable: isDevInstance() || isLocalDomain(ctx.merchant.domain),
   });
   const others = (await listMerchantsForOwner(ctx.ownerId)).filter((m) => m.id !== ctx.merchant.id);
 
@@ -46,25 +48,20 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
   );
 }
 
-// "product" never reaches here: it is redirected to subdomain above.
 function stepBody(step: StepId, ctx: Ctx) {
   switch (step) {
+    case "product":
+      return <Product ctx={ctx} />;
     case "subdomain":
       return <Subdomain ctx={ctx} />;
     case "stripe-key":
       return <StripeKey ctx={ctx} />;
-    case "stripe-webhook":
-      return <StripeWebhook ctx={ctx} />;
-    case "email-key":
-      return <EmailKey ctx={ctx} />;
-    case "email-domain":
-      return <EmailDomain ctx={ctx} />;
+    case "email":
+      return <Email ctx={ctx} />;
     case "terms":
       return <Terms ctx={ctx} />;
     case "tracking":
       return <Tracking ctx={ctx} />;
-    case "link":
-      return <YourLink ctx={ctx} />;
     default:
       notFound();
   }

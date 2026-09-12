@@ -7,5 +7,6 @@ import { loadStepContext } from "./checks";
 export default async function ProductOnboarding({ params }: { params: Promise<{ product: string }> }) {
   const { product } = await params;
   const ctx = await loadStepContext(product);
-  redirect(stepPath(product, resumeStep(ctx.setup, ctx.onboardingCompletedAt)));
+  const next = resumeStep(ctx.setup, ctx.onboardingCompletedAt);
+  redirect(next ? stepPath(product, next) : `/dashboard/products/${product}`);
 }

@@ -57,7 +57,7 @@ async function assertOwns(ownerId: string, merchantId: string): Promise<void> {
 export async function connectStripe(
   ownerId: string,
   merchantId: string,
-  input: { secretKey?: string; webhookSecret?: string }
+  input: { secretKey?: string; webhookSecret?: string; webhookEndpointId?: string | null }
 ): Promise<void> {
   await assertOwns(ownerId, merchantId);
   await db.merchant.update({
@@ -65,6 +65,10 @@ export async function connectStripe(
     data: {
       ...(input.secretKey ? { stripeSecretKeyEnc: encrypt(input.secretKey) } : {}),
       ...(input.webhookSecret ? { stripeWebhookSecretEnc: encrypt(input.webhookSecret) } : {}),
+      // Explicit null clears it, which is what a manually pasted secret means:
+      // the endpoint on the other end is one Supaffi did not create and must
+      // not later delete.
+      ...(input.webhookEndpointId !== undefined ? { stripeWebhookEndpointId: input.webhookEndpointId } : {}),
     },
   });
 }
@@ -172,6 +176,23 @@ export type OwnedMerchant = {
   websiteUrl: string;
   createdAt: Date;
 };
+
+/**
+ * The endpoint Supaffi created, or null when there is none. Kept off
+ * OwnedMerchant on purpose: that shape is the product's own details, read by
+ * every dashboard route, and one Stripe implementation detail does not belong
+ * in all of them.
+ */
+export async function getStripeWebhookEndpointId(
+  ownerId: string,
+  merchantId: string
+): Promise<string | null> {
+  const merchant = await db.merchant.findFirst({
+    where: { id: merchantId, ownerId },
+    select: { stripeWebhookEndpointId: true },
+  });
+  return merchant?.stripeWebhookEndpointId ?? null;
+}
 
 export async function getMerchantForOwner(
   ownerId: string,

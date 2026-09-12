@@ -1,28 +1,10 @@
-/**
- * The pre-filled restricted-key link.
- *
- * Stripe's Dashboard accepts a pre-filled key-creation form at
- * `/apikeys/create`, taking a `name` and a repeated `permissions[]`. It is not
- * documented, and its failure mode is silence: an identifier the form does not
- * recognise selects nothing, is not rejected, and is echoed back in the URL
- * unchanged. A typo here produces a link that looks correct, opens a form that
- * looks correct, and yields a key that fails on the first refund.
- *
- * Each token is `rak_` + the permission name from Stripe's Apps permissions
- * reference. That mapping holds for most rows but not all: the row shown as
- * **Financial Reports** is keyed `financial_statement`, not the
- * `report_runs_and_report_types_*` the same reference gives it. So the `row`
- * label below is what has to be read back off the real form, not inferred.
- *
- * Anything changed here gets checked against the real form again: open the
- * link, read the rows, confirm every one is on Read and nothing else is.
- */
-
 export type KeyPermission = {
-  /** The `permissions[]` value. */
+  /** Stable identifier for the row. Not sent anywhere. */
   token: string;
-  /** Stripe's own label for the row, so the owner can check the claim. */
+  /** Stripe's own label for the row, so the owner can find it on the form. */
   row: string;
+  /** The access level to select on that row. */
+  access: "Read" | "Write";
   /** Which Supaffi call needs it. */
   why: string;
 };
@@ -33,28 +15,43 @@ export type KeyPermission = {
 export const KEY_PERMISSIONS = [
   {
     token: "rak_customer_read",
+    access: "Read",
     row: "Customers",
     why: "matches a sale to the customer who made it",
   },
   {
     token: "rak_invoice_read",
+    access: "Read",
     row: "Invoices",
     why: "finds the payment behind a refunded charge, to claw the commission back",
   },
   {
     token: "rak_payment_intent_read",
+    access: "Read",
     row: "Payment Intents",
     why: "reads the payment a commission is owed on",
   },
   {
     token: "rak_payment_method_read",
+    access: "Read",
     row: "Payment Methods",
     why: "spots an affiliate buying through their own link",
   },
   {
     token: "rak_subscription_read",
+    access: "Read",
     row: "Subscriptions",
     why: "tracks renewals for recurring commissions",
+  },
+  // The only write in the list, and the reason the webhook step no longer
+  // exists: with it Supaffi creates its own endpoint and reads back the
+  // signing secret, instead of walking the owner through Stripe's three-step
+  // wizard and asking them to copy a secret across by hand.
+  {
+    token: "rak_webhook_write",
+    access: "Write",
+    row: "Webhook Endpoints",
+    why: "creates the endpoint that tells Supaffi about sales",
   },
 ] as const satisfies readonly KeyPermission[];
 

@@ -35,12 +35,12 @@ export function validateProgramInput(
 
   const attributionWindowDays = Number(input.attributionWindowDays);
   if (!Number.isFinite(attributionWindowDays) || attributionWindowDays <= 0 || !Number.isInteger(attributionWindowDays)) {
-    return { error: "Attribution window must be a positive number of days" };
+    return { error: "Time to buy must be a whole number of days, at least 1" };
   }
 
   const holdingPeriodDays = Number(input.holdingPeriodDays);
   if (!Number.isFinite(holdingPeriodDays) || holdingPeriodDays <= 0 || !Number.isInteger(holdingPeriodDays)) {
-    return { error: "Holding period must be a positive number of days" };
+    return { error: "Hold before paying must be a whole number of days, at least 1" };
   }
 
   return {

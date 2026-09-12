@@ -4,11 +4,6 @@ import { cn } from "@/lib/utils";
 import type { Step } from "@/lib/onboarding";
 import { stepPath } from "@/lib/onboarding";
 
-// The two rows above the steps. Whoever is reading this rail has already
-// installed Supaffi and made an account, so the flow opens with progress
-// behind it rather than at zero. They are never links: neither is a screen.
-const ALREADY_DONE = ["Install", "Account"];
-
 // A row is a flex box the full width of the rail, so a clickable one is
 // clickable everywhere, not just on its label.
 function rowClass(state: Step["state"], clickable: boolean): string {
@@ -31,14 +26,6 @@ export function Rail({ steps, productSlug, backHref }: { steps: Step[]; productS
         </Link>
       )}
       <ol className="flex flex-col gap-1">
-        {ALREADY_DONE.map((label) => (
-          <li key={label}>
-            <span className={rowClass("done", false)}>
-              <Marker state="done" />
-              {label}
-            </span>
-          </li>
-        ))}
         {steps.map((step) => {
           const clickable = productSlug !== null && (step.state === "done" || step.state === "waiting");
           return (
@@ -46,12 +33,12 @@ export function Rail({ steps, productSlug, backHref }: { steps: Step[]; productS
               {clickable ? (
                 <Link href={stepPath(productSlug, step.id)} className={rowClass(step.state, true)}>
                   <Marker state={step.state} />
-                  <RowLabel step={step} />
+                  <span className="truncate">{step.label}</span>
                 </Link>
               ) : (
                 <span className={rowClass(step.state, false)}>
                   <Marker state={step.state} />
-                  <RowLabel step={step} />
+                  <span className="truncate">{step.label}</span>
                 </span>
               )}
             </li>
@@ -59,18 +46,6 @@ export function Rail({ steps, productSlug, backHref }: { steps: Step[]; productS
         })}
       </ol>
     </aside>
-  );
-}
-
-// The note is the step's own, not the rail's: a row that waits on something
-// the rail knows nothing about would otherwise inherit the webhook's words.
-function RowLabel({ step }: { step: Step }) {
-  if (!step.note) return <span className="truncate">{step.label}</span>;
-  return (
-    <span className="flex min-w-0 flex-col gap-px leading-tight">
-      <span className="truncate">{step.label}</span>
-      <span className="truncate text-[11px] text-muted-foreground">{step.note}</span>
-    </span>
   );
 }
 
@@ -84,12 +59,10 @@ function Marker({ state }: { state: Step["state"] }) {
   }
   // Reached, not green: a quiet tick rather than the success one, so the
   // green rows still read as the progress and this one reads as at rest
-  // without claiming a light it has not earned. It sits on the label's line
-  // rather than in the middle of the two, so the column of markers stays a
-  // column when the row carries a note.
+  // without claiming a light it has not earned.
   if (state === "waiting") {
     return (
-      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center self-start rounded-full bg-neutral-400 text-white">
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-neutral-400 text-white">
         <Check className="size-3" strokeWidth={3} />
       </span>
     );

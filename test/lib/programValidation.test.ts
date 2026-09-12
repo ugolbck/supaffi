@@ -53,13 +53,13 @@ describe("validateProgramInput", () => {
 
   it("rejects a non-positive attributionWindowDays", () => {
     expect(validateProgramInput({ ...validInput, attributionWindowDays: "0" }).error).toBe(
-      "Attribution window must be a positive number of days"
+      "Time to buy must be a whole number of days, at least 1"
     );
   });
 
   it("rejects a non-positive holdingPeriodDays", () => {
     expect(validateProgramInput({ ...validInput, holdingPeriodDays: "-1" }).error).toBe(
-      "Holding period must be a positive number of days"
+      "Hold before paying must be a whole number of days, at least 1"
     );
   });
 });

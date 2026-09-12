@@ -20,13 +20,24 @@ describe("restricted key link", () => {
       "rak_payment_intent_read",
       "rak_payment_method_read",
       "rak_subscription_read",
+      "rak_webhook_write",
     ]);
   });
 
-  it("asks for read on every one, since Supaffi never writes to Stripe", () => {
-    for (const permission of KEY_PERMISSIONS) {
-      expect(permission.token.endsWith("_read")).toBe(true);
-    }
+
+
+
+  it("names the key after the product so several are tellable apart in Stripe", () => {
+    expect(keyName("Mokkit")).toBe("Supaffi: Mokkit");
+    expect(keyName("  Mokkit  ")).toBe("Supaffi: Mokkit");
+    expect(keyName(undefined)).toBe("Supaffi");
+    expect(keyName("   ")).toBe("Supaffi");
+  });
+
+  it("asks for write on exactly one row, the webhook endpoint it creates itself", () => {
+    const writes = KEY_PERMISSIONS.filter((permission) => permission.access === "Write");
+    expect(writes).toHaveLength(1);
+    expect(writes[0].row).toBe("Webhook Endpoints");
   });
 
   it("states each permission on its own unencoded permissions[] pair", () => {
@@ -49,22 +60,11 @@ describe("restricted key link", () => {
     expect(new URL(url).searchParams.get("name")).toBe("Supaffi: Mokkit & Co #1");
     // The `&` and `#` must not have split the query or started a fragment,
     // which would silently drop every permission after the name.
-    expect(new URL(url).searchParams.getAll("permissions[]")).toHaveLength(
-      KEY_PERMISSIONS.length
-    );
-  });
-
-  it("names the key after the product so several are tellable apart in Stripe", () => {
-    expect(keyName("Mokkit")).toBe("Supaffi: Mokkit");
-    expect(keyName("  Mokkit  ")).toBe("Supaffi: Mokkit");
-    expect(keyName(undefined)).toBe("Supaffi");
-    expect(keyName("   ")).toBe("Supaffi");
+    expect(new URL(url).searchParams.getAll("permissions[]")).toHaveLength(KEY_PERMISSIONS.length);
   });
 
   it("pins no account id, so Stripe's own picker chooses which account", () => {
     expect(restrictedKeyUrl("Mokkit")).not.toMatch(/acct_/);
-    expect(restrictedKeyUrl("Mokkit")).toMatch(
-      /^https:\/\/dashboard\.stripe\.com\/apikeys\/create\?/
-    );
+    expect(restrictedKeyUrl("Mokkit")).toMatch(/^https:\/\/dashboard\.stripe\.com\/apikeys\/create\?/);
   });
 });

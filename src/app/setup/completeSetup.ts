@@ -15,7 +15,7 @@ export async function completeSetup(
   // reachable by anyone until an Owner exists, and hashing costs 64 MiB of
   // Argon2id per call, so an unauthenticated caller must never reach it.
   const token = String(formData.get("setupToken") ?? "").trim();
-  if (!verifySetupToken(token)) {
+  if (!(await verifySetupToken(token))) {
     return { error: "That setup token is not valid. Check this instance's logs." };
   }
 

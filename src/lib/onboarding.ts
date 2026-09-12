@@ -6,24 +6,14 @@ export type StepId =
   | "product"
   | "subdomain"
   | "stripe-key"
-  | "stripe-webhook"
-  | "email-key"
-  | "email-domain"
+  | "email"
   | "terms"
   | "tracking";
 
 /**
- * The one row that cannot turn green on its own: the webhook is set up and
- * correct, and stays this way until a real sale comes through it. Without
- * these words a neutral row sitting under seven green ones reads as a fault.
- */
-const WAITING_ON_FIRST_SALE = "Ready, waiting for your first sale";
-
-/**
- * "waiting" is not "unfinished": the row is reached and its check has not
- * come good. Either it waits on the outside world (the Stripe webhook, whose
- * light a real sale turns) or its section was re-run this request and said
- * no. Everything else is done, current or upcoming.
+ * "waiting" is not "unfinished": the row is reached, its section was re-run
+ * this request, and the check said no. Everything else is done, current or
+ * upcoming.
  */
 export type StepState = "done" | "waiting" | "current" | "upcoming";
 export type Step = {
@@ -31,24 +21,21 @@ export type Step = {
   label: string;
   index: number;
   state: StepState;
-  /**
-   * The second line under a rail row, when the row's state needs one word of
-   * explanation the label cannot carry. Written here rather than in the rail
-   * so a second waiting row cannot inherit the webhook's sentence.
-   */
-  note?: string;
 };
 
 const ALL: StepId[] = [
   "product",
   "subdomain",
+  // No webhook step. The key is made from a link that ticks write access on
+  // webhook endpoints, and saving it creates the endpoint in the same
+  // action, so there was nothing left for a screen to ask.
   "stripe-key",
-  "stripe-webhook",
-  // The domain has to exist before a key can be scoped to it: Resend's key
-  // form asks which domain the key may send from, so asking for the domain
-  // first is what makes that question answerable rather than backwards.
-  "email-domain",
-  "email-key",
+  // One step, not two. The domain and the key are both done in Resend, in
+  // one sitting, in one browser tab: splitting them meant two screens each
+  // carrying their own "Open Resend" button, and a domain screen with
+  // nothing to check on it because checking needs the key from the screen
+  // after it.
+  "email",
   "terms",
   "tracking",
 ];
@@ -57,16 +44,14 @@ const LABELS: Record<StepId, string> = {
   product: "Product",
   subdomain: "Subdomain",
   "stripe-key": "Stripe key",
-  "stripe-webhook": "Stripe webhook",
-  "email-key": "Email key",
-  "email-domain": "Sending domain",
+  email: "Email",
   terms: "Terms",
   tracking: "Tracking",
 };
 
-/** The steps in order. The two email steps exist only when the instance sends real email. */
+/** The steps in order. The email step exists only when the instance sends real email. */
 export function stepIds(emailRequired: boolean): StepId[] {
-  return emailRequired ? ALL : ALL.filter((id) => !id.startsWith("email-"));
+  return emailRequired ? ALL : ALL.filter((id) => id !== "email");
 }
 
 export function stepLabel(id: StepId): string {
@@ -79,19 +64,15 @@ export function stepIndex(id: StepId, emailRequired: boolean): number {
 }
 
 /**
- * The rail opens with two rows already ticked: the install, and the account
- * the setup screen created. They are real work the user did, so the counter
- * counts them. Leaving them out is what made a rail of nine rows sit under
- * the words "step 2 of 7".
+ * What the counter shows: position and total, over the steps there are.
+ *
+ * The rail used to open with two rows already ticked, the install and the
+ * account. Neither is a screen anyone can go to and neither tells the reader
+ * anything they do not know, so all they did was make the flow look two
+ * steps longer than it is.
  */
-export const STEPS_ALREADY_DONE = 2;
-
-/** What the counter shows: position and total, both including the ticked rows. */
 export function displayStep(id: StepId, emailRequired: boolean): { index: number; total: number } {
-  return {
-    index: stepIndex(id, emailRequired) + STEPS_ALREADY_DONE,
-    total: stepIds(emailRequired).length + STEPS_ALREADY_DONE,
-  };
+  return { index: stepIndex(id, emailRequired), total: stepIds(emailRequired).length };
 }
 
 /**
@@ -103,10 +84,8 @@ export function checkSectionFor(id: StepId): keyof ProductChecks | null {
     case "subdomain":
       return "dns";
     case "stripe-key":
-    case "stripe-webhook":
       return "stripe";
-    case "email-key":
-    case "email-domain":
+    case "email":
       return "email";
     case "tracking":
       return "tracking";
@@ -145,15 +124,9 @@ function stored(id: StepId, setup: ProductSetup, onboardingCompletedAt: Date | n
         setup.firstProgramSlug !== null ||
         setup.trackingStatus !== "not-started"
       );
-    // The two Stripe halves are stored one at a time, and each step owns its
-    // own. Reading both from one flag stranded anyone who had pasted the key
-    // but not the signing secret on a step that thought it was finished.
     case "stripe-key":
       return setup.stripeKeyStored;
-    case "stripe-webhook":
-      return setup.stripeWebhookStored;
-    case "email-key":
-    case "email-domain":
+    case "email":
       return setup.emailConnected;
     case "terms":
       return setup.firstProgramSlug !== null;
@@ -169,12 +142,11 @@ function verified(id: StepId, checks: ProductChecks, setup: ProductSetup, onboar
       return checks.dns.resolves.ok && checks.dns.https.ok && checks.dns.certificate.ok;
     case "stripe-key":
       return checks.stripe.key.ok;
-    case "stripe-webhook":
-      return checks.stripe.webhook.ok;
-    case "email-key":
-      return checks.email.key.ok;
-    case "email-domain":
-      return checks.email.domain.ok;
+    // Both halves, because both are needed before a single affiliate can log
+    // in: a key that works but a domain Resend will not send from delivers
+    // nothing.
+    case "email":
+      return checks.email.key.ok && checks.email.domain.ok;
     case "tracking":
       return checks.tracking.script.ok || setup.trackingStatus !== "not-started";
     default:
@@ -187,44 +159,34 @@ export function stepStates(input: {
   checks: ProductChecks;
   onboardingCompletedAt: Date | null;
   current: StepId;
+  /**
+   * Nothing outside can reach a machine on someone's desk, so the subdomain's
+   * checks can never come good there. The rail does not ask them to: it would
+   * sit amber for the whole of a developer's run.
+   */
+  dnsUnavailable?: boolean;
 }): Step[] {
   const ids = stepIds(input.setup.emailRequired);
   const currentIndex = ids.indexOf(input.current);
-  // The one section that was really run for this request. Two steps can share
-  // a section, so a row the owner is not standing on can still be carrying a
-  // result from a moment ago rather than from the cache.
-  const runningSection = checkSectionFor(input.current);
   return ids.map((id, index) => {
     const behind = index < currentIndex;
     const reached = stored(id, input.setup, input.onboardingCompletedAt) || behind;
-    const isVerified = verified(id, input.checks, input.setup, input.onboardingCompletedAt);
-    const section = checkSectionFor(id);
-    const fresh = section !== null && section === runningSection;
+    const isVerified =
+      id === "subdomain" && input.dnsUnavailable
+        ? true
+        : verified(id, input.checks, input.setup, input.onboardingCompletedAt);
     let state: StepState;
-    let note: string | undefined;
     if (id === input.current) state = "current";
-    // The webhook is the only row whose green light is not the Owner's to
-    // earn: it turns when a real sale arrives, which can be days away. Left
-    // in the same amber as unfinished work it sat there beside seven green
-    // rows reading as a fault, so it gets its own settled, neutral state.
-    else if (id === "stripe-webhook") {
-      state = isVerified ? "done" : reached ? "waiting" : "upcoming";
-      if (state === "waiting") note = WAITING_ON_FIRST_SALE;
-    }
-    // The pair the current step belongs to (the two Stripe halves, the two
-    // email halves) was re-run just now, so its answer is the freshest thing
-    // on the page. Calling the other half done because the Owner walked past
-    // it would paint a failing check green one row above where they stand.
-    else if (fresh) state = isVerified ? "done" : reached ? "waiting" : "upcoming";
-    // Every other row: reaching it is finishing it. The work behind these
-    // steps happens once (a key was saved, a record was added), and the
-    // section was not run on this request, so a row from a minute-old cache
-    // cannot be told apart from a fresh one. Drawing that distinction is what
-    // made finished steps flicker amber and flip green while the Owner was
-    // three screens away.
-    else if (isVerified || reached) state = "done";
+    // A tick means the outside world agreed, and nothing else. Walking past a
+    // step used to be enough to paint it green, so a subdomain whose record
+    // had been deleted and an email step whose domain was never added both
+    // read as finished the moment the Owner pressed Continue. A step that has
+    // been reached and is not passing is waiting, wherever the Owner is
+    // standing now, and the rail's waiting rows are links back to it.
+    else if (isVerified) state = "done";
+    else if (reached) state = "waiting";
     else state = "upcoming";
-    return { id, label: LABELS[id], index: index + 1, state, note };
+    return { id, label: LABELS[id], index: index + 1, state };
   });
 }
 
@@ -240,11 +202,18 @@ export function previousStep(current: StepId, emailRequired: boolean): StepId | 
   return i > 0 ? ids[i - 1] : null;
 }
 
-/** The subdomain to propose from the website address: affiliates. on the site's own domain, www dropped. */
+/**
+ * The subdomain to propose from the website address: go. on the site's own
+ * domain, www dropped.
+ *
+ * Not affiliates. Every affiliate link carries this host, so short wins, and
+ * the login emails go out from affiliates@ this domain, which under
+ * affiliates.acme.com read as affiliates@affiliates.acme.com.
+ */
 export function suggestSubdomain(websiteUrl: string): string {
   try {
     const host = new URL(websiteUrl).hostname.replace(/^www\./, "");
-    return host ? `affiliates.${host}` : "";
+    return host ? `go.${host}` : "";
   } catch {
     return "";
   }

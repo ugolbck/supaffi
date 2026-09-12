@@ -2,9 +2,9 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { deliveryMode } from "@/lib/email/transport";
-import { backToDashboardHref, stepIds, stepLabel } from "@/lib/onboarding";
+import { backToDashboardHref, displayStep, stepIds, stepLabel } from "@/lib/onboarding";
+import { StepShell } from "@/components/onboarding/StepShell";
 import { Rail } from "./Rail";
-import { StepFrame } from "./StepFrame";
 import { ProductForm } from "./ProductForm";
 
 export default async function OnboardingStart() {
@@ -14,7 +14,6 @@ export default async function OnboardingStart() {
   const emailRequired = deliveryMode() === "send";
   const ids = stepIds(emailRequired);
 
-  // The two rows above these, install and account, are the rail's own.
   const steps = ids.map((id, i) => ({
     id,
     label: stepLabel(id),
@@ -25,9 +24,12 @@ export default async function OnboardingStart() {
   return (
     <>
       <Rail steps={steps} productSlug={null} backHref={backToDashboardHref(existing)} />
-      <StepFrame index={1} total={ids.length} title="What are you promoting?">
+      <StepShell
+        step={displayStep("product", emailRequired)}
+        title="What are you promoting?"
+      >
         <ProductForm />
-      </StepFrame>
+      </StepShell>
     </>
   );
 }

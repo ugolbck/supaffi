@@ -1,59 +1,93 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
-import { stepIndex, stepPath } from "@/lib/onboarding";
-import { StepFrame } from "../../StepFrame";
-import { Light } from "@/components/dashboard/Light";
+import { CheckList } from "@/components/onboarding/CheckList";
+import { checkState, stripeKeyPending } from "@/components/onboarding/checkRows";
+import { CodeBlock } from "@/components/onboarding/CodeBlock";
+import { StepShell } from "@/components/onboarding/StepShell";
+import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { PasteField } from "@/components/PasteField";
-import { saveStripeKeyAction } from "../actions";
+import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
+import { displayStep, nextStep, stepPath } from "@/lib/onboarding";
+import { isLocalDomain } from "@/lib/url";
+import { saveStripeKeyAction, saveWebhookSecretAction } from "../actions";
 import type { Ctx } from "../checks";
 
 export function StripeKey({ ctx }: { ctx: Ctx }) {
   const { merchant, checks, setup } = ctx;
-  // The key alone, not the whole Stripe connection: someone who has pasted a
-  // key and still owes the signing secret needs a way on to the webhook step,
-  // not a screen that only offers to replace what it already has.
   const stored = setup.stripeKeyStored;
+  const next = nextStep("stripe-key", ctx.emailRequired)!;
+  const product = { id: merchant.id, slug: merchant.slug };
+  // Stripe cannot reach a machine on your desk, so the only way to see a real
+  // event locally is to have Stripe's own CLI forward it. This is the one
+  // place the signing secret is ever typed by hand; on a real domain the
+  // endpoint is created with the key and there is nothing to paste.
+  const local = isLocalDomain(merchant.domain);
+
   return (
-    <StepFrame
-      index={stepIndex("stripe-key", ctx.emailRequired)}
-      total={ctx.total}
+    <StepShell
+      step={displayStep("stripe-key", ctx.emailRequired)}
       title="Let Supaffi read your Stripe payments"
-      lede="Read only. Nothing is charged or created."
+      lede="The link opens Stripe with the permissions already ticked."
+      action={
+        stored ? (
+          <Button size="lg" render={<Link href={stepPath(merchant.slug, next)} />}>
+            Continue
+          </Button>
+        ) : undefined
+      }
     >
-      <Button variant="secondary" className="w-fit cursor-pointer" render={<a href={restrictedKeyUrl(merchant.name)} target="_blank" rel="noreferrer" />}>
-        Create key in Stripe
-      </Button>
-      <p className="-mt-3 text-xs text-muted-foreground">Opens Stripe with the right permissions already set.</p>
-      {stored ? (
-        <>
-          <div className="rounded-(--radius-md) border border-border/70 p-4">
-            <Light result={checks.stripe.key} label="Key works" />
-          </div>
-          <div>
-            <Button size="lg" className="cursor-pointer" render={<Link href={stepPath(merchant.slug, "stripe-webhook")} />}>
-              Continue
-            </Button>
-          </div>
-          <details className="text-sm">
-            <summary className="cursor-pointer text-muted-foreground">Replace the key</summary>
-            <div className="mt-3">
-              <PasteField
-                label="Paste the new key"
-                placeholder="rk_live_..."
-                action={saveStripeKeyAction.bind(null, { id: merchant.id, slug: merchant.slug })}
-                submitLabel="Save"
-              />
-            </div>
-          </details>
-        </>
-      ) : (
-        <PasteField
-          label="Then paste it here"
-          placeholder="rk_live_..."
-          action={saveStripeKeyAction.bind(null, { id: merchant.id, slug: merchant.slug })}
-        />
+      <div>
+        <Button
+          variant="secondary"
+          size="lg"
+          render={<a href={restrictedKeyUrl(merchant.name)} target="_blank" rel="noreferrer" />}
+        >
+          <Image src="/logos/stripe.svg" alt="" width={16} height={16} className="mr-1 size-4" />
+          Create the key in Stripe
+        </Button>
+      </div>
+
+      {stored && (
+        <TaskCard>
+          <TaskCardSection sunken>
+            <CheckList
+              rows={[
+                {
+                  id: "key",
+                  state: checkState(checks.stripe.key, stripeKeyPending),
+                  pending: "Checking the key",
+                  passed: "Supaffi can read your Stripe payments",
+                  failed: "Stripe rejected that key",
+                  hint: checks.stripe.key.detail || "Create a new one and paste it again.",
+                },
+              ]}
+            />
+          </TaskCardSection>
+        </TaskCard>
       )}
-    </StepFrame>
+
+      <PasteField
+        label={stored ? "Replace the key" : "Paste the key here"}
+        placeholder="rk_live_..."
+        action={saveStripeKeyAction.bind(null, product)}
+        submitLabel={stored ? "Replace" : "Continue"}
+      />
+
+      {stored && local && (
+        <>
+          <CodeBlock
+            title="Local instance: forward events with the Stripe CLI"
+            code={`stripe listen --forward-to ${merchant.domain}/api/webhooks/stripe`}
+          />
+          <PasteField
+            label={setup.stripeWebhookStored ? "Replace the signing secret it prints" : "Paste the signing secret it prints"}
+            placeholder="whsec_..."
+            action={saveWebhookSecretAction.bind(null, product)}
+            submitLabel="Save"
+          />
+        </>
+      )}
+    </StepShell>
   );
 }
