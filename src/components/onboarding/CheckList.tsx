@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
+import { HelpCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { CheckRow, CheckState } from "./checkRows";
 
@@ -41,7 +44,7 @@ function useJustPassed(rows: CheckRow[]): Set<string> {
  * `onRecheck`, when given, is a server action bound to the product and the
  * current step, wired as a form action so it works without client JS. It
  * renders as one row under the list, only while something has not settled:
- * the page already polls every 15 seconds (`AutoRefresh`), and without this
+ * the page already polls every few seconds (`AutoRefresh`), and without this
  * the only obvious move was to reload, which is exactly the habit not to
  * teach.
  */
@@ -67,7 +70,7 @@ export function CheckList({ rows, onRecheck }: { rows: CheckRow[]; onRecheck?: (
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span
                 className={cn(
-                  "text-sm",
+                  "flex items-center gap-1.5 text-sm",
                   row.state === "pending" && "text-muted-foreground",
                   // A failure carries the same weight as a pass: the row that
                   // needs reading should not be the quietest one on the list.
@@ -75,6 +78,7 @@ export function CheckList({ rows, onRecheck }: { rows: CheckRow[]; onRecheck?: (
                 )}
               >
                 {row.state === "ok" ? row.passed : row.state === "failed" ? (row.failed ?? row.pending) : row.pending}
+                {row.info && row.state !== "ok" && <InfoTip text={row.info} />}
               </span>
               {/* The hint is an instruction, not a second error: the red cross and the
                   failed line have already said something is wrong. */}
@@ -91,13 +95,72 @@ export function CheckList({ rows, onRecheck }: { rows: CheckRow[]; onRecheck?: (
           action={onRecheck}
           className="flex items-center justify-between gap-3 border-t border-neutral-200 px-4 py-2"
         >
-          <span className="text-[13px] text-muted-foreground">Checking every 15 seconds</span>
-          <Button type="submit" variant="ghost" size="sm">
-            Check now
-          </Button>
+          <Recheck signature={rows.map((row) => `${row.id}:${row.state}`).join("|")} />
         </form>
       )}
     </div>
+  );
+}
+
+/**
+ * The footer of the list: what is happening, and the one button that makes it
+ * happen now.
+ *
+ * It says what came back. A press that changes nothing used to look exactly
+ * like a press that did nothing at all, which is the worst thing a button
+ * can do: the Owner cannot tell whether the check ran, so they press it
+ * again instead of going and fixing what the rows are telling them.
+ */
+function Recheck({ signature }: { signature: string }) {
+  const { pending } = useFormStatus();
+  const before = useRef<string | null>(null);
+  const [unchanged, setUnchanged] = useState(false);
+
+  useEffect(() => {
+    if (pending) {
+      before.current = signature;
+      setUnchanged(false);
+      return;
+    }
+    if (before.current === null) return;
+    const same = before.current === signature;
+    before.current = null;
+    if (!same) return;
+    setUnchanged(true);
+    const timer = setTimeout(() => setUnchanged(false), 6000);
+    return () => clearTimeout(timer);
+  }, [pending, signature]);
+
+  return (
+    <>
+      <span className="text-[13px] text-muted-foreground">
+        {pending ? "Looking now" : unchanged ? "Nothing has changed yet" : "Checking every 5 seconds"}
+      </span>
+      <Button type="submit" variant="secondary" size="sm" disabled={pending}>
+        {pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+        Check now
+      </Button>
+    </>
+  );
+}
+
+/** The one explanation a row is allowed, and only on hover. */
+function InfoTip({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label="What this means"
+            className="inline-flex shrink-0 cursor-help text-neutral-400 transition-colors hover:text-neutral-700"
+          />
+        }
+      >
+        <HelpCircle className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[280px]">{text}</TooltipContent>
+    </Tooltip>
   );
 }
 

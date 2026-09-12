@@ -2,9 +2,9 @@
 
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
+import { Term } from "@/components/Term";
 import type { ProgramFormValues } from "@/lib/programValidation";
 
 type Action = (prev: { error: string }, formData: FormData) => Promise<{ error: string }>;
@@ -26,10 +26,16 @@ const DURATIONS: Record<string, string> = {
   ONE_TIME: "of the first payment only",
 };
 
-function Explain({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs leading-relaxed text-muted-foreground text-pretty">{children}</p>;
-}
+const ROW = "h-14 w-full min-w-0 bg-transparent px-4 text-[15px] outline-none placeholder:text-neutral-400";
+const NUMBER =
+  "h-10 w-20 rounded-(--radius) border border-neutral-300 bg-white px-3 text-[15px] tabular-nums shadow-xs outline-none transition-colors duration-100 ease-(--ease-out) focus:border-accent-400";
 
+/**
+ * Built on the same banded card as the product step, so the two forms in the
+ * flow are visibly the same kind of object. Each field gets a band naming it
+ * and a row holding it, and only the two windows carry a qualifier, because
+ * they are the only labels here that do not explain themselves.
+ */
 export function TermsForm({
   action,
   initial = TERMS_DEFAULTS,
@@ -44,32 +50,25 @@ export function TermsForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
-      {state.error && (
-        <p role="alert" className="text-sm text-status-danger">
-          {state.error}
-        </p>
-      )}
+      <TaskCard>
+        <TaskCardHeader title="Program name" />
+        <TaskCardSection>
+          <input name="name" defaultValue={initial.name} required className={ROW} aria-label="Program name" />
+        </TaskCardSection>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="name">Program name</Label>
-        <Input id="name" name="name" defaultValue={initial.name} required />
-        <Explain>You can add more later, for example a VIP tier with a higher rate.</Explain>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="defaultCommissionRate">Commission</Label>
-        <div className="flex gap-2">
-          <div className="relative w-28">
-            <Input
-              id="defaultCommissionRate"
+        <TaskCardHeader title="Commission" />
+        <TaskCardSection className="flex items-center gap-3 p-4">
+          <div className="relative shrink-0">
+            <input
               name="defaultCommissionRate"
               type="number"
-              min="0.01"
+              min="1"
               max="100"
-              step="0.01"
+              step="1"
               defaultValue={initial.defaultCommissionRate}
               required
-              className="pr-7"
+              aria-label="Commission rate"
+              className={`${NUMBER} w-24 pr-7`}
             />
             <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
               %
@@ -81,7 +80,7 @@ export function TermsForm({
             value={duration}
             onValueChange={(value) => setDuration(String(value))}
           >
-            <SelectTrigger className="flex-1 cursor-pointer" aria-label="How long commission is paid">
+            <SelectTrigger className="h-10 flex-1 cursor-pointer" aria-label="How long commission is paid">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -92,62 +91,67 @@ export function TermsForm({
               ))}
             </SelectContent>
           </Select>
-        </div>
-        {duration === "FOREVER" && <Explain>Forever means every renewal, for as long as the customer stays.</Explain>}
-        {duration === "ONE_TIME" && <Explain>One payment, then nothing more for that customer.</Explain>}
+        </TaskCardSection>
+
         {duration === "FIXED_MONTHS" && (
-          <div className="flex items-center gap-2">
-            <Input
+          <TaskCardSection className="flex items-center gap-2 p-4">
+            <input
               name="commissionDurationMonths"
               type="number"
               min="1"
               step="1"
               defaultValue={initial.commissionDurationMonths || "12"}
-              className="w-24"
+              aria-label="Months of renewals"
+              className={NUMBER}
             />
             <span className="text-sm text-muted-foreground">months of renewals</span>
-          </div>
+          </TaskCardSection>
         )}
-      </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="attributionWindowDays">Attribution window</Label>
-        <div className="flex items-center gap-2">
-          <Input
-            id="attributionWindowDays"
+        {/* The same words the affiliate sees on their signup page, not the
+            model's. What the number means sits behind the underline. */}
+        <TaskCardHeader
+          title={<Term tip="A sale counts for the affiliate if it happens within this many days of their click.">Time to buy</Term>}
+        />
+        <TaskCardSection className="flex items-center gap-2 p-4">
+          <input
             name="attributionWindowDays"
             type="number"
             min="1"
             step="1"
             defaultValue={initial.attributionWindowDays}
-            className="w-24"
             required
+            aria-label="Time to buy, in days"
+            className={NUMBER}
           />
           <span className="text-sm text-muted-foreground">days</span>
-        </div>
-        <Explain>How long after clicking a link a purchase still counts for the affiliate.</Explain>
-      </div>
+        </TaskCardSection>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="holdingPeriodDays">Holding period</Label>
-        <div className="flex items-center gap-2">
-          <Input
-            id="holdingPeriodDays"
+        <TaskCardHeader
+          title={<Term tip="A commission waits this long before it is yours to pay, so a refund can still cancel it.">Hold before paying</Term>}
+        />
+        <TaskCardSection className="flex items-center gap-2 p-4">
+          <input
             name="holdingPeriodDays"
             type="number"
             min="1"
             step="1"
             defaultValue={initial.holdingPeriodDays}
-            className="w-24"
             required
+            aria-label="Hold before paying, in days"
+            className={NUMBER}
           />
           <span className="text-sm text-muted-foreground">days</span>
-        </div>
-        <Explain>How long a commission waits before you pay it, so refunds come out first.</Explain>
-      </div>
+        </TaskCardSection>
+      </TaskCard>
 
+      {state.error && (
+        <p role="alert" className="text-[13px] text-status-danger">
+          {state.error}
+        </p>
+      )}
       <div>
-        <Button type="submit" size="lg" className="cursor-pointer" disabled={pending}>
+        <Button type="submit" size="lg" disabled={pending}>
           {submitLabel}
         </Button>
       </div>

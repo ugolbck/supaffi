@@ -23,6 +23,12 @@ export type CheckRow = {
   failed?: string;
   /** What to do about a failure. Never rendered in any other state. */
   hint?: string;
+  /**
+   * A circled question mark beside the row, with this on hover. For the one
+   * thing a row cannot say in four words: why it is allowed to stay amber
+   * while the Owner moves on.
+   */
+  info?: string;
   /** Sits at the row's right edge: the one thing you can do about this row. */
   action?: React.ReactNode;
 };
@@ -40,15 +46,35 @@ export type CheckRow = {
  */
 export function checkState(result: CheckResult, pendingWhen: (detail: string) => boolean): CheckState {
   if (result.ok) return "ok";
+  // Nobody has looked yet: the screen rendered before its checks did. Always
+  // a wait, whatever the check, and never a cross.
+  if (result.detail === NOT_LOOKED_YET) return "pending";
   return pendingWhen(result.detail) ? "pending" : "failed";
 }
+
+/** The placeholder `runProductChecks` serves while a section runs behind the request. */
+export const NOT_LOOKED_YET = "Checking";
 
 /** `resolvesTo`: the name is simply not in DNS yet. Anything else is an answer, and a wrong one. */
 export const dnsPending = (detail: string) => detail.startsWith("No record");
 
-/** `sendingDomainVerified`: not added in Resend yet, or added and still being verified there. */
+/**
+ * The certificate is nobody's task. It arrives on its own once the record is
+ * right, so every state short of issued is a wait rather than a failure: a
+ * red cross here sends the Owner looking for a job that does not exist.
+ */
+export const certificatePending = (detail: string) =>
+  detail.startsWith("Being set up") || detail.startsWith("Waiting") || detail === "Nothing answered";
+
+/**
+ * `sendingDomainVerified`: not added in Resend yet, added and still being
+ * verified there, or Resend not answering. Every one of them is a wait: the
+ * answer can only come from Resend, and it comes when it comes.
+ */
 export const emailDomainPending = (detail: string) =>
-  detail.startsWith("Add ") || detail.startsWith("Added, ");
+  detail.startsWith("Add ") ||
+  detail.startsWith("Added, ") ||
+  detail === "Could not reach Resend";
 
 /**
  * `resendKeyWorks`: no key stored, or Resend never answered. Both mean we do
@@ -56,6 +82,13 @@ export const emailDomainPending = (detail: string) =>
  */
 export const emailKeyPending = (detail: string) =>
   detail === "Not connected yet" || detail === "Could not reach Resend";
+
+/**
+ * `stripeKeyWorks`: nothing stored, or Stripe never answered. A key Stripe
+ * actively rejected is an answer, and a failure.
+ */
+export const stripeKeyPending = (detail: string) =>
+  detail === "Not connected yet" || detail === "Could not reach Stripe";
 
 /**
  * `scriptFound`: the page loaded and the script is not on it yet, which on
@@ -80,18 +113,25 @@ export function dnsCheckRows(dns: DnsChecks): CheckRow[] {
     {
       id: "dns",
       state: checkState(dns.resolves, dnsPending),
-      pending: "Waiting for your DNS to update",
+      // Says whose move it is. "Waiting for your DNS to update" reads as a
+      // wait on someone else, so an Owner who has not added the record yet
+      // sits watching a dot and pressing check now.
+      pending: "Your DNS does not have this record yet",
       passed: "Your subdomain points here",
       failed: dns.resolves.detail,
       hint: "Check the name and the address on the record above.",
     },
     {
       id: "cert",
-      state: dns.https.ok && dns.certificate.ok ? "ok" : dns.https.ok ? "pending" : checkState(dns.https, dnsPending),
-      pending: "Securing it with HTTPS",
+      state:
+        dns.https.ok && dns.certificate.ok
+          ? "ok"
+          : checkState(dns.certificate, certificatePending),
+      pending: "Setting up the secure connection",
       passed: "Secured with HTTPS",
-      failed: dns.https.detail,
-      hint: "Make sure your site answers over https, then check again.",
+      failed: dns.certificate.detail,
+      hint: "Check the record above matches exactly.",
+      info: "This happens on its own, usually within a minute of the record above going green. There is nothing for you to do.",
     },
   ];
 }
