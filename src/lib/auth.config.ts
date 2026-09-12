@@ -51,7 +51,7 @@ export const authConfig: NextAuthConfig = {
         token.role = user.role as SessionRole;
       }
       // Only on sign-in, when `user` is present. Plain arithmetic, so it stays
-      // safe for the Edge middleware that shares this config.
+      // safe for the Edge proxy that shares this config.
       if (user) {
         token.authAt = Math.floor(Date.now() / 1000);
       }

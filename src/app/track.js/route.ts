@@ -12,7 +12,17 @@ import { REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
 // synchronously-loaded <script> tag and breaks if the Merchant loads it
 // any other way (async, dynamically injected, through a tag manager).
 export async function GET(req: NextRequest) {
-  const origin = req.nextUrl.origin;
+  // The address the browser asked for, not the one this process answers on.
+  // Behind the bundled proxy the Node server sees its own container address,
+  // so `nextUrl.origin` bakes something like `https://<container-id>:3000`
+  // into the script and every call from the Merchant's site goes nowhere,
+  // with no error anywhere: tracking silently records nothing on every
+  // self-hosted install. The Host header carries the public name, and is what
+  // every other route in here already trusts to find the Merchant at all.
+  const host = req.headers.get("host");
+  const forwarded = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const scheme = forwarded || req.nextUrl.protocol.replace(":", "");
+  const origin = host ? `${scheme}://${host}` : req.nextUrl.origin;
 
   const script = `
 (function () {

@@ -1,10 +1,10 @@
-// Pure redirect-decision logic for src/middleware.ts, kept in its own module
+// Pure redirect-decision logic for src/proxy.ts, kept in its own module
 // so it can be unit tested without importing next-auth (via @/lib/auth).
 // Importing next-auth transitively imports "next/server", which Next.js's
 // package.json does not expose via an "exports" map — Node's ESM resolver
 // (used by Vitest) can't resolve that bare specifier outside of Next's own
 // bundler, so any test that imports @/lib/auth fails at import time
-// regardless of AUTH_SECRET. See src/middleware.ts for where this is used.
+// regardless of AUTH_SECRET. See src/proxy.ts for where this is used.
 
 type SessionRole = "owner" | "affiliate" | null;
 

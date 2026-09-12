@@ -33,4 +33,18 @@ describe("track.js", () => {
   it("bakes in the origin it was served from", async () => {
     expect(await script("https://acme.test")).toContain("https://acme.test/api/track?via=");
   });
+
+  it("uses the address the browser asked for, not the one this process answers on", async () => {
+    // Behind the bundled proxy the server sees its own container address.
+    // Baking that in points every Merchant's site at a hostname that only
+    // resolves inside the Docker network, and nothing is ever tracked.
+    const res = await GET(
+      new NextRequest("http://c0ffee1234ab:3000/track.js", {
+        headers: { host: "affiliates.acme.test", "x-forwarded-proto": "https" },
+      })
+    );
+    const code = await res.text();
+    expect(code).toContain("https://affiliates.acme.test/api/track?via=");
+    expect(code).not.toContain("c0ffee1234ab");
+  });
 });

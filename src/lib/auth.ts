@@ -20,9 +20,9 @@ import { ownerSessionIsCurrent } from "@/lib/ownerExists";
 // uses, just with a token instead of a password.
 //
 // Both Credentials providers (and their native/wasm or DB-heavy authorize()
-// callbacks) live only here, not in auth.config.ts, so Edge Middleware can
+// callbacks) live only here, not in auth.config.ts, so Edge Proxy can
 // use the shared config without bundling them. See src/lib/auth.config.ts
-// and src/middleware.ts.
+// and src/proxy.ts.
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {

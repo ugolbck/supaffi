@@ -36,7 +36,7 @@ export function ProductForm({
   product: ProductRef;
   initial: { name: string; domain: string; websiteUrl: string };
   /** The two DNS lights, rendered on the server and sat beside the subdomain. */
-  lights: ReactNode;
+  lights: ReactNode | null;
 }) {
   const [state, action, pending] = useActionState(updateProductAction.bind(null, product), {
     error: "",
@@ -56,7 +56,7 @@ export function ProductForm({
         />
       </Row>
       <Row label="Subdomain" htmlFor="domain">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
+        <div className="flex flex-col gap-3">
           <Input
             id="domain"
             name="domain"
@@ -64,7 +64,7 @@ export function ProductForm({
             className="font-mono lg:max-w-80"
             required
           />
-          <div className="flex flex-wrap items-center gap-4">{lights}</div>
+          {lights && <div className="rounded-(--radius) border border-neutral-200 bg-neutral-50 lg:max-w-md">{lights}</div>}
         </div>
       </Row>
 

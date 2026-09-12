@@ -1,11 +1,10 @@
-import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { Button } from "@/components/ui/button";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
-import { Light } from "@/components/dashboard/Light";
 import type { CheckResult } from "@/lib/checks/dns";
+import { siteHost } from "@/lib/onboarding";
 import type { DayPoint } from "@/lib/analytics";
-import { Snippet } from "./TrackingSteps";
+import { CodeBlock } from "@/components/onboarding/CodeBlock";
 
 /**
  * Tracking, as a status page: is the script on the site, is anything arriving,
@@ -27,10 +26,11 @@ export function TrackingStatus({
   verifiedAt,
   scriptTag,
   checkoutSnippet,
-  brief,
+  scriptPrompt,
+  checkoutPromptText,
   checkAgain,
 }: {
-  merchant: { domain: string };
+  merchant: { domain: string; websiteUrl: string };
   script: CheckResult;
   clicks: number;
   series: DayPoint[];
@@ -39,7 +39,8 @@ export function TrackingStatus({
   scriptTag: string;
   checkoutSnippet: string;
   /** The plain text an owner forwards to whoever touches the code. */
-  brief: string;
+  scriptPrompt: string;
+  checkoutPromptText: string;
   checkAgain: () => Promise<void>;
 }) {
   return (
@@ -47,12 +48,12 @@ export function TrackingStatus({
       <PageTitle title="Tracking" subtitle={merchant.domain} />
 
       <Tiles>
-        {/* A light, not a number: the only honest answer here is found or not,
-            and it is always followed by a few words. */}
-        <div className="flex flex-col justify-between gap-2 rounded-(--radius-md) border border-border/70 bg-elevated [background-image:var(--elevated-surface)] px-3.5 py-3 shadow-[var(--edge-light),var(--shadow-xs)]">
-          <span className="text-xs font-medium text-muted-foreground">Script</span>
-          <Light result={script} label={script.ok ? "Found" : "Not found"} />
-        </div>
+        <StatTile
+          label="Script"
+          value={script.ok ? "Live" : "Not found"}
+          hint={script.ok ? `on ${siteHost(merchant.websiteUrl)}` : `Looking on ${siteHost(merchant.websiteUrl)}`}
+          tone={script.ok ? "success" : "warning"}
+        />
         <StatTile
           label="Clicks, 30 days"
           value={String(clicks)}
@@ -66,7 +67,7 @@ export function TrackingStatus({
         <p className="mb-2 text-[13px] text-muted-foreground">
           In the head of every page an affiliate link can land on.
         </p>
-        <Snippet code={scriptTag} />
+        <CodeBlock title="Tracking script" code={scriptTag} prompt={scriptPrompt} />
       </Section>
 
       {/* The longer of the two snippets, and the only thing on this page tall
@@ -76,11 +77,10 @@ export function TrackingStatus({
         <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">
           Wherever you create the Stripe Checkout Session, server side.
         </p>
-        <Snippet code={checkoutSnippet} />
+        <CodeBlock title="Checkout session" code={checkoutSnippet} prompt={checkoutPromptText} />
       </Section>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <CopyLinkButton link={brief} size="sm" label="Copy a brief for a developer" />
         <form action={checkAgain}>
           <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
             Check the site again

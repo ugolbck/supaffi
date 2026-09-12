@@ -5,7 +5,7 @@ import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { getTrackingTimestamps } from "@/lib/tracking";
 import { getProductMetrics } from "@/lib/analytics";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
-import { developerBrief } from "@/lib/developerBrief";
+import { trackingScriptPrompt, checkoutPrompt } from "@/lib/integrationPrompt";
 import { originFor } from "@/lib/url";
 import { CHECKOUT_SNIPPET } from "./TrackingSteps";
 import { TrackingStatus } from "./TrackingStatus";
@@ -76,12 +76,8 @@ export default async function TrackingPage({
       verifiedAt={timestamps.verifiedAt}
       scriptTag={scriptTag}
       checkoutSnippet={CHECKOUT_SNIPPET}
-      brief={developerBrief({
-        productName: merchant.name,
-        websiteUrl: merchant.websiteUrl,
-        scriptTag,
-        checkoutSnippet: CHECKOUT_SNIPPET,
-      })}
+      scriptPrompt={trackingScriptPrompt({ websiteUrl: merchant.websiteUrl, scriptTag })}
+      checkoutPromptText={checkoutPrompt({ checkoutSnippet: CHECKOUT_SNIPPET })}
       checkAgain={checkAgain}
     />
   );
