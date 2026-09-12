@@ -4,8 +4,8 @@ import { getAffiliatePayoutDetails } from "@/lib/affiliate";
 import { AffiliateSidebar } from "./AffiliateSidebar";
 
 /**
- * The same shell the owner dashboard has: the floating sidebar at the same
- * width, and a content area that is the viewport minus its padding, so a
+ * The same shell the owner dashboard has: the grounded sidebar at the same
+ * width, and the white content sheet beside it, sized to the viewport so a
  * screen is built to fit rather than to scroll.
  */
 
@@ -27,7 +27,7 @@ export default async function AffiliateDashboardLayout({
   const payoutDetails = await getAffiliatePayoutDetails(affiliateId);
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": "240px" } as React.CSSProperties}>
+    <SidebarProvider style={{ "--sidebar-width": "312px" } as React.CSSProperties}>
       <AffiliateSidebar
         merchantName={merchant.name}
         merchantSite={siteHost(merchant.websiteUrl)}
@@ -37,7 +37,7 @@ export default async function AffiliateDashboardLayout({
       <SidebarInset>
         {/* Screens are built to fit, so this should never scroll. It is a
             safety net, not a layout. */}
-        <div className="flex h-svh flex-col overflow-y-auto p-8">
+        <div className="flex h-svh min-h-0 flex-1 flex-col overflow-y-auto p-8 md:h-auto">
           {/* The sidebar is a sheet below md, so it needs something to open
               it. Above md it is always on screen and this would be noise. */}
           <SidebarTrigger className="-mt-2 mb-2 self-start md:hidden" />

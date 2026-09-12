@@ -58,7 +58,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const update = availableUpdate();
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": "240px" } as React.CSSProperties}>
+    <SidebarProvider style={{ "--sidebar-width": "312px" } as React.CSSProperties}>
       <AppSidebar
         merchants={merchants}
         counts={counts}
@@ -70,7 +70,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         {/* Views are built to fit, so this should never scroll. It is a
             safety net, not a layout: a view that does overflow scrolls rather
             than losing whatever sat below the fold. */}
-        <div className="flex h-svh flex-col overflow-y-auto p-8">
+        <div className="flex h-svh min-h-0 flex-1 flex-col overflow-y-auto p-8 md:h-auto">
           {/* The sidebar is a sheet below md, so it needs something to open
               it. Above md it is always on screen and this would be noise. */}
           <SidebarTrigger className="-mt-2 mb-2 self-start md:hidden" />

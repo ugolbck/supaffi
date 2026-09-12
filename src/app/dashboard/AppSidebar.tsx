@@ -29,6 +29,17 @@ import { ProductSwitcher } from "./ProductSwitcher";
 import { AccountMenu } from "./AccountMenu";
 import { VersionNotice, type UpdateInfo } from "./VersionNotice";
 
+// One raised tile for the open section; every other row is flat on the
+// canvas and only tints on hover. The tile's edge comes from its shadow, not
+// a border, so it reads as lifted rather than outlined.
+// The primitive centres its badge on a 32px row. Ours are 40px and padded
+// 12px, so the badge drops to the row's middle and lines up with the label's
+// right padding.
+const NAV_BADGE = "right-3 peer-data-[size=default]/menu-button:top-2.5";
+
+const NAV_ROW =
+  "h-10 cursor-pointer gap-3 rounded-lg px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-black/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active) [&_svg]:text-neutral-500 data-active:[&_svg]:text-foreground";
+
 type Merchant = { id: string; slug: string; name: string; domain: string };
 
 export type Counts = {
@@ -113,7 +124,7 @@ export function AppSidebar({
       : [];
 
   return (
-    <Sidebar variant="floating" collapsible="offcanvas" className="p-3">
+    <Sidebar variant="inset" collapsible="offcanvas" className="p-3">
       <SidebarHeader className="p-3">
         <ProductSwitcher merchants={merchants} active={active} />
       </SidebarHeader>
@@ -129,19 +140,19 @@ export function AppSidebar({
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       isActive={current}
-                      className="h-9 cursor-pointer gap-3 rounded-lg px-3 text-sm hover:bg-black/[0.04] data-active:bg-accent-50 data-active:text-accent-700"
+                      className={NAV_ROW}
                       render={<Link href={item.href} />}
                     >
                       <item.icon className="size-4" />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                     {item.badge !== null && (
-                      <SidebarMenuBadge className="text-muted-foreground tabular-nums">
+                      <SidebarMenuBadge className={cn(NAV_BADGE, "text-muted-foreground tabular-nums")}>
                         {item.badge}
                       </SidebarMenuBadge>
                     )}
                     {item.dot && (
-                      <SidebarMenuBadge>
+                      <SidebarMenuBadge className={NAV_BADGE}>
                         <span
                           className={cn(
                             "block size-2 rounded-full",
@@ -166,7 +177,7 @@ export function AppSidebar({
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname === "/dashboard"}
-                className="h-9 cursor-pointer gap-3 rounded-lg px-3 text-sm hover:bg-black/[0.04] data-active:bg-accent-50 data-active:text-accent-700"
+                className={NAV_ROW}
                 render={<Link href="/dashboard" />}
               >
                 <LayoutGrid className="size-4" />

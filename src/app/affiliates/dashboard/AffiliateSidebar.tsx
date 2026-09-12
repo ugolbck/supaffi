@@ -18,12 +18,23 @@ import {
 } from "@/components/ui/sidebar";
 
 /**
- * The affiliate's shell, on the owner dashboard's own sidebar: same floating
- * panel, same width, same row height and active state. An affiliate is in
+ * The affiliate's shell, on the owner dashboard's own sidebar: same grounded
+ * column, same width, same row height and active state. An affiliate is in
  * their partner's house, so the header carries the merchant's name rather than
  * this product's, and there is no product switcher, because there is exactly
  * one merchant: whichever one owns the domain they are on.
  */
+
+// One raised tile for the open section; every other row is flat on the
+// canvas and only tints on hover. The tile's edge comes from its shadow, not
+// a border, so it reads as lifted rather than outlined.
+// The primitive centres its badge on a 32px row. Ours are 40px and padded
+// 12px, so the badge drops to the row's middle and lines up with the label's
+// right padding.
+const NAV_BADGE = "right-3 peer-data-[size=default]/menu-button:top-2.5";
+
+const NAV_ROW =
+  "h-10 cursor-pointer gap-3 rounded-lg px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-black/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active) [&_svg]:text-neutral-500 data-active:[&_svg]:text-foreground";
 
 const BASE = "/affiliates/dashboard";
 
@@ -65,7 +76,7 @@ export function AffiliateSidebar({
   const pathname = pathnameProp ?? livePathname;
 
   return (
-    <Sidebar variant="floating" collapsible="offcanvas" className="p-3">
+    <Sidebar variant="inset" collapsible="offcanvas" className="p-3">
       <SidebarHeader className="p-3">
         <div className="flex h-11 w-full items-center gap-3 px-2 text-left">
           <Mark name={merchantName} />
@@ -87,7 +98,7 @@ export function AffiliateSidebar({
                   <SidebarMenuItem key={item.key}>
                     <SidebarMenuButton
                       isActive={current}
-                      className="h-9 cursor-pointer gap-3 rounded-lg px-3 text-sm hover:bg-black/[0.04] data-active:bg-accent-50 data-active:text-accent-700"
+                      className={NAV_ROW}
                       render={<Link href={href} />}
                     >
                       <item.icon className="size-4" />
@@ -96,7 +107,7 @@ export function AffiliateSidebar({
                     {/* The one thing the shell can say without words: money is
                         waiting on something only they can fix. */}
                     {item.key === "payouts" && payoutDetailsMissing && (
-                      <SidebarMenuBadge>
+                      <SidebarMenuBadge className={NAV_BADGE}>
                         <span className="block size-2 rounded-full border-2 border-status-warning" />
                       </SidebarMenuBadge>
                     )}

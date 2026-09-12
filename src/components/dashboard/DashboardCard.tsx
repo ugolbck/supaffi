@@ -43,7 +43,7 @@ export function DashboardCard({
 }) {
   return (
     <section
-      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-(--radius-xl) border border-border/70 bg-card [background-image:var(--card-surface)] shadow-[var(--edge-light),var(--shadow-sm)] ${className}`}
+      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-(--radius-xl) border border-(--card-hairline) bg-elevated shadow-(--shadow-raised) ${className}`}
     >
       {title && (
         <div className="flex shrink-0 items-center justify-between gap-3 px-4 pt-3.5 pb-2.5">
