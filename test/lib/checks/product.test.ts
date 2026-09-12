@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { createMerchant, connectStripe, connectEmailProvider } from "@/lib/merchant";
 import { runProductChecks } from "@/lib/checks/product";
+import { checkState, NOT_LOOKED_YET } from "@/components/onboarding/checkRows";
+import type { CheckResult } from "@/lib/checks/dns";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
 // letting Prisma throw an opaque connection error mid-run. Checked once, up
@@ -286,5 +288,34 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     expect(result.dns.resolves.ok).toBe(true);
     expect(result.stripe.webhook.ok).toBe(false);
     expect(result.stripe.webhook.detail).toBeTruthy();
+  });
+});
+
+// Pure, no database: the shape of a background run. Everything else in this
+// file needs Postgres; these two do not, because they never get as far as a
+// query.
+describe("background runs", () => {
+  it("answers at once with a waiting light rather than holding the screen", async () => {
+    // The whole point: a step screen must not wait on a DNS lookup, a TLS
+    // handshake and a fetch of the owner's own website before it can paint.
+    let released: () => void = () => {};
+    const slow = new Promise<CheckResult>((resolve) => {
+      released = () => resolve({ ok: true, detail: "Points at 1.2.3.4" });
+    });
+
+    const started = Date.now();
+    const result = await runProductChecks("owner-none", "merchant-none", {
+      background: true,
+      overrides: { resolvesTo: () => slow },
+    });
+
+    expect(Date.now() - started).toBeLessThan(200);
+    expect(result.dns.resolves.ok).toBe(false);
+    expect(result.dns.resolves.detail).toBe("Checking");
+    released();
+  });
+
+  it("reads its placeholder as a wait, never as a failure", () => {
+    expect(checkState({ ok: false, detail: NOT_LOOKED_YET }, () => false)).toBe("pending");
   });
 });

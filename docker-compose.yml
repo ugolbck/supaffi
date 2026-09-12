@@ -18,6 +18,13 @@ services:
       SUPAFFI_HOST_IP: ${SUPAFFI_HOST_IP:-} # the address the startup banner tells the operator to open, when there is no domain
       SUPAFFI_DASHBOARD_PORT: ${SUPAFFI_DASHBOARD_PORT:-3443} # where caddy-dashboard serves it
       SUPAFFI_UPDATE_CHECK: ${SUPAFFI_UPDATE_CHECK:-} # off to stop the dashboard reading GitHub's releases page
+      # Where the onboarding check asks for a Merchant domain's certificate.
+      # Fetching the domain's own public address from in here goes out to this
+      # host's IP and back, and many hosts do not route that hairpin, so a
+      # working site reads as unreachable. Set it when your proxy is not the
+      # caddy service below; an instance behind someone else's proxy leaves it
+      # unset and the check falls back to the round trip.
+      SUPAFFI_PROXY_HOST: ${SUPAFFI_PROXY_HOST:-caddy}
       # SUPAFFI_VERSION is deliberately not passed in. It is baked into the
       # image at build time, so the version the dashboard reports is the
       # version that is actually running rather than whatever .env claims.

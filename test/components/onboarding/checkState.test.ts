@@ -29,7 +29,7 @@ const DETAIL = {
   // src/lib/checks/dns.ts
   noRecord: "No record found yet",
   wrongAddress: "Points at 1.2.3.4, not this server",
-  certNotIssued: "Not issued yet. Usually a minute after DNS resolves.",
+  certNotIssued: "Being set up",
   nothingAnswered: "Nothing answered",
   // src/lib/checks/email.ts
   domainMissing: "Add affiliates.example.com in Resend",
@@ -127,13 +127,18 @@ describe("dnsCheckRows", () => {
     expect(rows.map((r) => r.state)).toEqual(["pending", "pending"]);
   });
 
-  it("fails the https row when the site answered with something wrong", () => {
+  it("keeps waiting on the certificate even when nothing answered", () => {
+    // The certificate is not a task anyone can do, so this row never turns
+    // red on its own. Inside the app container the product's public address
+    // often cannot be reached at all, on a host that does not route the
+    // hairpin, while the site is perfectly fine from the internet. The row
+    // that has something to say in that case is the record above.
     const rows = dnsCheckRows({
       resolves: ok("Points at 1.2.3.4"),
       https: no(DETAIL.nothingAnswered),
-      certificate: no("Waiting"),
+      certificate: no("Being set up"),
     });
-    expect(rows[1].state).toBe("failed");
-    expect(rows[1].failed).toBe(DETAIL.nothingAnswered);
+    expect(rows[1].state).toBe("pending");
+    expect(rows[1].pending).toBe("Setting up the secure connection");
   });
 });

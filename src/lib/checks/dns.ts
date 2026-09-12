@@ -1,4 +1,5 @@
 import { Resolver, resolve4, resolveNs } from "node:dns/promises";
+import { connect, type PeerCertificate } from "node:tls";
 
 export type CheckResult = { ok: boolean; detail: string };
 
@@ -134,15 +135,92 @@ const CERT_CODES = new Set([
 ]);
 
 /**
+ * The reverse proxy in front of this app, as seen from inside it. Compose
+ * names the service `caddy`, and the probe below talks to it directly. An
+ * instance running behind somebody else's proxy has no such host, the
+ * connection is refused, and the check falls back to the round trip.
+ */
+const PROXY_HOST = process.env.SUPAFFI_PROXY_HOST?.trim() || "caddy";
+const PROXY_PORT = Number(process.env.SUPAFFI_PROXY_PORT ?? 443);
+
+export type TlsProbe =
+  | { kind: "valid"; issuer: string }
+  | { kind: "untrusted"; reason: string }
+  | { kind: "no-proxy"; reason: string }
+  | { kind: "unreachable"; reason: string };
+
+/**
+ * Asks our own proxy, over TLS, for the certificate it serves for a hostname.
+ *
+ * This is the check that actually works. Fetching `https://<domain>` from
+ * inside the app container sends the request out to the host's own public
+ * address and back again, and a great many hosts do not route that hairpin
+ * at all: the site is fine from anywhere on the internet and the container
+ * alone cannot reach it. That is a false red light on the one screen whose
+ * job is to say whether the address works.
+ *
+ * A publicly trusted certificate for the name is proof of the thing the
+ * round trip was trying to prove. Let's Encrypt only issues one after
+ * reaching this server over the public internet on that exact name, so if
+ * the proxy is holding a valid one, the outside world got here.
+ *
+ * The handshake doubles as the trigger: Caddy issues on demand, on the first
+ * TLS connection carrying the name as SNI.
+ */
+export function tlsProbe(hostname: string, timeoutMs = 6000): Promise<TlsProbe> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (result: TlsProbe) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+
+    const socket = connect({
+      host: PROXY_HOST,
+      port: PROXY_PORT,
+      servername: hostname,
+      // Node checks the name against the certificate itself, so an answer of
+      // `authorized` already means valid for this exact hostname.
+      rejectUnauthorized: false,
+      timeout: timeoutMs,
+    });
+
+    socket.on("secureConnect", () => {
+      const cert = socket.getPeerCertificate() as PeerCertificate | Record<string, never>;
+      const org = (cert as PeerCertificate)?.issuer?.O;
+      const issuer = (Array.isArray(org) ? org[0] : org) ?? "unknown";
+      if (socket.authorized) return done({ kind: "valid", issuer });
+      done({ kind: "untrusted", reason: socket.authorizationError?.message ?? "not trusted yet" });
+    });
+    socket.on("timeout", () => done({ kind: "unreachable", reason: "timed out" }));
+    socket.on("error", (err) => {
+      const code = (err as { code?: string }).code ?? "";
+      // No proxy of ours at that address: this instance sits behind one the
+      // operator runs, so fall back to the round trip.
+      if (code === "ENOTFOUND" || code === "ECONNREFUSED" || code === "EAI_AGAIN") {
+        return done({ kind: "no-proxy", reason: code });
+      }
+      done({ kind: "unreachable", reason: err.message });
+    });
+  });
+}
+
+/**
  * Whether the hostname answers over HTTPS with a certificate a browser would
- * accept. One request to the tracking script, which every product serves.
- * A certificate failure still proves the server was reached, so it reports
- * reachable and fails only the certificate light.
+ * accept.
+ *
+ * Our own proxy is asked first, because it is the only vantage point inside
+ * the container that is not subject to hairpin routing. Only when there is
+ * no proxy of ours to ask does this fall back to fetching the tracking
+ * script over the public address, which is what every instance used to do.
  */
 export async function httpsReachable(
   hostname: string,
   fetchFn: typeof fetch = fetch,
-  resolve: (h: string) => Promise<string[]> = resolveAuthoritative
+  resolve: (h: string) => Promise<string[]> = resolveAuthoritative,
+  probe: (h: string) => Promise<TlsProbe> = tlsProbe
 ): Promise<{ reachable: CheckResult; certificate: CheckResult }> {
   try {
     const addresses = await resolve(hostname);
@@ -156,6 +234,21 @@ export async function httpsReachable(
     return {
       reachable: { ok: false, detail: "No record found yet" },
       certificate: { ok: false, detail: "Waiting for the record" },
+    };
+  }
+
+  const local = await probe(hostname);
+  if (local.kind === "valid") {
+    return {
+      reachable: { ok: true, detail: "Answers" },
+      certificate: { ok: true, detail: `Issued by ${local.issuer}` },
+    };
+  }
+  if (local.kind === "untrusted" || local.kind === "unreachable") {
+    console.warn(`[checks] tls ${hostname} via ${PROXY_HOST}: ${local.kind}, ${local.reason}`);
+    return {
+      reachable: { ok: true, detail: "Answers" },
+      certificate: { ok: false, detail: "Being set up" },
     };
   }
 
@@ -174,15 +267,16 @@ export async function httpsReachable(
     return { reachable: { ok: true, detail: "Answers" }, certificate: { ok: true, detail: "Valid" } };
   } catch (err) {
     const code = (err as { cause?: { code?: string } })?.cause?.code ?? "";
+    console.warn(`[checks] https ${hostname}: ${code || (err as Error).message}`);
     if (CERT_CODES.has(code)) {
       return {
         reachable: { ok: true, detail: "Answers" },
-        certificate: { ok: false, detail: "Not issued yet. Usually a minute after DNS resolves." },
+        certificate: { ok: false, detail: "Being set up" },
       };
     }
     return {
       reachable: { ok: false, detail: "Nothing answered" },
-      certificate: { ok: false, detail: "Waiting" },
+      certificate: { ok: false, detail: "Being set up" },
     };
   }
 }
