@@ -1,11 +1,13 @@
 import Link from "next/link";
 import type { AffiliateCommissionRow } from "@/lib/affiliate";
 import { cn } from "@/lib/utils";
-import type { CurrencyTotal, DayPoint } from "@/lib/analytics";
+import type { Bucket, ChartRange, CurrencyTotal, DayPoint } from "@/lib/analytics";
 import { money, moneyHint } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
-import { BarChart } from "@/components/charts/BarChart";
+import { ActivityChart } from "@/components/charts/ActivityChart";
+import { RangePicker } from "@/components/charts/RangePicker";
+import { CurrencyPicker } from "@/components/charts/CurrencyPicker";
 import { CopyField } from "@/components/onboarding/CodeBlock";
 import { Badge } from "@/components/ui/badge";
 import { STATUS_LABELS, STATUS_STYLES, toLedgerRow } from "./commissions/CommissionLedger";
@@ -27,6 +29,12 @@ export type OverviewView = {
   referralUrl: string | null;
   recent: AffiliateCommissionRow[];
   series: DayPoint[];
+  bucket: Bucket;
+  /** The one currency the chart draws. Null when nothing was earned yet. */
+  currency: string | null;
+  /** Every currency earned in, for the switcher. One or none hides it. */
+  currencies: string[];
+  range: ChartRange;
   earned: CurrencyTotal[];
   pending: CurrencyTotal[];
   payable: CurrencyTotal[];
@@ -81,6 +89,10 @@ export function OverviewScreen({
   referralUrl,
   recent,
   series,
+  bucket,
+  currency,
+  currencies,
+  range,
   earned,
   pending,
   payable,
@@ -130,14 +142,25 @@ export function OverviewScreen({
         {/* A chart draws into the height it is given, and on a phone the band
             is a stacked column with no height to give, so it gets a floor. */}
         <Section
-          title="Clicks and sales"
-          actions={<span className="text-[13px] text-muted-foreground">Last 30 days</span>}
-          className="min-h-[240px] lg:min-h-0"
+          title="Clicks and earnings"
+          actions={
+            <div className="flex items-center gap-2">
+              <CurrencyPicker value={currency ?? ""} options={currencies} />
+              <RangePicker value={range} />
+            </div>
+          }
+          className="min-h-[280px] lg:min-h-0"
           fill
         >
           {/* No empty branch: the series is zero filled, so a brand new
-              affiliate gets thirty flat bars rather than an empty box. */}
-          <BarChart series={series} />
+              affiliate gets a flat line rather than an empty box. */}
+          <ActivityChart
+            points={series}
+            bucket={bucket}
+            currency={currency}
+            barLabel="Earned"
+            countLabel="Commissions"
+          />
         </Section>
 
         <div

@@ -318,6 +318,7 @@ function daySeries(
       conversions: 0,
       revenue: 0,
       signups: 0,
+      amounts: {},
       ...make(i),
     };
   });

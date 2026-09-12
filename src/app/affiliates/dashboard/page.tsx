@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { requireAffiliate } from "@/lib/affiliateAuth";
-import { getAffiliateMetrics, type CurrencyTotal } from "@/lib/analytics";
+import { getAffiliateMetrics, pickCurrency, rangeFromQuery, type CurrencyTotal } from "@/lib/analytics";
 import { listAffiliateCommissions, referralCounts } from "@/lib/affiliate";
 import { listLinksWithStats, linkUrl } from "@/lib/affiliateLink";
 import { OverviewScreen } from "./OverviewCards";
@@ -34,11 +34,17 @@ function addTotals(...lists: CurrencyTotal[][]): CurrencyTotal[] {
     .sort((a, b) => a.currency.localeCompare(b.currency));
 }
 
-export default async function AffiliateOverviewPage() {
+export default async function AffiliateOverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string; currency?: string }>;
+}) {
   const { affiliateId, merchant } = await requireAffiliate();
+  const query = await searchParams;
+  const range = rangeFromQuery(query.range);
 
   const [metrics, links, commissions, referrals, program] = await Promise.all([
-    getAffiliateMetrics(affiliateId),
+    getAffiliateMetrics(affiliateId, range),
     listLinksWithStats(affiliateId),
     listAffiliateCommissions(affiliateId, { page: 1, pageSize: RECENT_COMMISSIONS }),
     referralCounts(affiliateId),
@@ -59,6 +65,10 @@ export default async function AffiliateOverviewPage() {
       referralUrl={primary ? linkUrl(merchant.websiteUrl, primary) : null}
       recent={commissions.rows}
       series={metrics.series}
+      bucket={metrics.bucket}
+      currency={pickCurrency(metrics.currencies, query.currency)}
+      currencies={metrics.currencies}
+      range={range}
       // Everything a void has not taken away: what is still coming plus what
       // has already landed.
       earned={addTotals(metrics.unpaid, metrics.paid)}

@@ -116,7 +116,10 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     ]);
     expect(metrics.paid).toEqual([{ currency: "usd", total: "100.00" }]);
     expect(metrics.clicks).toBe(1);
-    expect(metrics.conversions).toBe(5);
+    // Four, not five: the voided one earned nothing, so it is not a
+    // commission the affiliate has. A chart counting it drew a bar with no
+    // money in it, and a tooltip that said "Earned: None" beside a count.
+    expect(metrics.conversions).toBe(4);
   });
 
   it("folds a flagged commission into pending, in the tile counts and in the filtered rows", async () => {

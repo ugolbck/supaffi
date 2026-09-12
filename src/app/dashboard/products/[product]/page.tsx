@@ -4,14 +4,23 @@ import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getOnboardingState } from "@/lib/merchant";
 import { getProductSetup } from "@/lib/productSetup";
 import { resumeStep, stepPath } from "@/lib/onboarding";
-import { getProductMetrics, getTopAffiliates, getPayableGroups } from "@/lib/analytics";
+import {
+  getProductMetrics,
+  getTopAffiliates,
+  getPayableGroups,
+  pickCurrency,
+  rangeFromQuery,
+  rangeLabel,
+} from "@/lib/analytics";
 import { shouldCelebrateTracking } from "@/lib/tracking";
 import { originFor } from "@/lib/url";
 import { money, moneyHint } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { Light } from "@/components/dashboard/Light";
-import { BarChart } from "@/components/charts/BarChart";
+import { ActivityChart } from "@/components/charts/ActivityChart";
+import { RangePicker } from "@/components/charts/RangePicker";
+import { CurrencyPicker } from "@/components/charts/CurrencyPicker";
 import { TrackingVerified } from "./TrackingVerified";
 import { Welcome } from "./Welcome";
 
@@ -28,10 +37,14 @@ import { Welcome } from "./Welcome";
  */
 export default async function ProductOverviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ product: string }>;
+  searchParams: Promise<{ range?: string; currency?: string }>;
 }) {
   const { product } = await params;
+  const query = await searchParams;
+  const range = rangeFromQuery(query.range);
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
@@ -47,11 +60,12 @@ export default async function ProductOverviewPage({
   ]);
 
   if (!onboarding.onboardingCompletedAt) {
-    redirect(stepPath(merchant.slug, resumeStep(setup, null)));
+    const next = resumeStep(setup, null);
+    redirect(next ? stepPath(merchant.slug, next) : `/onboarding/${merchant.slug}`);
   }
 
   const [metrics, top, payable, celebrate] = await Promise.all([
-    getProductMetrics(ownerId, merchant.id),
+    getProductMetrics(ownerId, merchant.id, range),
     getTopAffiliates(ownerId, merchant.id, 5),
     getPayableGroups(ownerId, merchant.id),
     shouldCelebrateTracking(merchant.id),
@@ -59,6 +73,7 @@ export default async function ProductOverviewPage({
 
   // Commissions, not groups: the Owner pays per affiliate but is counting
   // lines on a ledger.
+  const currency = pickCurrency(metrics.currencies, query.currency);
   const payableTotal = payable.reduce((n, g) => n + g.commissionIds.length, 0);
   const empty = metrics.clicks === 0 && metrics.signups === 0 && setup.affiliateCount === 0;
 
@@ -74,7 +89,7 @@ export default async function ProductOverviewPage({
 
   return (
     <Page>
-      <PageTitle title="Overview" subtitle="Last 30 days" />
+      <PageTitle title="Overview" subtitle={rangeLabel(range)} />
       {celebrate && <TrackingVerified merchantId={merchant.id} />}
       {showWelcome && (
         <Welcome product={{ id: merchant.id, slug: merchant.slug }} link={signupLink} />
@@ -106,17 +121,25 @@ export default async function ProductOverviewPage({
       {!empty && (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
           <Section
-            title="Revenue attributed"
-            // The bars sum sale amounts across currencies, which is only
-            // honest as a shape. The money is the header, still per currency.
+            title="Clicks and revenue"
             actions={
-              <span className="text-sm font-medium tabular-nums">{money(metrics.revenue)}</span>
+              <div className="flex items-center gap-2">
+                <CurrencyPicker value={currency ?? ""} options={metrics.currencies} />
+                <RangePicker value={range} />
+              </div>
             }
+            className="min-h-[280px]"
             fill
           >
-            <BarChart series={metrics.series} field="revenue" format={(n) => n.toFixed(2)} />
+            <ActivityChart
+              points={metrics.series}
+              bucket={metrics.bucket}
+              currency={currency}
+              barLabel="Revenue"
+              countLabel="Sales"
+              splitLabel="Commission"
+            />
           </Section>
-
           <Section title="Top affiliates" scroll>
             <ul className="flex flex-col gap-2 text-sm">
               {top.map((a) => (
