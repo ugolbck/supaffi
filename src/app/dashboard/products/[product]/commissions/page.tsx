@@ -318,12 +318,13 @@ export default async function CommissionsPage({
         />
       </Section>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <PayBar
-          product={{ id: merchant.id, slug: merchant.slug }}
-          groups={payableGroups}
-          listHref={listHref}
-        />
+      <PayBar
+        product={{ id: merchant.id, slug: merchant.slug }}
+        groups={payableGroups}
+        listHref={listHref}
+      />
+
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
         {total > 0 && (
           <p className="text-xs text-muted-foreground tabular-nums">
             {`${firstShown}-${lastShown} of ${total}`}
