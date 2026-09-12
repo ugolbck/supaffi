@@ -4,20 +4,19 @@ import { recurringTerm, formatRate } from "@/app/affiliates/signup/[program]/Sig
 describe("recurringTerm", () => {
   it("reads as an ongoing payment for FOREVER", () => {
     expect(
-      recurringTerm({ rate: 20, attributionWindowDays: 60, durationType: "FOREVER", durationMonths: null })
+      recurringTerm({ rate: 20, durationType: "FOREVER", durationMonths: null })
     ).toEqual({ value: "Every payment", hint: "for as long as they stay" });
   });
 
   it("counts the months for FIXED_MONTHS", () => {
     expect(
-      recurringTerm({ rate: 20, attributionWindowDays: 60, durationType: "FIXED_MONTHS", durationMonths: 6 })
+      recurringTerm({ rate: 20, durationType: "FIXED_MONTHS", durationMonths: 6 })
     ).toEqual({ value: "6 months", hint: "of everything they pay" });
   });
 
   it("never falls through to one-time wording for FIXED_MONTHS, even without a month count", () => {
     const result = recurringTerm({
       rate: 20,
-      attributionWindowDays: 60,
       durationType: "FIXED_MONTHS",
       durationMonths: null,
     });
@@ -27,7 +26,7 @@ describe("recurringTerm", () => {
 
   it("reads as a single payment for ONE_TIME", () => {
     expect(
-      recurringTerm({ rate: 20, attributionWindowDays: 60, durationType: "ONE_TIME", durationMonths: null })
+      recurringTerm({ rate: 20, durationType: "ONE_TIME", durationMonths: null })
     ).toEqual({ value: "First payment", hint: "one commission per customer" });
   });
 });

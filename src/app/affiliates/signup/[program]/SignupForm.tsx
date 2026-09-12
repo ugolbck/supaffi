@@ -78,9 +78,9 @@ export function SignupForm({ action, linkHost }: Props) {
             <Input id="email" type="email" name="email" autoComplete="email" required />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="code">Your link</Label>
+            <Label htmlFor="code">Your referral link</Label>
             <div className="flex h-9 items-center gap-1 rounded-lg border border-input bg-elevated px-3 shadow-[inset_0_1px_2px_rgba(15,15,35,0.04)] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
-              <span className="max-w-[45%] shrink truncate font-mono text-sm text-muted-foreground">
+              <span className="max-w-[60%] shrink truncate font-mono text-sm text-muted-foreground">
                 {linkHost}/?via=
               </span>
               <input
@@ -100,12 +100,13 @@ export function SignupForm({ action, linkHost }: Props) {
               />
             </div>
             <input type="hidden" name="codeTouched" value={codeTouched ? "1" : ""} />
-            <p className={codeError ? "text-xs text-status-danger" : "text-xs text-muted-foreground"}>
-              {codeError ?? "This is the link you will share."}
-            </p>
+            {/* The label says what the field is. A line under it saying so
+                again was the kind of sentence nobody reads. Only an error
+                earns the second line. */}
+            {codeError && <p className="text-xs text-status-danger">{codeError}</p>}
           </div>
           <Button type="submit" size="lg" className="mt-1">
-            Sign up
+            Get my link
           </Button>
         </form>
       </TaskCardBody>

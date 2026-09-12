@@ -1,5 +1,3 @@
-import { Link2, UserRound, Wallet } from "lucide-react";
-import { TaskCard } from "@/components/onboarding/TaskCard";
 import { SignupForm, type SignupFormAction } from "./SignupForm";
 
 /**
@@ -8,12 +6,17 @@ import { SignupForm, type SignupFormAction } from "./SignupForm";
  * Split out of `page.tsx` so it can be rendered with fixture values in the dev
  * kit: the page itself resolves the Merchant from the request Host and reads
  * the database, neither of which a preview can do.
+ *
+ * Two columns on a laptop, the offer beside the form, so the whole thing sits
+ * in one viewport. The offer is the two numbers someone decides on: the rate,
+ * and whether it keeps paying. How long a click stays credited is a rule of
+ * ours, not a reason to sign up, and no affiliate program puts it in front of
+ * someone who has not joined yet.
  */
 
 export type SignupTerms = {
   /** Percentage, e.g. 20 for 20%. */
   rate: number;
-  attributionWindowDays: number;
   durationType: "ONE_TIME" | "FIXED_MONTHS" | "FOREVER";
   durationMonths: number | null;
 };
@@ -45,51 +48,11 @@ export function recurringTerm(terms: SignupTerms): { value: string; hint: string
   return { value: "First payment", hint: "one commission per customer" };
 }
 
-const STEPS = [
-  {
-    icon: UserRound,
-    title: "Sign up",
-    line: "Your name and email. You confirm from your inbox.",
-  },
-  {
-    icon: Link2,
-    title: "Share your link",
-    line: "Yours the moment you confirm, and it works anywhere you post it.",
-  },
-  {
-    icon: Wallet,
-    title: "Earn on what you bring",
-    line: "Every sale that arrives through your link is credited to you.",
-  },
-];
-
-function Step({
-  icon: Icon,
-  title,
-  line,
-}: {
-  icon: typeof Link2;
-  title: string;
-  line: string;
-}) {
-  return (
-    <TaskCard className="flex items-start gap-3 p-3.5">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-50 text-accent-700">
-        <Icon className="size-4" strokeWidth={2} aria-hidden />
-      </span>
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <p className="text-[13px] leading-5 font-semibold text-neutral-900">{title}</p>
-        <p className="text-[13px] leading-5 text-muted-foreground text-pretty">{line}</p>
-      </div>
-    </TaskCard>
-  );
-}
-
 function Tile({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="flex flex-col gap-0.5 px-4 py-3.5">
+    <div className="flex flex-col gap-1 px-5 py-4">
       <p className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">{label}</p>
-      <p className="text-[19px] leading-7 font-semibold tracking-[-0.02em] text-neutral-900 tabular-nums">
+      <p className="text-[22px] leading-7 font-semibold tracking-[-0.02em] whitespace-nowrap text-neutral-900 tabular-nums">
         {value}
       </p>
       <p className="text-xs leading-4 text-muted-foreground text-pretty">{hint}</p>
@@ -112,30 +75,24 @@ export function SignupScreen({
   const recurring = recurringTerm(terms);
 
   return (
-    <div className="mx-auto flex w-full max-w-[540px] flex-col">
-      <h1 className="text-[30px] leading-[1.15] font-semibold tracking-[-0.025em] text-balance sm:text-[34px]">
-        Earn from every sale you send to {merchantName}
-      </h1>
+    <div className="mx-auto grid w-full max-w-[960px] gap-10 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-center lg:gap-16">
+      <div className="flex flex-col gap-7">
+        <div className="flex flex-col gap-3">
+          <p className="text-xs font-medium tracking-[0.06em] text-muted-foreground uppercase">
+            {merchantName} affiliate program
+          </p>
+          <h1 className="text-[32px] leading-[1.1] font-semibold tracking-[-0.025em] text-balance sm:text-[38px]">
+            Earn from every sale you send to {merchantName}
+          </h1>
+        </div>
 
-      <div className="mt-7 flex flex-col gap-2.5">
-        {STEPS.map((step) => (
-          <Step key={step.title} {...step} />
-        ))}
+        <div className="grid grid-cols-1 divide-y divide-neutral-200 overflow-hidden rounded-(--radius-md) border border-neutral-300 bg-white shadow-sm sm:max-w-[440px] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+          <Tile label="You earn" value={formatRate(terms.rate)} hint="of every sale" />
+          <Tile label="On subscriptions" value={recurring.value} hint={recurring.hint} />
+        </div>
       </div>
 
-      <TaskCard className="mt-4 grid grid-cols-1 divide-y divide-neutral-200 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        <Tile label="You earn" value={formatRate(terms.rate)} hint="of every sale" />
-        <Tile
-          label="Click window"
-          value={plural(terms.attributionWindowDays, "day")}
-          hint="from the click to the sale"
-        />
-        <Tile label="On subscriptions" value={recurring.value} hint={recurring.hint} />
-      </TaskCard>
-
-      <div className="mt-8">
-        <SignupForm action={action} linkHost={linkHost} />
-      </div>
+      <SignupForm action={action} linkHost={linkHost} />
     </div>
   );
 }

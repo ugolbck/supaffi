@@ -25,12 +25,11 @@ export default async function AffiliateSignupPage({
   const linkHost = merchant.websiteUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
 
   return (
-    <main className="min-h-dvh bg-background px-4 py-14 sm:py-20">
+    <main className="flex min-h-dvh items-center bg-background px-4 py-10 sm:px-8">
       <SignupScreen
         merchantName={merchant.name}
         terms={{
           rate: program.defaultCommissionRate,
-          attributionWindowDays: program.attributionWindowDays,
           durationType: program.commissionDurationType,
           durationMonths: program.commissionDurationMonths,
         }}
