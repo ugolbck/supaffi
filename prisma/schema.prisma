@@ -309,6 +309,9 @@ model WebhookEvent {
   // key dropped the second copy as a duplicate before its handler could run.
   @@unique([merchantId, stripeEventId])
   @@index([status, nextAttemptAt, createdAt])
+  // Cleanup only deletes an old processed row when the same product has a
+  // newer one, and looks that up once per row.
+  @@index([merchantId, createdAt])
 }
 
 /// A referral code an Affiliate stopped using, by renaming or deleting the link
