@@ -21,11 +21,8 @@ const stripeStub = vi.hoisted(() => ({
     retrieve: vi.fn(async (): Promise<unknown> => ({ id: "pi_renewal", latest_charge: null })),
   },
   // Only reached when recognising a referral from before 0.2.5; the tests
-  // that expect them queue a value.
+  // that expect it queue a value.
   invoices: { retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined) },
-  subscriptions: {
-    list: vi.fn(async (_params: unknown): Promise<unknown> => ({ data: [], has_more: false })),
-  },
 }));
 vi.mock("@/lib/stripe", async () => {
   const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
@@ -97,8 +94,6 @@ describe("handleInvoicePaid", () => {
     stripeStub.paymentIntents.retrieve.mockReset();
     stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({ id: "pi_renewal", latest_charge: null }));
     stripeStub.invoices.retrieve.mockReset();
-    stripeStub.subscriptions.list.mockReset();
-    stripeStub.subscriptions.list.mockImplementation(async () => ({ data: [], has_more: false }));
 
     const owner = await db.owner.create({
       data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
@@ -298,25 +293,36 @@ describe("handleInvoicePaid", () => {
       expect(refs).toEqual(["in_2"]);
     });
 
-    it("still pays a fixed-months program when its first payment is delivered out of order", async () => {
-      // Stripe can deliver a later invoice before an earlier one. Whichever
-      // event lands first claims the subscription's first payment, so here
-      // month 2 is claimed as first, dated after the true month 1 payment.
+    it("measures a fixed-months window from the earliest payment seen, even delivered out of order", async () => {
+      // Stripe does not guarantee delivery order. Month 2 lands first and
+      // claims the subscription's first payment; month 1 arrives after it and
+      // must move the window back to when the subscription truly started,
+      // not stretch it a month further from month 2's later date.
       const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 2 });
-      await seedReferredSubscription(merchant.id, click.id, "sub_out_of_order", {
-        ref: "in_month_2",
-        at: new Date("2026-02-28T00:00:00Z"),
-      });
+      await seedReferredSubscription(merchant.id, click.id, "sub_out_of_order");
       const parent = subscriptionParent("sub_out_of_order");
 
-      // The true first payment, dated before the one already claimed as first,
-      // is inside the window by definition and still earns.
-      await handleInvoicePaid(
-        merchant,
-        invoiceFixture({ id: "in_month_1", parent, created: seconds("2026-01-31T00:00:00Z") })
-      );
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_2", parent, created: seconds("2026-02-28T00:00:00Z") }));
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_1", parent, created: seconds("2026-01-31T00:00:00Z") }));
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_3", parent, created: seconds("2026-03-31T00:00:00Z") }));
 
-      expect(await db.commission.count({ where: { clickId: click.id, stripePaymentRef: "in_month_1" } })).toBe(1);
+      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      expect(refs.sort()).toEqual(["in_month_1", "in_month_2"]);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { clickId: click.id } });
+      // The ref stays on whichever payment claimed it first; only the date moves.
+      expect(referred.firstPaymentRef).toBe("in_month_2");
+      expect(referred.firstPaidAt?.toISOString()).toBe("2026-01-31T00:00:00.000Z");
+    });
+
+    it("pays a one-time program only once when its first payment is delivered out of order", async () => {
+      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+      await seedReferredSubscription(merchant.id, click.id, "sub_once_out_of_order");
+      const parent = subscriptionParent("sub_once_out_of_order");
+
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_2", parent, created: seconds("2026-02-28T00:00:00Z") }));
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_1", parent, created: seconds("2026-01-31T00:00:00Z") }));
+
+      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(1);
     });
 
     it("creates nothing once a self referral was confirmed on the click", async () => {

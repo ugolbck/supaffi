@@ -207,13 +207,31 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
  * The write only lands while the column is still empty, so two events racing
  * cannot both claim it, and a retried event whose commission failed to save
  * still recognises its own payment as the first.
+ *
+ * Stripe does not guarantee delivery order, so an invoice dated after the
+ * true first payment can be processed first and claim the ref. When a later
+ * event then brings an earlier-dated payment, the date moves back to it so
+ * a FIXED_MONTHS window is still measured from when the subscription truly
+ * started, but the ref stays put: it is what a ONE_TIME program already paid
+ * on, and that payment must stay the only one it ever pays.
  */
 export async function claimFirstPayment(
   referred: { id: string; firstPaymentRef: string | null; firstPaidAt: Date | null },
   payment: PaymentRef
 ): Promise<PaymentRef> {
   if (referred.firstPaymentRef && referred.firstPaidAt) {
-    return { ref: referred.firstPaymentRef, at: referred.firstPaidAt };
+    if (payment.at.getTime() >= referred.firstPaidAt.getTime()) {
+      return { ref: referred.firstPaymentRef, at: referred.firstPaidAt };
+    }
+    await db.referredSubscription.updateMany({
+      where: { id: referred.id, firstPaidAt: { gt: payment.at } },
+      data: { firstPaidAt: payment.at },
+    });
+    const current = await db.referredSubscription.findUniqueOrThrow({
+      where: { id: referred.id },
+      select: { firstPaidAt: true },
+    });
+    return { ref: referred.firstPaymentRef, at: current.firstPaidAt ?? payment.at };
   }
   await db.referredSubscription.updateMany({
     where: { id: referred.id, firstPaymentRef: null },

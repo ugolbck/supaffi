@@ -71,8 +71,6 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   });
   if (excluded) return;
 
-  if (!invoice.currency) return;
-
   // Earned on the renewal before tax and shipping, scaled to what was paid in
   // money, see saleBase.ts. An invoice that does not say how much tax it
   // carried is logged and skipped rather than paid on a total with the tax in
