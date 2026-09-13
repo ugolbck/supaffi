@@ -19,6 +19,8 @@ export function voidReasonText(reason: string | null, audience: Audience): strin
       return audience === "affiliate"
         ? "Reduced because part of the sale was refunded"
         : "Reduced, part of the sale was refunded";
+    case "chargeback":
+      return audience === "affiliate" ? "The customer disputed the payment and won" : "Chargeback lost in Stripe";
     case "confirmed self-referral":
       return audience === "affiliate"
         ? "This sale was made by you, so it does not earn a commission"

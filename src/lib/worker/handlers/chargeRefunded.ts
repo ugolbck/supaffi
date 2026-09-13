@@ -51,7 +51,11 @@ export async function reverseCommission(
   const commission = await db.commission.findUnique({
     where: { stripePaymentRef: paymentRef, affiliate: { merchantId: merchant.id } },
   });
-  if (!commission) return; // this payment never generated a Commission (excluded, unattributed, etc.)
+  // Either this payment never earns a commission (excluded, unattributed), or
+  // its sale event has not been processed yet. The second needs nothing kept
+  // here: Stripe's refunded total on the charge is cumulative, and the
+  // creation handlers read it when they finally write the row.
+  if (!commission) return;
 
   if (commission.status === "PAID") {
     await createClawbackAdjustment(commission, outcomeFor(commission));
@@ -94,6 +98,14 @@ export async function reverseCommission(
  * Voiding only on a full refund is the point of the change. Merchants issue
  * small partial refunds constantly, and taking the affiliate's entire
  * commission for a late discount is not defensible; see finding 17.
+ *
+ * The charge includes tax and the commission does not, and the ratio is still
+ * right: tax is charged in proportion to the price, so a refund of a quarter of
+ * the charge returns a quarter of the goods and a quarter of the tax. A refund
+ * of only the shipping, which the commission never included, is prorated like
+ * any other; that is rare and errs towards the merchant. An invoice paid by
+ * several charges is prorated against the one refunded charge, which overstates
+ * the refund (finding I-3, a later release).
  */
 export function prorateCommission(input: {
   gross: Prisma.Decimal.Value;

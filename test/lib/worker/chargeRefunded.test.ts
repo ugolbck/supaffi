@@ -52,6 +52,16 @@ describe("prorateCommission", () => {
       void: true,
     });
   });
+
+  it("prorates a tax-inclusive charge against the pre-tax commission without adjustment", () => {
+    // 120.00 EUR charged, 20.00 of it VAT, commission 20.00 on the 100.00 base.
+    // Refunding 60.00 returns half the goods and half the VAT, so half the
+    // commission goes: the ratio is the same with or without the tax in it.
+    expect(prorateCommission({ gross: 20, chargeTotal: 12000, refunded: 6000 })).toEqual({
+      void: false,
+      amount: 10,
+    });
+  });
 });
 
 const PAYMENT_INTENT_ID = "pi_refund_test";

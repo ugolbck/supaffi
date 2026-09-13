@@ -22,6 +22,11 @@ describe("voidReasonText", () => {
     );
   });
 
+  it("names a lost chargeback for each side", () => {
+    expect(voidReasonText("chargeback", "affiliate")).toBe("The customer disputed the payment and won");
+    expect(voidReasonText("chargeback", "owner")).toBe("Chargeback lost in Stripe");
+  });
+
   it("does not leave a confirmed self-referral sounding like an accident, for the affiliate", () => {
     expect(voidReasonText("confirmed self-referral", "affiliate")).toBe(
       "This sale was made by you, so it does not earn a commission"
