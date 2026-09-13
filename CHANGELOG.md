@@ -8,6 +8,31 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.2.3
+
+### Added
+
+- Every figure on the overview says how it compares with the period before,
+  in green, red or grey.
+- A top affiliates card on the owner's overview, with a bar under each name
+  showing how close they are to the leader.
+
+### Changed
+
+- The timeframe is chosen once, at the top of the overview, and every figure,
+  the chart and the top affiliates follow it.
+- The owner's Signups figure is gone. It counted affiliates joining, which read
+  like customers. Revenue takes its place.
+- What needs your attention is a set of cards you can open, and a commission
+  flagged as a possible self referral stands out in red.
+- Amounts are written with their currency symbol and thousands separators,
+  and every total leads with the currency the chart is drawn in.
+- The chart's bars and line animate in again whenever the timeframe changes.
+- A tighter, even margin around the sidebar and the content, one corner
+  rounding everywhere, and reworked product and account menus. The account
+  menu now shows the version and whether an update is available.
+- Both dashboards stack and scroll properly on phones and tablets.
+
 ## 0.2.2
 
 ### Added
