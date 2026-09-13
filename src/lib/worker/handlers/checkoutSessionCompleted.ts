@@ -13,7 +13,8 @@ import { claimFirstPayment, idOf, recordReferredSubscription } from "../referred
 
 export async function handleCheckoutSessionCompleted(
   merchant: Merchant,
-  session: Stripe.Checkout.Session
+  session: Stripe.Checkout.Session,
+  event?: Pick<Stripe.Event, "type" | "created">
 ): Promise<void> {
   const referralToken = session.metadata?.[REFERRAL_METADATA_KEY];
   if (!referralToken) return; // not a Supaffi-tracked checkout
@@ -79,7 +80,13 @@ export async function handleCheckoutSessionCompleted(
   if (subscriptionId) {
     const referred = await recordReferredSubscription(merchant.id, click.id, subscriptionId);
     if (moneyPaid && stripePaymentRef) {
-      await claimFirstPayment(referred, { ref: stripePaymentRef, at: completedAt });
+      // A delayed payment method's Session is created unpaid; the money only
+      // moves once checkout.session.async_payment_succeeded arrives, days
+      // later. Dating the first payment from that event's own creation time
+      // keeps FIXED_MONTHS counting from when it actually settled.
+      const paidAt =
+        event?.type === "checkout.session.async_payment_succeeded" ? new Date(event.created * 1000) : completedAt;
+      await claimFirstPayment(referred, { ref: stripePaymentRef, at: paidAt });
     }
   }
 
@@ -149,9 +156,10 @@ export async function handleCheckoutSessionCompleted(
       },
     });
   } catch (err) {
-    // Unique constraint on stripePaymentRef — an invoice.paid for this same
-    // first invoice won the race (Stripe doesn't guarantee ordering between
-    // the two events). The Commission already exists, not an error.
+    // Unique constraint on stripePaymentRef. checkout.session.completed and
+    // checkout.session.async_payment_succeeded can both land on the same
+    // paid Session; whichever arrives second finds the Commission the first
+    // one already created, not an error.
     if (!isUniqueConstraintError(err)) throw err;
   }
 }

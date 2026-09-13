@@ -371,6 +371,8 @@ describe("handleCheckoutSessionCompleted", () => {
     expect(commission.grossAmount?.toString()).toBe("10");
     expect(commission.status).toBe("PENDING");
     expect(commission.voidReason).toBe("partial refund");
+    // Payment-mode Sessions never carry a subscription, so nothing is recorded.
+    expect(await db.referredSubscription.count()).toBe(0);
   });
 
   it("records a dong sale larger than the ledger used to hold", async () => {
@@ -398,12 +400,37 @@ describe("handleCheckoutSessionCompleted", () => {
     expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).stripeCustomerId).toBeNull();
   });
 
-  it("records the subscription once on a redelivery", async () => {
+  it("records the subscription once on a redelivery, without moving its first payment", async () => {
     const session = sessionFixture({ invoice: "in_first", subscription: "sub_1" });
     await handleCheckoutSessionCompleted(merchant, session);
+    const first = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+
     await handleCheckoutSessionCompleted(merchant, session);
 
     expect(await db.referredSubscription.count()).toBe(1);
+    const after = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    expect(after.firstPaymentRef).toBe(first.firstPaymentRef);
+    expect(after.firstPaidAt?.getTime()).toBe(first.firstPaidAt?.getTime());
+  });
+
+  it("dates a delayed payment's first payment from when it settled, not from the session", async () => {
+    // SEPA/ACH: checkout.session.completed arrives unpaid the moment the
+    // buyer checks out. checkout.session.async_payment_succeeded brings the
+    // same Session back, now paid, once the debit actually clears days
+    // later. FIXED_MONTHS counts from the first payment, so it must count
+    // from when the money moved, not from the stale Session timestamp.
+    const session = sessionFixture({ invoice: "in_first", subscription: "sub_1", paymentStatus: "unpaid" });
+    await handleCheckoutSessionCompleted(merchant, session);
+
+    const settledAt = session.created + 5 * 24 * 60 * 60;
+    await handleCheckoutSessionCompleted(
+      merchant,
+      { ...session, payment_status: "paid" },
+      { type: "checkout.session.async_payment_succeeded", created: settledAt }
+    );
+
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    expect(referred.firstPaidAt?.getTime()).toBe(settledAt * 1000);
   });
 
   it("claims no first payment on a trial Stripe reports as paid with a zero total", async () => {
