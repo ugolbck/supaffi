@@ -10,6 +10,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.2.3
 
+### Security
+
+- Webhook events interrupted by a restart are picked up again, and failing
+  events are retried for about two days instead of eight minutes, so sales and
+  refunds are no longer lost.
+- A checkout paid by a delayed method, such as a bank debit, only earns a
+  commission once the payment actually succeeds. Existing Stripe connections
+  get the extra events added automatically at startup.
+- A lost chargeback takes the commission back, the same way a full refund does.
+- A sale on one product can no longer earn a commission for another product's
+  affiliate.
+- Paying, voiding and refunds landing at the same moment can no longer leave a
+  commission in the wrong state, and refunds arriving out of order can no
+  longer raise a commission back up.
+- Owner login limits can no longer be bypassed, used to crash the server, or
+  used by a stranger to lock the owner out.
+- Login and signup emails to affiliates are rate limited, and a login link is
+  only used when the affiliate presses Log in, so email scanners no longer
+  spend it.
+- A renamed or deleted referral code can no longer be claimed by another
+  affiliate.
+- The tracking script and click endpoint are hardened and rate limited, and the
+  dashboards can no longer be embedded in another site.
+
+### Fixed
+
+- Long lists show a short run of page numbers instead of every page.
+- The payable tabs list sales before the refund adjustments against them.
+
 ### Added
 
 - Every figure on the overview says how it compares with the period before,
