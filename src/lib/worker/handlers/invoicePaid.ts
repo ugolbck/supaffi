@@ -10,6 +10,8 @@ import {
   isWithinCommissionDuration,
   saleAmountFor,
 } from "../commission";
+import { commissionFieldsAtCreation, latestChargeFor, paymentIntentForInvoice } from "../paymentState";
+import { invoiceBaseMinor } from "../saleBase";
 import { checkSelfReferralEmail } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 
@@ -51,10 +53,28 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
 
   if (!invoice.currency) return;
 
+  // Earned on the renewal before tax and shipping, scaled to what was paid in
+  // money, see saleBase.ts. An invoice that does not say how much tax it
+  // carried is logged and skipped rather than paid on a total with the tax in
+  // it; returning normally stops a retry that could never succeed.
+  const baseMinor = invoiceBaseMinor(invoice);
+  if (baseMinor === null) {
+    console.error(`[worker] invoice ${invoice.id} carries no tax breakdown, so no commission was recorded for it`);
+    return;
+  }
+
   const affiliate = click.affiliate;
   const rate = commissionRateFor(affiliate, program);
-  const amount = computeCommissionAmount(invoice.amount_paid, invoice.currency, rate);
+  const amount = computeCommissionAmount(baseMinor, invoice.currency, rate);
+  // A renewal covered by credit balance or discounted to nothing used to
+  // leave a 0.00 row in both ledgers.
+  if (amount.lte(0)) return;
   const flagReason = checkSelfReferralEmail(affiliate, invoice.customer_email);
+
+  // A refund made before this event was processed is read back from the
+  // charge now and folded into the row, see paymentState.ts.
+  const chargeIntentId = await paymentIntentForInvoice(stripe, invoice.id);
+  const charge = chargeIntentId ? await latestChargeFor(stripe, chargeIntentId) : null;
 
   try {
     await db.commission.create({
@@ -62,13 +82,13 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
         affiliateId: affiliate.id,
         clickId: click.id,
         stripePaymentRef: invoice.id,
-        amount,
         currency: invoice.currency,
-        saleAmount: saleAmountFor(invoice.amount_paid, invoice.currency),
-        grossAmount: amount, // the figure a later refund prorates against
-        status: flagReason ? "FLAGGED" : "PENDING",
+        saleAmount: saleAmountFor(baseMinor, invoice.currency),
         payableAt: computePayableAt(program),
         flagReason,
+        // amount, grossAmount (the figure a later refund prorates against),
+        // status, voidedAt and voidReason.
+        ...commissionFieldsAtCreation({ amount, flagReason, charge }),
       },
     });
   } catch (err) {
