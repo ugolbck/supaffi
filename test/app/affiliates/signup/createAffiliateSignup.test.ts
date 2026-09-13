@@ -51,6 +51,7 @@ vi.mock("@/lib/referralCode", () => ({
 }));
 
 import { createAffiliateSignup } from "@/app/affiliates/signup/[program]/createAffiliateSignup";
+import { resetAffiliateEmailThrottle } from "@/lib/affiliateEmailThrottle";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -189,7 +190,10 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     );
 
     // Same email again, with a different name/slug so this exercises the
-    // email-collision branch specifically, not the referralCode one.
+    // email-collision branch specifically, not the referralCode one. The
+    // email throttle is reset first: a second send within the minute is
+    // refused by design, and that is covered in its own suite.
+    resetAffiliateEmailThrottle();
     referralCodeQueue.push("sarah-again");
     const repeat = await createAffiliateSignup(
       programSlug,
@@ -201,6 +205,25 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     const affiliates = await db.affiliate.findMany({ where: { merchantId } });
     expect(affiliates).toHaveLength(1); // no new row — treated as a login for the existing one
     expect(sendAffiliateMagicLinkEmailMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps creating Affiliates behind a proxy that does not forward the visitor address", async () => {
+    // Every request looks like the proxy here. Counting that as one visitor
+    // used to stop the whole instance at twenty signups an hour, with the
+    // rest told to check an email that never came.
+    headersMock.mockResolvedValue(
+      new Headers({ host: "signup-action-test.example.com", "x-forwarded-for": "172.18.0.3" })
+    );
+    for (let i = 0; i < 25; i += 1) {
+      const result = await createAffiliateSignup(
+        programSlug,
+        { status: "form", error: "" },
+        formDataWithChosenCode(`Person ${i}`, `person-${i}@example.com`, `person-${i}`)
+      );
+      expect(result.status).toBe("sent");
+    }
+    expect(await db.affiliate.count({ where: { merchantId } })).toBe(25);
+    expect(sendAffiliateMagicLinkEmailMock).toHaveBeenCalledTimes(25);
   });
 
   it("creates the Affiliate with the exact code they chose, not a name-derived one", async () => {

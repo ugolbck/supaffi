@@ -54,10 +54,15 @@ describe("handleCheckoutSessionCompleted", () => {
   let click: { id: string };
   let clickInput: { affiliateId: string; referralToken: string; expiresAt: Date };
 
-  function sessionFixture(opts: { invoice: string; metadataToken?: string }): Stripe.Checkout.Session {
+  function sessionFixture(opts: {
+    invoice: string;
+    metadataToken?: string;
+    paymentStatus?: Stripe.Checkout.Session.PaymentStatus;
+  }): Stripe.Checkout.Session {
     return {
       id: `cs_${opts.invoice}`,
       mode: "subscription",
+      payment_status: opts.paymentStatus ?? "paid",
       created: Math.floor(Date.now() / 1000),
       metadata: { [REFERRAL_METADATA_KEY]: opts.metadataToken ?? clickInput.referralToken },
       customer: CUSTOMER_ID,
@@ -154,5 +159,41 @@ describe("handleCheckoutSessionCompleted", () => {
 
     const refreshed = await db.click.findUnique({ where: { id: second.id } });
     expect(refreshed?.stripeCustomerId).toBeNull();
+  });
+
+  it("waits for a delayed payment to settle before creating anything", async () => {
+    // SEPA and ACH complete the Session unpaid; the async success event brings
+    // the same Session back paid.
+    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", paymentStatus: "unpaid" }));
+    expect(await db.commission.count()).toBe(0);
+    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).stripeCustomerId).toBeNull();
+
+    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first" }));
+    expect(await db.commission.count()).toBe(1);
+  });
+
+  it("links a free trial's customer but creates no commission on it", async () => {
+    await handleCheckoutSessionCompleted(
+      merchant,
+      sessionFixture({ invoice: "in_trial", paymentStatus: "no_payment_required" })
+    );
+    expect(await db.commission.count()).toBe(0);
+    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).stripeCustomerId).toBe(CUSTOMER_ID);
+  });
+
+  it("ignores a referral token that belongs to a different Merchant's affiliate", async () => {
+    const other = await db.merchant.create({
+      data: {
+        slug: crypto.randomUUID(),
+        ownerId: merchant.ownerId,
+        name: "Other",
+        domain: `${crypto.randomUUID()}.example.com`,
+        websiteUrl: "https://other.example.com",
+        stripeSecretKeyEnc: "x",
+      },
+    });
+    await handleCheckoutSessionCompleted(other, sessionFixture({ invoice: "in_other" }));
+
+    expect(await db.commission.count()).toBe(0);
   });
 });

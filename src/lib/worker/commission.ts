@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import type { Affiliate, Program } from "@prisma/client";
 import type Stripe from "stripe";
 import { minorUnitsToMajor } from "@/lib/stripe";
@@ -6,13 +7,18 @@ export function commissionRateFor(affiliate: Affiliate, program: Program): numbe
   return Number(affiliate.customCommissionRate ?? program.defaultCommissionRate);
 }
 
+// Decimal rather than float arithmetic: an exact half cent is often held as
+// a hair under it in binary floating point, so float rounding took it down
+// where the ledger should round it up.
 export function computeCommissionAmount(
   paidAmountMinor: number,
   currency: string,
   ratePercent: number
-): number {
-  const paid = minorUnitsToMajor(paidAmountMinor, currency);
-  return Math.round(paid * (ratePercent / 100) * 100) / 100;
+): Prisma.Decimal {
+  return new Prisma.Decimal(minorUnitsToMajor(paidAmountMinor, currency))
+    .mul(ratePercent)
+    .div(100)
+    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 }
 
 /** The customer's payment in major units, for the revenue the commission was earned on. */

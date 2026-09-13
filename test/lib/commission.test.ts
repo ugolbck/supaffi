@@ -3,7 +3,7 @@
 // db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
 // before every test. Point DATABASE_URL at a disposable database, never a
 // real deployment's data.
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
   listCommissions,
@@ -395,6 +395,45 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect((await db.commission.findUniqueOrThrow({ where: { id: payable.id } })).status).toBe(
       "PAYABLE"
     );
+  });
+
+  it("pays nothing when a selected commission stops being payable mid-payout", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const first = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const second = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+
+    // A refund voids one of them after the checks read it but before the write.
+    const realFindFirst = db.commission.findFirst.bind(db.commission);
+    const spy = vi.spyOn(db.commission, "findFirst").mockImplementationOnce((async (args: object) => {
+      const result = await realFindFirst(args);
+      await db.commission.update({ where: { id: second.id }, data: { status: "VOIDED" } });
+      return result;
+    }) as unknown as typeof db.commission.findFirst);
+    try {
+      const result = await markCommissionsPaid(ownerId, merchantId, [first.id, second.id]);
+      expect(result).toEqual({ error: expect.stringContaining("no longer payable") });
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("PAYABLE");
+  });
+
+  it("voidCommission refuses a commission paid out between its check and its write", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const commission = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+
+    const realFindFirst = db.commission.findFirst.bind(db.commission);
+    const spy = vi.spyOn(db.commission, "findFirst").mockImplementationOnce((async (args: object) => {
+      const result = await realFindFirst(args);
+      await db.commission.update({ where: { id: commission.id }, data: { status: "PAID" } });
+      return result;
+    }) as unknown as typeof db.commission.findFirst);
+    try {
+      await expect(voidCommission(ownerId, merchantId, commission.id, "late")).rejects.toThrow();
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await db.commission.findUniqueOrThrow({ where: { id: commission.id } })).status).toBe("PAID");
   });
 
   it("confirmCommissionFraud voids the commission and preserves the original flagReason", async () => {

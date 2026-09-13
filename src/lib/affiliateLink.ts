@@ -96,6 +96,81 @@ export function linkUrl(
   return `${base}${path}?${REFERRAL_QUERY_PARAM}=${link.code}`;
 }
 
+const CODE_TAKEN = "That code is already taken. Try another.";
+const LINK_GONE = "That link no longer exists.";
+
+/**
+ * How many codes one Affiliate can have retired. Retired codes are held for
+ * good and are unique across every Merchant, so without a ceiling renaming a
+ * link over and over would let one Affiliate claim any number of names.
+ */
+export const MAX_RETIRED_CODES_PER_AFFILIATE = 50;
+const TOO_MANY_RETIRED = "You have changed or deleted too many links. Contact the program owner.";
+
+/**
+ * Whether retiring one more code would pass the ceiling. `reclaimed` is a code
+ * this change takes back from the Affiliate's own retired ones, which frees a
+ * place. Locks the Affiliate row first, so parallel renames count one at a time.
+ */
+async function retiredCodesFull(
+  tx: Prisma.TransactionClient,
+  affiliateId: string,
+  reclaimed: string | null
+): Promise<boolean> {
+  await tx.$queryRaw`SELECT "id" FROM "Affiliate" WHERE "id" = ${affiliateId} FOR UPDATE`;
+  const count = await tx.retiredLinkCode.count({
+    where: { affiliateId, ...(reclaimed ? { code: { not: reclaimed } } : {}) },
+  });
+  return count >= MAX_RETIRED_CODES_PER_AFFILIATE;
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+}
+
+/**
+ * Serializes everything that claims or retires these codes until the
+ * transaction ends. Without it, a signup can check that a code is not retired
+ * while a rename is retiring it, and both commit. Locks are taken in sorted
+ * order so two renames swapping codes cannot deadlock.
+ */
+export async function lockLinkCodes(tx: Prisma.TransactionClient, codes: string[]): Promise<void> {
+  for (const code of [...new Set(codes)].sort()) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`link-code:${code}`}, 0))`;
+  }
+}
+
+/**
+ * Whether a code was retired by an Affiliate other than this one. Pass null
+ * for an Affiliate that does not exist yet, to whom every retired code is off
+ * limits.
+ */
+export async function isCodeRetiredByAnother(
+  tx: Prisma.TransactionClient,
+  code: string,
+  affiliateId: string | null
+): Promise<boolean> {
+  const retired = await tx.retiredLinkCode.findUnique({
+    where: { code },
+    select: { affiliateId: true },
+  });
+  return retired !== null && retired.affiliateId !== affiliateId;
+}
+
+async function retireCode(
+  tx: Prisma.TransactionClient,
+  code: string,
+  affiliateId: string,
+  merchantId: string
+): Promise<void> {
+  const retiredAt = new Date();
+  await tx.retiredLinkCode.upsert({
+    where: { code },
+    create: { code, affiliateId, merchantId, retiredAt },
+    update: { affiliateId, merchantId, retiredAt },
+  });
+}
+
 export async function createLink(
   affiliateId: string,
   input: LinkInput
@@ -104,25 +179,37 @@ export async function createLink(
   if (validated.error !== null) return { error: validated.error };
   const { code, destinationPath } = validated;
 
-  const count = await db.affiliateLink.count({ where: { affiliateId } });
-  if (count >= MAX_LINKS_PER_AFFILIATE) {
-    return {
-      error: `You can have up to ${MAX_LINKS_PER_AFFILIATE} links. Delete one to add another.`,
-    };
-  }
-
   try {
-    const created = await db.affiliateLink.create({
-      data: { affiliateId, code, destinationPath, isPrimary: false },
-      select: { id: true },
+    return await db.$transaction(async (tx) => {
+      // Locks the Affiliate row first, so parallel requests count one at a
+      // time. A count followed by a separate insert let a burst of them all
+      // see room for one more and all insert.
+      const locked = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "Affiliate" WHERE "id" = ${affiliateId} FOR UPDATE`;
+      if (locked.length === 0) return { error: LINK_GONE };
+
+      const count = await tx.affiliateLink.count({ where: { affiliateId } });
+      if (count >= MAX_LINKS_PER_AFFILIATE) {
+        return {
+          error: `You can have up to ${MAX_LINKS_PER_AFFILIATE} links. Delete one to add another.`,
+        };
+      }
+
+      await lockLinkCodes(tx, [code]);
+      if (await isCodeRetiredByAnother(tx, code, affiliateId)) return { error: CODE_TAKEN };
+
+      const created = await tx.affiliateLink.create({
+        data: { affiliateId, code, destinationPath, isPrimary: false },
+        select: { id: true },
+      });
+      // Taking back one's own retired code makes it live again.
+      await tx.retiredLinkCode.deleteMany({ where: { code, affiliateId } });
+      return { id: created.id };
     });
-    return { id: created.id };
   } catch (err) {
-    // Checking first and inserting second would still race, so the constraint
-    // is what actually decides and this is where the answer is read.
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      return { error: "That code is already taken. Try another." };
-    }
+    // A live code is still decided by the unique constraint, and this is
+    // where that answer is read.
+    if (isUniqueViolation(err)) return { error: CODE_TAKEN };
     throw err;
   }
 }
@@ -136,20 +223,41 @@ export async function updateLink(
   if (validated.error !== null) return { error: validated.error };
   const { code, destinationPath } = validated;
 
-  // Scoped by affiliateId, so one Affiliate cannot rename another's link into
-  // their own. updateMany rather than update: a where clause on two columns
-  // cannot use the unique-by-id form.
   try {
-    const result = await db.affiliateLink.updateMany({
-      where: { id: linkId, affiliateId },
-      data: { code, destinationPath },
+    return await db.$transaction(async (tx) => {
+      // Scoped by affiliateId, so one Affiliate cannot rename another's link
+      // into their own.
+      const link = await tx.affiliateLink.findFirst({
+        where: { id: linkId, affiliateId },
+        select: { code: true, affiliate: { select: { merchantId: true } } },
+      });
+      if (!link) return { error: LINK_GONE };
+
+      const renamed = link.code !== code;
+      if (renamed) {
+        if (await retiredCodesFull(tx, affiliateId, code)) return { error: TOO_MANY_RETIRED };
+        await lockLinkCodes(tx, [link.code, code]);
+        if (await isCodeRetiredByAnother(tx, code, affiliateId)) return { error: CODE_TAKEN };
+      }
+
+      // Matched on the code read above as well, so a concurrent rename of the
+      // same link cannot leave a different code retired than the one replaced.
+      const result = await tx.affiliateLink.updateMany({
+        where: { id: linkId, affiliateId, code: link.code },
+        data: { code, destinationPath },
+      });
+      if (result.count === 0) return { error: LINK_GONE };
+
+      if (renamed) {
+        // The old code stays with this Affiliate for good, since links carrying
+        // it are already out in the world.
+        await tx.retiredLinkCode.deleteMany({ where: { code, affiliateId } });
+        await retireCode(tx, link.code, affiliateId, link.affiliate.merchantId);
+      }
+      return { ok: true as const };
     });
-    if (result.count === 0) return { error: "That link no longer exists." };
-    return { ok: true };
   } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      return { error: "That code is already taken. Try another." };
-    }
+    if (isUniqueViolation(err)) return { error: CODE_TAKEN };
     throw err;
   }
 }
@@ -158,18 +266,24 @@ export async function deleteLink(
   affiliateId: string,
   linkId: string
 ): Promise<{ error: string } | { ok: true }> {
-  const link = await db.affiliateLink.findFirst({
-    where: { id: linkId, affiliateId },
-    select: { isPrimary: true },
-  });
-  if (!link) return { error: "That link no longer exists." };
-  if (link.isPrimary) return { error: "Your signup link cannot be deleted." };
+  return db.$transaction(async (tx) => {
+    const link = await tx.affiliateLink.findFirst({
+      where: { id: linkId, affiliateId },
+      select: { code: true, isPrimary: true, affiliate: { select: { merchantId: true } } },
+    });
+    if (!link) return { error: LINK_GONE };
+    if (link.isPrimary) return { error: "Your signup link cannot be deleted." };
+    if (await retiredCodesFull(tx, affiliateId, null)) return { error: TOO_MANY_RETIRED };
 
-  // Click.linkId is ON DELETE SET NULL, so the clicks and every Commission
-  // behind them survive. Only the per-link attribution is lost, which is the
-  // honest outcome: the link is gone.
-  await db.affiliateLink.delete({ where: { id: linkId } });
-  return { ok: true };
+    await lockLinkCodes(tx, [link.code]);
+    // Click.linkId is ON DELETE SET NULL, so the clicks and every Commission
+    // behind them survive. Only the per-link attribution is lost, which is the
+    // honest outcome: the link is gone.
+    const deleted = await tx.affiliateLink.deleteMany({ where: { id: linkId, affiliateId } });
+    if (deleted.count === 0) return { error: LINK_GONE };
+    await retireCode(tx, link.code, affiliateId, link.affiliate.merchantId);
+    return { ok: true as const };
+  });
 }
 
 export type AffiliateLinkStats = AffiliateLinkRow & {

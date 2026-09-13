@@ -5,6 +5,8 @@ import { getMerchantByDomain, getMerchantEmailCredentials } from "@/lib/merchant
 import { getAffiliateByEmail } from "@/lib/affiliate";
 import { createAffiliateLoginToken } from "@/lib/affiliateAuth";
 import { sendAffiliateMagicLinkEmail } from "@/lib/email/affiliateMagicLink";
+import { reserveAffiliateEmail } from "@/lib/affiliateEmailThrottle";
+import { clientAddress } from "@/lib/clientAddress";
 
 type FormState = { status: "form" | "sent" };
 
@@ -13,11 +15,15 @@ export async function requestAffiliateLogin(
   formData: FormData
 ): Promise<FormState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const host = (await headers()).get("host");
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host");
 
   if (email && host) {
     const merchant = await getMerchantByDomain(host);
-    if (merchant) {
+    // Counted whether or not the Affiliate exists, so the limit behaves the
+    // same for every address and says nothing about which ones are real.
+    const address = clientAddress(new Headers(requestHeaders));
+    if (merchant && reserveAffiliateEmail(merchant.id, email, address)) {
       const affiliate = await getAffiliateByEmail(merchant.id, email);
       if (affiliate) {
         const rawToken = await createAffiliateLoginToken(affiliate.id);
@@ -29,7 +35,8 @@ export async function requestAffiliateLogin(
     }
   }
 
-  // Always the same response, whether or not an account was found — avoids
-  // confirming/denying account existence to an anonymous requester.
+  // Always the same response, whether or not an account was found and
+  // whether or not the throttle let the email through. Avoids confirming or
+  // denying account existence to an anonymous requester.
   return { status: "sent" };
 }

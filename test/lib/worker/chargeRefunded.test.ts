@@ -23,6 +23,7 @@ vi.mock("@/lib/stripe", async () => {
 });
 
 import { handleChargeRefunded, prorateCommission } from "@/lib/worker/handlers/chargeRefunded";
+import { handleChargeDisputeClosed } from "@/lib/worker/handlers/chargeDisputeClosed";
 
 describe("prorateCommission", () => {
   it("voids when the whole sale came back", () => {
@@ -252,5 +253,88 @@ describe("handleChargeRefunded", () => {
 
     const voided = await db.commission.findMany({ where: { status: "VOIDED" } });
     expect(voided).toHaveLength(0);
+  });
+
+  it("never raises a commission when an older refund event arrives after a newer one", async () => {
+    // Stripe does not guarantee order. 75% refunded lands first, then the
+    // earlier 25% snapshot; the commission must stay at the lower figure.
+    const commission = await givenCommission();
+    await handleChargeRefunded(merchant, chargeFixture(5850));
+    await handleChargeRefunded(merchant, chargeFixture(1950));
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.amount.toString()).toBe("3.9");
+  });
+
+  it("ignores a commission that belongs to a different Merchant", async () => {
+    const commission = await givenCommission();
+    const other = await db.merchant.create({
+      data: {
+        slug: crypto.randomUUID(),
+        ownerId: merchant.ownerId,
+        name: "Other",
+        domain: `${crypto.randomUUID()}.example.com`,
+        websiteUrl: "https://other.example.com",
+        stripeSecretKeyEnc: "x",
+      },
+    });
+    await handleChargeRefunded(other, chargeFixture(7800));
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("PENDING");
+  });
+
+  it("claws back instead of voiding when the commission is paid out between the read and the write", async () => {
+    const commission = await givenCommission();
+    const realUpdateMany = db.commission.updateMany.bind(db.commission);
+    const spy = vi.spyOn(db.commission, "updateMany").mockImplementationOnce((async (args: Prisma.CommissionUpdateManyArgs) => {
+      await db.commission.update({ where: { id: commission.id }, data: { status: "PAID", paidAt: new Date() } });
+      return realUpdateMany(args);
+    }) as unknown as typeof db.commission.updateMany);
+    try {
+      await handleChargeRefunded(merchant, chargeFixture(7800));
+    } finally {
+      spy.mockRestore();
+    }
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("PAID");
+    const adjustments = await adjustmentsOf(commission);
+    expect(adjustments.map((row) => row.amount.toString())).toEqual(["-15.6"]);
+  });
+
+  function disputeFixture(status: string): Stripe.Dispute {
+    return {
+      id: "dp_test",
+      status,
+      charge: "ch_refund_test",
+      payment_intent: PAYMENT_INTENT_ID,
+    } as unknown as Stripe.Dispute;
+  }
+
+  it("voids an unpaid commission when a chargeback is lost", async () => {
+    const commission = await givenCommission();
+    await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("VOIDED");
+    expect(updated.voidReason).toBe("chargeback");
+  });
+
+  it("claws back a paid commission in full when a chargeback is lost", async () => {
+    const commission = await givenCommission({ status: "PAID", paidAt: new Date() });
+    await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
+    await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
+
+    const adjustments = await adjustmentsOf(commission);
+    expect(adjustments.map((row) => row.amount.toString())).toEqual(["-15.6"]);
+  });
+
+  it("leaves the commission alone when the chargeback is won", async () => {
+    const commission = await givenCommission();
+    await handleChargeDisputeClosed(merchant, disputeFixture("won"));
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("PENDING");
   });
 });

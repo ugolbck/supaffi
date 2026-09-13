@@ -23,11 +23,14 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // first invoice doesn't carry). Renewals only, here.
   if (invoice.billing_reason === "subscription_create") return;
 
+  // Scoped to the Merchant whose webhook this is. Customer ids are only
+  // unique per Stripe account, and one Instance hosts several Merchants, so
+  // an unscoped match could pay one Merchant's affiliate for another's sale.
   const click = await db.click.findUnique({
-    where: { stripeCustomerId },
+    where: { stripeCustomerId, affiliate: { merchantId: merchant.id } },
     include: { affiliate: { include: { program: true } } },
   });
-  if (!click) return; // this Customer was never attributed to an Affiliate
+  if (!click) return; // this Customer was never attributed to one of this Merchant's Affiliates
 
   const program = click.affiliate.program;
   const chargedAt = new Date(invoice.created * 1000);

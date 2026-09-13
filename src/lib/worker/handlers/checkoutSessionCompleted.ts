@@ -15,11 +15,14 @@ export async function handleCheckoutSessionCompleted(
   const referralToken = session.metadata?.[REFERRAL_METADATA_KEY];
   if (!referralToken) return; // not a Supaffi-tracked checkout
 
+  // Scoped to the Merchant whose webhook this is. A token is just a string in
+  // Session metadata, so one minted for another Merchant's affiliate must not
+  // earn a commission on this Merchant's sale.
   const click = await db.click.findUnique({
-    where: { referralToken },
+    where: { referralToken, affiliate: { merchantId: merchant.id } },
     include: { affiliate: { include: { program: true } } },
   });
-  if (!click) return; // token doesn't match a known Click
+  if (!click) return; // token doesn't match one of this Merchant's Clicks
 
   // A stale/reused token past its Attribution Window doesn't count, even
   // on the very first purchase.
@@ -33,6 +36,12 @@ export async function handleCheckoutSessionCompleted(
   // checks below, because those decide whether this sale earns a commission,
   // not whether the integration works.
   await recordTrackingVerified(merchant.id);
+
+  // A delayed payment method (SEPA, ACH, Boleto) completes the Session before
+  // any money has moved, and the payment can still fail. Nothing happens yet,
+  // not even the customer link: checkout.session.async_payment_succeeded
+  // brings this same Session back through here, paid, once it settles.
+  if (session.payment_status === "unpaid") return;
 
   const stripeCustomerId =
     typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null);
@@ -78,7 +87,11 @@ export async function handleCheckoutSessionCompleted(
   });
   if (excluded) return;
 
-  if (session.amount_total == null || !session.currency) return; // nothing paid, e.g. a $0 trial session
+  // "no_payment_required" (a free trial) still linked the customer above, so
+  // the first real renewal earns through invoice.paid, but there is no money
+  // on this Session to take a commission from.
+  if (session.payment_status !== "paid") return;
+  if (session.amount_total == null || !session.currency) return;
 
   const affiliate = click.affiliate;
   const program = affiliate.program;

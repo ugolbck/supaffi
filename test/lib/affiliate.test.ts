@@ -302,6 +302,24 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       expect(await getAffiliatePayoutDetails(affiliate.id)).toBeNull();
     });
 
+    it("refuses payout details over the length cap and keeps what was there", async () => {
+      const affiliate = await db.affiliate.create({
+        data: {
+          merchantId,
+          programId,
+          email: "payout-cap@example.com",
+          payoutDetails: "PayPal: before@example.com",
+          links: { create: { code: "payoutcap", isPrimary: true } },
+        },
+      });
+
+      expect(await updateAffiliatePayoutDetails(affiliate.id, "x".repeat(1001))).toEqual({
+        error: expect.any(String),
+      });
+      expect(await getAffiliatePayoutDetails(affiliate.id)).toBe("PayPal: before@example.com");
+      expect(await updateAffiliatePayoutDetails(affiliate.id, "x".repeat(1000))).toBeNull();
+    });
+
     it("toDisplayStatus defaults an unrecognized status to PENDING (fail closed)", () => {
       expect(toDisplayStatus("SOME_FUTURE_STATUS")).toBe("PENDING");
       expect(toDisplayStatus("PENDING")).toBe("PENDING");

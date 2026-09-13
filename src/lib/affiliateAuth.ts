@@ -11,14 +11,40 @@ function hashToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
 }
 
+// How many unused, unexpired links one Affiliate can hold at once.
+export const MAX_LIVE_TOKENS = 3;
+
+/**
+ * Issues a new login token and keeps only the newest few live.
+ *
+ * Refusing a new link once the cap was reached let a stranger request three
+ * links for someone else's email and lock them out for fifteen minutes at a
+ * time. The raw tokens are only in the emails, so an old one cannot be sent
+ * again either. Instead the oldest live ones are deleted, which means the link
+ * in the newest email always works.
+ */
 export async function createAffiliateLoginToken(affiliateId: string): Promise<string> {
   const rawToken = randomBytes(32).toString("hex");
-  await db.affiliateLoginToken.create({
-    data: {
-      affiliateId,
-      tokenHash: hashToken(rawToken),
-      expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
-    },
+  await db.$transaction(async (tx) => {
+    // Locks the Affiliate row, so two requests at once cannot both keep the
+    // same older tokens and leave one more live than the cap.
+    await tx.$queryRaw`SELECT "id" FROM "Affiliate" WHERE "id" = ${affiliateId} FOR UPDATE`;
+    const older = await tx.affiliateLoginToken.findMany({
+      where: { affiliateId, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+      skip: MAX_LIVE_TOKENS - 1,
+      select: { id: true },
+    });
+    if (older.length > 0) {
+      await tx.affiliateLoginToken.deleteMany({ where: { id: { in: older.map((t) => t.id) } } });
+    }
+    await tx.affiliateLoginToken.create({
+      data: {
+        affiliateId,
+        tokenHash: hashToken(rawToken),
+        expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
+      },
+    });
   });
   return rawToken;
 }

@@ -124,8 +124,13 @@ export async function listCommissions(
         },
       },
       // Newest first: the ledger is read to find out what just happened far
-      // more often than to audit the beginning of time.
-      orderBy: { createdAt: "desc" },
+      // more often than to audit the beginning of time. On the payable tab
+      // the sales come before the refund adjustments against them, which
+      // are recent by nature and otherwise filled the first page.
+      orderBy:
+        filters.status === "PAYABLE"
+          ? [{ adjustsCommissionId: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }]
+          : { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -293,18 +298,34 @@ export async function markCommissionsPaid(
     return { error: "That selection owes money back. It carries to the next payout." };
   }
 
-  const { count } = await db.commission.updateMany({
-    where: {
-      status: "PAYABLE",
-      currency,
-      affiliate: { id: affiliateId, merchantId },
-      id: { in: commissionIds },
-    },
-    data: { status: "PAID", paidAt: new Date() },
-  });
-
-  return { count };
+  // All or nothing. A row can leave PAYABLE between the checks above and this
+  // write (a refund voids it), and paying the rest would record a payout that
+  // no longer matches what the Owner is about to send. Throwing inside the
+  // transaction rolls the partial write back.
+  try {
+    const count = await db.$transaction(async (tx) => {
+      const { count } = await tx.commission.updateMany({
+        where: {
+          status: "PAYABLE",
+          currency,
+          affiliate: { id: affiliateId, merchantId },
+          id: { in: commissionIds },
+        },
+        data: { status: "PAID", paidAt: new Date() },
+      });
+      if (count !== commissionIds.length) throw new StaleSelectionError();
+      return count;
+    });
+    return { count };
+  } catch (err) {
+    if (err instanceof StaleSelectionError) {
+      return { error: "Some of those commissions are no longer payable. Reload and try again." };
+    }
+    throw err;
+  }
 }
+
+class StaleSelectionError extends Error {}
 
 export async function confirmCommissionFraud(
   ownerId: string,
@@ -321,10 +342,15 @@ export async function confirmCommissionFraud(
     throw new Error("Flagged commission not found");
   }
 
-  await db.commission.update({
-    where: { id: commissionId },
+  // The status goes in the write, not just the read above: a refund can void
+  // the row in between, and this must not overwrite that reason.
+  const { count } = await db.commission.updateMany({
+    where: { id: commissionId, status: "FLAGGED" },
     data: { status: "VOIDED", voidedAt: new Date(), voidReason: "confirmed self-referral" },
   });
+  if (count === 0) {
+    throw new Error("Flagged commission not found");
+  }
 }
 
 /**
@@ -360,10 +386,16 @@ export async function voidCommission(
     throw new Error("Commission not found, or already paid, voided, or a refund adjustment");
   }
 
-  await db.commission.update({
-    where: { id: commissionId },
+  // Conditional on the same statuses as the read, so a commission paid out
+  // in the moment between the two is refused rather than voided after the
+  // money left.
+  const { count } = await db.commission.updateMany({
+    where: { id: commissionId, status: { in: ["PENDING", "PAYABLE", "FLAGGED"] } },
     data: { status: "VOIDED", voidedAt: new Date(), voidReason: reason },
   });
+  if (count === 0) {
+    throw new Error("Commission not found, or already paid, voided, or a refund adjustment");
+  }
 }
 
 export async function dismissCommissionFlag(
@@ -383,8 +415,13 @@ export async function dismissCommissionFlag(
 
   const newStatus = existing.payableAt <= new Date() ? "PAYABLE" : "PENDING";
 
-  await db.commission.update({
-    where: { id: commissionId },
+  // Still FLAGGED at write time, so a commission a refund voided in between
+  // is not brought back to life.
+  const { count } = await db.commission.updateMany({
+    where: { id: commissionId, status: "FLAGGED" },
     data: { status: newStatus, flagReason: null },
   });
+  if (count === 0) {
+    throw new Error("Flagged commission not found");
+  }
 }

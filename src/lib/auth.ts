@@ -1,11 +1,8 @@
 import NextAuth, { type Session } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { verifyOwnerCredentials } from "@/lib/owner";
-import {
-  checkLoginAllowed,
-  recordFailedLogin,
-  clearLoginFailures,
-} from "@/lib/loginThrottle";
+import { checkOwnerPassword, findOwnerForLogin } from "@/lib/owner";
+import { reserveLoginRequest, reserveLoginAttempt, clearLoginAttempts } from "@/lib/loginThrottle";
+import { clientAddress } from "@/lib/clientAddress";
 import { consumeAffiliateLoginToken } from "@/lib/affiliateAuth";
 import { authConfig } from "@/lib/auth.config";
 import { ownerSessionIsCurrent } from "@/lib/ownerExists";
@@ -53,26 +50,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      authorize: async (credentials) => {
+      authorize: async (credentials, request) => {
         const email = credentials?.email;
         const password = credentials?.password;
         if (typeof email !== "string" || typeof password !== "string") return null;
-        // Checked before verifyOwnerCredentials, which is where the 64 MiB of
-        // Argon2id gets spent. Throttling after the hash would still burn the
-        // memory this is here to protect.
+        // signIn from the login server action rebuilds this request from the
+        // incoming headers, so the forwarded address is here.
+        const reported = clientAddress(request.headers);
+        // Every request is counted per address first, whatever the email, and
+        // one over the limit is refused before the lookup and without any
+        // hash. It answers as fast for the Owner's email as for any other, so
+        // it gives nothing away, and it keeps a script posting made-up emails
+        // from holding the Argon2 slots (see loginThrottle.ts).
+        if (!reserveLoginRequest(reported)) return null;
+        const address = reported ?? "unknown";
+        const owner = await findOwnerForLogin(email);
+        // Only the real Owner's email is counted here, and the attempt is counted
+        // before the hash rather than after a failure, so a burst of
+        // concurrent guesses cannot all pass the check while their hashes run
+        // (see loginThrottle.ts).
         //
-        // Returns null rather than throwing, so the form keeps saying
-        // "Incorrect email or password". A distinct "too many attempts" would
-        // confirm to a stranger that they have the right email, and the Owner
-        // who trips it is looking at their own server logs anyway.
-        if (!checkLoginAllowed(email)) return null;
-        const owner = await verifyOwnerCredentials(email, password);
-        if (!owner) {
-          recordFailedLogin(email);
+        // An unknown email and a throttled attempt both still run a dummy
+        // verify and return null rather than throwing, so the form keeps
+        // saying "Incorrect email or password" in the same time either way.
+        // A quick or distinct answer would confirm to a stranger that they
+        // have the right email. The memory and queue those verifies cost are
+        // capped in password.ts, not here.
+        if (!owner || !reserveLoginAttempt(owner.email, address)) {
+          await checkOwnerPassword(null, password);
           return null;
         }
-        clearLoginFailures(email);
-        return { ...owner, role: "owner" as const };
+        const verified = await checkOwnerPassword(owner, password);
+        if (!verified) return null;
+        clearLoginAttempts(owner.email, address);
+        return { ...verified, role: "owner" as const };
       },
     }),
     Credentials({

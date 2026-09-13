@@ -241,14 +241,36 @@ model WebhookEvent {
   id            String   @id @default(cuid())
   merchantId    String
   merchant      Merchant @relation(fields: [merchantId], references: [id])
-  stripeEventId String   @unique // blocks duplicate delivery
+  stripeEventId String
   payload       Json
   status        WebhookEventStatus @default(PENDING)
   attempts      Int      @default(0)
   lastError     String?  // last failure message, for debugging FAILED rows
-  nextAttemptAt DateTime @default(now()) // backoff scheduling, the claim query filters on this
+  nextAttemptAt DateTime @default(now()) // backoff scheduling and, while PROCESSING, the claim lease; the claim query filters on this
   createdAt     DateTime @default(now())
   processedAt   DateTime?
 
+  // Blocks duplicate delivery per Merchant. Not globally: two products on
+  // one Stripe account each get their own copy of every event, and a global
+  // key dropped the second copy as a duplicate before its handler could run.
+  @@unique([merchantId, stripeEventId])
   @@index([status, nextAttemptAt, createdAt])
+}
+
+/// A referral code an Affiliate stopped using, by renaming or deleting the link
+/// that carried it. Links already published with the old code keep circulating,
+/// so handing it to a different Affiliate would give them every future click
+/// and commission from someone else's posts. Only the Affiliate who retired it
+/// may take it back, and doing so removes the row.
+///
+/// No foreign keys on purpose: a row must outlive the Affiliate and Merchant it
+/// came from, since a code that ever resolved is never safe to reassign.
+model RetiredLinkCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  affiliateId String
+  merchantId  String
+  retiredAt   DateTime @default(now())
+
+  @@index([affiliateId])
 }

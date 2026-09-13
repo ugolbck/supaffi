@@ -16,6 +16,7 @@ import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
 import { resendKeyWorks } from "@/lib/checks/email";
+import { upgradeMerchantWebhookEvents } from "@/lib/worker/webhookEvents";
 
 /**
  * Everything the settings page can change: the product's own details, the
@@ -78,6 +79,10 @@ export async function replaceStripeKeyAction(
   const check = await stripeKeyWorks(key);
   if (!check.ok) return { error: check.detail };
   await connectStripe(ownerId, product.id, { secretKey: key });
+  // A new key is the fix for a key that could not update the endpoint, so
+  // the upgrade runs again now rather than leaving the light red until the
+  // next start. It never throws.
+  await upgradeMerchantWebhookEvents(product.id);
   redirect(settings(product.slug, "stripe"));
 }
 
@@ -90,6 +95,8 @@ export async function replaceWebhookSecretAction(
   const secret = String(formData.get("value") ?? "").trim();
   if (!secret.startsWith("whsec_")) return { error: "The signing secret starts with whsec_" };
   await connectStripe(ownerId, product.id, { webhookSecret: secret });
+  // Same reason as the key: a recreated endpoint is the fix for a missing one.
+  await upgradeMerchantWebhookEvents(product.id);
   redirect(settings(product.slug, "stripe"));
 }
 

@@ -3,94 +3,117 @@
 // This exists because the dashboard is served on the server's own public
 // address (Caddyfile.dashboard), so the login form is reachable by anything
 // that scans the internet rather than only by whoever knew the instance
-// domain. Every attempt costs 64 MiB of Argon2id, which makes an unthrottled
-// form a way to exhaust a small server's memory without ever guessing a
-// password.
+// domain.
 //
-// Keyed by email, not by IP. A self-hosted instance has one Owner, so the
-// email is the whole keyspace, and unlike a forwarded-for header it cannot be
-// spoofed to dodge the limit. Keying on a client address behind a proxy would
-// also mean trusting a header the app cannot verify.
+// Only the real Owner's email is ever counted (see authorize in auth.ts). An
+// attempt on any other email has no password to guess, and counting it would
+// let a flood of made-up emails push the Owner's own entry out of the map.
 //
-// In memory, not in the database and not in Redis (ADR 0005, ADR 0007). A
-// restart clears the counters, which is acceptable: an attacker cannot cause
-// one, and an Owner who has locked themselves out has a way back.
+// Two limits, both counted before the password hash runs rather than after a
+// failure, so a burst of concurrent requests cannot all slip past the check
+// while their hashes are still running:
+//
+// - A tight one on email and client address. This is the real brake on
+//   guessing, and keying it on the address means a stranger tripping it locks
+//   out their own address, not the Owner.
+// - A looser one on the email alone. Behind a proxy that passes the forwarded
+//   header through, the address can be made up, and without this a new
+//   address per ten guesses would be unlimited guessing.
+//
+// The pair limit can have entries evicted by address rotation; the email limit
+// cannot, because only Owner emails ever reach it.
+//
+// Separately, every login request of any email is counted per client address
+// before anything else happens (reserveLoginRequest). An unknown email still
+// runs a dummy hash so its timing matches the Owner's, which made a script
+// posting made-up emails a cheap way to keep the Argon2 slots busy. Past this
+// limit the request is refused without hashing at all. It is skipped when the
+// address is missing or private, because then the proxy in front did not
+// report the visitor and everyone would share one budget. The Argon2 queue cap
+// in password.ts is what covers that case.
+
+import { takeFromEach, windowLimit } from "@/lib/rateLimit";
+import { isPrivateAddress } from "@/lib/clientAddress";
 
 const WINDOW_MS = 15 * 60 * 1000;
-const MAX_FAILURES = 10;
 
-// An unbounded map keyed by attacker-supplied email would itself be the
-// memory exhaustion this module exists to prevent, so it is capped. Entries
-// are inserted in first-seen order, which is the order Map iterates in, so
-// dropping from the front drops the oldest.
-const MAX_TRACKED = 2000;
+// Generous: an Owner mistyping a few times, or a small office behind one
+// address, never comes near it.
+const perClient = windowLimit({
+  name: "owner-login-client",
+  windowMs: WINDOW_MS,
+  max: 20,
+  maxTracked: 5000,
+});
 
-type Failures = { count: number; windowStartedAt: number };
+const perAddress = windowLimit({
+  name: "owner-login-address",
+  windowMs: WINDOW_MS,
+  max: 10,
+  maxTracked: 2000,
+});
 
-const globalForThrottle = globalThis as unknown as {
-  supaffiLoginFailures?: Map<string, Failures>;
-};
-
-// Held on globalThis for the same reason the Prisma client is: dev-mode Fast
-// Refresh re-evaluates the module and would otherwise hand out a fresh, empty
-// map on every edit.
-const failures: Map<string, Failures> =
-  globalForThrottle.supaffiLoginFailures ?? new Map<string, Failures>();
-if (process.env.NODE_ENV !== "production") {
-  globalForThrottle.supaffiLoginFailures = failures;
-}
+const perEmail = windowLimit({
+  name: "owner-login-email",
+  windowMs: WINDOW_MS,
+  max: 100,
+  // One Owner per instance. A handful covers email changes within a window.
+  maxTracked: 50,
+});
 
 // Matches verifyOwnerCredentials, or `Bob@x.com` and `bob@x.com` would be two
 // separate budgets for one account.
-function key(email: string): string {
+function normalize(email: string): string {
   return email.trim().toLowerCase();
 }
 
-function currentWindow(k: string, now: number): Failures | null {
-  const entry = failures.get(k);
-  if (!entry) return null;
-  if (now - entry.windowStartedAt >= WINDOW_MS) {
-    failures.delete(k);
-    return null;
-  }
-  return entry;
+function pairKey(email: string, address: string): string {
+  return `${normalize(email)}\n${address}`;
 }
 
 /**
- * Whether another attempt for this email may proceed to the password hash.
+ * Counts any login request from this client address and says whether it may
+ * go on at all. Always allows a missing or private address, which is not a
+ * visitor anyone can be told apart by.
+ */
+export function reserveLoginRequest(address: string | null, now: number = Date.now()): boolean {
+  if (address === null || isPrivateAddress(address)) return true;
+  return takeFromEach([[perClient, address]], now);
+}
+
+/**
+ * Counts an attempt on the Owner's email and says whether it may go on to the
+ * password hash. A refused attempt is not counted.
  *
  * `now` is injectable so the window can be tested without sleeping through
  * fifteen minutes of it.
  */
-export function checkLoginAllowed(email: string, now: number = Date.now()): boolean {
-  const entry = currentWindow(key(email), now);
-  return !entry || entry.count < MAX_FAILURES;
+export function reserveLoginAttempt(
+  email: string,
+  address: string,
+  now: number = Date.now()
+): boolean {
+  return takeFromEach(
+    [
+      [perAddress, pairKey(email, address)],
+      [perEmail, normalize(email)],
+    ],
+    now
+  );
 }
 
-export function recordFailedLogin(email: string, now: number = Date.now()): void {
-  const k = key(email);
-  const entry = currentWindow(k, now);
-  if (entry) {
-    entry.count += 1;
-    return;
-  }
-  // Re-inserting moves the key to the end of the iteration order, which is
-  // what keeps the eviction below dropping genuinely stale entries.
-  failures.delete(k);
-  failures.set(k, { count: 1, windowStartedAt: now });
-
-  while (failures.size > MAX_TRACKED) {
-    const oldest = failures.keys().next();
-    if (oldest.done) break;
-    failures.delete(oldest.value);
-  }
-}
-
-export function clearLoginFailures(email: string): void {
-  failures.delete(key(email));
+/**
+ * Called after a successful login. Clears only the address the Owner signed in
+ * from: clearing the email limit too would hand a guesser running from other
+ * addresses a fresh budget every time the Owner logs in.
+ */
+export function clearLoginAttempts(email: string, address: string): void {
+  perAddress.clear(pairKey(email, address));
 }
 
 /** Test seam. Never called by application code. */
 export function resetLoginThrottle(): void {
-  failures.clear();
+  perClient.reset();
+  perAddress.reset();
+  perEmail.reset();
 }

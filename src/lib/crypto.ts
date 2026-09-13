@@ -25,10 +25,21 @@ export function encrypt(plaintext: string): string {
   return [iv, authTag, encrypted].map((b) => b.toString("hex")).join(":");
 }
 
+// GCM accepts a truncated tag unless told the length, and a short tag is far
+// easier to forge. encrypt always writes the full 16 bytes, so anything else
+// is not ours and is refused before it reaches the decipher.
+const AUTH_TAG_LENGTH = 16;
+
 export function decrypt(ciphertext: string): string {
   const [ivHex, authTagHex, encryptedHex] = ciphertext.split(":");
-  const decipher = createDecipheriv("aes-256-gcm", getKey(), Buffer.from(ivHex, "hex"));
-  decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
+  const authTag = Buffer.from(authTagHex ?? "", "hex");
+  if (authTag.length !== AUTH_TAG_LENGTH) {
+    throw new Error("Invalid ciphertext");
+  }
+  const decipher = createDecipheriv("aes-256-gcm", getKey(), Buffer.from(ivHex, "hex"), {
+    authTagLength: AUTH_TAG_LENGTH,
+  });
+  decipher.setAuthTag(authTag);
   const decrypted = Buffer.concat([
     decipher.update(Buffer.from(encryptedHex, "hex")),
     decipher.final(),

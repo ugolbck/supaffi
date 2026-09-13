@@ -32,11 +32,13 @@ async function clear() {
   await db.owner.deleteMany();
 }
 
-function ask(domain?: string) {
+// Next fills X-Forwarded-For from the socket, so Caddy's own call arrives
+// carrying its container address on the Docker network.
+function ask(domain?: string, forwardedFor = "172.18.0.3") {
   const url = domain
     ? `http://app:3000/api/internal/domain-check?domain=${encodeURIComponent(domain)}`
     : "http://app:3000/api/internal/domain-check";
-  return GET(new NextRequest(url));
+  return GET(new NextRequest(url, { headers: { "x-forwarded-for": forwardedFor } }));
 }
 
 // skipIf, not runIf: matches test/app/api/track/route.test.ts and
@@ -94,5 +96,23 @@ describe.skipIf(!hasDatabase)("domain-check", () => {
 
     const res = await ask("Affiliates.Example.COM");
     expect(res.status).toBe(403);
+  });
+
+  it("does not answer a request the proxy relayed from the internet", async () => {
+    const owner = await db.owner.create({
+      data: { email: "domain-check-public@example.com", passwordHash: "x" },
+    });
+    await db.merchant.create({
+      data: {
+        slug: crypto.randomUUID(),
+        ownerId: owner.id,
+        name: "Domain Check Public",
+        domain: "affiliates.example.com",
+        websiteUrl: "https://example.com",
+      },
+    });
+
+    const res = await ask("affiliates.example.com", "203.0.113.7");
+    expect(res.status).toBe(404);
   });
 });

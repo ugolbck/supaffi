@@ -11,11 +11,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { pageList } from "@/lib/pagination";
 import { CommissionLedger, STATUS_LABELS, toLedgerRow, type LedgerRow } from "./CommissionLedger";
 
 /**
@@ -135,16 +137,22 @@ export default async function AffiliateCommissionsPage({
                     aria-disabled={page <= 1}
                   />
                 </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                  <PaginationItem key={p}>
-                    <PaginationLink
-                      render={<Link href={hrefWith({ page: String(p) })} />}
-                      isActive={p === page}
-                    >
-                      {p}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
+                {pageList(page, totalPages).map((p, i) =>
+                  p === "gap" ? (
+                    <PaginationItem key={`gap-${i}`}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={p}>
+                      <PaginationLink
+                        render={<Link href={hrefWith({ page: String(p) })} />}
+                        isActive={p === page}
+                      >
+                        {p}
+                      </PaginationLink>
+                    </PaginationItem>
+                  )
+                )}
                 <PaginationItem>
                   <PaginationNext
                     render={

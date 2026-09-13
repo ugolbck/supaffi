@@ -13,6 +13,7 @@ import { CheckList } from "@/components/onboarding/CheckList";
 import { checkState, dnsCheckRows, emailDomainPending, type CheckRow } from "@/components/onboarding/checkRows";
 import { isDevInstance } from "@/lib/instanceMode";
 import { isLocalDomain } from "@/lib/url";
+import { webhookEventsProblem } from "@/lib/webhookEventsProblem";
 import { ProductForm } from "./ProductForm";
 import { ConnectionSheet } from "./ConnectionSheet";
 import { DeleteProduct } from "./DeleteProduct";
@@ -73,6 +74,7 @@ export default async function SettingsPage({
     getProductSetup(ownerId, merchant.id),
   ]);
   const local = isDevInstance() || isLocalDomain(merchant.domain);
+  const eventsProblem = webhookEventsProblem(merchant.id);
 
   const productRef = { id: merchant.id, slug: merchant.slug };
   const settingsHref = `/dashboard/products/${merchant.slug}/settings`;
@@ -98,10 +100,23 @@ export default async function SettingsPage({
     },
     {
       id: "stripe-webhook",
-      state: !setup.stripeWebhookStored ? "pending" : checks.stripe.webhook.ok ? "ok" : "pending",
+      // An endpoint that could not be given every event is wrong even while
+      // it delivers the rest, so it outranks the "receiving events" light.
+      state: !setup.stripeWebhookStored
+        ? "pending"
+        : eventsProblem
+          ? "failed"
+          : checks.stripe.webhook.ok
+            ? "ok"
+            : "pending",
       pending: setup.stripeWebhookStored ? "Waiting for the first event from Stripe" : "No webhook yet",
       passed: "Receiving events from Stripe",
-      action: replaceLink("stripe-webhook"),
+      failed: "Stripe is not sending every sale",
+      hint:
+        eventsProblem === "permission"
+          ? "Replace the key with a new one made from the button."
+          : "The webhook is gone from Stripe. Add it again, then replace the secret.",
+      action: replaceLink(eventsProblem === "permission" ? "stripe-key" : "stripe-webhook"),
     },
   ];
   const emailRows: CheckRow[] = [

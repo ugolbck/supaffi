@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
 import { REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
+import { originFor } from "@/lib/url";
 
 // Served at /track.js on the Merchant's own Supaffi domain, embedded on
 // the Merchant's actual site with a plain <script src="..."> tag — a
@@ -12,25 +14,28 @@ import { REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
 // synchronously-loaded <script> tag and breaks if the Merchant loads it
 // any other way (async, dynamically injected, through a tag manager).
 export async function GET(req: NextRequest) {
-  // The address the browser asked for, not the one this process answers on.
-  // Behind the bundled proxy the Node server sees its own container address,
-  // so `nextUrl.origin` bakes something like `https://<container-id>:3000`
-  // into the script and every call from the Merchant's site goes nowhere,
-  // with no error anywhere: tracking silently records nothing on every
-  // self-hosted install. The Host header carries the public name, and is what
-  // every other route in here already trusts to find the Merchant at all.
+  // The Host header only selects a Merchant; the origin written into the
+  // script comes from that Merchant's stored domain. Pasting request headers
+  // into JavaScript let anyone who could influence them (or a cache keyed
+  // without them) serve script that runs on a Merchant's site. X-Forwarded-Proto
+  // is ignored for the same reason: originFor already knows the scheme.
   const host = req.headers.get("host");
-  const forwarded = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const scheme = forwarded || req.nextUrl.protocol.replace(":", "");
-  const origin = host ? `${scheme}://${host}` : req.nextUrl.origin;
+  const merchant = host
+    ? await db.merchant.findUnique({ where: { domain: host }, select: { domain: true } })
+    : null;
+  if (!merchant) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  const trackUrl = JSON.stringify(`${originFor(merchant.domain)}/api/track?${REFERRAL_QUERY_PARAM}=`);
 
   const script = `
 (function () {
   var params = new URLSearchParams(window.location.search);
-  var code = params.get("${REFERRAL_QUERY_PARAM}");
+  var code = params.get(${JSON.stringify(REFERRAL_QUERY_PARAM)});
   if (!code) return;
 
-  fetch("${origin}/api/track?${REFERRAL_QUERY_PARAM}=" + encodeURIComponent(code))
+  fetch(${trackUrl} + encodeURIComponent(code))
     .then(function (res) { return res.ok ? res.json() : null; })
     .then(function (data) {
       if (!data || !data.referralToken) return;
@@ -46,7 +51,7 @@ export async function GET(req: NextRequest) {
       // added only over HTTPS, because a Secure cookie on a plain-HTTP dev
       // site is silently dropped and tracking would fail with no error.
       document.cookie =
-        "${REFERRAL_COOKIE}=" + data.referralToken +
+        ${JSON.stringify(`${REFERRAL_COOKIE}=`)} + data.referralToken +
         "; path=/; max-age=" + (60 * 60 * 24 * 90) +
         "; SameSite=Lax" +
         (window.location.protocol === "https:" ? "; Secure" : "");
@@ -55,6 +60,14 @@ export async function GET(req: NextRequest) {
 `.trim();
 
   return new NextResponse(script, {
-    headers: { "Content-Type": "application/javascript; charset=utf-8" },
+    headers: {
+      "Content-Type": "application/javascript; charset=utf-8",
+      // Short enough that a changed or removed Merchant domain stops being
+      // served within the hour. Vary on Host because one instance answers
+      // for every Merchant, and a shared cache must not hand one Merchant's
+      // script to another's site.
+      "Cache-Control": "public, max-age=3600",
+      Vary: "Host",
+    },
   });
 }

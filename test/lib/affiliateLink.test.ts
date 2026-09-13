@@ -12,6 +12,7 @@ import {
   listLinksWithStats,
   validateLinkInput,
   MAX_LINKS_PER_AFFILIATE,
+  MAX_RETIRED_CODES_PER_AFFILIATE,
 } from "@/lib/affiliateLink";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -19,6 +20,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 async function clearAll() {
   await db.commission.deleteMany();
   await db.click.deleteMany();
+  await db.retiredLinkCode.deleteMany();
   await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
@@ -166,6 +168,94 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     expect(result).toEqual({
       error: `You can have up to ${MAX_LINKS_PER_AFFILIATE} links. Delete one to add another.`,
     });
+  });
+
+  it("holds the link cap when requests arrive at once", async () => {
+    // Counting and inserting as two separate steps let a burst of requests all
+    // see room for one more.
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+
+    await Promise.all(
+      Array.from({ length: MAX_LINKS_PER_AFFILIATE + 10 }, (_, i) =>
+        createLink(sarah.id, { code: `burst-${i}`, destinationPath: "" })
+      )
+    );
+    expect(await db.affiliateLink.count({ where: { affiliateId: sarah.id } })).toBe(MAX_LINKS_PER_AFFILIATE);
+  });
+
+  it("never hands a renamed code to another affiliate, but lets its owner take it back", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const bob = await createAffiliate(merchant.id, program.id, { name: "Bob", email: "b@example.com" });
+    const primary = await getPrimaryLink(sarah.id);
+
+    expect(await updateLink(sarah.id, primary!.id, { code: "sarah-new", destinationPath: "" })).toEqual({ ok: true });
+    expect(await createLink(bob.id, { code: "sarah", destinationPath: "" })).toEqual({
+      error: "That code is already taken. Try another.",
+    });
+    const bobsPrimary = await getPrimaryLink(bob.id);
+    expect(await updateLink(bob.id, bobsPrimary!.id, { code: "sarah", destinationPath: "" })).toEqual({
+      error: "That code is already taken. Try another.",
+    });
+
+    expect(await updateLink(sarah.id, primary!.id, { code: "sarah", destinationPath: "" })).toEqual({ ok: true });
+    expect(await db.retiredLinkCode.findUnique({ where: { code: "sarah" } })).toBeNull();
+    expect((await db.retiredLinkCode.findUnique({ where: { code: "sarah-new" } }))?.affiliateId).toBe(sarah.id);
+  });
+
+  it("never hands a deleted code to another affiliate", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const bob = await createAffiliate(merchant.id, program.id, { name: "Bob", email: "b@example.com" });
+    const review = (await createLink(sarah.id, { code: "sarah-review", destinationPath: "" })) as { id: string };
+
+    expect(await deleteLink(sarah.id, review.id)).toEqual({ ok: true });
+    expect(await createLink(bob.id, { code: "sarah-review", destinationPath: "" })).toEqual({
+      error: "That code is already taken. Try another.",
+    });
+    expect(await createLink(sarah.id, { code: "sarah-review", destinationPath: "" })).toHaveProperty("id");
+  });
+
+  it("caps how many codes one affiliate can retire", async () => {
+    // Retired codes are held for good across every Merchant, so unlimited
+    // renames would let one affiliate squat any number of names.
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const primary = await getPrimaryLink(sarah.id);
+    const extra = (await createLink(sarah.id, { code: "sarah-extra", destinationPath: "" })) as { id: string };
+    await db.retiredLinkCode.createMany({
+      data: Array.from({ length: MAX_RETIRED_CODES_PER_AFFILIATE }, (_, i) => ({
+        code: `old-${i}`,
+        affiliateId: sarah.id,
+        merchantId: merchant.id,
+      })),
+    });
+    const refused = {
+      error: "You have changed or deleted too many links. Contact the program owner.",
+    };
+
+    expect(await updateLink(sarah.id, primary!.id, { code: "sarah-new", destinationPath: "" })).toEqual(refused);
+    expect(await deleteLink(sarah.id, extra.id)).toEqual(refused);
+    // Changing only the destination retires nothing, and taking back one of
+    // their own retired codes frees the place it uses.
+    expect(await updateLink(sarah.id, primary!.id, { code: "sarah", destinationPath: "/pricing" })).toEqual({ ok: true });
+    expect(await updateLink(sarah.id, primary!.id, { code: "old-0", destinationPath: "" })).toEqual({ ok: true });
+    expect(await db.retiredLinkCode.count({ where: { affiliateId: sarah.id } })).toBe(MAX_RETIRED_CODES_PER_AFFILIATE);
+  });
+
+  it("keeps a retired code away from new signups", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const primary = await getPrimaryLink(sarah.id);
+    await updateLink(sarah.id, primary!.id, { code: "sarah-new", destinationPath: "" });
+
+    await expect(
+      createAffiliate(merchant.id, program.id, { name: "Mallory", email: "m@example.com", code: "sarah" })
+    ).rejects.toMatchObject({ code: "P2002", meta: { target: ["code"] } });
+
+    const generated = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s2@example.com" });
+    expect(generated.referralCode).toBe("sarah2");
   });
 
   it("counts clicks, conversions and earnings per link", async () => {

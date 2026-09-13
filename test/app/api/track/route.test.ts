@@ -16,6 +16,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { GET } from "@/app/api/track/route";
 import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
+import { resetTrackThrottle } from "@/lib/trackThrottle";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -70,15 +71,17 @@ async function seedMerchantWithAffiliate(tag: string) {
   return { merchant, affiliate, link };
 }
 
-function requestFor(host: string, code: string): NextRequest {
+function requestFor(host: string, code: string, headers: Record<string, string> = {}): NextRequest {
   return new NextRequest(`http://${host}/api/track?${REFERRAL_QUERY_PARAM}=${code}`, {
-    headers: { host },
+    headers: { host, ...headers },
   });
 }
 
 describe.skipIf(!hasDatabase)("GET /api/track", () => {
   beforeEach(async () => {
+    resetTrackThrottle();
     await db.click.deleteMany();
+    await db.retiredLinkCode.deleteMany();
     await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
@@ -88,6 +91,7 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
 
   afterAll(async () => {
     await db.click.deleteMany();
+    await db.retiredLinkCode.deleteMany();
     await db.affiliateLink.deleteMany();
     await db.affiliate.deleteMany();
     await db.program.deleteMany();
@@ -118,5 +122,28 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
     expect(clicks).toHaveLength(1);
     expect(clicks[0].affiliateId).toBe(a.affiliate.id);
     expect(clicks[0].linkId).toBe(a.link.id);
+  });
+
+  it("hands a repeat visit from the same address its existing token instead of a second click", async () => {
+    const a = await seedMerchantWithAffiliate("a");
+    const visitor = { "x-forwarded-for": "198.51.100.1, 203.0.113.7" };
+
+    const first = await (await GET(requestFor(a.merchant.domain, a.link.code, visitor))).json();
+    const second = await (await GET(requestFor(a.merchant.domain, a.link.code, visitor))).json();
+
+    expect(second.referralToken).toBe(first.referralToken);
+    expect(await db.click.count()).toBe(1);
+  });
+
+  it("does not attribute a code its affiliate retired", async () => {
+    const a = await seedMerchantWithAffiliate("a");
+    await db.retiredLinkCode.create({
+      data: { code: "track-route-a-old", affiliateId: a.affiliate.id, merchantId: a.merchant.id },
+    });
+
+    const res = await GET(requestFor(a.merchant.domain, "track-route-a-old"));
+
+    expect(res.status).toBe(404);
+    expect(await db.click.count()).toBe(0);
   });
 });

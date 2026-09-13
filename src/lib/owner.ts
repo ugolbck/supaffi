@@ -1,5 +1,6 @@
+import { randomBytes } from "crypto";
 import { db } from "@/lib/db";
-import { hashPassword, verifyPassword } from "@/lib/password";
+import { ConcurrencyLimitError, hashPassword, verifyPassword } from "@/lib/password";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
 // Lives in its own module so the startup hook can reach it without dragging
@@ -41,16 +42,69 @@ export async function createOwner(
   });
 }
 
+type OwnerForLogin = { id: string; email: string; passwordHash: string };
+
+/**
+ * The Owner row for a login attempt, without checking the password.
+ *
+ * Split from the check so the login throttle can count an attempt on the real
+ * Owner's email before the hash runs, and ignore every other email.
+ */
+export async function findOwnerForLogin(email: string): Promise<OwnerForLogin | null> {
+  return db.owner.findUnique({
+    where: { email: email.trim().toLowerCase() },
+    select: { id: true, email: true, passwordHash: true },
+  });
+}
+
+let dummyHash: Promise<string> | null = null;
+
+// A real Argon2id hash of a random secret nobody knows, made on first use
+// rather than at import so the startup path never pays for it. Forgotten on
+// failure, or one bad moment would leave every later call rejecting.
+function dummyPasswordHash(): Promise<string> {
+  dummyHash ??= hashPassword(randomBytes(32).toString("hex")).catch((err) => {
+    dummyHash = null;
+    throw err;
+  });
+  return dummyHash;
+}
+
+/**
+ * Checks a password against the Owner found for the attempt.
+ *
+ * With no Owner, it still runs a full verify against a dummy hash and then
+ * refuses. Returning straight away would make a wrong email answer in
+ * milliseconds and the right one in a tenth of a second, which tells a
+ * stranger the Owner's email without them ever guessing a password.
+ *
+ * When the Argon2 queue is full (see password.ts) it refuses without hashing,
+ * for the right email and a wrong one alike, so the answer is the same
+ * "incorrect" a failed guess gets rather than an error page.
+ */
+export async function checkOwnerPassword(
+  owner: OwnerForLogin | null,
+  password: string
+): Promise<{ id: string; email: string } | null> {
+  try {
+    if (!owner) {
+      await verifyPassword(password, await dummyPasswordHash());
+      return null;
+    }
+    const valid = await verifyPassword(password, owner.passwordHash);
+    if (!valid) return null;
+    return { id: owner.id, email: owner.email };
+  } catch (err) {
+    if (err instanceof ConcurrencyLimitError) return null;
+    throw err;
+  }
+}
+
 export async function verifyOwnerCredentials(
   email: string,
   password: string
 ): Promise<{ id: string; email: string } | null> {
-  const normalizedEmail = email.trim().toLowerCase();
-  const owner = await db.owner.findUnique({ where: { email: normalizedEmail } });
-  if (!owner) return null;
-  const valid = await verifyPassword(password, owner.passwordHash);
-  if (!valid) return null;
-  return { id: owner.id, email: owner.email };
+  return checkOwnerPassword(await findOwnerForLogin(email), password);
 }
 
 async function ownerWithVerifiedPassword(

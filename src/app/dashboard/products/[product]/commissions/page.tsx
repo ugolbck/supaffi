@@ -18,11 +18,13 @@ import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { pageList } from "@/lib/pagination";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { CommissionFilters } from "./CommissionFilters";
@@ -339,16 +341,22 @@ export default async function CommissionsPage({
                   aria-disabled={page <= 1}
                 />
               </PaginationItem>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                <PaginationItem key={p}>
-                  <PaginationLink
-                    render={<Link href={hrefWith({ page: String(p) })} />}
-                    isActive={p === page}
-                  >
-                    {p}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
+              {pageList(page, totalPages).map((p, i) =>
+                p === "gap" ? (
+                  <PaginationItem key={`gap-${i}`}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                ) : (
+                  <PaginationItem key={p}>
+                    <PaginationLink
+                      render={<Link href={hrefWith({ page: String(p) })} />}
+                      isActive={p === page}
+                    >
+                      {p}
+                    </PaginationLink>
+                  </PaginationItem>
+                )
+              )}
               <PaginationItem>
                 <PaginationNext
                   render={<Link href={hrefWith({ page: String(Math.min(totalPages, page + 1)) })} />}

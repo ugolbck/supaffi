@@ -4,7 +4,11 @@
 // database, never a real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
-import { createAffiliateLoginToken, consumeAffiliateLoginToken } from "@/lib/affiliateAuth";
+import {
+  createAffiliateLoginToken,
+  consumeAffiliateLoginToken,
+  MAX_LIVE_TOKENS,
+} from "@/lib/affiliateAuth";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -89,6 +93,21 @@ describe.skipIf(!hasDatabase)("affiliateAuth", () => {
 
     const second = await consumeAffiliateLoginToken(rawToken);
     expect(second).toBeNull();
+  });
+
+  it("keeps only the newest few live, so the latest emailed link always works", async () => {
+    // A stranger requesting links for this email must not be able to lock the
+    // real Affiliate out: the newest request wins, the oldest links go.
+    const tokens: string[] = [];
+    for (let i = 0; i < MAX_LIVE_TOKENS + 4; i += 1) {
+      tokens.push(await createAffiliateLoginToken(affiliateId));
+    }
+    expect(await db.affiliateLoginToken.count({ where: { affiliateId } })).toBe(MAX_LIVE_TOKENS);
+    expect(await consumeAffiliateLoginToken(tokens[0]!)).toBeNull();
+    expect(await consumeAffiliateLoginToken(tokens[tokens.length - 1]!)).toEqual({
+      id: affiliateId,
+      email: "sarah@example.com",
+    });
   });
 
   it("rejects an unknown token", async () => {

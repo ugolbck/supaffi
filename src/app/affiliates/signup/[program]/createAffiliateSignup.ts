@@ -6,6 +6,8 @@ import { getProgramForSignup } from "@/lib/program";
 import { createAffiliate, getAffiliateByEmail } from "@/lib/affiliate";
 import { createAffiliateLoginToken } from "@/lib/affiliateAuth";
 import { sendAffiliateMagicLinkEmail } from "@/lib/email/affiliateMagicLink";
+import { reserveAffiliateEmail } from "@/lib/affiliateEmailThrottle";
+import { clientAddress } from "@/lib/clientAddress";
 import { validateSignupInput, validateCode } from "./validation";
 import { isUniqueConstraintErrorOn } from "@/lib/prismaErrors";
 
@@ -38,7 +40,8 @@ export async function createAffiliateSignup(
     chosenCode = validatedCode.code;
   }
 
-  const host = (await headers()).get("host");
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host");
   const merchant = host ? await getMerchantByDomain(host) : null;
   if (!merchant) {
     return { status: "form", error: "Could not determine which program this is for." };
@@ -47,6 +50,15 @@ export async function createAffiliateSignup(
   const program = await getProgramForSignup(merchant.id, programSlug);
   if (!program) {
     return { status: "form", error: "This signup link is no longer valid." };
+  }
+
+  // Before the Affiliate is created, so a flood of signups neither sends
+  // email in the Merchant's name nor fills their affiliate list with junk.
+  // Refused requests get the same "check your email" screen as real ones, for
+  // the reason given in affiliateEmailThrottle.ts.
+  const address = clientAddress(new Headers(requestHeaders));
+  if (!reserveAffiliateEmail(merchant.id, result.email, address)) {
+    return { status: "sent", error: "" };
   }
 
   let affiliateId: string;
