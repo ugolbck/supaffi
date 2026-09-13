@@ -3,6 +3,8 @@ import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
 import { commissionRateFor, computeCommissionAmount, computePayableAt, isExcluded, saleAmountFor } from "../commission";
+import { commissionFieldsAtCreation, latestChargeFor, paymentIntentForInvoice } from "../paymentState";
+import { checkoutSessionBaseMinor } from "../saleBase";
 import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
@@ -91,12 +93,26 @@ export async function handleCheckoutSessionCompleted(
   // the first real renewal earns through invoice.paid, but there is no money
   // on this Session to take a commission from.
   if (session.payment_status !== "paid") return;
-  if (session.amount_total == null || !session.currency) return;
+  if (!session.currency) return;
+
+  // Earned on the sale before tax and shipping, see saleBase.ts. A Session
+  // that does not say how much tax it carried is logged and skipped rather
+  // than paid on a total that still has the tax in it; returning normally
+  // marks the event processed instead of retrying something that will never
+  // change.
+  const baseMinor = checkoutSessionBaseMinor(session);
+  if (baseMinor === null) {
+    console.error(`[worker] session ${session.id} carries no tax breakdown, so no commission was recorded for it`);
+    return;
+  }
 
   const affiliate = click.affiliate;
   const program = affiliate.program;
   const rate = commissionRateFor(affiliate, program);
-  const amount = computeCommissionAmount(session.amount_total, session.currency, rate);
+  const amount = computeCommissionAmount(baseMinor, session.currency, rate);
+  // A sale that came to nothing, or to less than a cent of commission, would
+  // only add an empty row to both ledgers.
+  if (amount.lte(0)) return;
 
   let flagReason = checkSelfReferralEmail(affiliate, session.customer_details?.email ?? null);
   if (!flagReason) {
@@ -104,19 +120,24 @@ export async function handleCheckoutSessionCompleted(
     flagReason = await checkPaymentMethodOverlap(stripe, affiliate, fingerprint, stripeCustomerId);
   }
 
+  // A refund made before this event was processed has already been and gone
+  // unapplied, so it is read back from the charge now and folded into the row.
+  const chargeIntentId = paymentIntentId ?? (invoiceId ? await paymentIntentForInvoice(stripe, invoiceId) : null);
+  const charge = chargeIntentId ? await latestChargeFor(stripe, chargeIntentId) : null;
+
   try {
     await db.commission.create({
       data: {
         affiliateId: affiliate.id,
         clickId: click.id,
         stripePaymentRef,
-        amount,
         currency: session.currency,
-        saleAmount: saleAmountFor(session.amount_total, session.currency),
-        grossAmount: amount, // the figure a later refund prorates against
-        status: flagReason ? "FLAGGED" : "PENDING",
+        saleAmount: saleAmountFor(baseMinor, session.currency),
         payableAt: computePayableAt(program),
         flagReason,
+        // amount, grossAmount (the figure a later refund prorates against),
+        // status, voidedAt and voidReason.
+        ...commissionFieldsAtCreation({ amount, flagReason, charge }),
       },
     });
   } catch (err) {

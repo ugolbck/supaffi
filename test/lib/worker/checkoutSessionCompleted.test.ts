@@ -11,9 +11,18 @@ import { db } from "@/lib/db";
 // the Customer carries the exclusion flag. Only that one call is reachable
 // here, so the stub answers it and nothing touches the network. The rest of
 // the module (minorUnitsToMajor, used by the commission maths) stays real.
+// The handler also looks up the charge behind the payment, to fold in a
+// refund made before the commission existed. By default the invoice has no
+// payment on record, so that lookup finds nothing and changes nothing.
 const stripeStub = vi.hoisted(() => ({
   customers: {
     retrieve: vi.fn(async () => ({ id: "cus_test", metadata: {} })),
+  },
+  invoicePayments: {
+    list: vi.fn(async (): Promise<{ data: unknown[] }> => ({ data: [] })),
+  },
+  paymentIntents: {
+    retrieve: vi.fn(async (): Promise<unknown> => ({ id: "pi_test", latest_charge: null })),
   },
 }));
 vi.mock("@/lib/stripe", async () => {
@@ -58,6 +67,11 @@ describe("handleCheckoutSessionCompleted", () => {
     invoice: string;
     metadataToken?: string;
     paymentStatus?: Stripe.Checkout.Session.PaymentStatus;
+    amountTotal?: number;
+    tax?: number;
+    totalDetails?: null;
+    shippingCost?: { amount_subtotal: number; amount_tax: number; amount_total: number };
+    currency?: string;
   }): Stripe.Checkout.Session {
     return {
       id: `cs_${opts.invoice}`,
@@ -67,8 +81,13 @@ describe("handleCheckoutSessionCompleted", () => {
       metadata: { [REFERRAL_METADATA_KEY]: opts.metadataToken ?? clickInput.referralToken },
       customer: CUSTOMER_ID,
       customer_details: { email: "buyer@example.com" },
-      amount_total: 5000,
-      currency: "usd",
+      amount_total: opts.amountTotal ?? 5000,
+      total_details:
+        opts.totalDetails === null
+          ? null
+          : { amount_discount: 0, amount_shipping: opts.shippingCost?.amount_subtotal ?? 0, amount_tax: opts.tax ?? 0 },
+      shipping_cost: opts.shippingCost ?? null,
+      currency: opts.currency ?? "usd",
       invoice: opts.invoice,
       payment_intent: null,
       subscription: null,
@@ -78,6 +97,10 @@ describe("handleCheckoutSessionCompleted", () => {
   beforeEach(async () => {
     await clearAll();
     stripeStub.customers.retrieve.mockClear();
+    stripeStub.invoicePayments.list.mockReset();
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
+    stripeStub.paymentIntents.retrieve.mockReset();
+    stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({ id: "pi_test", latest_charge: null }));
 
     const owner = await db.owner.create({
       data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
@@ -195,5 +218,111 @@ describe("handleCheckoutSessionCompleted", () => {
     await handleCheckoutSessionCompleted(other, sessionFixture({ invoice: "in_other" }));
 
     expect(await db.commission.count()).toBe(0);
+  });
+
+  it("earns on the price before VAT when the price already includes it", async () => {
+    // 120.00 paid, 20.00 of it VAT: the sale is 100.00 and 20% of it is 20.00.
+    await handleCheckoutSessionCompleted(
+      merchant,
+      sessionFixture({ invoice: "in_vat", amountTotal: 12000, tax: 2000, currency: "eur" })
+    );
+
+    const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+    expect(commission.saleAmount?.toString()).toBe("100");
+    expect(commission.amount.toString()).toBe("20");
+    expect(commission.grossAmount?.toString()).toBe("20");
+  });
+
+  it("creates nothing when the only thing paid for was shipping", async () => {
+    await handleCheckoutSessionCompleted(
+      merchant,
+      sessionFixture({
+        invoice: "in_shipping",
+        amountTotal: 500,
+        shippingCost: { amount_subtotal: 500, amount_tax: 0, amount_total: 500 },
+      })
+    );
+    expect(await db.commission.count()).toBe(0);
+  });
+
+  it("records nothing, and does not fail the event, when the tax cannot be read", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_notax", totalDetails: null }))
+      ).resolves.toBeUndefined();
+    } finally {
+      errors.mockRestore();
+    }
+    expect(await db.commission.count()).toBe(0);
+  });
+
+  it("applies a refund that happened before the commission was recorded", async () => {
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({
+      data: [{ payment: { type: "payment_intent", payment_intent: "pi_early_refund" } }],
+    }));
+    stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+      id: "pi_early_refund",
+      latest_charge: { id: "ch_early", amount: 5000, amount_refunded: 2500 },
+    }));
+
+    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_early_refund" }));
+
+    const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+    expect(commission.amount.toString()).toBe("5");
+    expect(commission.grossAmount?.toString()).toBe("10");
+    expect(commission.status).toBe("PENDING");
+    expect(commission.voidReason).toBe("partial refund");
+  });
+
+  it("records a sale refunded in full already as voided", async () => {
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({
+      data: [{ payment: { type: "payment_intent", payment_intent: "pi_full_refund" } }],
+    }));
+    stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+      id: "pi_full_refund",
+      latest_charge: { id: "ch_full", amount: 5000, amount_refunded: 5000 },
+    }));
+
+    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_full_refund" }));
+
+    const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+    expect(commission.status).toBe("VOIDED");
+    expect(commission.voidReason).toBe("refund");
+    expect(commission.voidedAt).not.toBeNull();
+  });
+
+  it("still records the commission when the charge lookup fails", async () => {
+    // An older key without Charges read can be refused with more than one
+    // error type; an invalid request is used here, and the handler must not
+    // care which.
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({
+      data: [{ payment: { type: "payment_intent", payment_intent: "pi_old_key" } }],
+    }));
+    stripeStub.paymentIntents.retrieve.mockImplementation(async () => {
+      throw Object.assign(new Error("invalid request"), { type: "StripeInvalidRequestError", statusCode: 400 });
+    });
+    try {
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_old_key" }));
+    } finally {
+      errors.mockRestore();
+    }
+
+    const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+    expect(commission.amount.toString()).toBe("10");
+    expect(commission.status).toBe("PENDING");
+  });
+
+  it("records a dong sale larger than the ledger used to hold", async () => {
+    // VND has no minor unit, so amount_total is the sale itself.
+    await handleCheckoutSessionCompleted(
+      merchant,
+      sessionFixture({ invoice: "in_vnd", amountTotal: 250_000_000_000, currency: "vnd" })
+    );
+
+    const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+    expect(commission.saleAmount?.toString()).toBe("250000000000");
+    expect(commission.amount.toString()).toBe("50000000000");
   });
 });
