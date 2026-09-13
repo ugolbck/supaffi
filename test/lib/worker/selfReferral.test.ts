@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Affiliate } from "@prisma/client";
-import { checkSelfReferralEmail, checkPaymentMethodOverlap } from "@/lib/worker/selfReferral";
+import {
+  checkSelfReferralEmail,
+  checkPaymentMethodOverlap,
+  resolveInvoiceFingerprint,
+} from "@/lib/worker/selfReferral";
 
 function affiliateFixture(overrides: Partial<Affiliate> = {}): Affiliate {
   return {
@@ -104,5 +108,41 @@ describe("checkPaymentMethodOverlap", () => {
     };
     const result = await checkPaymentMethodOverlap(stripe as never, affiliate, "fp_shared", "cus_buyer");
     expect(result).toBeNull();
+  });
+});
+
+describe("resolveInvoiceFingerprint", () => {
+  it("reads the card behind the payment that paid the invoice", async () => {
+    const list = vi.fn(async () => ({ data: [{ payment: { type: "payment_intent", payment_intent: "pi_1" } }] }));
+    const retrieve = vi.fn(async () => ({ id: "pi_1", payment_method: { id: "pm_1", card: { fingerprint: "fp_1" } } }));
+    const stripe = { invoicePayments: { list }, paymentIntents: { retrieve } };
+
+    expect(await resolveInvoiceFingerprint(stripe as never, "in_1")).toBe("fp_1");
+    expect(list).toHaveBeenCalledWith({ invoice: "in_1", status: "paid", limit: 1 });
+    expect(retrieve).toHaveBeenCalledWith("pi_1", { expand: ["payment_method"] });
+  });
+
+  it("returns null when the invoice has no payment on record", async () => {
+    const stripe = {
+      invoicePayments: { list: vi.fn(async () => ({ data: [] })) },
+      paymentIntents: { retrieve: vi.fn() },
+    };
+    expect(await resolveInvoiceFingerprint(stripe as never, "in_1")).toBeNull();
+    expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("returns null and does not throw when Stripe fails", async () => {
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stripe = {
+      invoicePayments: { list: vi.fn(async () => { throw new Error("network"); }) },
+      paymentIntents: { retrieve: vi.fn() },
+    };
+    try {
+      expect(await resolveInvoiceFingerprint(stripe as never, "in_1")).toBeNull();
+      expect(warnings).toHaveBeenCalledTimes(1);
+      expect(warnings.mock.calls[0][0]).toContain("in_1");
+    } finally {
+      warnings.mockRestore();
+    }
   });
 });

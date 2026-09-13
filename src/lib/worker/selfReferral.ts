@@ -53,11 +53,32 @@ export async function resolveBuyerFingerprint(
   return null;
 }
 
-// Only runs once, on the first purchase (checkout.session.completed), never
-// re-run on renewals — the payment method was already checked when it
-// first appeared. A real, accepted gap: stripe.customers.list({ email })
-// is an exact-match filter, this won't catch a differently-cased or
-// entirely different email used as the affiliate's own Stripe customer.
+// The card that paid one invoice, for the renewal counterpart of the
+// checkout check: a customer can switch to the affiliate's own card at any
+// renewal, so every renewal is checked, not only the first purchase. Found
+// through the invoice's payment, then its PaymentIntent. Best-effort in the
+// same way: any failure skips the check and never blocks the commission.
+export async function resolveInvoiceFingerprint(stripe: Stripe, invoiceId: string): Promise<string | null> {
+  try {
+    const payments = await stripe.invoicePayments.list({ invoice: invoiceId, status: "paid", limit: 1 });
+    const paymentIntent = payments.data[0]?.payment.payment_intent;
+    const piId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
+    if (!piId) return null;
+    const pi = await stripe.paymentIntents.retrieve(piId, { expand: ["payment_method"] });
+    const pm = pi.payment_method;
+    return typeof pm === "string" || !pm ? null : (pm.card?.fingerprint ?? null);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[worker] card check skipped for invoice ${invoiceId}: ${message}`);
+  }
+  return null;
+}
+
+// Runs on the first purchase (checkout.session.completed) and on every paid
+// renewal (invoice.paid), whenever the email check did not already flag it. A
+// real, accepted gap: stripe.customers.list({ email }) is an exact-match
+// filter, this won't catch a differently-cased or entirely different email
+// used as the affiliate's own Stripe customer.
 export async function checkPaymentMethodOverlap(
   stripe: Stripe,
   affiliate: Affiliate,

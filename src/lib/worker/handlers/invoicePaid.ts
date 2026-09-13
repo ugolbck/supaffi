@@ -12,7 +12,7 @@ import {
 } from "../commission";
 import { commissionFieldsAtCreation, latestChargeFor, paymentIntentForInvoice } from "../paymentState";
 import { invoiceBaseMinor } from "../saleBase";
-import { checkSelfReferralEmail } from "../selfReferral";
+import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { claimFirstPayment, findReferredSubscription, idOf, subscriptionIdOf } from "../referredSubscription";
 
@@ -87,7 +87,14 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // A renewal covered by credit balance or discounted to nothing used to
   // leave a 0.00 row in both ledgers.
   if (amount.lte(0)) return;
-  const flagReason = checkSelfReferralEmail(affiliate, invoice.customer_email);
+  // The same two checks as the first purchase. A renewal is where a customer
+  // who is really the affiliate most easily swaps in their own card, so the
+  // card is checked on every one, each flagged on its own.
+  let flagReason = checkSelfReferralEmail(affiliate, invoice.customer_email);
+  if (!flagReason) {
+    const fingerprint = await resolveInvoiceFingerprint(stripe, invoice.id);
+    flagReason = await checkPaymentMethodOverlap(stripe, affiliate, fingerprint, stripeCustomerId);
+  }
 
   // A refund made before this event was processed is read back from the
   // charge now and folded into the row, see paymentState.ts.

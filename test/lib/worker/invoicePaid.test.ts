@@ -13,6 +13,10 @@ import { db } from "@/lib/db";
 const stripeStub = vi.hoisted(() => ({
   customers: {
     retrieve: vi.fn(async () => ({ id: "cus_renewal", metadata: {} })),
+    list: vi.fn(async (_params: unknown): Promise<{ data: Array<{ id: string }> }> => ({ data: [] })),
+  },
+  paymentMethods: {
+    list: vi.fn(async (_params: unknown): Promise<unknown> => ({ data: [] })),
   },
   invoicePayments: {
     list: vi.fn(async (): Promise<{ data: unknown[] }> => ({ data: [] })),
@@ -94,6 +98,10 @@ describe("handleInvoicePaid", () => {
     stripeStub.paymentIntents.retrieve.mockReset();
     stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({ id: "pi_renewal", latest_charge: null }));
     stripeStub.invoices.retrieve.mockReset();
+    stripeStub.customers.list.mockReset();
+    stripeStub.customers.list.mockImplementation(async () => ({ data: [] }));
+    stripeStub.paymentMethods.list.mockReset();
+    stripeStub.paymentMethods.list.mockImplementation(async () => ({ data: [] }));
 
     const owner = await db.owner.create({
       data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
@@ -374,6 +382,65 @@ describe("handleInvoicePaid", () => {
       );
 
       expect(await db.commission.count({ where: { stripePaymentRef: "in_other" } })).toBe(0);
+    });
+  });
+
+  describe("card check on renewals", () => {
+    // The renewal was paid by pi_card, whose card is also saved on one of the
+    // affiliate's own Stripe customers.
+    function payWithAffiliatesCard() {
+      stripeStub.invoicePayments.list.mockImplementation(async () => ({
+        data: [{ payment: { type: "payment_intent", payment_intent: "pi_card" } }],
+      }));
+      stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+        id: "pi_card",
+        latest_charge: null,
+        payment_method: { id: "pm_card", card: { fingerprint: "fp_own" } },
+      }));
+      stripeStub.customers.list.mockImplementation(async () => ({ data: [{ id: "cus_affiliate_own" }] }));
+      stripeStub.paymentMethods.list.mockImplementation(async () => ({ data: [{ card: { fingerprint: "fp_own" } }] }));
+    }
+
+    it("flags every renewal paid with a card that matches one of the affiliate's own customers", async () => {
+      payWithAffiliatesCard();
+
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_r1" }));
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_r2" }));
+
+      const commissions = await db.commission.findMany({ where: { clickId }, orderBy: { stripePaymentRef: "asc" } });
+      expect(commissions.map((c) => [c.stripePaymentRef, c.status, c.flagReason])).toEqual([
+        ["in_r1", "FLAGGED", "card"],
+        ["in_r2", "FLAGGED", "card"],
+      ]);
+      expect(stripeStub.paymentIntents.retrieve).toHaveBeenCalledWith("pi_card", { expand: ["payment_method"] });
+    });
+
+    it("flags the first paid invoice after a free trial the same way", async () => {
+      const { click } = await seedReferral(merchant);
+      await seedReferredSubscription(merchant.id, click.id, "sub_trial_card");
+      payWithAffiliatesCard();
+
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_trial_paid", parent: subscriptionParent("sub_trial_card") }));
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.flagReason).toBe("card");
+    });
+
+    it("still records the renewal, unflagged, when Stripe fails during the check", async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      payWithAffiliatesCard();
+      stripeStub.customers.list.mockImplementation(async () => {
+        throw new Error("rate limited");
+      });
+      try {
+        await handleInvoicePaid(merchant, invoiceFixture());
+      } finally {
+        errors.mockRestore();
+      }
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.status).toBe("PENDING");
+      expect(commission.flagReason).toBeNull();
     });
   });
 });
