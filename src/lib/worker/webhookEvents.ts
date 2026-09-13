@@ -7,7 +7,6 @@ import {
   ensureRequiredWebhookEvents,
   type WebhookEndpointsClient,
 } from "@/lib/stripeWebhookEndpoint";
-import { recordWebhookEventsProblem } from "@/lib/webhookEventsProblem";
 
 type MakeClient = (secretKey: string) => WebhookEndpointsClient;
 
@@ -30,9 +29,10 @@ const merchantSelect = {
 } as const;
 
 /**
- * Upgrades one product's webhook endpoint to the full event list, and records
- * what the settings page should say about it. Never throws: a failure is
- * logged and the caller carries on.
+ * Upgrades one product's webhook endpoint to the full event list. Never
+ * throws: a failure is logged and the caller carries on. Self-hosted Supaffi
+ * shows no warning UI for a failure caused by the owner's own key or a
+ * webhook missing in Stripe, so the only trace of it is this log line.
  */
 export async function upgradeMerchantWebhookEvents(
   merchantId: string,
@@ -48,7 +48,6 @@ export async function upgradeMerchantWebhookEvents(
       !merchant.stripeWebhookSecretEnc ||
       isLocalDomain(merchant.domain)
     ) {
-      recordWebhookEventsProblem(merchantId, null);
       return;
     }
 
@@ -60,21 +59,20 @@ export async function upgradeMerchantWebhookEvents(
     if (result.status === "updated") {
       console.log(`[webhook-events] added missing events to the Stripe endpoint for merchant ${merchantId}`);
     }
-    if (result.status === "permission" || result.status === "missing") {
+    if (result.status === "permission") {
       console.warn(
-        `[webhook-events] could not update the Stripe endpoint for merchant ${merchantId}: ${result.detail} Some sales will earn no commission until this is fixed.`
+        `[webhook-events] the Stripe key for merchant ${merchantId} cannot update its webhook endpoint. Replace the key in settings to fix it.`
+      );
+    }
+    if (result.status === "missing") {
+      console.warn(
+        `[webhook-events] the webhook endpoint for merchant ${merchantId} was not found in Stripe. Add the webhook again, then replace the secret, to fix it.`
       );
     }
     if (result.status === "error") {
-      // Left unrecorded on purpose, see webhookEventsProblem.ts. It is tried
-      // again on the next start rather than retried here.
+      // Tried again on the next start rather than retried here.
       console.error(`[webhook-events] could not check the Stripe endpoint for merchant ${merchantId}: ${result.detail}`);
-      return;
     }
-    recordWebhookEventsProblem(
-      merchantId,
-      result.status === "permission" || result.status === "missing" ? result.status : null
-    );
   } catch (err) {
     console.error(`[webhook-events] could not check the Stripe endpoint for merchant ${merchantId}`, err);
   }

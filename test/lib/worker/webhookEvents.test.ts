@@ -9,7 +9,6 @@ vi.mock("@/lib/db", () => ({ db: { merchant: { findUnique, findMany } } }));
 vi.mock("@/lib/crypto", () => ({ decrypt: (value: string) => `plain:${value}` }));
 
 const { upgradeAllWebhookEvents, upgradeMerchantWebhookEvents } = await import("@/lib/worker/webhookEvents");
-const { webhookEventsProblem, recordWebhookEventsProblem } = await import("@/lib/webhookEventsProblem");
 
 const OLD_EVENTS = ["checkout.session.completed", "invoice.paid", "charge.refunded", "customer.subscription.deleted"];
 
@@ -28,13 +27,13 @@ describe("upgradeAllWebhookEvents", () => {
   beforeEach(() => {
     findUnique.mockReset();
     findMany.mockReset();
-    for (const id of ["a", "b", "c"]) recordWebhookEventsProblem(id, null);
+    vi.restoreAllMocks();
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("upgrades each product in turn with its own key and records only real problems", async () => {
+  it("upgrades each product in turn with its own key and warns only about a real problem", async () => {
     const rows = { a: merchant("a"), b: merchant("b"), c: merchant("c") };
     findMany.mockResolvedValue([{ id: "a" }, { id: "b" }, { id: "c" }]);
     findUnique.mockImplementation(async ({ where }: { where: { id: keyof typeof rows } }) => rows[where.id]);
@@ -60,10 +59,10 @@ describe("upgradeAllWebhookEvents", () => {
     await upgradeAllWebhookEvents(makeClient);
 
     expect(keys).toEqual(["plain:key-a", "plain:key-b", "plain:key-c"]);
-    expect(webhookEventsProblem("a")).toBeNull();
-    // A network failure says nothing about the endpoint, so it is not shown.
-    expect(webhookEventsProblem("b")).toBeNull();
-    expect(webhookEventsProblem("c")).toBe("permission");
+    // A network failure says nothing about the endpoint, so it is not warned about.
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("merchant c"));
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Replace the key in settings"));
   });
 
   it("never throws when the product list cannot be read", async () => {
@@ -71,17 +70,31 @@ describe("upgradeAllWebhookEvents", () => {
     await expect(upgradeAllWebhookEvents(() => { throw new Error("should not be called"); })).resolves.toBeUndefined();
   });
 
-  it("skips a product on a local address and clears a stale problem", async () => {
-    recordWebhookEventsProblem("a", "missing");
+  it("skips a product on a local address", async () => {
     findUnique.mockResolvedValue(merchant("a", { domain: "shop.localhost:3000" }));
     const makeClient = vi.fn();
     await upgradeMerchantWebhookEvents("a", makeClient);
     expect(makeClient).not.toHaveBeenCalled();
-    expect(webhookEventsProblem("a")).toBeNull();
+    expect(console.warn).not.toHaveBeenCalled();
   });
 
-  it("clears a recorded problem once the endpoint is fixed", async () => {
-    recordWebhookEventsProblem("a", "permission");
+  it("warns when the endpoint is missing from Stripe, naming the fix", async () => {
+    findUnique.mockResolvedValue(merchant("a"));
+    await upgradeMerchantWebhookEvents("a", () => ({
+      webhookEndpoints: {
+        retrieve: async () => {
+          throw Object.assign(new Error("no"), { code: "resource_missing", statusCode: 404 });
+        },
+        list: async () => ({ data: [] }),
+        update: async () => ({}),
+      },
+    }));
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("merchant a"));
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Add the webhook again"));
+  });
+
+  it("does not warn once the endpoint already has every event", async () => {
     findUnique.mockResolvedValue(merchant("a"));
     await upgradeMerchantWebhookEvents("a", () => ({
       webhookEndpoints: {
@@ -90,6 +103,6 @@ describe("upgradeAllWebhookEvents", () => {
         update: async () => ({}),
       },
     }));
-    expect(webhookEventsProblem("a")).toBeNull();
+    expect(console.warn).not.toHaveBeenCalled();
   });
 });

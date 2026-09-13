@@ -22,8 +22,7 @@ import { StatTile } from "@/components/dashboard/StatTile";
 import { Light } from "@/components/dashboard/Light";
 import { TopAffiliates } from "@/components/dashboard/TopAffiliates";
 import { Attention } from "@/components/dashboard/Attention";
-import { ShieldAlert, TriangleAlert, Wallet } from "lucide-react";
-import { webhookEventsProblem } from "@/lib/webhookEventsProblem";
+import { ShieldAlert, Wallet } from "lucide-react";
 import { ActivityChart } from "@/components/charts/ActivityChart";
 import { RangePicker } from "@/components/charts/RangePicker";
 import { CurrencyPicker } from "@/components/charts/CurrencyPicker";
@@ -117,13 +116,6 @@ export default async function ProductOverviewPage({
           : `${formatCount(metrics.flagged)} commissions look like self referrals`,
       detail: "Confirm or dismiss each one",
       href: `/dashboard/products/${merchant.slug}/commissions?status=FLAGGED`,
-      urgent: true,
-    },
-    webhookEventsProblem(merchant.id) !== null && {
-      icon: TriangleAlert,
-      title: "Stripe is not sending every sale",
-      detail: "Fix it in settings",
-      href: `/dashboard/products/${merchant.slug}/settings`,
       urgent: true,
     },
   ].filter((item): item is Exclude<typeof item, false> => Boolean(item));
