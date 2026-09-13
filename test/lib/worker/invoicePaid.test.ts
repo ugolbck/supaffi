@@ -20,6 +20,12 @@ const stripeStub = vi.hoisted(() => ({
   paymentIntents: {
     retrieve: vi.fn(async (): Promise<unknown> => ({ id: "pi_renewal", latest_charge: null })),
   },
+  // Only reached when recognising a referral from before 0.2.5; the tests
+  // that expect them queue a value.
+  invoices: { retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined) },
+  subscriptions: {
+    list: vi.fn(async (_params: unknown): Promise<unknown> => ({ data: [], has_more: false })),
+  },
 }));
 vi.mock("@/lib/stripe", async () => {
   const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
@@ -27,8 +33,25 @@ vi.mock("@/lib/stripe", async () => {
 });
 
 import { handleInvoicePaid } from "@/lib/worker/handlers/invoicePaid";
+import {
+  retrievedInvoice,
+  seedInvoiceCommission,
+  seedLegacyClick,
+  seedMerchant,
+  seedReferral,
+  seedReferredSubscription,
+} from "./referralFixtures";
 
 const CUSTOMER_ID = "cus_renewal";
+// Renewals are matched on the subscription a referred checkout created, so
+// every invoice here belongs to one unless a case says otherwise.
+const SUBSCRIPTION_ID = "sub_renewal";
+
+function subscriptionParent(subscription: string) {
+  return { type: "subscription_details", subscription_details: { subscription, metadata: {} } };
+}
+
+const seconds = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 
 async function clearAll() {
   await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
@@ -56,7 +79,7 @@ describe("handleInvoicePaid", () => {
       currency: "eur",
       customer_email: "buyer@example.com",
       metadata: {},
-      parent: null,
+      parent: subscriptionParent(SUBSCRIPTION_ID),
       total: 12000,
       total_excluding_tax: 10000,
       total_taxes: [{ amount: 2000, tax_behavior: "inclusive", taxable_amount: 10000 }],
@@ -73,6 +96,9 @@ describe("handleInvoicePaid", () => {
     stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.paymentIntents.retrieve.mockReset();
     stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({ id: "pi_renewal", latest_charge: null }));
+    stripeStub.invoices.retrieve.mockReset();
+    stripeStub.subscriptions.list.mockReset();
+    stripeStub.subscriptions.list.mockImplementation(async () => ({ data: [], has_more: false }));
 
     const owner = await db.owner.create({
       data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
@@ -111,10 +137,14 @@ describe("handleInvoicePaid", () => {
         affiliateId: affiliate.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),
-        stripeCustomerId: CUSTOMER_ID,
       },
     });
     clickId = click.id;
+    // The referred checkout recorded this subscription, and was its first payment.
+    await seedReferredSubscription(merchant.id, clickId, SUBSCRIPTION_ID, {
+      ref: "in_checkout",
+      at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    });
   });
 
   afterAll(async () => {
@@ -180,5 +210,164 @@ describe("handleInvoicePaid", () => {
     await handleInvoicePaid(merchant, invoiceFixture());
     await handleInvoicePaid(merchant, invoiceFixture());
     expect(await db.commission.count()).toBe(1);
+  });
+
+  describe("referred subscriptions", () => {
+    it("leaves a subscription's first invoice to the checkout that created it", async () => {
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_create", billing_reason: "subscription_create" }));
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("pays the affiliate of the product the customer subscribed to when products share a Stripe account", async () => {
+      const other = await seedMerchant(merchant.ownerId);
+      const b = await seedReferral(other);
+      await seedReferredSubscription(other.id, b.click.id, "sub_b", { ref: "in_b1", at: new Date() });
+
+      // Both products' webhook endpoints receive a copy of every invoice on
+      // the shared account, for the same customer.
+      const invoice = invoiceFixture({ id: "in_b2", parent: subscriptionParent("sub_b") });
+      await handleInvoicePaid(merchant, invoice);
+      await handleInvoicePaid(other, invoice);
+
+      const commissions = await db.commission.findMany({ where: { stripePaymentRef: "in_b2" } });
+      expect(commissions.map((c) => c.affiliateId)).toEqual([b.affiliate.id]);
+    });
+
+    it("earns nothing on another subscription of a referred customer", async () => {
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_x", parent: subscriptionParent("sub_unreferred") }));
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("earns nothing on a one-off invoice for a referred customer", async () => {
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_manual", billing_reason: "manual", parent: null }));
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("reads the subscription from invoices sent in the shape older API versions use", async () => {
+      await handleInvoicePaid(merchant, invoiceFixture({ parent: null, subscription: SUBSCRIPTION_ID }));
+      expect(await db.commission.count()).toBe(1);
+    });
+
+    it("pays a one-time program on the first paid invoice after a free trial, and only on that one", async () => {
+      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+      await seedReferredSubscription(merchant.id, click.id, "sub_trial");
+      const onTrial = (fields: Record<string, unknown>) =>
+        invoiceFixture({ parent: subscriptionParent("sub_trial"), ...fields });
+
+      // The $0 trial invoice neither earns nor uses up the one-time commission.
+      await handleInvoicePaid(merchant, onTrial({ id: "in_trial", total: 0, total_excluding_tax: 0, total_taxes: [], amount_paid: 0 }));
+      await handleInvoicePaid(merchant, onTrial({ id: "in_first_paid" }));
+      // A redelivery of the first paid invoice is still recognised as the first.
+      await handleInvoicePaid(merchant, onTrial({ id: "in_first_paid" }));
+      await handleInvoicePaid(merchant, onTrial({ id: "in_next" }));
+
+      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      expect(refs).toEqual(["in_first_paid"]);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(referred.firstPaymentRef).toBe("in_first_paid");
+    });
+
+    it("pays a one-time program nothing on renewals after its checkout commission", async () => {
+      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+      await seedReferredSubscription(merchant.id, click.id, "sub_once", { ref: "in_first", at: new Date() });
+
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_2", parent: subscriptionParent("sub_once") }));
+
+      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(0);
+    });
+
+    it("counts fixed months from the first payment, not from the click", async () => {
+      // Under the old rule a click from a year earlier had already run out.
+      const { click } = await seedReferral(merchant, {
+        durationType: "FIXED_MONTHS",
+        months: 2,
+        clickCreatedAt: new Date("2025-01-01T00:00:00Z"),
+      });
+      await seedReferredSubscription(merchant.id, click.id, "sub_fixed", {
+        ref: "in_first",
+        at: new Date("2026-01-31T00:00:00Z"),
+      });
+      const parent = subscriptionParent("sub_fixed");
+
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_2", parent, created: seconds("2026-02-28T00:00:00Z") }));
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_3", parent, created: seconds("2026-03-31T00:00:00Z") }));
+
+      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      expect(refs).toEqual(["in_2"]);
+    });
+
+    it("still pays a fixed-months program when its first payment is delivered out of order", async () => {
+      // Stripe can deliver a later invoice before an earlier one. Whichever
+      // event lands first claims the subscription's first payment, so here
+      // month 2 is claimed as first, dated after the true month 1 payment.
+      const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 2 });
+      await seedReferredSubscription(merchant.id, click.id, "sub_out_of_order", {
+        ref: "in_month_2",
+        at: new Date("2026-02-28T00:00:00Z"),
+      });
+      const parent = subscriptionParent("sub_out_of_order");
+
+      // The true first payment, dated before the one already claimed as first,
+      // is inside the window by definition and still earns.
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_month_1", parent, created: seconds("2026-01-31T00:00:00Z") })
+      );
+
+      expect(await db.commission.count({ where: { clickId: click.id, stripePaymentRef: "in_month_1" } })).toBe(1);
+    });
+
+    it("creates nothing once a self referral was confirmed on the click", async () => {
+      await db.click.update({ where: { id: clickId }, data: { fraudConfirmedAt: new Date() } });
+
+      await handleInvoicePaid(merchant, invoiceFixture());
+
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("flags a renewal billed to the affiliate's own email", async () => {
+      const { click } = await seedReferral(merchant, { affiliateEmail: "own@example.com" });
+      await seedReferredSubscription(merchant.id, click.id, "sub_own", { ref: "in_first", at: new Date() });
+
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_own", parent: subscriptionParent("sub_own"), customer_email: "OWN@example.com" })
+      );
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.status).toBe("FLAGGED");
+      expect(commission.flagReason).toMatch(/^email:/);
+    });
+
+    it("keeps paying a subscription referred before this release, recognised by its checkout invoice", async () => {
+      const { affiliate, click } = await seedReferral(merchant);
+      await seedLegacyClick(click.id, "cus_legacy");
+      await seedInvoiceCommission(affiliate.id, click.id, "in_legacy_first");
+      stripeStub.invoices.retrieve.mockResolvedValueOnce(retrievedInvoice("in_legacy_first", "sub_legacy"));
+
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_legacy_2", customer: "cus_legacy", parent: subscriptionParent("sub_legacy") })
+      );
+
+      expect(stripeStub.invoices.retrieve).toHaveBeenCalledWith("in_legacy_first");
+      expect(await db.commission.count({ where: { stripePaymentRef: "in_legacy_2" } })).toBe(1);
+    });
+
+    it("does not pay a legacy customer's subscription that their referral did not start", async () => {
+      const { affiliate, click } = await seedReferral(merchant);
+      await seedLegacyClick(click.id, "cus_legacy");
+      await seedInvoiceCommission(affiliate.id, click.id, "in_legacy_first");
+      stripeStub.invoices.retrieve.mockResolvedValueOnce(retrievedInvoice("in_legacy_first", "sub_referred"));
+
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_other", customer: "cus_legacy", parent: subscriptionParent("sub_unreferred") })
+      );
+
+      expect(await db.commission.count({ where: { stripePaymentRef: "in_other" } })).toBe(0);
+    });
   });
 });

@@ -85,26 +85,6 @@ export function isPaymentWithinCommissionDuration(
   }
 }
 
-export function isWithinCommissionDuration(
-  program: Program,
-  clickCreatedAt: Date,
-  chargedAt: Date
-): boolean {
-  switch (program.commissionDurationType) {
-    case "FOREVER":
-      return true;
-    case "ONE_TIME":
-      // The one and only Commission for a ONE_TIME program is created by
-      // checkout completion; no renewal invoice should ever count.
-      return false;
-    case "FIXED_MONTHS": {
-      const cutoff = new Date(clickCreatedAt);
-      cutoff.setMonth(cutoff.getMonth() + (program.commissionDurationMonths ?? 0));
-      return chargedAt < cutoff;
-    }
-  }
-}
-
 function readMetadataFlag(metadata: Stripe.Metadata | null | undefined): boolean {
   return metadata?.supaffi === "false";
 }

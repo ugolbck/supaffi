@@ -7,36 +7,56 @@ import {
   computeCommissionAmount,
   computePayableAt,
   isExcluded,
-  isWithinCommissionDuration,
+  isPaymentWithinCommissionDuration,
   saleAmountFor,
 } from "../commission";
 import { commissionFieldsAtCreation, latestChargeFor, paymentIntentForInvoice } from "../paymentState";
 import { invoiceBaseMinor } from "../saleBase";
 import { checkSelfReferralEmail } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { claimFirstPayment, findReferredSubscription, idOf, subscriptionIdOf } from "../referredSubscription";
 
 export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invoice): Promise<void> {
-  const stripeCustomerId =
-    typeof invoice.customer === "string" ? invoice.customer : (invoice.customer?.id ?? null);
+  const stripeCustomerId = idOf(invoice.customer);
   if (!stripeCustomerId) return;
 
-  // The first invoice on a new subscription is handled by
-  // checkout.session.completed (matched via the Referral Token, which the
-  // first invoice doesn't carry). Renewals only, here.
+  // The first invoice of a subscription started through Checkout belongs to
+  // checkout.session.completed, which matches it by the Referral Token this
+  // invoice doesn't carry. After a free trial that first invoice is $0, and
+  // the first paid invoice comes later as subscription_cycle.
   if (invoice.billing_reason === "subscription_create") return;
 
-  // Scoped to the Merchant whose webhook this is. Customer ids are only
-  // unique per Stripe account, and one Instance hosts several Merchants, so
-  // an unscoped match could pay one Merchant's affiliate for another's sale.
-  const click = await db.click.findUnique({
-    where: { stripeCustomerId, affiliate: { merchantId: merchant.id } },
-    include: { affiliate: { include: { program: true } } },
-  });
-  if (!click) return; // this Customer was never attributed to one of this Merchant's Affiliates
+  // A $0 invoice (a trial, or one fully covered by credit) moved no money, so
+  // it must not be claimed as the first payment and use up a one-time
+  // commission.
+  if (invoice.amount_paid <= 0 || !invoice.currency) return;
+
+  // Only invoices of a subscription can earn. A one-off invoice for a referred
+  // customer creates nothing: the affiliate referred a checkout, not every
+  // future purchase on the customer's account.
+  const subscriptionId = subscriptionIdOf(invoice);
+  if (!subscriptionId) return;
+
+  // Matched on the subscription a referred checkout created, scoped to the
+  // Merchant whose webhook this is. Matching the customer instead paid the
+  // wrong affiliate when products share a Stripe account, and paid on
+  // subscriptions nobody referred.
+  const referred = await findReferredSubscription(merchant, subscriptionId, stripeCustomerId);
+  if (!referred) return;
+
+  const click = referred.click;
+  // The Owner confirmed a self referral on this click. Voiding that one row
+  // was not enough; every later renewal would have earned again.
+  if (click.fraudConfirmedAt) return;
+
+  // Claimed before the exclusion check and the commission maths below: the
+  // first payment is when money first moved on the subscription, whether or
+  // not that payment earned.
+  const payment = { ref: invoice.id, at: new Date(invoice.created * 1000) };
+  const firstPayment = await claimFirstPayment(referred, payment);
 
   const program = click.affiliate.program;
-  const chargedAt = new Date(invoice.created * 1000);
-  if (!isWithinCommissionDuration(program, click.createdAt, chargedAt)) return;
+  if (!isPaymentWithinCommissionDuration(program, firstPayment, payment)) return;
 
   const stripe = stripeClientFor(merchant);
   const subscriptionMetadata =
