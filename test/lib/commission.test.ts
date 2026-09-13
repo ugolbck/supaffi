@@ -453,6 +453,37 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect(updated.voidReason).toBe("confirmed self-referral");
     expect(updated.voidedAt).not.toBeNull();
     expect(updated.flagReason).toBe("card");
+    // The referral itself is marked, so its later renewals create nothing.
+    const refreshedClick = await db.click.findUniqueOrThrow({ where: { id: click.id } });
+    expect(refreshedClick.fraudConfirmedAt).not.toBeNull();
+  });
+
+  it("confirmCommissionFraud cancels the referral's other unpaid commissions and leaves paid ones paid", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const otherClick = await makeClick(affiliate.id);
+    const confirmed = await makeCommission(affiliate.id, click.id, { status: "FLAGGED", flagReason: "card", stripePaymentRef: "in_c" });
+    const pending = await makeCommission(affiliate.id, click.id, { status: "PENDING", stripePaymentRef: "in_p" });
+    const payable = await makeCommission(affiliate.id, click.id, { status: "PAYABLE", stripePaymentRef: "in_y" });
+    const flagged = await makeCommission(affiliate.id, click.id, { status: "FLAGGED", flagReason: "card", stripePaymentRef: "in_f" });
+    const paid = await makeCommission(affiliate.id, click.id, { status: "PAID", stripePaymentRef: "in_d" });
+    // A refund clawback on the paid one is money the affiliate owes back.
+    const clawback = await makeCommission(affiliate.id, click.id, { status: "PAYABLE", amount: "-10.00", adjustsCommissionId: paid.id });
+    const unrelated = await makeCommission(affiliate.id, otherClick.id, { status: "PENDING", stripePaymentRef: "in_u" });
+
+    await confirmCommissionFraud(ownerId, merchantId, confirmed.id);
+
+    const statusOf = async (id: string) => db.commission.findUniqueOrThrow({ where: { id } });
+    for (const row of [confirmed, pending, payable, flagged]) {
+      const updated = await statusOf(row.id);
+      expect(updated.status).toBe("VOIDED");
+      expect(updated.voidReason).toBe("confirmed self-referral");
+      expect(updated.voidedAt).not.toBeNull();
+    }
+    expect((await statusOf(paid.id)).status).toBe("PAID");
+    expect((await statusOf(clawback.id)).status).toBe("PAYABLE");
+    expect((await statusOf(unrelated.id)).status).toBe("PENDING");
+    expect((await db.click.findUniqueOrThrow({ where: { id: otherClick.id } })).fraudConfirmedAt).toBeNull();
   });
 
   it("dismissCommissionFlag returns a still-holding commission to PENDING and clears the flag", async () => {

@@ -263,7 +263,7 @@ export function CommissionSheet({
             <div className="flex gap-2">
               <form action={confirmFraudAction.bind(null, listHref, product, commission.id)}>
                 <Button type="submit" size="sm" variant="destructive" className="cursor-pointer">
-                  Confirm self referral
+                  Confirm self referral and stop its commissions
                 </Button>
               </form>
               <form action={dismissFlagAction.bind(null, listHref, product, commission.id)}>

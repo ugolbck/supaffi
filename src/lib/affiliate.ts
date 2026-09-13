@@ -611,14 +611,23 @@ export async function getAffiliateDetails(
   );
 }
 
-/** How many referred customers there are, and how many are still paying. */
+/**
+ * How many referred customers there are, and how many are still paying. A
+ * referral confirmed as a self referral earns nothing more, so it is not
+ * counted as still paying.
+ */
 export async function referralCounts(
   affiliateId: string
 ): Promise<{ total: number; active: number }> {
   const [total, active] = await Promise.all([
     db.click.count({ where: { affiliateId, commissions: { some: {} } } }),
     db.click.count({
-      where: { affiliateId, commissions: { some: {} }, subscriptionCancelledAt: null },
+      where: {
+        affiliateId,
+        commissions: { some: {} },
+        subscriptionCancelledAt: null,
+        fraudConfirmedAt: null,
+      },
     }),
   ]);
   return { total, active };

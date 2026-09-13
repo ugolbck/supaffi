@@ -336,21 +336,47 @@ export async function confirmCommissionFraud(
 
   const existing = await db.commission.findFirst({
     where: { id: commissionId, status: "FLAGGED", affiliate: { merchantId } },
-    select: { id: true },
+    select: { id: true, clickId: true },
   });
   if (!existing) {
     throw new Error("Flagged commission not found");
   }
 
-  // The status goes in the write, not just the read above: a refund can void
-  // the row in between, and this must not overwrite that reason.
-  const { count } = await db.commission.updateMany({
-    where: { id: commissionId, status: "FLAGGED" },
-    data: { status: "VOIDED", voidedAt: new Date(), voidReason: "confirmed self-referral" },
+  const now = new Date();
+  const confirmed = { status: "VOIDED" as const, voidedAt: now, voidReason: "confirmed self-referral" };
+  await db.$transaction(async (tx) => {
+    // The status goes in the write, not just the read above: a refund can void
+    // the row in between, and this must not overwrite that reason.
+    const { count } = await tx.commission.updateMany({
+      where: { id: commissionId, status: "FLAGGED" },
+      data: confirmed,
+    });
+    if (count === 0) {
+      throw new Error("Flagged commission not found");
+    }
+
+    // The referral was the self referral, not only this one payment, so
+    // nothing it earned that has not been paid out yet stands. Paid
+    // commissions stay paid: the money has already left, and getting it back
+    // is the Owner's call, not a row update. Refund adjustments stay too,
+    // they are money the affiliate owes back.
+    await tx.commission.updateMany({
+      where: {
+        clickId: existing.clickId,
+        adjustsCommissionId: null,
+        status: { in: ["PENDING", "PAYABLE", "FLAGGED"] },
+      },
+      data: confirmed,
+    });
+
+    // Voiding rows alone left the referral earning: the next renewal created
+    // a fresh commission. Marking the click stops every later payment it
+    // brings. The first confirmation's date is kept.
+    await tx.click.updateMany({
+      where: { id: existing.clickId, fraudConfirmedAt: null },
+      data: { fraudConfirmedAt: now },
+    });
   });
-  if (count === 0) {
-    throw new Error("Flagged commission not found");
-  }
 }
 
 /**

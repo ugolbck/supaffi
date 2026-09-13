@@ -207,5 +207,24 @@ describe("handleSubscriptionDeleted", () => {
 
       expect(await referralCounts(affiliateId)).toEqual({ total: 0, active: 0 });
     });
+
+    it("does not count a referral confirmed as a self referral as still paying", async () => {
+      await db.commission.create({
+        data: {
+          affiliateId,
+          clickId,
+          stripePaymentRef: "pi_1",
+          amount: 15.6,
+          grossAmount: 15.6,
+          currency: "usd",
+          saleAmount: 78,
+          status: "PENDING",
+          payableAt: new Date(),
+        },
+      });
+      await db.click.update({ where: { id: clickId }, data: { fraudConfirmedAt: new Date() } });
+
+      expect(await referralCounts(affiliateId)).toEqual({ total: 1, active: 0 });
+    });
   });
 });
