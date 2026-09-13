@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { computeCommissionAmount, saleAmountFor } from "@/lib/worker/commission";
+import type { Program } from "@prisma/client";
+import {
+  addMonthsClamped,
+  computeCommissionAmount,
+  isPaymentWithinCommissionDuration,
+  saleAmountFor,
+} from "@/lib/worker/commission";
+
+function programOf(type: Program["commissionDurationType"], months: number | null = null): Program {
+  return { commissionDurationType: type, commissionDurationMonths: months } as Program;
+}
+
+const at = (iso: string) => new Date(iso);
 
 describe("computeCommissionAmount", () => {
   it("rounds a half cent up, where float arithmetic lands just under it", () => {
@@ -20,5 +32,56 @@ describe("saleAmountFor", () => {
 
   it("leaves zero-decimal currencies alone", () => {
     expect(saleAmountFor(4900, "jpy")).toBe(4900);
+  });
+});
+
+describe("addMonthsClamped", () => {
+  it("keeps the day and time", () => {
+    expect(addMonthsClamped(at("2026-01-15T10:30:00Z"), 2).toISOString()).toBe("2026-03-15T10:30:00.000Z");
+  });
+
+  it("stops at the last day of a shorter month instead of spilling into the next", () => {
+    // setMonth turned January 31 plus one month into March 3.
+    expect(addMonthsClamped(at("2026-01-31T00:00:00Z"), 1).toISOString()).toBe("2026-02-28T00:00:00.000Z");
+    expect(addMonthsClamped(at("2028-01-31T00:00:00Z"), 1).toISOString()).toBe("2028-02-29T00:00:00.000Z");
+  });
+
+  it("crosses into the next year", () => {
+    expect(addMonthsClamped(at("2026-11-30T00:00:00Z"), 3).toISOString()).toBe("2027-02-28T00:00:00.000Z");
+  });
+});
+
+describe("isPaymentWithinCommissionDuration", () => {
+  const first = { ref: "in_first", at: at("2026-01-31T00:00:00Z") };
+
+  it("always counts the first payment itself, whatever the program", () => {
+    for (const type of ["ONE_TIME", "FIXED_MONTHS", "FOREVER"] as const) {
+      expect(isPaymentWithinCommissionDuration(programOf(type, 1), first, first)).toBe(true);
+    }
+  });
+
+  it("pays a one-time program on nothing but the first payment", () => {
+    const renewal = { ref: "in_2", at: at("2026-02-28T00:00:00Z") };
+    expect(isPaymentWithinCommissionDuration(programOf("ONE_TIME"), first, renewal)).toBe(false);
+  });
+
+  it("pays a forever program years later", () => {
+    const renewal = { ref: "in_60", at: at("2031-01-31T00:00:00Z") };
+    expect(isPaymentWithinCommissionDuration(programOf("FOREVER"), first, renewal)).toBe(true);
+  });
+
+  it("pays three monthly payments on a three month program started on the 31st, and not a fourth", () => {
+    const program = programOf("FIXED_MONTHS", 3);
+    expect(isPaymentWithinCommissionDuration(program, first, { ref: "in_2", at: at("2026-02-28T00:00:00Z") })).toBe(true);
+    expect(isPaymentWithinCommissionDuration(program, first, { ref: "in_3", at: at("2026-03-31T00:00:00Z") })).toBe(true);
+    expect(isPaymentWithinCommissionDuration(program, first, { ref: "in_4", at: at("2026-04-30T00:00:00Z") })).toBe(false);
+    // Stripe can create a renewal invoice a little after the period starts.
+    expect(isPaymentWithinCommissionDuration(program, first, { ref: "in_4", at: at("2026-04-30T01:00:00Z") })).toBe(false);
+  });
+
+  it("does not let a renewal a few minutes early on the boundary count as an extra month", () => {
+    const program = programOf("FIXED_MONTHS", 1);
+    const late = { ref: "in_first", at: at("2026-03-01T00:05:00Z") };
+    expect(isPaymentWithinCommissionDuration(program, late, { ref: "in_2", at: at("2026-04-01T00:00:00Z") })).toBe(false);
   });
 });
