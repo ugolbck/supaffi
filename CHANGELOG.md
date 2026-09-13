@@ -8,6 +8,36 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.2.5
+
+### Fixed
+
+- When several products share one Stripe account, a renewal now pays only the
+  affiliate who referred that specific subscription, not whoever referred the
+  same customer to a different product.
+- A subscription that did not start through a referred checkout, such as one
+  created directly in the Stripe Dashboard, never earns a commission.
+- Programs that pay for a set number of months count them from the
+  subscription's first payment. A payment made by bank transfer or direct
+  debit, which can take days to clear, is counted from the day it actually
+  arrived rather than the day it was started.
+- A one-time commission is paid on the first real payment after a free trial.
+- Every renewal paid with a card that matches one of the affiliate's own
+  Stripe customers is flagged for review, not only the first purchase.
+- Cancelling a subscription marks only that product's referral as cancelled.
+  Other subscriptions the same referral brought keep paying.
+- Referrals made before this update are recognised the first time one of
+  their invoices arrives. One that was still in a free trial, with no
+  commission recorded yet, will not start earning renewals.
+
+### Changed
+
+- Confirming a self referral now cancels every commission from that referral
+  that has not been paid yet, and stops it earning anything later. Commissions
+  already paid are left as they are. The button says so.
+- Self referrals confirmed before this update have their unpaid commissions
+  cancelled by the update itself.
+
 ## 0.2.4
 
 ### Security
