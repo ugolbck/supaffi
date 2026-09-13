@@ -8,6 +8,37 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.2.4
+
+### Security
+
+- Replace your Stripe key once: open Settings, press Replace on the Stripe key
+  row and create the new key from the button there. The new key can also read
+  charges, which Supaffi uses to catch refunds made right after a sale. Until
+  you replace it, everything keeps working as it did.
+
+### Fixed
+
+- Commissions are worked out on the price before tax and shipping, whether
+  your prices include tax or add it at checkout. Discounts still lower it.
+- Revenue on the overview follows the same rule. Sales recorded before this
+  version keep the figures they had, so a period that spans the update can
+  look a little lower than the one before it.
+- A renewal paid from the customer's credit balance, or discounted to nothing,
+  no longer adds an empty commission.
+- A refund that reaches Supaffi before the sale it belongs to still lowers or
+  cancels that sale's commission.
+- A commission cancelled by a lost chargeback now says so plainly, for you
+  and for the affiliate.
+- Very large sales in currencies such as the Vietnamese dong or the
+  Indonesian rupiah are recorded instead of failing.
+
+### Changed
+
+- If Supaffi cannot add the missing events to a product's webhook when it
+  starts up, it now writes that to the server log instead of showing a
+  warning in the dashboard.
+
 ## 0.2.3
 
 ### Security
