@@ -34,7 +34,7 @@ import {
 const NAV_BADGE = "right-3 peer-data-[size=default]/menu-button:top-2.5";
 
 const NAV_ROW =
-  "h-10 cursor-pointer gap-3 rounded-lg px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-black/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active) [&_svg]:text-neutral-500 data-active:[&_svg]:text-foreground";
+  "h-10 cursor-pointer gap-3 rounded-(--radius-md) px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-black/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active)";
 
 const BASE = "/affiliates/dashboard";
 
@@ -76,15 +76,16 @@ export function AffiliateSidebar({
   const pathname = pathnameProp ?? livePathname;
 
   return (
-    <Sidebar variant="inset" collapsible="offcanvas" className="p-3">
-      <SidebarHeader className="p-3">
-        <div className="flex h-11 w-full items-center gap-3 px-2 text-left">
+    <Sidebar variant="inset" collapsible="offcanvas" className="p-2">
+      <SidebarHeader className="gap-0 px-3 pt-0 pb-0">
+        <div className="flex h-12 w-full items-center gap-3 px-2.5 text-left">
           <Mark name={merchantName} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium">{merchantName}</span>
             <span className="block truncate text-[11px] text-muted-foreground">{merchantSite}</span>
           </span>
         </div>
+        <div className="my-3 h-px bg-(--shell-border)" aria-hidden />
       </SidebarHeader>
 
       <SidebarContent className="px-3">

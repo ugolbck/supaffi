@@ -1,6 +1,5 @@
 "use client";
 
-import { ArrowUpCircle, ShieldAlert } from "lucide-react";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,7 +8,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 
 // The command is shown, never run. Updating from here would mean giving the
@@ -27,41 +25,28 @@ function updateCommand(version: string): string {
 
 export type UpdateInfo = { version: string; url: string; security: boolean };
 
-export function VersionNotice({
+/**
+ * How to move to a newer release, opened from the account menu.
+ *
+ * Controlled rather than owning its trigger, because the trigger is a menu
+ * item and a menu unmounts its contents when it closes: a dialog rendered
+ * inside it would vanish the moment the item that opened it was clicked.
+ */
+export function UpdateDialog({
   installed,
   update,
+  open,
+  onOpenChange,
 }: {
   installed: string;
-  update: UpdateInfo | null;
+  update: UpdateInfo;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  if (!update) {
-    return (
-      <p className="px-2 py-1 text-[11px] text-sidebar-foreground/50 tabular-nums">
-        Supaffi {installed}
-      </p>
-    );
-  }
-
-  const Icon = update.security ? ShieldAlert : ArrowUpCircle;
   const command = updateCommand(update.version);
 
   return (
-    <Dialog>
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`w-full cursor-pointer justify-start gap-2 px-2 text-xs font-normal ${
-              update.security ? "text-status-danger" : "text-sidebar-foreground/70"
-            }`}
-          />
-        }
-      >
-        <Icon className="size-3.5 shrink-0" />
-        {update.security ? "Security update" : "Update available"}
-      </DialogTrigger>
-
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>

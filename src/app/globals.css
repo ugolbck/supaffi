@@ -90,10 +90,11 @@
      one raised thing inside the sidebar is the selected row: an off-white
      tile with a hairline of shade along its bottom edge and a short cast
      shadow under it. Hover only tints; it does not lift. */
-  --shell: #e7e6ea;
-  --shell-border: #dadade;
+  --shell: #f3f2f0;
+  --shell-border: #e4e3df;
+
   --shell-shadow: 0 0 0 1px rgb(0 0 0 / 0.02), 0 2px 12px rgb(0 0 0 / 0.04), 0 8px 24px -8px rgb(0 0 0 / 0.06);
-  --nav-active: #fafafa;
+  --nav-active: #ffffff;
   --nav-active-shadow: inset 0 -1px 0 0 #e5e5e6, 0 0 0 1px rgb(0 0 0 / 0.03), 0 1px 2px rgb(0 0 0 / 0.08),
     0 2px 6px -2px rgb(0 0 0 / 0.08);
 
@@ -111,7 +112,11 @@
      Tuned per-component, not just multiplied blindly. */
   --radius-sm: 6px;
   --radius: 10px;
-  --radius-md: 12px;
+  /* Every card, sheet, block and the row you are on. Tight, because this is
+     tooling for people running a business, and one value because a sheet at
+     one rounding holding cards at another is what makes a layout look
+     assembled from parts. */
+  --radius-md: 8px;
   --radius-lg: 16px;
   --radius-xl: 22px;
   --radius-2xl: 28px;
@@ -429,7 +434,26 @@
 .supaffi-bar {
   transform-box: fill-box;
   transform-origin: bottom;
-  animation: supaffi-bar-grow 420ms var(--ease-out) 1 both;
+  animation: supaffi-bar-grow 700ms var(--ease-out) 1 both;
+}
+
+@keyframes supaffi-line-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+.supaffi-line {
+  stroke-dasharray: 1;
+  animation: supaffi-line-draw 1100ms var(--ease-out) 1 both;
+}
+
+@keyframes supaffi-area-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.supaffi-area {
+  animation: supaffi-area-fade 700ms var(--ease-out) 350ms 1 both;
 }
 
 /* The mark the confetti is celebrating. Scales up rather than in, so it lands
@@ -459,5 +483,5 @@
   .supaffi-modal-in { animation: supaffi-fade-in 200ms var(--ease-out) 1 both; }
   /* The rise goes, the fade stays: appearing instantly is its own jolt. */
   .supaffi-reveal { animation: supaffi-fade-in 200ms var(--ease-out) 1 both; }
-  .supaffi-bar { animation: none; }
+  .supaffi-bar, .supaffi-line, .supaffi-area { animation: none; }
 }

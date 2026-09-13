@@ -311,7 +311,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
         // an even, low shadow, with a margin on every side but the one the
         // sidebar is on. Below md there is no sidebar beside it, so it fills
         // the viewport edge to edge.
-        "relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-3 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:min-h-0 md:peer-data-[variant=inset]:overflow-hidden md:peer-data-[variant=inset]:rounded-(--radius-lg) md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-(--shell-border) md:peer-data-[variant=inset]:bg-elevated md:peer-data-[variant=inset]:shadow-(--shell-shadow) md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-3",
+        "relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:min-h-0 md:peer-data-[variant=inset]:overflow-hidden md:peer-data-[variant=inset]:rounded-(--radius-md) md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:border-(--shell-border) md:peer-data-[variant=inset]:bg-elevated md:peer-data-[variant=inset]:shadow-(--shell-shadow) md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}
       {...props}
