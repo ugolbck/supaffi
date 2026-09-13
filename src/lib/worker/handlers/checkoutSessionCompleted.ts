@@ -9,6 +9,7 @@ import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerpr
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_METADATA_KEY } from "@/lib/referral";
+import { claimFirstPayment, idOf, recordReferredSubscription } from "../referredSubscription";
 
 export async function handleCheckoutSessionCompleted(
   merchant: Merchant,
@@ -39,48 +40,55 @@ export async function handleCheckoutSessionCompleted(
   // not whether the integration works.
   await recordTrackingVerified(merchant.id);
 
+  // The Owner confirmed a self referral that came through this click. Nothing
+  // it brings earns again: not this purchase, and not the subscription it
+  // would start. Checked after the tracking proof above, because the
+  // integration itself still worked.
+  if (click.fraudConfirmedAt) return;
+
   // A delayed payment method (SEPA, ACH, Boleto) completes the Session before
   // any money has moved, and the payment can still fail. Nothing happens yet,
-  // not even the customer link: checkout.session.async_payment_succeeded
-  // brings this same Session back through here, paid, once it settles.
+  // not even recording the subscription:
+  // checkout.session.async_payment_succeeded brings this same Session back
+  // through here, paid, once it settles.
   if (session.payment_status === "unpaid") return;
 
-  const stripeCustomerId =
-    typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null);
-
-  // Always link the Click to the Customer, even if this specific purchase
-  // ends up excluded or flagged below — exclusion isn't retroactive or
-  // blanket, a Merchant might exclude this one purchase but still want
-  // ordinary renewals to earn commission later.
-  //
-  // Only the click that first brought this customer holds them. Renewals are
-  // matched by customer id, so moving the link would silently reassign every
-  // future renewal to whichever affiliate they clicked most recently.
-  // The column is globally unique, so a second click's attempt would throw
-  // anyway; refusing it here says why.
-  if (stripeCustomerId && !click.stripeCustomerId) {
-    try {
-      await db.click.update({ where: { id: click.id }, data: { stripeCustomerId } });
-    } catch (err) {
-      if (!isUniqueConstraintError(err)) throw err;
-    }
-  }
-
-  const stripe = stripeClientFor(merchant);
-
-  const invoiceId = typeof session.invoice === "string" ? session.invoice : (session.invoice?.id ?? null);
-  const paymentIntentId =
-    typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null);
+  const stripeCustomerId = idOf(session.customer);
+  const subscriptionId = idOf(session.subscription);
+  const invoiceId = idOf(session.invoice);
+  const paymentIntentId = idOf(session.payment_intent);
   // For subscription-mode sessions this is the invoice; for one-time
   // "payment"-mode sessions there is no Invoice at all, so the
-  // PaymentIntent ID is stored instead — chargeRefunded.ts knows to fall
+  // PaymentIntent ID is stored instead. chargeRefunded.ts knows to fall
   // back to this when a Charge has no traceable Invoice.
   const stripePaymentRef = invoiceId ?? paymentIntentId;
+
+  // A free trial, or a first month discounted to nothing, completes with no
+  // money on it. Stripe reports that either as no_payment_required or as paid
+  // with a zero total. Neither is the subscription's first payment; the first
+  // invoice that charges money is.
+  const moneyPaid = session.payment_status === "paid" && (session.amount_total ?? 0) > 0;
+
+  // Renewals earn by matching the subscription this Checkout created, never
+  // the customer: products sharing a Stripe account share customers, and a
+  // customer's other subscriptions were never referred. Recorded before the
+  // exclusion check below, because excluding this one purchase does not
+  // exclude the renewals after it, and recorded for a free trial too, so the
+  // trial's first paid invoice can earn. The first payment is claimed even
+  // when this sale earns nothing, because it is when money first moved.
+  if (subscriptionId) {
+    const referred = await recordReferredSubscription(merchant.id, click.id, subscriptionId);
+    if (moneyPaid && stripePaymentRef) {
+      await claimFirstPayment(referred, { ref: stripePaymentRef, at: completedAt });
+    }
+  }
 
   // Idempotency rides on Commission.stripePaymentRef being unique. A session
   // with neither an invoice nor a payment intent gives us no key, and a
   // redelivery would duplicate. Nothing was paid on such a session anyway.
   if (!stripePaymentRef) return;
+
+  const stripe = stripeClientFor(merchant);
 
   const excluded = await isExcluded(stripe, {
     invoiceMetadata: null, // the Session doesn't embed Invoice metadata inline
@@ -89,9 +97,9 @@ export async function handleCheckoutSessionCompleted(
   });
   if (excluded) return;
 
-  // "no_payment_required" (a free trial) still linked the customer above, so
-  // the first real renewal earns through invoice.paid, but there is no money
-  // on this Session to take a commission from.
+  // "no_payment_required" (a free trial) still recorded its subscription
+  // above, so the first paid invoice earns through invoice.paid, but there is
+  // no money on this Session to take a commission from.
   if (session.payment_status !== "paid") return;
   if (!session.currency) return;
 

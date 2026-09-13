@@ -75,6 +75,7 @@ describe("handleCheckoutSessionCompleted", () => {
     currency?: string;
     mode?: Stripe.Checkout.Session.Mode;
     paymentIntent?: string | null;
+    subscription?: string | null;
   }): Stripe.Checkout.Session {
     return {
       id: `cs_${opts.invoice ?? opts.paymentIntent}`,
@@ -93,7 +94,7 @@ describe("handleCheckoutSessionCompleted", () => {
       currency: opts.currency ?? "usd",
       invoice: opts.invoice ?? null,
       payment_intent: opts.paymentIntent ?? null,
-      subscription: null,
+      subscription: opts.subscription ?? null,
     } as unknown as Stripe.Checkout.Session;
   }
 
@@ -175,36 +176,44 @@ describe("handleCheckoutSessionCompleted", () => {
     expect(commissions).toHaveLength(1);
   });
 
-  it("leaves the customer attached to the click that first brought them", async () => {
-    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first" }));
+  it("gives each subscription to the click whose checkout started it, even for the same customer", async () => {
     const second = await db.click.create({ data: { ...clickInput, referralToken: "tok-2" } });
+    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
     await handleCheckoutSessionCompleted(
       merchant,
-      sessionFixture({ invoice: "in_second", metadataToken: "tok-2" })
+      sessionFixture({ invoice: "in_second", metadataToken: "tok-2", subscription: "sub_2" })
     );
 
-    const refreshed = await db.click.findUnique({ where: { id: second.id } });
-    expect(refreshed?.stripeCustomerId).toBeNull();
+    const rows = await db.referredSubscription.findMany({ orderBy: { stripeSubscriptionId: "asc" } });
+    expect(rows.map((r) => [r.stripeSubscriptionId, r.clickId])).toEqual([
+      ["sub_1", click.id],
+      ["sub_2", second.id],
+    ]);
   });
 
   it("waits for a delayed payment to settle before creating anything", async () => {
     // SEPA and ACH complete the Session unpaid; the async success event brings
     // the same Session back paid.
-    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", paymentStatus: "unpaid" }));
-    expect(await db.commission.count()).toBe(0);
-    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).stripeCustomerId).toBeNull();
-
-    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first" }));
-    expect(await db.commission.count()).toBe(1);
-  });
-
-  it("links a free trial's customer but creates no commission on it", async () => {
     await handleCheckoutSessionCompleted(
       merchant,
-      sessionFixture({ invoice: "in_trial", paymentStatus: "no_payment_required" })
+      sessionFixture({ invoice: "in_first", paymentStatus: "unpaid", subscription: "sub_1" })
     );
     expect(await db.commission.count()).toBe(0);
-    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).stripeCustomerId).toBe(CUSTOMER_ID);
+    expect(await db.referredSubscription.count()).toBe(0);
+
+    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
+    expect(await db.commission.count()).toBe(1);
+    expect(await db.referredSubscription.count()).toBe(1);
+  });
+
+  it("records a free trial's subscription with no first payment and creates no commission", async () => {
+    await handleCheckoutSessionCompleted(
+      merchant,
+      sessionFixture({ invoice: "in_trial", paymentStatus: "no_payment_required", subscription: "sub_1" })
+    );
+    expect(await db.commission.count()).toBe(0);
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    expect(referred.firstPaymentRef).toBeNull();
   });
 
   it("ignores a referral token that belongs to a different Merchant's affiliate", async () => {
@@ -374,5 +383,73 @@ describe("handleCheckoutSessionCompleted", () => {
     const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
     expect(commission.saleAmount?.toString()).toBe("250000000000");
     expect(commission.amount.toString()).toBe("50000000000");
+  });
+
+  it("records the subscription it created against the click, with this payment as its first", async () => {
+    const session = sessionFixture({ invoice: "in_first", subscription: "sub_1" });
+    await handleCheckoutSessionCompleted(merchant, session);
+
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    expect(referred.clickId).toBe(click.id);
+    expect(referred.merchantId).toBe(merchant.id);
+    expect(referred.firstPaymentRef).toBe("in_first");
+    expect(referred.firstPaidAt?.getTime()).toBe(session.created * 1000);
+    // The customer link renewals used to ride on is no longer written.
+    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).stripeCustomerId).toBeNull();
+  });
+
+  it("records the subscription once on a redelivery", async () => {
+    const session = sessionFixture({ invoice: "in_first", subscription: "sub_1" });
+    await handleCheckoutSessionCompleted(merchant, session);
+    await handleCheckoutSessionCompleted(merchant, session);
+
+    expect(await db.referredSubscription.count()).toBe(1);
+  });
+
+  it("claims no first payment on a trial Stripe reports as paid with a zero total", async () => {
+    // Stripe marks a trial checkout paid once its $0 trial invoice is processed.
+    await handleCheckoutSessionCompleted(
+      merchant,
+      sessionFixture({ invoice: "in_trial", amountTotal: 0, subscription: "sub_1" })
+    );
+    expect(await db.commission.count()).toBe(0);
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    expect(referred.firstPaymentRef).toBeNull();
+  });
+
+  it("still records the subscription when this one purchase is excluded, so its renewals can earn", async () => {
+    stripeStub.customers.retrieve.mockResolvedValueOnce({ id: "cus_test", metadata: { supaffi: "false" } } as never);
+
+    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
+
+    expect(await db.commission.count()).toBe(0);
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    expect(referred.firstPaymentRef).toBe("in_first");
+  });
+
+  it("creates nothing once a self referral was confirmed on the click, but still proves tracking works", async () => {
+    await db.click.update({ where: { id: click.id }, data: { fraudConfirmedAt: new Date() } });
+
+    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
+
+    expect(await db.commission.count()).toBe(0);
+    expect(await db.referredSubscription.count()).toBe(0);
+    expect((await db.merchant.findUniqueOrThrow({ where: { id: merchant.id } })).trackingVerifiedAt).not.toBeNull();
+  });
+
+  it("records no subscription for a token that belongs to a different Merchant's affiliate", async () => {
+    const other = await db.merchant.create({
+      data: {
+        slug: crypto.randomUUID(),
+        ownerId: merchant.ownerId,
+        name: "Other",
+        domain: `${crypto.randomUUID()}.example.com`,
+        websiteUrl: "https://other.example.com",
+        stripeSecretKeyEnc: "x",
+      },
+    });
+    await handleCheckoutSessionCompleted(other, sessionFixture({ invoice: "in_other", subscription: "sub_1" }));
+
+    expect(await db.referredSubscription.count()).toBe(0);
   });
 });
