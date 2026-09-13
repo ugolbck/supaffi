@@ -413,24 +413,85 @@ describe("handleCheckoutSessionCompleted", () => {
     expect(after.firstPaidAt?.getTime()).toBe(first.firstPaidAt?.getTime());
   });
 
-  it("dates a delayed payment's first payment from when it settled, not from the session", async () => {
+  it("dates a delayed payment's first payment from the session, not from when it settled", async () => {
     // SEPA/ACH: checkout.session.completed arrives unpaid the moment the
     // buyer checks out. checkout.session.async_payment_succeeded brings the
     // same Session back, now paid, once the debit actually clears days
-    // later. FIXED_MONTHS counts from the first payment, so it must count
-    // from when the money moved, not from the stale Session timestamp.
+    // later. Stripe starts the subscription, and schedules every renewal,
+    // from the Session itself, so FIXED_MONTHS must count from there too, or
+    // the month N+1 renewal lands inside a window stretched by the delay.
     const session = sessionFixture({ invoice: "in_first", subscription: "sub_1", paymentStatus: "unpaid" });
     await handleCheckoutSessionCompleted(merchant, session);
 
     const settledAt = session.created + 5 * 24 * 60 * 60;
-    await handleCheckoutSessionCompleted(
-      merchant,
-      { ...session, payment_status: "paid" },
-      { type: "checkout.session.async_payment_succeeded", created: settledAt }
-    );
+    await handleCheckoutSessionCompleted(merchant, { ...session, payment_status: "paid" });
 
     const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
-    expect(referred.firstPaidAt?.getTime()).toBe(settledAt * 1000);
+    expect(referred.firstPaidAt?.getTime()).toBe(session.created * 1000);
+    expect(referred.firstPaidAt?.getTime()).not.toBe(settledAt * 1000);
+  });
+
+  it("does not let a bank-debit delay push a FIXED_MONTHS renewal back into its earning window", async () => {
+    // A 3-month FIXED_MONTHS program. The buyer pays by SEPA debit, which
+    // settles 5 days after checkout; Stripe still schedules the subscription,
+    // and its renewals, from the Session's own timestamp. The month-3 renewal
+    // must not earn just because the claimed first payment was mistakenly
+    // dated from the settlement event instead.
+    const program = await db.program.create({
+      data: {
+        slug: crypto.randomUUID(),
+        merchantId: merchant.id,
+        name: "Fixed Three",
+        defaultCommissionRate: 20,
+        commissionDurationType: "FIXED_MONTHS",
+        commissionDurationMonths: 3,
+        attributionWindowDays: 60,
+        holdingPeriodDays: 30,
+      },
+    });
+    const affiliate = await db.affiliate.create({
+      data: {
+        merchantId: merchant.id,
+        programId: program.id,
+        email: `aff-${crypto.randomUUID()}@example.com`,
+        links: { create: { code: crypto.randomUUID(), isPrimary: true } },
+      },
+    });
+    const fixedClick = await db.click.create({
+      data: { ...clickInput, affiliateId: affiliate.id, referralToken: "tok-fixed" },
+    });
+
+    const session = sessionFixture({
+      invoice: "in_fixed_first",
+      subscription: "sub_fixed",
+      paymentStatus: "unpaid",
+      metadataToken: "tok-fixed",
+    });
+    await handleCheckoutSessionCompleted(merchant, session);
+    await handleCheckoutSessionCompleted(merchant, { ...session, payment_status: "paid" });
+
+    const renewalAt = new Date(session.created * 1000);
+    renewalAt.setUTCMonth(renewalAt.getUTCMonth() + 3);
+    const { handleInvoicePaid } = await import("@/lib/worker/handlers/invoicePaid");
+    await handleInvoicePaid(merchant, {
+      id: "in_fixed_renewal",
+      customer: CUSTOMER_ID,
+      billing_reason: "subscription_cycle",
+      created: Math.floor(renewalAt.getTime() / 1000),
+      currency: "usd",
+      customer_email: "buyer@example.com",
+      metadata: {},
+      parent: { type: "subscription_details", subscription_details: { subscription: "sub_fixed", metadata: {} } },
+      total: 5000,
+      total_excluding_tax: 5000,
+      total_taxes: [],
+      amount_paid: 5000,
+      shipping_cost: null,
+    } as unknown as Stripe.Invoice);
+
+    expect(await db.commission.count({ where: { clickId: fixedClick.id } })).toBe(1); // the checkout commission only
+    const commissions = await db.commission.findMany({ where: { clickId: fixedClick.id } });
+    expect(commissions.map((c) => c.stripePaymentRef)).toEqual(["in_fixed_first"]);
   });
 
   it("claims no first payment on a trial Stripe reports as paid with a zero total", async () => {

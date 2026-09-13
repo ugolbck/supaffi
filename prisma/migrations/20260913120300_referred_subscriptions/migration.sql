@@ -44,7 +44,7 @@ WHERE c."id" = confirmed."clickId";
 -- commissions when the Owner confirms it. PAID rows and adjustment rows are
 -- left untouched: paid stays paid, and an adjustment is not a new commission.
 UPDATE "Commission"
-SET "status" = 'VOIDED', "voidReason" = 'confirmed self-referral', "voidedAt" = CURRENT_TIMESTAMP
+SET "status" = 'VOIDED', "voidReason" = 'confirmed self-referral', "voidedAt" = (now() AT TIME ZONE 'UTC')
 WHERE "clickId" IN (SELECT "id" FROM "Click" WHERE "fraudConfirmedAt" IS NOT NULL)
   AND "adjustsCommissionId" IS NULL
   AND "status" IN ('PENDING', 'PAYABLE', 'FLAGGED');

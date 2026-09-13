@@ -383,6 +383,30 @@ describe("handleInvoicePaid", () => {
 
       expect(await db.commission.count({ where: { stripePaymentRef: "in_other" } })).toBe(0);
     });
+
+    it("does not recognise a legacy referral whose first purchase never earned, such as a trial that converted", async () => {
+      // Before 0.2.5 only invoices that actually earned a commission left a
+      // trace on the click, so a trial's subscription_create invoice, which
+      // charged nothing, left none. What is on the click is the renewal
+      // commissions the old code recorded straight from invoice.paid, and
+      // none of those is billing_reason subscription_create, so nothing here
+      // is adopted and the subscription stays unrecognised.
+      const { affiliate, click } = await seedReferral(merchant);
+      await seedLegacyClick(click.id, "cus_legacy");
+      await seedInvoiceCommission(affiliate.id, click.id, "in_legacy_renewal_1");
+      await seedInvoiceCommission(affiliate.id, click.id, "in_legacy_renewal_2");
+      stripeStub.invoices.retrieve.mockImplementation(async (id: string) =>
+        retrievedInvoice(id, "sub_trial", { billingReason: "subscription_cycle" })
+      );
+
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_after_upgrade", customer: "cus_legacy", parent: subscriptionParent("sub_trial") })
+      );
+
+      expect(await db.commission.count({ where: { stripePaymentRef: "in_after_upgrade" } })).toBe(0);
+      expect(await db.referredSubscription.count({ where: { stripeSubscriptionId: "sub_trial" } })).toBe(0);
+    });
   });
 
   describe("card check on renewals", () => {

@@ -21,7 +21,7 @@ export async function processWebhookEvent(row: WebhookEvent): Promise<void> {
     // lands first on a paid Session wins, the other dedupes.
     case "checkout.session.completed":
     case "checkout.session.async_payment_succeeded":
-      return handleCheckoutSessionCompleted(merchant, event.data.object as Stripe.Checkout.Session, event);
+      return handleCheckoutSessionCompleted(merchant, event.data.object as Stripe.Checkout.Session);
     case "invoice.paid":
       return handleInvoicePaid(merchant, event.data.object as Stripe.Invoice);
     case "charge.refunded":

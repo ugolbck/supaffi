@@ -11,11 +11,7 @@ import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { claimFirstPayment, idOf, recordReferredSubscription } from "../referredSubscription";
 
-export async function handleCheckoutSessionCompleted(
-  merchant: Merchant,
-  session: Stripe.Checkout.Session,
-  event?: Pick<Stripe.Event, "type" | "created">
-): Promise<void> {
+export async function handleCheckoutSessionCompleted(merchant: Merchant, session: Stripe.Checkout.Session): Promise<void> {
   const referralToken = session.metadata?.[REFERRAL_METADATA_KEY];
   if (!referralToken) return; // not a Supaffi-tracked checkout
 
@@ -80,13 +76,14 @@ export async function handleCheckoutSessionCompleted(
   if (subscriptionId) {
     const referred = await recordReferredSubscription(merchant.id, click.id, subscriptionId);
     if (moneyPaid && stripePaymentRef) {
-      // A delayed payment method's Session is created unpaid; the money only
-      // moves once checkout.session.async_payment_succeeded arrives, days
-      // later. Dating the first payment from that event's own creation time
-      // keeps FIXED_MONTHS counting from when it actually settled.
-      const paidAt =
-        event?.type === "checkout.session.async_payment_succeeded" ? new Date(event.created * 1000) : completedAt;
-      await claimFirstPayment(referred, { ref: stripePaymentRef, at: paidAt });
+      // A delayed payment method's Session is created unpaid, and
+      // checkout.session.async_payment_succeeded brings it back, paid, once
+      // the debit clears days later. The first payment is still dated from
+      // the Session's own creation time, not that later event: Stripe starts
+      // the subscription, and schedules every renewal, from the Session, so a
+      // FIXED_MONTHS window measured from the settlement date would end one
+      // renewal late and let the month N+1 invoice earn.
+      await claimFirstPayment(referred, { ref: stripePaymentRef, at: completedAt });
     }
   }
 

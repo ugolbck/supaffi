@@ -18,17 +18,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A subscription that did not start through a referred checkout, such as one
   created directly in the Stripe Dashboard, never earns a commission.
 - Programs that pay for a set number of months count them from the
-  subscription's first payment. A payment made by bank transfer or direct
-  debit, which can take days to clear, is counted from the day it actually
-  arrived rather than the day it was started.
+  subscription's first payment.
 - A one-time commission is paid on the first real payment after a free trial.
 - Every renewal paid with a card that matches one of the affiliate's own
   Stripe customers is flagged for review, not only the first purchase.
 - Cancelling a subscription marks only that product's referral as cancelled.
   Other subscriptions the same referral brought keep paying.
 - Referrals made before this update are recognised the first time one of
-  their invoices arrives. One that was still in a free trial, with no
-  commission recorded yet, will not start earning renewals.
+  their invoices arrives, but only if their first purchase had already earned
+  a commission. If it had not, for example a free trial that later converted,
+  a first period discounted to nothing, a first purchase you excluded, or a
+  sale made on 0.2.4 that was skipped because its tax could not be read, that
+  referral stops earning renewals from this update on, and a cancellation of
+  it is not counted either.
 
 ### Changed
 
