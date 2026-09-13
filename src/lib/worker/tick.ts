@@ -1,6 +1,7 @@
 import { claimBatch, markProcessed, markFailed } from "./claim";
 import { sweepPayableCommissions } from "./sweep";
 import { processWebhookEvent } from "./dispatch";
+import { runDailyCleanup } from "./cleanup";
 
 let ticking = false;
 
@@ -11,6 +12,11 @@ export async function runTick(): Promise<void> {
   // is picked up again once its claim lease runs out (see claim.ts).
   if (ticking) return;
   ticking = true;
+
+  // Not awaited. A first cleanup on an old install can take a while and must
+  // never hold up the queue; it returns at once when it ran less than a day
+  // ago or is already going.
+  runDailyCleanup().catch((err) => console.error("[worker] cleanup failed", err));
   try {
     const batch = await claimBatch();
     for (const event of batch) {
