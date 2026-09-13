@@ -5,19 +5,24 @@ import { getMerchantForOwnerBySlug, getOnboardingState } from "@/lib/merchant";
 import { getProductSetup } from "@/lib/productSetup";
 import { resumeStep, stepPath } from "@/lib/onboarding";
 import {
+  change,
   getProductMetrics,
   getTopAffiliates,
   getPayableGroups,
   pickCurrency,
   rangeFromQuery,
   rangeLabel,
+  resolveRange,
 } from "@/lib/analytics";
 import { shouldCelebrateTracking } from "@/lib/tracking";
 import { originFor } from "@/lib/url";
-import { money, moneyHint } from "@/lib/format";
+import { formatCount, formatMoney, money, moneyHint, prefer } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { Light } from "@/components/dashboard/Light";
+import { TopAffiliates } from "@/components/dashboard/TopAffiliates";
+import { Attention } from "@/components/dashboard/Attention";
+import { ShieldAlert, Wallet } from "lucide-react";
 import { ActivityChart } from "@/components/charts/ActivityChart";
 import { RangePicker } from "@/components/charts/RangePicker";
 import { CurrencyPicker } from "@/components/charts/CurrencyPicker";
@@ -64,9 +69,10 @@ export default async function ProductOverviewPage({
     redirect(next ? stepPath(merchant.slug, next) : `/onboarding/${merchant.slug}`);
   }
 
+  const window = resolveRange(range, new Date(), merchant.createdAt);
   const [metrics, top, payable, celebrate] = await Promise.all([
     getProductMetrics(ownerId, merchant.id, range),
-    getTopAffiliates(ownerId, merchant.id, 5),
+    getTopAffiliates(ownerId, merchant.id, 5, window),
     getPayableGroups(ownerId, merchant.id),
     shouldCelebrateTracking(merchant.id),
   ]);
@@ -87,9 +93,40 @@ export default async function ProductOverviewPage({
   const showWelcome =
     signupLink !== null && !onboarding.welcomeDismissedAt && setup.affiliateCount === 0;
 
+  // What the tiles compare against, said the way the picker says it, so
+  // "vs last 30 days" under a figure is the same words as the choice above.
+  const against = range === "all" ? "" : rangeLabel(range).toLowerCase().replace(/^last /, "previous ").replace(/^this /, "previous ").replace(/^today$/, "yesterday").replace(/^yesterday$/, "the day before");
+  const revenueNow = currency ? (metrics.current.amounts[currency]?.gross ?? 0) : 0;
+  const revenueBefore = currency ? metrics.previous?.amounts[currency]?.gross : null;
+  const delta = (now: number, before: number | null | undefined) =>
+    range === "all" ? undefined : { percent: change(now, before ?? 0), against };
+
+  const attention = [
+    payableTotal > 0 && {
+      icon: Wallet,
+      title: payableTotal === 1 ? "1 commission is payable" : `${formatCount(payableTotal)} commissions are payable`,
+      detail: "Pay them and mark them paid",
+      href: `/dashboard/products/${merchant.slug}/commissions?status=PAYABLE`,
+    },
+    metrics.flagged > 0 && {
+      icon: ShieldAlert,
+      title:
+        metrics.flagged === 1
+          ? "1 commission looks like a self referral"
+          : `${formatCount(metrics.flagged)} commissions look like self referrals`,
+      detail: "Confirm or dismiss each one",
+      href: `/dashboard/products/${merchant.slug}/commissions?status=FLAGGED`,
+      urgent: true,
+    },
+  ].filter((item): item is Exclude<typeof item, false> => Boolean(item));
+
   return (
     <Page>
-      <PageTitle title="Overview" subtitle={rangeLabel(range)} />
+      <PageTitle
+        title="Overview"
+        subtitle={range === "all" ? "Everything since the start" : `How things went, ${rangeLabel(range).toLowerCase()}`}
+        actions={<RangePicker value={range} />}
+      />
       {celebrate && <TrackingVerified merchantId={merchant.id} />}
       {showWelcome && (
         <Welcome product={{ id: merchant.id, slug: merchant.slug }} link={signupLink} />
@@ -98,37 +135,40 @@ export default async function ProductOverviewPage({
       <Tiles>
         <StatTile
           label="Clicks"
-          value={String(metrics.clicks)}
+          value={formatCount(metrics.clicks)}
           series={metrics.series.map((d) => d.clicks)}
-        />
-        <StatTile
-          label="Signups"
-          value={String(metrics.signups)}
-          series={metrics.series.map((d) => d.signups)}
+          delta={delta(metrics.clicks, metrics.previous?.clicks)}
         />
         <StatTile
           label="Sales"
-          value={String(metrics.conversions)}
+          value={formatCount(metrics.conversions)}
           series={metrics.series.map((d) => d.conversions)}
+          delta={delta(metrics.conversions, metrics.previous?.conversions)}
+        />
+        <StatTile
+          label="Revenue"
+          value={currency ? formatMoney(revenueNow, currency) : "0.00"}
+          series={currency ? metrics.series.map((d) => d.amounts[currency]?.gross ?? 0) : undefined}
+          delta={currency ? delta(revenueNow, revenueBefore) : undefined}
         />
         <StatTile
           label="Owed"
-          value={money(metrics.owed)}
-          hint={payableTotal ? `${payableTotal} payable now` : moneyHint(metrics.owed)}
+          value={money(prefer(metrics.owed, currency))}
+          hint={
+            payableTotal
+              ? `${formatCount(payableTotal)} payable now`
+              : (moneyHint(prefer(metrics.owed, currency)) ?? "Nothing waiting")
+          }
+          href={`/dashboard/products/${merchant.slug}/commissions?status=PAYABLE`}
         />
       </Tiles>
 
       {!empty && (
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
+        <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
           <Section
             title="Clicks and revenue"
-            actions={
-              <div className="flex items-center gap-2">
-                <CurrencyPicker value={currency ?? ""} options={metrics.currencies} />
-                <RangePicker value={range} />
-              </div>
-            }
-            className="min-h-[280px]"
+            actions={<CurrencyPicker value={currency ?? ""} options={metrics.currencies} />}
+            className="min-h-[300px]"
             fill
           >
             <ActivityChart
@@ -140,57 +180,16 @@ export default async function ProductOverviewPage({
               splitLabel="Commission"
             />
           </Section>
-          <Section title="Top affiliates" scroll>
-            <ul className="flex flex-col gap-2 text-sm">
-              {top.map((a) => (
-                <li key={a.id} className="flex items-center justify-between gap-3">
-                  <span className="truncate">{a.name ?? a.email}</span>
-                  <span className="shrink-0 text-muted-foreground tabular-nums">
-                    {money(a.earned)} · {a.sales} {a.sales === 1 ? "sale" : "sales"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Section>
+          <TopAffiliates
+            affiliates={top}
+            currency={currency}
+            viewAllHref={`/dashboard/products/${merchant.slug}/affiliates`}
+            className="min-h-[300px] lg:min-h-0"
+          />
         </div>
       )}
 
-      {(payableTotal > 0 || metrics.flagged > 0) && (
-        <Section title="Needs you">
-          <ul className="flex flex-col gap-2 text-sm">
-            {payableTotal > 0 && (
-              <li>
-                <Link
-                  href={`/dashboard/products/${merchant.slug}/commissions?status=PAYABLE`}
-                  className="flex cursor-pointer items-center justify-between hover:underline"
-                >
-                  <span>
-                    {payableTotal === 1
-                      ? "1 commission is payable"
-                      : `${payableTotal} commissions are payable`}
-                  </span>
-                  <span>Pay them &rsaquo;</span>
-                </Link>
-              </li>
-            )}
-            {metrics.flagged > 0 && (
-              <li>
-                <Link
-                  href={`/dashboard/products/${merchant.slug}/commissions?status=FLAGGED`}
-                  className="flex cursor-pointer items-center justify-between hover:underline"
-                >
-                  <span>
-                    {metrics.flagged === 1
-                      ? "1 commission flagged as a possible self referral"
-                      : `${metrics.flagged} commissions flagged as possible self referrals`}
-                  </span>
-                  <span>Review &rsaquo;</span>
-                </Link>
-              </li>
-            )}
-          </ul>
-        </Section>
-      )}
+      <Attention items={attention} />
 
       {empty && (
         <Section>

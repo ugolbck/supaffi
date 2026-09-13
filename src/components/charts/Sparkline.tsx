@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 /**
  * A trend line that fills whatever box it is given.
  *
@@ -8,8 +10,8 @@
  * `vector-effect` keeps the stroke from stretching with it. A flat series draws
  * a centred straight line rather than dividing by zero.
  *
- * `area` fills underneath. That is not decoration: a hairline in a tall card
- * leaves the card looking empty, which is the thing the layout exists to avoid.
+ * `area` fills underneath with the same fade the main chart uses, so a tile's
+ * line and the chart's line read as the same drawing at two sizes.
  */
 export function Sparkline({
   points,
@@ -20,6 +22,7 @@ export function Sparkline({
   className?: string;
   area?: boolean;
 }) {
+  const id = useId();
   if (points.length < 2) return null;
 
   const max = Math.max(...points);
@@ -42,11 +45,15 @@ export function Sparkline({
       className={className}
     >
       {area && (
-        <polygon
-          points={`0,32 ${line} 100,32`}
-          fill="currentColor"
-          className="opacity-[0.12]"
-        />
+        <>
+          <defs>
+            <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="currentColor" stopOpacity="0.28" />
+              <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <polygon points={`0,32 ${line} 100,32`} fill={`url(#${id})`} />
+        </>
       )}
       <polyline
         points={line}

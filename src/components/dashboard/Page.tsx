@@ -7,7 +7,10 @@ import { cn } from "@/lib/utils";
  * left is that a table scrolls inside its card, so the page never does.
  */
 export function Page({ children }: { children: ReactNode }) {
-  return <div className="flex h-full min-h-0 w-full flex-col gap-6">{children}</div>;
+  // Built to fit only where there is room to fit into. On a phone the
+  // sections stack and the page scrolls; forcing the fit there squeezed the
+  // chart under the card below it.
+  return <div className="flex min-h-0 w-full flex-col gap-6 lg:h-full">{children}</div>;
 }
 
 export function PageTitle({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {

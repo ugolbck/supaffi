@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { Amounts, Bucket, DayPoint } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
+import { currencySymbol, formatMoney } from "@/lib/format";
 
 /**
  * Clicks as a line over bars of the money they turned into, for one window.
@@ -146,9 +147,7 @@ function barPath(x: number, y: number, w: number, h: number, radius: number): st
   return `M${x},${y + h} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${y + h} Z`;
 }
 
-function money(amount: number, currency: string): string {
-  return `${amount.toFixed(2)} ${currency.toUpperCase()}`;
-}
+const money = formatMoney;
 
 /**
  * Every currency in the bucket, the drawn one first.
@@ -198,7 +197,6 @@ export function ActivityChart({
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [hovered, setHovered] = useState<number | null>(null);
-  const [drawn, setDrawn] = useState(false);
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -211,15 +209,10 @@ export function ActivityChart({
     return () => observer.disconnect();
   }, []);
 
-  // Bars grow and the line fades in once, on the first frame after the
-  // geometry exists. Re-armed whenever the window changes, since a new
-  // series is a new chart.
+  // Bars grow and the line draws itself whenever the window changes. Keyed
+  // on the series, so every bar and the line remount and replay, including
+  // the days the previous window already showed.
   const signature = `${bucket}:${points[0]?.date}:${points.length}`;
-  useEffect(() => {
-    setDrawn(false);
-    const id = requestAnimationFrame(() => setDrawn(true));
-    return () => cancelAnimationFrame(id);
-  }, [signature]);
 
   const { width, height } = size;
   const plotW = Math.max(0, width - PAD.left - PAD.right);
@@ -247,7 +240,10 @@ export function ActivityChart({
   // Every nth bucket, counted from the first. Dividing the range into five
   // instead put the labels at uneven gaps, and rounding landed two of them
   // on neighbouring buckets. Six is the most a card this wide can hold.
-  const step = n > 0 ? Math.max(1, Math.ceil(n / 6)) : 1;
+  // As many as the plot has room for at roughly ninety pixels each, six at
+  // most, so a phone shows three dates rather than six on top of each other.
+  const maxLabels = Math.max(2, Math.min(6, Math.floor(plotW / 90)));
+  const step = n > 0 ? Math.max(1, Math.ceil(n / maxLabels)) : 1;
   const labelled = new Set<number>();
   for (let i = 0; i < n; i += step) labelled.add(i);
   const ticks = [0, 0.5, 1];
@@ -296,7 +292,7 @@ export function ActivityChart({
                   textAnchor="start"
                   className="fill-neutral-400 text-[10px] tabular-nums"
                 >
-                  {t === 1 && currency ? `${compactMoney(t * barMax)} ${currency.toUpperCase()}` : compactMoney(t * barMax)}
+                  {currency ? `${currencySymbol(currency)}${compactMoney(t * barMax)}` : compactMoney(t * barMax)}
                 </text>
               </g>
             );
@@ -304,13 +300,11 @@ export function ActivityChart({
 
           {/* The area first: it is translucent, and anything behind it is
               tinted by it. Then the bars, then the line on top of both. */}
-          <g
-            className="transition-opacity duration-500 ease-(--ease-out) motion-reduce:transition-none"
-            style={{ opacity: drawn ? 1 : 0 }}
-          >
+          <g key={`area-${signature}`} className="supaffi-area">
             <path d={areaPath} fill="url(#clicks-area)" />
           </g>
 
+          <g key={`bars-${signature}`}>
           {points.map((p, i) => {
             const gross = grossAt(p);
             if (gross <= 0) return null;
@@ -329,7 +323,7 @@ export function ActivityChart({
               <g
                 key={p.date}
                 className="supaffi-bar transition-[filter] duration-500 ease-(--ease-out) motion-reduce:transition-none"
-                style={{ filter: glow, animationDelay: `${Math.min(i * 12, 320)}ms` }}
+                style={{ filter: glow, animationDelay: `${Math.min(i * 20, 500)}ms` }}
               >
                 {cost > 0 && (
                   <path
@@ -358,13 +352,13 @@ export function ActivityChart({
               </g>
             );
           })}
+          </g>
 
-          <g
-            className="transition-opacity duration-500 ease-(--ease-out) motion-reduce:transition-none"
-            style={{ opacity: drawn ? 1 : 0, transitionDelay: "120ms" }}
-          >
+          <g key={`line-${signature}`}>
             <path
               d={linePath}
+              pathLength={1}
+              className="supaffi-line"
               fill="none"
               stroke="var(--chart-line)"
               strokeWidth="2.25"

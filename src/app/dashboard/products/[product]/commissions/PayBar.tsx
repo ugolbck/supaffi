@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import type { PayableGroup } from "@/lib/analytics";
+import { formatCount, formatMoney } from "@/lib/format";
 import { markPaidAction } from "./commissionActions";
 
 /**
@@ -48,7 +49,7 @@ export function PayBar({
       <ul className="min-h-0 flex-1 divide-y divide-neutral-200 overflow-y-auto border-t border-neutral-200">
         {groups.map((group) => {
           const name = group.affiliateName ?? group.affiliateEmail;
-          const amount = `${group.total} ${group.currency.toUpperCase()}`;
+          const amount = formatMoney(group.total, group.currency);
           const count = group.commissionIds.length;
 
           // A refund can land after everything it claws back is already paid,
@@ -62,7 +63,7 @@ export function PayBar({
               >
                 <span className="min-w-0 flex-1 truncate">{name}</span>
                 <span className="shrink-0 tabular-nums">
-                  owes {amount.replace("-", "")} back, carried to the next payout
+                  owes {formatMoney(Math.abs(Number(group.total)), group.currency)} back, carried to the next payout
                 </span>
               </li>
             );
@@ -76,7 +77,7 @@ export function PayBar({
               >
                 <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {count === 1 ? "1 commission" : `${count} commissions`}
+                  {count === 1 ? "1 commission" : `${formatCount(count)} commissions`}
                 </span>
                 <span className="w-28 shrink-0 text-right text-sm font-semibold tabular-nums">
                   {amount}

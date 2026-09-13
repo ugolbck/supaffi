@@ -13,7 +13,7 @@ import {
   type StatusTotal,
 } from "@/lib/commission";
 import { getPayableGroups, type CurrencyTotal } from "@/lib/analytics";
-import { money, moneyHint } from "@/lib/format";
+import { formatMoney, money, moneyHint } from "@/lib/format";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
   Pagination,
@@ -207,7 +207,7 @@ export default async function CommissionsPage({
 
   const ledgerRows: LedgerRow[] = rows.map((row) => ({
     id: row.id,
-    amount: `${row.amount} ${row.currency.toUpperCase()}`,
+    amount: formatMoney(row.amount, row.currency),
     status: row.status,
     affiliateName: row.affiliateName,
     affiliateEmail: row.affiliateEmail,
@@ -225,12 +225,12 @@ export default async function CommissionsPage({
     ? {
         id: selected.id,
         status: selected.status,
-        amount: `${selected.amount} ${selected.currency.toUpperCase()}`,
+        amount: formatMoney(selected.amount, selected.currency),
         // Only carried when it actually differs, so the sheet can tell "was
         // reduced" from "was always this" with a single null check.
         grossAmount:
           selected.grossAmount && selected.grossAmount !== selected.amount
-            ? `${selected.grossAmount} ${selected.currency.toUpperCase()}`
+            ? formatMoney(selected.grossAmount, selected.currency)
             : null,
         affiliate: selected.affiliateName ?? selected.affiliateEmail,
         affiliateEmail: selected.affiliateEmail,

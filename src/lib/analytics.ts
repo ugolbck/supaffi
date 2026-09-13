@@ -141,6 +141,54 @@ export function resolveRange(range: ChartRange | number, now: Date, startedAt: D
   }
 }
 
+/**
+ * The window of the same length immediately before this one, so a figure can
+ * say how it compares. Null for "all time", which has nothing before it.
+ */
+export function previousWindow(window: Window, range: ChartRange | number): Window | null {
+  if (range === "all") return null;
+  if (window.bucket === "month") {
+    const months = (window.until.getUTCFullYear() - window.since.getUTCFullYear()) * 12
+      + (window.until.getUTCMonth() - window.since.getUTCMonth()) + 1;
+    const since = new Date(Date.UTC(window.since.getUTCFullYear(), window.since.getUTCMonth() - months, 1));
+    return { since, until: new Date(window.since.getTime() - 1), bucket: "month" };
+  }
+  const length = window.until.getTime() - window.since.getTime();
+  return { since: new Date(window.since.getTime() - length - 1), until: new Date(window.since.getTime() - 1), bucket: window.bucket };
+}
+
+/** What a window added up to: the figures a tile prints and compares. */
+export type Period = {
+  clicks: number;
+  conversions: number;
+  amounts: Record<string, Amounts>;
+};
+
+export function sumAmounts(series: DayPoint[]): Record<string, Amounts> {
+  const out: Record<string, Amounts> = {};
+  for (const point of series) {
+    for (const [currency, value] of Object.entries(point.amounts)) {
+      const entry = out[currency] ?? { gross: 0, commission: 0, sales: 0 };
+      out[currency] = {
+        gross: Math.round((entry.gross + value.gross) * 100) / 100,
+        commission: Math.round((entry.commission + value.commission) * 100) / 100,
+        sales: entry.sales + value.sales,
+      };
+    }
+  }
+  return out;
+}
+
+/**
+ * Change from one period to the next, as a share of the earlier one. Null
+ * when there is nothing earlier to compare against, or the earlier figure
+ * was zero, since growth from nothing is not a percentage.
+ */
+export function change(current: number, previous: number | null | undefined): number | null {
+  if (previous === null || previous === undefined || previous === 0) return null;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}
+
 /** The key a moment falls under, for the bucket in use. */
 export function bucketKey(date: Date, bucket: Bucket): string {
   const iso = date.toISOString();
@@ -259,7 +307,40 @@ export type ProductMetrics = {
   bucket: Bucket;
   /** Every currency sold in, most sales first. Empty when nothing sold. */
   currencies: string[];
+  /** The window's own figures, and the window before it. */
+  current: Period;
+  previous: Period | null;
 };
+
+/** Clicks and sales in a window, without the day-by-day shape. */
+async function periodFor(where: { merchantId?: string; affiliateId?: string }, window: Window): Promise<Period> {
+  const scope = where.merchantId ? { affiliate: { merchantId: where.merchantId } } : { affiliateId: where.affiliateId };
+  const [clicks, rows] = await Promise.all([
+    db.click.count({ where: { ...scope, createdAt: { gte: window.since, lte: window.until } } }),
+    db.commission.findMany({
+      where: {
+        ...scope,
+        createdAt: { gte: window.since, lte: window.until },
+        status: { not: "VOIDED" },
+        adjustsCommissionId: null,
+      },
+      select: { saleAmount: true, amount: true, currency: true },
+    }),
+  ]);
+  const amounts: Record<string, Amounts> = {};
+  for (const row of rows) {
+    const entry = amounts[row.currency] ?? { gross: 0, commission: 0, sales: 0 };
+    const commission = row.amount.toNumber();
+    // For the affiliate the money is what they earned, on both sides.
+    const gross = where.merchantId ? Number(row.saleAmount ?? 0) : commission;
+    amounts[row.currency] = {
+      gross: Math.round((entry.gross + gross) * 100) / 100,
+      commission: Math.round((entry.commission + commission) * 100) / 100,
+      sales: entry.sales + 1,
+    };
+  }
+  return { clicks, conversions: rows.length, amounts };
+}
 
 export async function getProductMetrics(
   ownerId: string,
@@ -274,8 +355,9 @@ export async function getProductMetrics(
 
   const window = resolveRange(range, new Date(), merchant.createdAt);
   const since = window.since;
+  const before = previousWindow(window, range);
 
-  const [clickRows, commissionRows, owedRows, paidRows, revenueRows, signupRows, flagged] =
+  const [clickRows, commissionRows, owedRows, paidRows, revenueRows, signupRows, flagged, previous] =
     await Promise.all([
       db.click.findMany({
         where: { affiliate: { merchantId }, createdAt: { gte: since, lte: window.until } },
@@ -322,6 +404,7 @@ export async function getProductMetrics(
       // Not windowed: a flagged commission stays the Owner's problem however
       // long it has sat there.
       db.commission.count({ where: { affiliate: { merchantId }, status: "FLAGGED" } }),
+      before ? periodFor({ merchantId }, before) : Promise.resolve(null),
     ]);
 
   const series = emptySeries(window);
@@ -364,6 +447,8 @@ export async function getProductMetrics(
     series: [...series.values()],
     bucket: window.bucket,
     currencies: currenciesByUse([...series.values()]),
+    current: { clicks, conversions, amounts: sumAmounts([...series.values()]) },
+    previous,
   };
 }
 
@@ -426,15 +511,20 @@ export type TopAffiliate = {
 export async function getTopAffiliates(
   ownerId: string,
   merchantId: string,
-  limit = 5
+  limit = 5,
+  window?: Window
 ): Promise<TopAffiliate[]> {
   await assertOwns(ownerId, merchantId);
+
+  // Within the window the page is showing, when it has one, so the list
+  // and the chart beside it answer the same question.
+  const inWindow = window ? { createdAt: { gte: window.since, lte: window.until } } : {};
 
   // Ranked by money earned, not by clicks. Clicks are effort; this list is
   // about who is actually working.
   const earned = await db.commission.groupBy({
     by: ["affiliateId", "currency"],
-    where: { affiliate: { merchantId }, status: { notIn: ["VOIDED"] } },
+    where: { affiliate: { merchantId }, status: { notIn: ["VOIDED"] }, ...inWindow },
     _sum: { amount: true },
   });
   if (earned.length === 0) return [];
@@ -460,7 +550,7 @@ export async function getTopAffiliates(
     }),
     db.click.groupBy({
       by: ["affiliateId"],
-      where: { affiliateId: { in: rankedIds } },
+      where: { affiliateId: { in: rankedIds }, ...inWindow },
       _count: { _all: true },
     }),
     // Same scope as `earned`, minus the rows that are not a sale: adjustments
@@ -473,6 +563,7 @@ export async function getTopAffiliates(
         status: { notIn: ["VOIDED"] },
         adjustsCommissionId: null,
         amount: { gt: 0 },
+        ...inWindow,
       },
       _count: { _all: true },
     }),
@@ -604,6 +695,8 @@ export type AffiliateMetrics = {
   bucket: Bucket;
   /** Every currency earned in, most commissions first. */
   currencies: string[];
+  current: Period;
+  previous: Period | null;
 };
 
 /**
@@ -623,8 +716,9 @@ export async function getAffiliateMetrics(
   });
   const window = resolveRange(range, new Date(), affiliate?.createdAt ?? new Date());
   const since = window.since;
+  const before = previousWindow(window, range);
 
-  const [clickRows, commissionRows, statusRows] = await Promise.all([
+  const [clickRows, commissionRows, statusRows, previous] = await Promise.all([
     db.click.findMany({
       where: { affiliateId, createdAt: { gte: since, lte: window.until } },
       select: { createdAt: true },
@@ -645,6 +739,7 @@ export async function getAffiliateMetrics(
       where: { affiliateId },
       _sum: { amount: true },
     }),
+    before ? periodFor({ affiliateId }, before) : Promise.resolve(null),
   ]);
 
   const series = emptySeries(window);
@@ -694,5 +789,7 @@ export async function getAffiliateMetrics(
     series: [...series.values()],
     bucket: window.bucket,
     currencies: currenciesByUse([...series.values()]),
+    current: { clicks, conversions, amounts: sumAmounts([...series.values()]) },
+    previous,
   };
 }

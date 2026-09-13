@@ -11,7 +11,7 @@ import {
   AFFILIATES_PAGE_SIZE,
 } from "@/lib/affiliate";
 import { getProductMetrics } from "@/lib/analytics";
-import { money, moneyHint } from "@/lib/format";
+import { formatMoney, money, moneyHint } from "@/lib/format";
 import { originFor } from "@/lib/url";
 import { linkUrl, listLinksWithStats } from "@/lib/affiliateLink";
 import { Button } from "@/components/ui/button";
@@ -192,7 +192,7 @@ export default async function AffiliatesPage({
         id: c.id,
         date: SHORT_DATE.format(c.createdAt),
         // Never summed across currencies, so each line carries its own.
-        amount: `${c.amount} ${c.currency.toUpperCase()}`,
+        amount: formatMoney(c.amount, c.currency),
         status: c.status.toLowerCase(),
       })),
     };

@@ -66,6 +66,8 @@ export default async function AffiliateOverviewPage({
       recent={commissions.rows}
       series={metrics.series}
       bucket={metrics.bucket}
+      current={metrics.current}
+      previous={metrics.previous}
       currency={pickCurrency(metrics.currencies, query.currency)}
       currencies={metrics.currencies}
       range={range}

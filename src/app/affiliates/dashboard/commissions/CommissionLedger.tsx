@@ -1,3 +1,4 @@
+import { formatMoney } from "@/lib/format";
 import { Coins } from "lucide-react";
 import type { AffiliateCommissionRow, AffiliateCommissionStatus } from "@/lib/affiliate";
 import { voidReasonText } from "@/lib/commissionReason";
@@ -103,12 +104,11 @@ export function commissionStateLabel(row: AffiliateCommissionRow): string {
 
 /** One database row as the ledger shows it. Both screens map through this. */
 export function toLedgerRow(row: AffiliateCommissionRow): LedgerRow {
-  const currency = row.currency.toUpperCase();
   return {
     id: row.id,
     dateLabel: DATE.format(row.createdAt),
-    amount: `${row.amount} ${currency}`,
-    grossAmount: row.grossAmount ? `${row.grossAmount} ${currency}` : null,
+    amount: formatMoney(row.amount, row.currency),
+    grossAmount: row.grossAmount ? formatMoney(row.grossAmount, row.currency) : null,
     status: row.status,
     linkCode: row.linkCode,
     isAdjustment: row.isAdjustment,

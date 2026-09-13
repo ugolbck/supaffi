@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { AffiliateCommissionRow } from "@/lib/affiliate";
 import { cn } from "@/lib/utils";
-import type { Bucket, ChartRange, CurrencyTotal, DayPoint } from "@/lib/analytics";
-import { money, moneyHint } from "@/lib/format";
+import { change, rangeLabel, type Bucket, type ChartRange, type CurrencyTotal, type DayPoint, type Period } from "@/lib/analytics";
+import { formatCount, formatMoney, money, moneyHint } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { ActivityChart } from "@/components/charts/ActivityChart";
@@ -30,6 +30,9 @@ export type OverviewView = {
   recent: AffiliateCommissionRow[];
   series: DayPoint[];
   bucket: Bucket;
+  /** The window's figures and the window before, for the tiles. */
+  current: Period;
+  previous: Period | null;
   /** The one currency the chart draws. Null when nothing was earned yet. */
   currency: string | null;
   /** Every currency earned in, for the switcher. One or none hides it. */
@@ -90,6 +93,8 @@ export function OverviewScreen({
   recent,
   series,
   bucket,
+  current,
+  previous,
   currency,
   currencies,
   range,
@@ -103,10 +108,19 @@ export function OverviewScreen({
   // Through the ledger's own mapping, so a date and an amount read the same on
   // this card as they do on the ledger the card links to.
   const recentRows = recent.map(toLedgerRow);
+  const against = range === "all" ? "" : rangeLabel(range).toLowerCase().replace(/^last /, "previous ").replace(/^this /, "previous ").replace(/^today$/, "yesterday").replace(/^yesterday$/, "the day before");
+  const delta = (now: number, before: number | null | undefined) =>
+    range === "all" ? undefined : { percent: change(now, before ?? 0), against };
+  const earnedNow = currency ? (current.amounts[currency]?.gross ?? 0) : 0;
+  const earnedBefore = currency ? previous?.amounts[currency]?.gross : null;
 
   return (
     <Page>
-      <PageTitle title="Overview" />
+      <PageTitle
+        title="Overview"
+        subtitle={range === "all" ? "Everything since you joined" : `How things went, ${rangeLabel(range).toLowerCase()}`}
+        actions={<RangePicker value={range} />}
+      />
 
       {/* The thing they came for, at the top and on the copy treatment every
           value in the product is copied from. Not a row in a table. */}
@@ -117,39 +131,49 @@ export function OverviewScreen({
         </div>
       )}
 
+      {/* Two of these follow the window and two are balances. The balances
+          say so in their footnote, so a row that mixes "this month" with
+          "right now" never has to be guessed at. */}
       <Tiles>
-        <StatTile label="Earned" value={money(earned)} hint={moneyHint(earned)} />
-        <StatTile label="Pending" value={money(pending)} hint={moneyHint(pending)} />
+        <StatTile
+          label="Clicks"
+          value={formatCount(current.clicks)}
+          series={series.map((d) => d.clicks)}
+          delta={delta(current.clicks, previous?.clicks)}
+        />
+        <StatTile
+          label="Earned"
+          value={currency ? formatMoney(earnedNow, currency) : "0.00"}
+          series={currency ? series.map((d) => d.amounts[currency]?.gross ?? 0) : undefined}
+          delta={currency ? delta(earnedNow, earnedBefore) : undefined}
+        />
         <StatTile
           label="Payable"
           value={money(payable)}
-          hint={moneyHint(payable)}
+          hint={moneyHint(payable) ?? (pending.length > 0 ? `${money(pending)} still on hold` : "Nothing on hold")}
           tone={payable.length > 0 ? "accent" : "neutral"}
+          href="/affiliates/dashboard/payouts"
         />
         {/* Green is the ledger's colour for money already paid, and it says the
             same thing here. */}
         <StatTile
-          label="Paid"
+          label="Paid out"
           value={money(paid)}
-          hint={moneyHint(paid)}
+          hint={moneyHint(paid) ?? `${money(earned)} earned in total`}
           tone={paid.length > 0 ? "success" : "neutral"}
+          href="/affiliates/dashboard/payouts"
         />
       </Tiles>
 
       {/* One band, the shape the owner's own overview uses: the wide chart, and
           a rail of what it turned into. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
+      <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[2fr_1fr]">
         {/* A chart draws into the height it is given, and on a phone the band
             is a stacked column with no height to give, so it gets a floor. */}
         <Section
           title="Clicks and earnings"
-          actions={
-            <div className="flex items-center gap-2">
-              <CurrencyPicker value={currency ?? ""} options={currencies} />
-              <RangePicker value={range} />
-            </div>
-          }
-          className="min-h-[280px] lg:min-h-0"
+          actions={<CurrencyPicker value={currency ?? ""} options={currencies} />}
+          className="min-h-[300px] lg:min-h-0"
           fill
         >
           {/* No empty branch: the series is zero filled, so a brand new
