@@ -12,7 +12,17 @@ export type KeyPermission = {
 // `as const satisfies` rather than an annotation: the annotation would freeze
 // the array but leave every record writable, and the point of this table is
 // that a token cannot be edited casually.
+// Charges arrived in 0.2.4. Keys made before then lack it, and the one call
+// that needs it treats any failure, whatever error Stripe returns for the
+// missing permission, as "unknown" and carries on, so an owner who has not
+// replaced their key loses nothing that worked before.
 export const KEY_PERMISSIONS = [
+  {
+    token: "rak_charge_read",
+    access: "Read",
+    row: "Charges",
+    why: "checks whether a sale was refunded before its commission was recorded",
+  },
   {
     token: "rak_customer_read",
     access: "Read",
