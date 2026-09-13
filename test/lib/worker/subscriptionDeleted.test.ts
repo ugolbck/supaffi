@@ -1,13 +1,37 @@
 // Destructive: clears Commission / Click / AffiliateLink / Affiliate / Program /
 // Merchant / Owner. Runs against the scratch DATABASE_URL that test/setup.ts
 // enforces, never the dev one.
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
+
+// Only reached when recognising a referral from before 0.2.6.
+const stripeStub = vi.hoisted(() => ({
+  invoices: { retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined) },
+  subscriptions: {
+    list: vi.fn(async (_params: unknown): Promise<unknown> => ({ data: [], has_more: false })),
+  },
+}));
+vi.mock("@/lib/stripe", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+  return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
+});
+
 import { handleSubscriptionDeleted } from "@/lib/worker/handlers/subscriptionDeleted";
 import { referralCounts } from "@/lib/affiliate";
+import {
+  retrievedInvoice,
+  seedInvoiceCommission,
+  seedLegacyClick,
+  seedMerchant,
+  seedReferredSubscription,
+} from "./referralFixtures";
+
+function deleted(id: string, customer = "cus_1"): Stripe.Subscription {
+  return { id, customer } as Stripe.Subscription;
+}
 
 async function clearAll() {
   await db.commission.deleteMany();
@@ -27,6 +51,9 @@ describe("handleSubscriptionDeleted", () => {
 
   beforeEach(async () => {
     await clearAll();
+    stripeStub.invoices.retrieve.mockReset();
+    stripeStub.subscriptions.list.mockReset();
+    stripeStub.subscriptions.list.mockImplementation(async () => ({ data: [], has_more: false }));
 
     const owner = await db.owner.create({
       data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
@@ -66,7 +93,6 @@ describe("handleSubscriptionDeleted", () => {
         affiliateId: affiliate.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),
-        stripeCustomerId: "cus_1",
       },
     });
     clickId = click.id;
@@ -77,16 +103,57 @@ describe("handleSubscriptionDeleted", () => {
     await db.$disconnect();
   });
 
-  it("marks the click that brought the cancelled customer", async () => {
-    await handleSubscriptionDeleted(merchant, { customer: "cus_1" } as Stripe.Subscription);
-    const click = await db.click.findUnique({ where: { stripeCustomerId: "cus_1" } });
-    expect(click?.subscriptionCancelledAt).toBeInstanceOf(Date);
+  it("marks the referred subscription and its click cancelled", async () => {
+    await seedReferredSubscription(merchant.id, clickId, "sub_1");
+
+    await handleSubscriptionDeleted(merchant, deleted("sub_1"));
+
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { clickId } });
+    expect(referred.cancelledAt).toBeInstanceOf(Date);
+    expect((await db.click.findUniqueOrThrow({ where: { id: clickId } })).subscriptionCancelledAt).toBeInstanceOf(Date);
   });
 
-  it("ignores a customer nobody referred", async () => {
-    await expect(
-      handleSubscriptionDeleted(merchant, { customer: "cus_unknown" } as Stripe.Subscription)
-    ).resolves.toBeUndefined();
+  it("keeps the click paying while another subscription it brought is still active", async () => {
+    await seedReferredSubscription(merchant.id, clickId, "sub_1");
+    await seedReferredSubscription(merchant.id, clickId, "sub_2");
+
+    await handleSubscriptionDeleted(merchant, deleted("sub_1"));
+
+    expect((await db.click.findUniqueOrThrow({ where: { id: clickId } })).subscriptionCancelledAt).toBeNull();
+  });
+
+  it("ignores an unreferred subscription of a referred customer", async () => {
+    await seedReferredSubscription(merchant.id, clickId, "sub_1");
+
+    await handleSubscriptionDeleted(merchant, deleted("sub_unreferred"));
+
+    expect((await db.click.findUniqueOrThrow({ where: { id: clickId } })).subscriptionCancelledAt).toBeNull();
+  });
+
+  it("ignores another product's subscription on a shared Stripe account", async () => {
+    const other = await seedMerchant(merchant.ownerId);
+    await seedReferredSubscription(merchant.id, clickId, "sub_1");
+
+    await handleSubscriptionDeleted(other, deleted("sub_1"));
+
+    expect((await db.referredSubscription.findFirstOrThrow({ where: { clickId } })).cancelledAt).toBeNull();
+  });
+
+  it("recognises and marks a referral from before this release when its cancellation is the first event seen", async () => {
+    await seedLegacyClick(clickId, "cus_1");
+    await seedInvoiceCommission(affiliateId, clickId, "in_first");
+    stripeStub.invoices.retrieve.mockResolvedValueOnce(retrievedInvoice("in_first", "sub_1"));
+
+    await handleSubscriptionDeleted(merchant, deleted("sub_1"));
+
+    expect((await db.referredSubscription.findFirstOrThrow({ where: { clickId } })).cancelledAt).toBeInstanceOf(Date);
+    expect((await db.click.findUniqueOrThrow({ where: { id: clickId } })).subscriptionCancelledAt).toBeInstanceOf(Date);
+  });
+
+  it("ignores a customer nobody referred, without asking Stripe", async () => {
+    await expect(handleSubscriptionDeleted(merchant, deleted("sub_x", "cus_unknown"))).resolves.toBeUndefined();
+    expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+    expect(stripeStub.subscriptions.list).not.toHaveBeenCalled();
   });
 
   describe("referralCounts", () => {
@@ -122,8 +189,9 @@ describe("handleSubscriptionDeleted", () => {
           payableAt: new Date(),
         },
       });
+      await seedReferredSubscription(merchant.id, clickId, "sub_1", { ref: "pi_1", at: new Date() });
 
-      await handleSubscriptionDeleted(merchant, { customer: "cus_1" } as Stripe.Subscription);
+      await handleSubscriptionDeleted(merchant, deleted("sub_1"));
 
       expect(await referralCounts(affiliateId)).toEqual({ total: 1, active: 0 });
     });
