@@ -106,6 +106,13 @@ export async function reverseCommission(
  * any other; that is rare and errs towards the merchant. An invoice paid by
  * several charges is prorated against the one refunded charge, which overstates
  * the refund (finding I-3, a later release).
+ *
+ * The reverse case is not handled specially either: a refund that leaves out
+ * tax or shipping (a 60.00 charge of 50.00 goods plus 10.00 shipping, refunding
+ * just the 50.00) still prorates against the whole charge, so it keeps 1/6 of
+ * the commission where it could be argued the sale should void instead. That
+ * predates this release and errs toward the affiliate, so it is left as is for
+ * a later release.
  */
 export function prorateCommission(input: {
   gross: Prisma.Decimal.Value;

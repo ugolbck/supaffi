@@ -20,7 +20,9 @@ export async function paymentIntentForInvoice(stripe: Stripe, invoiceId: string)
     const intent = payments.data[0]?.payment.payment_intent;
     return typeof intent === "string" ? intent : (intent?.id ?? null);
   } catch (err) {
-    console.error(`[worker] could not find the payment behind invoice ${invoiceId}`, err);
+    console.warn(
+      `[worker] could not check invoice ${invoiceId} for an earlier refund: ${(err as Error).message}. The refund check was skipped; replacing the Stripe key in settings lets Supaffi read charges.`
+    );
     return null;
   }
 }
@@ -42,9 +44,8 @@ export async function latestChargeFor(stripe: Stripe, paymentIntentId: string): 
     if (!charge || typeof charge === "string") return null;
     return { amount: charge.amount, amountRefunded: charge.amount_refunded };
   } catch (err) {
-    console.error(
-      `[worker] could not read the charge behind ${paymentIntentId}; the commission is recorded without checking for an earlier refund`,
-      err
+    console.warn(
+      `[worker] could not read the charge behind payment ${paymentIntentId}: ${(err as Error).message}. The refund check was skipped; replacing the Stripe key in settings lets Supaffi read charges.`
     );
     return null;
   }

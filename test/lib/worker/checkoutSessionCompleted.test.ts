@@ -64,7 +64,7 @@ describe("handleCheckoutSessionCompleted", () => {
   let clickInput: { affiliateId: string; referralToken: string; expiresAt: Date };
 
   function sessionFixture(opts: {
-    invoice: string;
+    invoice?: string | null;
     metadataToken?: string;
     paymentStatus?: Stripe.Checkout.Session.PaymentStatus;
     amountTotal?: number;
@@ -72,10 +72,12 @@ describe("handleCheckoutSessionCompleted", () => {
     totalDetails?: null;
     shippingCost?: { amount_subtotal: number; amount_tax: number; amount_total: number };
     currency?: string;
+    mode?: Stripe.Checkout.Session.Mode;
+    paymentIntent?: string | null;
   }): Stripe.Checkout.Session {
     return {
-      id: `cs_${opts.invoice}`,
-      mode: "subscription",
+      id: `cs_${opts.invoice ?? opts.paymentIntent}`,
+      mode: opts.mode ?? "subscription",
       payment_status: opts.paymentStatus ?? "paid",
       created: Math.floor(Date.now() / 1000),
       metadata: { [REFERRAL_METADATA_KEY]: opts.metadataToken ?? clickInput.referralToken },
@@ -88,8 +90,8 @@ describe("handleCheckoutSessionCompleted", () => {
           : { amount_discount: 0, amount_shipping: opts.shippingCost?.amount_subtotal ?? 0, amount_tax: opts.tax ?? 0 },
       shipping_cost: opts.shippingCost ?? null,
       currency: opts.currency ?? "usd",
-      invoice: opts.invoice,
-      payment_intent: null,
+      invoice: opts.invoice ?? null,
+      payment_intent: opts.paymentIntent ?? null,
       subscription: null,
     } as unknown as Stripe.Checkout.Session;
   }
@@ -251,6 +253,7 @@ describe("handleCheckoutSessionCompleted", () => {
       await expect(
         handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_notax", totalDetails: null }))
       ).resolves.toBeUndefined();
+      expect(errors).toHaveBeenCalledTimes(1);
     } finally {
       errors.mockRestore();
     }
@@ -296,7 +299,7 @@ describe("handleCheckoutSessionCompleted", () => {
     // An older key without Charges read can be refused with more than one
     // error type; an invalid request is used here, and the handler must not
     // care which.
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
     stripeStub.invoicePayments.list.mockImplementation(async () => ({
       data: [{ payment: { type: "payment_intent", payment_intent: "pi_old_key" } }],
     }));
@@ -305,13 +308,59 @@ describe("handleCheckoutSessionCompleted", () => {
     });
     try {
       await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_old_key" }));
+      expect(warnings).toHaveBeenCalledTimes(1);
     } finally {
-      errors.mockRestore();
+      warnings.mockRestore();
     }
 
     const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
     expect(commission.amount.toString()).toBe("10");
     expect(commission.status).toBe("PENDING");
+  });
+
+  it("still records the commission when the invoice payment lookup fails", async () => {
+    // Same fallback as the charge lookup above, but for the earlier step:
+    // finding the PaymentIntent behind a subscription invoice at all.
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stripeStub.invoicePayments.list.mockImplementation(async () => {
+      throw Object.assign(new Error("invalid request"), { type: "StripeInvalidRequestError", statusCode: 400 });
+    });
+    try {
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_list_fails" }));
+      expect(warnings).toHaveBeenCalledTimes(1);
+    } finally {
+      warnings.mockRestore();
+    }
+
+    expect(stripeStub.paymentIntents.retrieve).not.toHaveBeenCalled();
+    const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+    expect(commission.amount.toString()).toBe("10");
+    expect(commission.grossAmount?.toString()).toBe("10");
+    expect(commission.status).toBe("PENDING");
+  });
+
+  it("applies a refund on a one-time purchase, made before the commission was recorded", async () => {
+    // Payment-mode Checkout Sessions have no Invoice at all: the
+    // PaymentIntent on the Session is the only trace back to the Charge, so
+    // the invoice lookup must not run and paymentIntents.retrieve must be
+    // called directly with the Session's own PaymentIntent id.
+    stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+      id: "pi_one_time",
+      latest_charge: { id: "ch_one_time", amount: 5000, amount_refunded: 2500 },
+    }));
+
+    await handleCheckoutSessionCompleted(
+      merchant,
+      sessionFixture({ mode: "payment", paymentIntent: "pi_one_time", invoice: null })
+    );
+
+    expect(stripeStub.invoicePayments.list).not.toHaveBeenCalled();
+    expect(stripeStub.paymentIntents.retrieve).toHaveBeenCalledWith("pi_one_time", { expand: ["latest_charge"] });
+    const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+    expect(commission.amount.toString()).toBe("5");
+    expect(commission.grossAmount?.toString()).toBe("10");
+    expect(commission.status).toBe("PENDING");
+    expect(commission.voidReason).toBe("partial refund");
   });
 
   it("records a dong sale larger than the ledger used to hold", async () => {

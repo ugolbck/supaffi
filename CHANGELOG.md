@@ -24,14 +24,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Revenue on the overview follows the same rule. Sales recorded before this
   version keep the figures they had, so a period that spans the update can
   look a little lower than the one before it.
-- A renewal paid from the customer's credit balance, or discounted to nothing,
-  no longer adds an empty commission.
+- A first purchase or a renewal that comes to nothing, or is paid from the
+  customer's credit balance, no longer adds an empty commission. A renewal
+  paid partly from that balance now earns only on the part actually paid.
 - A refund that reaches Supaffi before the sale it belongs to still lowers or
   cancels that sale's commission.
 - A commission cancelled by a lost chargeback now says so plainly, for you
   and for the affiliate.
 - Very large sales in currencies such as the Vietnamese dong or the
   Indonesian rupiah are recorded instead of failing.
+- A sale whose tax cannot be read earns nothing rather than a wrong amount,
+  and is noted in the server log.
 
 ### Changed
 
