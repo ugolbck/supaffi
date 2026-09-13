@@ -83,7 +83,10 @@ export async function findReferredSubscription(
   const where = { merchantId_stripeSubscriptionId: { merchantId: merchant.id, stripeSubscriptionId } };
   const found = await db.referredSubscription.findUnique({ where, include: WITH_CLICK });
   if (found || !stripeCustomerId) return found;
-  if (!(await recognizeLegacyClick(merchant, stripeCustomerId))) return null;
+  await recognizeLegacyClick(merchant, stripeCustomerId);
+  // Looked up again whatever recognition did. Another event may have finished
+  // the check for this click a moment earlier and adopted the subscription, in
+  // which case this one finds no unchecked click but the row now exists.
   return db.referredSubscription.findUnique({ where, include: WITH_CLICK });
 }
 
@@ -119,7 +122,8 @@ async function retrieveLegacyInvoice(
  * Recognises the subscription a click referred before 0.2.5, when the first
  * checkout stored only the customer on the click and no subscription id existed
  * to backfill. Runs at most once per click: `legacyCheckedAt` records that the
- * check finished, whatever it found. Returns whether it adopted anything.
+ * check finished, whatever it found. A click whose self referral the Owner
+ * confirmed adopts nothing, since nothing it brings earns.
  *
  * The customer alone is not proof: products on a shared Stripe account share
  * customers, so a legacy click can hold commissions on another product's
@@ -133,9 +137,14 @@ async function retrieveLegacyInvoice(
  * The first payment is the earliest retrieved invoice of that subscription
  * that charged money, dated by the invoice, not by the commission row.
  */
-async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string): Promise<boolean> {
+async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string): Promise<void> {
   const click = await db.click.findFirst({
-    where: { stripeCustomerId, legacyCheckedAt: null, affiliate: { merchantId: merchant.id } },
+    where: {
+      stripeCustomerId,
+      legacyCheckedAt: null,
+      fraudConfirmedAt: null,
+      affiliate: { merchantId: merchant.id },
+    },
     select: {
       id: true,
       commissions: {
@@ -146,7 +155,7 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
       },
     },
   });
-  if (!click) return false;
+  if (!click) return;
 
   const invoices: Stripe.Invoice[] = [];
   if (click.commissions.length > 0) {
@@ -154,7 +163,7 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
     for (const { stripePaymentRef } of click.commissions) {
       if (!stripePaymentRef) continue;
       const invoice = await retrieveLegacyInvoice(stripe, click.id, stripePaymentRef);
-      if (invoice === "unanswered") return false;
+      if (invoice === "unanswered") return;
       if (invoice) invoices.push(invoice);
     }
   }
@@ -189,7 +198,6 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
   }
 
   await db.click.update({ where: { id: click.id }, data: { legacyCheckedAt: new Date() } });
-  return adopted.length > 0;
 }
 
 /**

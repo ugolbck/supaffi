@@ -197,6 +197,54 @@ describe("referred subscriptions", () => {
       expect((await findReferredSubscription(merchant, "sub_referred", "cus_1"))?.clickId).toBe(click.id);
     });
 
+    it("finds the subscription another event adopted while this one was looking", async () => {
+      const { affiliate, click } = await seedReferral(merchant);
+      await seedLegacyClick(click.id, "cus_1");
+      await seedInvoiceCommission(affiliate.id, click.id, "in_first");
+      // The concurrent event finished first: the click is checked and the row
+      // exists, but this event's opening lookup ran before either landed.
+      await db.click.update({ where: { id: click.id }, data: { legacyCheckedAt: new Date() } });
+      await seedReferredSubscription(merchant.id, click.id, "sub_1");
+      const lookups = vi.spyOn(db.referredSubscription, "findUnique");
+      lookups.mockImplementationOnce((() => Promise.resolve(null)) as never);
+
+      try {
+        expect((await findReferredSubscription(merchant, "sub_1", "cus_1"))?.clickId).toBe(click.id);
+      } finally {
+        lookups.mockRestore();
+      }
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("adopts nothing for a click whose self referral was confirmed", async () => {
+      const { affiliate, click } = await seedReferral(merchant);
+      await seedLegacyClick(click.id, "cus_1");
+      await db.click.update({ where: { id: click.id }, data: { fraudConfirmedAt: new Date() } });
+      await seedInvoiceCommission(affiliate.id, click.id, "in_first");
+      invoicesById([retrievedInvoice("in_first", "sub_1")]);
+
+      expect(await findReferredSubscription(merchant, "sub_1", "cus_1")).toBeNull();
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+      expect(await db.referredSubscription.count()).toBe(0);
+    });
+
+    it.each([
+      ["an invalid request other than a missing invoice", () => stripeError("StripeInvalidRequestError", "parameter_invalid")],
+      ["an error that is not from Stripe", () => new Error("socket hang up")],
+    ])("throws on %s, and records nothing", async (_label, makeError) => {
+      const { affiliate, click } = await seedReferral(merchant);
+      await seedLegacyClick(click.id, "cus_1");
+      await seedInvoiceCommission(affiliate.id, click.id, "in_first");
+      const error = makeError();
+      stripeStub.invoices.retrieve.mockImplementation(async () => {
+        throw error;
+      });
+
+      await expect(findReferredSubscription(merchant, "sub_1", "cus_1")).rejects.toBe(error);
+      expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).legacyCheckedAt).toBeNull();
+      expect(await db.referredSubscription.count()).toBe(0);
+    });
+
     it("counts an invoice Stripe no longer has as no match", async () => {
       const { affiliate, click } = await seedReferral(merchant);
       await seedLegacyClick(click.id, "cus_1");
