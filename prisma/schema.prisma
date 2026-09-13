@@ -9,28 +9,28 @@ datasource db {
 
 // The person who installed this Instance. Full access to every Merchant on it.
 model Owner {
-  id           String     @id @default(cuid())
-  email        String     @unique
-  passwordHash String
+  id                String     @id @default(cuid())
+  email             String     @unique
+  passwordHash      String
   // Set on every password change. Owner sessions issued before it are
   // refused, the only way to end a JWT session with no adapter behind it.
   passwordChangedAt DateTime?
-  createdAt    DateTime   @default(now())
-  merchants    Merchant[]
+  createdAt         DateTime   @default(now())
+  merchants         Merchant[]
 }
 
 model Merchant {
-  id        String   @id @default(cuid())
-  ownerId   String
-  owner     Owner    @relation(fields: [ownerId], references: [id])
-  name      String
+  id         String @id @default(cuid())
+  ownerId    String
+  owner      Owner  @relation(fields: [ownerId], references: [id])
+  name       String
   // What the dashboard URL carries instead of the cuid. Derived from `name`
   // at creation and left alone afterwards, so renaming a product does not
   // break links already pointing at it. Unique per Owner, not globally: two
   // Owners on the same Instance can both have a product called "Docs".
-  slug      String
-  domain    String   @unique // e.g. affiliates.instantgradient.com
-  websiteUrl String  // the actual product site affiliates promote, e.g. https://instantgradient.com — distinct from `domain`, which is only the tracking subdomain
+  slug       String
+  domain     String @unique // e.g. affiliates.instantgradient.com
+  websiteUrl String // the actual product site affiliates promote, e.g. https://instantgradient.com — distinct from `domain`, which is only the tracking subdomain
 
   // Encrypted at rest (ADR 0003), master key outside the database.
   // Nullable because connecting Stripe is a separate onboarding step from
@@ -53,10 +53,11 @@ model Merchant {
   onboardingCompletedAt  DateTime? // the owner left the last onboarding screen
   welcomeDismissedAt     DateTime? // the first-visit banner on the overview was closed
 
-  programs       Program[]
-  affiliates     Affiliate[]
-  webhookEvents  WebhookEvent[]
-  createdAt      DateTime @default(now())
+  programs              Program[]
+  affiliates            Affiliate[]
+  webhookEvents         WebhookEvent[]
+  referredSubscriptions ReferredSubscription[]
+  createdAt             DateTime               @default(now())
 
   @@unique([ownerId, slug])
 }
@@ -68,44 +69,44 @@ enum CommissionDurationType {
 }
 
 model Program {
-  id         String                 @id @default(cuid())
+  id         String   @id @default(cuid())
   merchantId String
-  merchant   Merchant               @relation(fields: [merchantId], references: [id])
+  merchant   Merchant @relation(fields: [merchantId], references: [id])
   name       String
   // Appears in the public signup URL an Affiliate is sent, which is a link a
   // real person is asked to trust. Unique per Merchant, same derive-once rule
   // as Merchant.slug.
   slug       String
 
-  defaultCommissionRate   Decimal  @db.Decimal(5, 2) // percentage, e.g. 20.00
-  commissionDurationType  CommissionDurationType
-  commissionDurationMonths Int?    // only set when commissionDurationType = FIXED_MONTHS
-  attributionWindowDays   Int      @default(60)
-  holdingPeriodDays       Int      @default(30)
+  defaultCommissionRate    Decimal                @db.Decimal(5, 2) // percentage, e.g. 20.00
+  commissionDurationType   CommissionDurationType
+  commissionDurationMonths Int? // only set when commissionDurationType = FIXED_MONTHS
+  attributionWindowDays    Int                    @default(60)
+  holdingPeriodDays        Int                    @default(30)
 
   affiliates Affiliate[]
-  createdAt  DateTime @default(now())
+  createdAt  DateTime    @default(now())
 
   @@unique([merchantId, slug])
 }
 
 model Affiliate {
   id         String   @id @default(cuid())
-  merchantId String   // identity is scoped to the Merchant, not the Program — moving between Programs (e.g. Standard to VIP tier) keeps the same Affiliate row and history
+  merchantId String // identity is scoped to the Merchant, not the Program — moving between Programs (e.g. Standard to VIP tier) keeps the same Affiliate row and history
   merchant   Merchant @relation(fields: [merchantId], references: [id])
-  programId  String   // current Program assignment, reassignable
+  programId  String // current Program assignment, reassignable
   program    Program  @relation(fields: [programId], references: [id])
 
-  email         String
-  name          String?
+  email                String
+  name                 String?
   customCommissionRate Decimal? @db.Decimal(5, 2) // overrides the current Program's default when set
-  payoutDetails String?  // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
+  payoutDetails        String? // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
 
   links       AffiliateLink[]
   clicks      Click[]
   commissions Commission[]
   loginTokens AffiliateLoginToken[]
-  createdAt   DateTime @default(now())
+  createdAt   DateTime              @default(now())
 
   @@unique([merchantId, email])
 }
@@ -145,7 +146,7 @@ model AffiliateLoginToken {
   affiliateId String
   affiliate   Affiliate @relation(fields: [affiliateId], references: [id])
   tokenHash   String    @unique // SHA-256 of the raw token — the raw token itself only ever exists in memory and the emailed URL
-  expiresAt   DateTime  // createdAt + 15 minutes, a standard range for a cold-email magic link
+  expiresAt   DateTime // createdAt + 15 minutes, a standard range for a cold-email magic link
   usedAt      DateTime? // set on redemption; a used or expired token is rejected
 
   createdAt DateTime @default(now())
@@ -158,7 +159,7 @@ model Click {
   affiliateId   String
   affiliate     Affiliate @relation(fields: [affiliateId], references: [id])
   referralToken String    @unique // the value passed into Stripe as client_reference_id — only used to match the FIRST checkout
-  expiresAt     DateTime  // createdAt + Program.attributionWindowDays, computed at insert
+  expiresAt     DateTime // createdAt + Program.attributionWindowDays, computed at insert
   createdAt     DateTime  @default(now())
 
   // Which link the visitor arrived through. Nullable so deleting a link does
@@ -167,10 +168,17 @@ model Click {
   linkId String?
   link   AffiliateLink? @relation(fields: [linkId], references: [id], onDelete: SetNull)
 
-  // Set once, when checkout.session.completed fires and matches referralToken.
-  // client_reference_id doesn't propagate to renewal invoices, so every invoice.paid
-  // event after the first is matched via this Customer ID instead, not the token.
+  // Legacy, read only. Before 0.2.5 the first checkout wrote the Customer here
+  // and renewals were matched on it, which paid the wrong affiliate when two
+  // products share a Stripe account and paid on subscriptions nobody referred.
+  // Nothing writes it any more. It is read only to recognise a subscription
+  // referred before the upgrade (src/lib/worker/referredSubscription.ts).
   stripeCustomerId String? @unique
+
+  // When Supaffi finished asking Stripe which subscriptions this legacy click
+  // referred, whatever the answer. Set once, so a customer's unreferred
+  // subscriptions do not trigger the same Stripe reads on every invoice.
+  legacyCheckedAt DateTime?
 
   // When the subscription this click brought was cancelled, if it ever was.
   // Nothing retroactive happens to commissions already earned; this exists so
@@ -178,10 +186,49 @@ model Click {
   // affiliate to watch their income end with no explanation.
   subscriptionCancelledAt DateTime?
 
-  commissions Commission[]
+  // When the Owner confirmed a self referral on one of this click's
+  // commissions. From then on nothing this click brings earns: no checkout,
+  // no renewal. Voiding the one row was not enough, the next renewal simply
+  // earned again.
+  fraudConfirmedAt DateTime?
+
+  commissions           Commission[]
+  referredSubscriptions ReferredSubscription[]
 
   @@index([stripeCustomerId])
   @@index([linkId])
+}
+
+/// A subscription that a referred Checkout Session created. Renewals earn by
+/// matching the invoice's subscription against this row, never the customer:
+/// products sharing a Stripe account share customers, and a customer's other
+/// subscriptions and one-off invoices were never referred.
+///
+/// Unique per Merchant, not globally, because every product on a shared
+/// account receives its own copy of each event.
+model ReferredSubscription {
+  id                   String   @id @default(cuid())
+  merchantId           String
+  merchant             Merchant @relation(fields: [merchantId], references: [id])
+  clickId              String
+  click                Click    @relation(fields: [clickId], references: [id])
+  stripeSubscriptionId String
+
+  // The first time money moved on this subscription: the paid checkout's
+  // Invoice (or PaymentIntent) id, or after a free trial the first invoice
+  // with an amount. ONE_TIME programs pay on this payment only, and
+  // FIXED_MONTHS counts its months from firstPaidAt. Null while a free trial
+  // has not charged yet.
+  firstPaymentRef String?
+  firstPaidAt     DateTime?
+
+  // When Stripe reported this subscription deleted.
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([merchantId, stripeSubscriptionId])
+  @@index([clickId])
 }
 
 enum CommissionStatus {
@@ -193,11 +240,11 @@ enum CommissionStatus {
 }
 
 model Commission {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   affiliateId String
   affiliate   Affiliate @relation(fields: [affiliateId], references: [id])
   clickId     String
-  click       Click    @relation(fields: [clickId], references: [id])
+  click       Click     @relation(fields: [clickId], references: [id])
 
   // Null for a normal Commission. Set when this row is a negative clawback entry
   // for a refund that landed after the original Commission was already Paid —
@@ -206,15 +253,15 @@ model Commission {
   adjustsCommission   Commission?  @relation("Adjustment", fields: [adjustsCommissionId], references: [id])
   adjustments         Commission[] @relation("Adjustment")
 
-  stripePaymentRef String? @unique // an Invoice ID for subscriptions, a PaymentIntent ID for one-time purchases (no Invoice exists for those) — null for adjustment rows, which aren't tied to a new payment
+  stripePaymentRef String?  @unique // an Invoice ID for subscriptions, a PaymentIntent ID for one-time purchases (no Invoice exists for those) — null for adjustment rows, which aren't tied to a new payment
   // Eighteen digits because a single sale in a currency like VND or IDR can
   // pass the eight integer digits Decimal(10,2) allowed.
-  amount         Decimal @db.Decimal(18, 2) // negative for adjustment rows
-  currency       String  // ISO code, e.g. "usd", "eur" — never converted (see CONTEXT.md)
+  amount           Decimal  @db.Decimal(18, 2) // negative for adjustment rows
+  currency         String // ISO code, e.g. "usd", "eur" — never converted (see CONTEXT.md)
   // The sale the commission was earned on, major units, same currency: after
   // discounts, before tax and shipping. Rows written before 0.2.4 hold what
   // the customer paid including tax. Null for adjustments and older rows.
-  saleAmount     Decimal? @db.Decimal(18, 2)
+  saleAmount       Decimal? @db.Decimal(18, 2)
 
   // What this commission was before any refund reduced it. Set at creation
   // and never changed again, so a second partial refund prorates against the
@@ -225,11 +272,11 @@ model Commission {
   grossAmount Decimal? @db.Decimal(18, 2)
 
   status     CommissionStatus @default(PENDING)
-  payableAt  DateTime         // createdAt + Program.holdingPeriodDays
+  payableAt  DateTime // createdAt + Program.holdingPeriodDays
   paidAt     DateTime?
   voidedAt   DateTime?
-  voidReason String?          // e.g. "refund", "confirmed self-referral"
-  flagReason String?          // e.g. "email:buyer@x.com affiliate@x.com" or "card"
+  voidReason String? // e.g. "refund", "confirmed self-referral"
+  flagReason String? // e.g. "email:buyer@x.com affiliate@x.com" or "card"
 
   createdAt DateTime @default(now())
 
@@ -245,16 +292,16 @@ enum WebhookEventStatus {
 }
 
 model WebhookEvent {
-  id            String   @id @default(cuid())
+  id            String             @id @default(cuid())
   merchantId    String
-  merchant      Merchant @relation(fields: [merchantId], references: [id])
+  merchant      Merchant           @relation(fields: [merchantId], references: [id])
   stripeEventId String
   payload       Json
   status        WebhookEventStatus @default(PENDING)
-  attempts      Int      @default(0)
-  lastError     String?  // last failure message, for debugging FAILED rows
-  nextAttemptAt DateTime @default(now()) // backoff scheduling and, while PROCESSING, the claim lease; the claim query filters on this
-  createdAt     DateTime @default(now())
+  attempts      Int                @default(0)
+  lastError     String? // last failure message, for debugging FAILED rows
+  nextAttemptAt DateTime           @default(now()) // backoff scheduling and, while PROCESSING, the claim lease; the claim query filters on this
+  createdAt     DateTime           @default(now())
   processedAt   DateTime?
 
   // Blocks duplicate delivery per Merchant. Not globally: two products on

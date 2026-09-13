@@ -51,6 +51,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
 
   beforeEach(async () => {
     await db.commission.deleteMany();
+    await db.referredSubscription.deleteMany();
     await db.click.deleteMany();
     await db.affiliateLink.deleteMany();
     await db.affiliateLoginToken.deleteMany();
@@ -71,6 +72,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
 
   afterAll(async () => {
     await db.commission.deleteMany();
+    await db.referredSubscription.deleteMany();
     await db.click.deleteMany();
     await db.affiliateLink.deleteMany();
     await db.affiliateLoginToken.deleteMany();

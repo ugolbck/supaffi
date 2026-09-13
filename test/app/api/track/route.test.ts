@@ -80,6 +80,7 @@ function requestFor(host: string, code: string, headers: Record<string, string> 
 describe.skipIf(!hasDatabase)("GET /api/track", () => {
   beforeEach(async () => {
     resetTrackThrottle();
+    await db.referredSubscription.deleteMany();
     await db.click.deleteMany();
     await db.retiredLinkCode.deleteMany();
     await db.affiliateLink.deleteMany();
@@ -90,6 +91,7 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
   });
 
   afterAll(async () => {
+    await db.referredSubscription.deleteMany();
     await db.click.deleteMany();
     await db.retiredLinkCode.deleteMany();
     await db.affiliateLink.deleteMany();

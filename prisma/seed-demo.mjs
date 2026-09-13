@@ -113,6 +113,8 @@ async function clearDemo(merchantId) {
   // commissions, which point at clicks, which point at links.
   await db.commission.deleteMany({ where: { affiliateId: { in: ids }, adjustsCommissionId: { not: null } } });
   await db.commission.deleteMany({ where: { affiliateId: { in: ids } } });
+  // Referred subscriptions point at clicks, so they go before them.
+  await db.referredSubscription.deleteMany({ where: { click: { affiliateId: { in: ids } } } });
   await db.click.deleteMany({ where: { affiliateId: { in: ids } } });
   await db.affiliateLink.deleteMany({ where: { affiliateId: { in: ids } } });
   await db.affiliateLoginToken.deleteMany({ where: { affiliateId: { in: ids } } });
@@ -226,7 +228,21 @@ async function main() {
   const spikes = new Set(Array.from({ length: Math.max(2, Math.floor(DAYS / 60)) }, () => Math.floor(random() * DAYS)));
   const clicks = [];
   const commissions = [];
+  const referredSubscriptions = [];
   let flaggedEmailCount = 0;
+
+  // Confirming a self referral cancels what the referral has not been paid
+  // yet and stops it earning, the way confirmCommissionFraud does.
+  function confirmSelfReferral(click, confirmed) {
+    click.fraudConfirmedAt = confirmed.voidedAt;
+    for (const row of commissions) {
+      if (row.clickId !== click.id || row.adjustsCommissionId || row === confirmed) continue;
+      if (!["PENDING", "PAYABLE", "FLAGGED"].includes(row.status)) continue;
+      row.status = "VOIDED";
+      row.voidReason = "confirmed self-referral";
+      row.voidedAt = confirmed.voidedAt;
+    }
+  }
 
   function statusFor(createdAt) {
     const age = (NOW - createdAt.getTime()) / DAY;
@@ -293,6 +309,7 @@ async function main() {
         createdAt: at,
       });
     }
+    return row;
   }
 
   for (let daysAgo = DAYS - 1; daysAgo >= 0; daysAgo -= 1) {
@@ -329,6 +346,7 @@ async function main() {
         createdAt,
         stripeCustomerId: null,
         subscriptionCancelledAt: null,
+        fraudConfirmedAt: null,
       };
       clicks.push(click);
 
@@ -338,20 +356,41 @@ async function main() {
       const currency = currencyFor();
       const price = pick(PRICES[currency] ?? PRICES.usd);
       const saleAt = new Date(Math.min(NOW, createdAt.getTime() + random() * 2 * DAY));
-      addCommission(affiliate, clickId, saleAt, currency, price);
+      const first = addCommission(affiliate, clickId, saleAt, currency, price);
+      if (first.voidReason === "confirmed self-referral") {
+        confirmSelfReferral(click, first);
+        continue;
+      }
 
       if (!recurring || random() > 0.72) continue;
       // A subscription: renews monthly until it cancels, the program stops
-      // paying on it, or the renewal would land in the future.
-      click.stripeCustomerId = `cus_demo_${randomUUID()}`;
+      // paying on it, a self referral is confirmed, or the renewal would land
+      // in the future. Recorded the way a referred checkout records it, with
+      // the sale as its first payment.
+      const referred = {
+        id: randomUUID(),
+        merchantId: merchant.id,
+        clickId,
+        stripeSubscriptionId: `sub_demo_${randomUUID()}`,
+        firstPaymentRef: first.stripePaymentRef,
+        firstPaidAt: saleAt,
+        cancelledAt: null,
+        createdAt: saleAt,
+      };
+      referredSubscriptions.push(referred);
       let renewal = saleAt.getTime() + 30 * DAY;
       let months = 1;
       while (renewal < NOW && months < maxMonths) {
         if (random() < 0.07) {
           click.subscriptionCancelledAt = new Date(renewal - random() * 10 * DAY);
+          referred.cancelledAt = click.subscriptionCancelledAt;
           break;
         }
-        addCommission(affiliate, clickId, new Date(renewal), currency, price);
+        const renewed = addCommission(affiliate, clickId, new Date(renewal), currency, price);
+        if (renewed.voidReason === "confirmed self-referral") {
+          confirmSelfReferral(click, renewed);
+          break;
+        }
         renewal += 30 * DAY;
         months += 1;
       }
@@ -359,6 +398,7 @@ async function main() {
   }
 
   await insertMany("click", clicks);
+  await insertMany("referredSubscription", referredSubscriptions);
   // Originals before adjustments, so every adjustment has its commission.
   await insertMany("commission", commissions.filter((c) => !c.adjustsCommissionId));
   await insertMany("commission", commissions.filter((c) => c.adjustsCommissionId));

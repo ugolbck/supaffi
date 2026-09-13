@@ -262,6 +262,8 @@ export async function deleteMerchant(ownerId: string, merchantId: string): Promi
   const affiliates = { affiliate: { merchantId } };
   await db.$transaction([
     db.commission.deleteMany({ where: affiliates }),
+    // Points at the click, so it goes before clicks do.
+    db.referredSubscription.deleteMany({ where: { merchantId } }),
     db.click.deleteMany({ where: affiliates }),
     db.affiliateLink.deleteMany({ where: affiliates }),
     db.affiliateLoginToken.deleteMany({ where: affiliates }),

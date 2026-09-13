@@ -62,6 +62,7 @@ async function seedClick(merchantId: string, programId: string, stripeCustomerId
 
 async function clearAll() {
   await db.commission.deleteMany();
+  await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
   await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();

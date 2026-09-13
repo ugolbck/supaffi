@@ -50,6 +50,7 @@ const CUSTOMER_ID = "cus_test";
 
 async function clearAll() {
   await db.commission.deleteMany();
+  await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
   await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
