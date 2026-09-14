@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { handleCheckoutSessionCompleted } from "./handlers/checkoutSessionCompleted";
 import { handleInvoicePaid } from "./handlers/invoicePaid";
 import { handleChargeRefunded } from "./handlers/chargeRefunded";
+import { handleChargeDisputeCreated } from "./handlers/chargeDisputeCreated";
 import { handleChargeDisputeClosed } from "./handlers/chargeDisputeClosed";
 import { handleSubscriptionDeleted } from "./handlers/subscriptionDeleted";
 
@@ -26,6 +27,9 @@ export async function processWebhookEvent(row: WebhookEvent): Promise<void> {
       return handleInvoicePaid(merchant, event.data.object as Stripe.Invoice);
     case "charge.refunded":
       return handleChargeRefunded(merchant, event.data.object as Stripe.Charge);
+    // An open dispute holds the commission; its close releases or voids it.
+    case "charge.dispute.created":
+      return handleChargeDisputeCreated(merchant, event.data.object as Stripe.Dispute);
     case "charge.dispute.closed":
       return handleChargeDisputeClosed(merchant, event.data.object as Stripe.Dispute);
     case "customer.subscription.deleted":

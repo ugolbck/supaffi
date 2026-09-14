@@ -8,6 +8,7 @@ describe("REQUIRED_STRIPE_WEBHOOK_EVENTS", () => {
       "checkout.session.async_payment_succeeded",
       "invoice.paid",
       "charge.refunded",
+      "charge.dispute.created",
       "charge.dispute.closed",
       "customer.subscription.deleted",
     ]);

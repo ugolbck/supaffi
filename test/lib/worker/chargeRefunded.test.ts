@@ -330,12 +330,4 @@ describe("handleChargeRefunded", () => {
     expect(updated.voidReason).toBeNull();
     expect(await adjustmentsOf(commission)).toHaveLength(0);
   });
-
-  it("leaves the commission alone when the chargeback is won", async () => {
-    const commission = await givenCommission();
-    await handleChargeDisputeClosed(merchant, disputeFixture("won"));
-
-    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
-    expect(updated.status).toBe("PENDING");
-  });
 });

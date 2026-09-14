@@ -30,6 +30,12 @@ export const KEY_PERMISSIONS = [
     why: "matches a sale to the customer who made it",
   },
   {
+    token: "rak_dispute_read",
+    access: "Read",
+    row: "Disputes",
+    why: "holds a commission while its sale is disputed",
+  },
+  {
     token: "rak_invoice_read",
     access: "Read",
     row: "Invoices",

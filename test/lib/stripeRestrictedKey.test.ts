@@ -15,9 +15,11 @@ import { KEY_PERMISSIONS, keyName, restrictedKeyUrl } from "@/lib/stripeRestrict
 describe("restricted key link", () => {
   it("carries exactly the permissions Supaffi's Stripe calls need", () => {
     // Charges: reading a refund that happened before its commission existed.
+    // Disputes: holding a commission while a chargeback on its sale is open.
     expect(KEY_PERMISSIONS.map((permission) => permission.token)).toEqual([
       "rak_charge_read",
       "rak_customer_read",
+      "rak_dispute_read",
       "rak_invoice_read",
       "rak_payment_intent_read",
       "rak_payment_method_read",

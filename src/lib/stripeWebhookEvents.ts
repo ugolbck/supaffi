@@ -12,7 +12,10 @@ export const REQUIRED_STRIPE_WEBHOOK_EVENTS = [
   "checkout.session.async_payment_succeeded",
   "invoice.paid",
   "charge.refunded",
-  // A lost chargeback takes the sale back just like a full refund.
+  // An open chargeback holds the commission until it closes.
+  "charge.dispute.created",
+  // A lost chargeback takes the sale back just like a full refund; any other
+  // outcome releases the hold.
   "charge.dispute.closed",
   "customer.subscription.deleted",
 ] as const;
