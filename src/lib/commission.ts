@@ -460,6 +460,11 @@ export async function confirmCommissionFraud(
       throw new Error("Flagged commission not found");
     }
 
+    // Locked in id order first, matching Mark paid, so the two can never wait
+    // on each other's rows in opposite order: a renewal of this click held by
+    // a payout in another tab is waited for here rather than deadlocked.
+    await tx.$queryRaw`SELECT id FROM "Commission" WHERE "clickId" = ${existing.clickId} AND "adjustsCommissionId" IS NULL AND status IN ('PENDING', 'PAYABLE', 'FLAGGED') ORDER BY id FOR UPDATE`;
+
     // The referral was the self referral, not only this one payment, so
     // nothing it earned that has not been paid out yet stands. Paid
     // commissions stay paid: a paid commission is final. Adjustment rows are

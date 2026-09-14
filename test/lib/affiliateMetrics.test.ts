@@ -120,6 +120,51 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const landed = metrics.series.find((p) => p.date === noonDaysAgo(1).toISOString().slice(0, 10));
     expect(landed?.amounts.usd).toBeUndefined();
     expect(landed?.conversions).toBe(0);
+    // The legacy adjustment is unpaid (PAYABLE), so it does not move pending
+    // or payable either: it counts nowhere until it is voided.
+    expect(metrics.pending).toEqual([]);
+    expect(metrics.payable).toEqual([]);
+  });
+
+  it("counts a legacy PAID adjustment in Paid: history, unlike its unpaid counterparts", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const primary = await getPrimaryLink(sarah.id);
+    const click = await db.click.create({
+      data: {
+        affiliateId: sarah.id,
+        linkId: primary!.id,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 86400_000),
+      },
+    });
+    const sale = await db.commission.create({
+      data: {
+        affiliateId: sarah.id,
+        clickId: click.id,
+        amount: "30.00",
+        currency: "usd",
+        status: "PAID",
+        payableAt: new Date(),
+        paidAt: new Date(),
+        stripePaymentRef: crypto.randomUUID(),
+      },
+    });
+    await db.commission.create({
+      data: {
+        affiliateId: sarah.id,
+        clickId: click.id,
+        adjustsCommissionId: sale.id,
+        amount: "-10.00",
+        currency: "usd",
+        status: "PAID",
+        payableAt: new Date(),
+        paidAt: new Date(),
+      },
+    });
+
+    const metrics = await getAffiliateMetrics(sarah.id, 30);
+    expect(metrics.paid).toEqual([{ currency: "usd", total: "20.00" }]);
   });
 
   it("leaves it out of the previous period too, so the comparison is like for like", async () => {

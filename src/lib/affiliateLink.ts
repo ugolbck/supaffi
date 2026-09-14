@@ -304,8 +304,15 @@ export async function listLinksWithStats(affiliateId: string): Promise<Affiliate
 
   const [clickGroups, commissionRows] = await Promise.all([
     db.click.groupBy({ by: ["linkId"], where: { linkId: { in: ids } }, _count: { _all: true } }),
+    // An unpaid adjustment row an older version left behind counts nowhere; a
+    // paid one is history and stays in, same rule as every other paid or
+    // earned figure.
     db.commission.findMany({
-      where: { click: { linkId: { in: ids } }, status: { not: "VOIDED" } },
+      where: {
+        click: { linkId: { in: ids } },
+        status: { not: "VOIDED" },
+        OR: [{ status: "PAID" }, { adjustsCommissionId: null }],
+      },
       select: { amount: true, currency: true, click: { select: { linkId: true } } },
     }),
   ]);

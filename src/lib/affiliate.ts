@@ -478,9 +478,16 @@ export async function listAffiliatesForMerchant(
       where: { affiliateId: { in: ids } },
       _count: { _all: true },
     }),
+    // An unpaid adjustment row an older version left behind counts nowhere; a
+    // paid one is history and stays in, same rule as every other paid or
+    // earned figure.
     db.commission.groupBy({
       by: ["affiliateId", "currency"],
-      where: { affiliateId: { in: ids }, status: { notIn: ["VOIDED"] } },
+      where: {
+        affiliateId: { in: ids },
+        status: { notIn: ["VOIDED"] },
+        OR: [{ status: "PAID" }, { adjustsCommissionId: null }],
+      },
       _sum: { amount: true },
     }),
   ]);

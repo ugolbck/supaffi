@@ -309,4 +309,55 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     expect(stats[0].earned).toEqual([{ currency: "usd", total: "12.00" }]);
     expect(stats[1]).toMatchObject({ clicks: 1, conversions: 0, earned: [] });
   });
+
+  it("keeps a legacy PAID adjustment in a link's earnings but leaves an unpaid one out", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const primary = await getPrimaryLink(sarah.id);
+    const click = await db.click.create({
+      data: {
+        affiliateId: sarah.id,
+        linkId: primary!.id,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 86400_000),
+      },
+    });
+    const sale = await db.commission.create({
+      data: {
+        affiliateId: sarah.id,
+        clickId: click.id,
+        amount: "20.00",
+        currency: "usd",
+        status: "PAID",
+        payableAt: new Date(),
+        stripePaymentRef: crypto.randomUUID(),
+      },
+    });
+    await db.commission.create({
+      data: {
+        affiliateId: sarah.id,
+        clickId: click.id,
+        adjustsCommissionId: sale.id,
+        amount: "-5.00",
+        currency: "usd",
+        status: "PAID",
+        payableAt: new Date(),
+      },
+    });
+    await db.commission.create({
+      data: {
+        affiliateId: sarah.id,
+        clickId: click.id,
+        adjustsCommissionId: sale.id,
+        amount: "-10.00",
+        currency: "usd",
+        status: "PAYABLE",
+        payableAt: new Date(),
+      },
+    });
+
+    const stats = await listLinksWithStats(sarah.id);
+    // 20 - 5 (paid adjustment, kept) = 15; the unpaid -10 adjustment counts nowhere.
+    expect(stats[0].earned).toEqual([{ currency: "usd", total: "15.00" }]);
+  });
 });

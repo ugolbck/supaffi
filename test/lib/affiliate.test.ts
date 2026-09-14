@@ -457,6 +457,40 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       ]);
     });
 
+    it("keeps a legacy PAID adjustment in Earned but leaves an unpaid one out", async () => {
+      const affiliate = await makeAffiliate({ email: "adj@example.com", referralCode: "adj" });
+      const sale = await makeCommission(affiliate.id, "20.00", "usd", "PAID");
+      await db.commission.create({
+        data: {
+          affiliateId: affiliate.id,
+          clickId: sale.clickId,
+          adjustsCommissionId: sale.id,
+          amount: "-5.00",
+          currency: "usd",
+          status: "PAID",
+          payableAt: new Date(),
+        },
+      });
+      const unpaidSale = await makeCommission(affiliate.id, "30.00", "usd", "PAYABLE");
+      await db.commission.create({
+        data: {
+          affiliateId: affiliate.id,
+          clickId: unpaidSale.clickId,
+          adjustsCommissionId: unpaidSale.id,
+          amount: "-10.00",
+          currency: "usd",
+          status: "PAYABLE",
+          payableAt: new Date(),
+        },
+      });
+
+      const { rows } = await listAffiliatesForMerchant(ownerId, merchantId, NO_FILTERS, PAGE);
+
+      // 20 - 5 (paid adjustment, kept) + 30 (unpaid sale, kept) = 45; the
+      // unpaid -10 adjustment counts nowhere.
+      expect(rows[0].earned).toEqual([{ currency: "usd", total: "45.00" }]);
+    });
+
     it("filters by program", async () => {
       await makeAffiliate({ email: "std@example.com", referralCode: "std" });
       const vip = await makeAffiliate({

@@ -27,6 +27,12 @@ export function voidReasonText(reason: string | null, audience: Audience): strin
         : "Confirmed self-referral";
     case DEFAULT_OWNER_VOID:
       return audience === "affiliate" ? "Removed by the merchant" : "Voided by you";
+    case "refund after payout":
+      // Written once, by the migration that voided every adjustment row a
+      // refund or lost chargeback had left waiting to come off a payout.
+      return audience === "affiliate"
+        ? "Removed by the merchant"
+        : "Refund after payout, no longer taken off a payout";
     default:
       // A free-text reason the owner typed on the void form: private to
       // them, so the affiliate gets the generic line and the owner sees

@@ -560,10 +560,17 @@ export async function getTopAffiliates(
   const inWindow = window ? { createdAt: { gte: window.since, lte: window.until } } : {};
 
   // Ranked by money earned, not by clicks. Clicks are effort; this list is
-  // about who is actually working.
+  // about who is actually working. An unpaid adjustment row an older version
+  // left behind counts nowhere; a paid one is history and stays in, same rule
+  // as every other paid or earned figure.
   const earned = await db.commission.groupBy({
     by: ["affiliateId", "currency"],
-    where: { affiliate: { merchantId }, status: { notIn: ["VOIDED"] }, ...inWindow },
+    where: {
+      affiliate: { merchantId },
+      status: { notIn: ["VOIDED"] },
+      OR: [{ status: "PAID" }, { adjustsCommissionId: null }],
+      ...inWindow,
+    },
     _sum: { amount: true },
   });
   if (earned.length === 0) return [];
@@ -790,7 +797,7 @@ export async function getAffiliateMetrics(
   const since = window.since;
   const before = previousWindow(window, range);
 
-  const [clickRows, commissionRows, statusRows, unpaid, payable, previous] = await Promise.all([
+  const [clickRows, commissionRows, statusRows, paidRows, unpaid, payable, previous] = await Promise.all([
     db.click.findMany({
       where: { affiliateId, createdAt: { gte: since, lte: window.until } },
       select: { createdAt: true },
@@ -806,9 +813,19 @@ export async function getAffiliateMetrics(
       },
       select: { createdAt: true, amount: true, currency: true },
     }),
+    // Pending and flagged only: an unpaid adjustment row counts nowhere, and
+    // the migration only leaves them behind on statuses this never reads.
     db.commission.groupBy({
       by: ["currency", "status"],
-      where: { affiliateId, adjustsCommissionId: null },
+      where: { affiliateId, adjustsCommissionId: null, status: { in: ["PENDING", "FLAGGED"] } },
+      _sum: { amount: true },
+    }),
+    // Paid is history: a paid adjustment row a refund or lost chargeback wrote
+    // before this feature really lowered what was handed over, so it stays in
+    // the paid total, unlike its unpaid counterparts above.
+    db.commission.groupBy({
+      by: ["currency"],
+      where: { affiliateId, status: "PAID" },
       _sum: { amount: true },
     }),
     owedTotals({ affiliateId }),
@@ -830,8 +847,8 @@ export async function getAffiliateMetrics(
     addAmount(point, commission.currency, amount, amount);
   }
 
-  // statusRows is grouped by currency AND status, so folding e.g. PENDING and
-  // PAYABLE into one "unpaid" bucket can produce two rows for the same
+  // statusRows is grouped by currency AND status, so folding PENDING and
+  // FLAGGED into one "pending" bucket can produce two rows for the same
   // currency. totalsByCurrency does not merge duplicates, so they are summed
   // here first, with Prisma.Decimal rather than JS floats since this is money.
   const rowsFor = (statuses: readonly string[]) => {
@@ -859,7 +876,7 @@ export async function getAffiliateMetrics(
     pending: totalsByCurrency(rowsFor(["PENDING", "FLAGGED"])),
     payable,
     unpaid,
-    paid: totalsByCurrency(rowsFor(["PAID"])),
+    paid: totalsByCurrency(paidRows),
     series: [...series.values()],
     bucket: window.bucket,
     currencies: currenciesByUse([...series.values()]),

@@ -57,6 +57,16 @@ describe("voidReasonText", () => {
     expect(voidReasonText("voided by owner", "owner")).toBe("Voided by you");
   });
 
+  it("gives the owner a plain sentence for the migration's void reason, not the raw token", () => {
+    expect(voidReasonText("refund after payout", "owner")).toBe(
+      "Refund after payout, no longer taken off a payout"
+    );
+  });
+
+  it("gives the affiliate the generic removed message for the migration's void reason", () => {
+    expect(voidReasonText("refund after payout", "affiliate")).toBe("Removed by the merchant");
+  });
+
   it("returns null for a null reason", () => {
     expect(voidReasonText(null, "affiliate")).toBeNull();
     expect(voidReasonText(null, "owner")).toBeNull();

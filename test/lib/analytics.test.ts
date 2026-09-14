@@ -281,9 +281,11 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(top[1].clicks).toBe(6);
   });
 
-  it("counts sales per top affiliate without counting refund adjustments", async () => {
+  it("counts sales per top affiliate without counting refund adjustments, and leaves an unpaid one out of Earned", async () => {
     // A refund writes a second, negative commission pointing at the one it
     // corrects. Counting rows would read one refunded sale as two sales.
+    // The adjustment here is a legacy PAYABLE row an older version left
+    // behind: unpaid, so it counts nowhere until the migration voids it.
     const affiliate = await makeAffiliate("a");
     const first = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "20.00",
@@ -291,6 +293,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "30.00" });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "-20.00",
+      status: "PAYABLE",
       adjustsCommissionId: first.id,
     });
 
@@ -298,7 +301,25 @@ describe.skipIf(!hasDatabase)("analytics", () => {
 
     expect(top).toHaveLength(1);
     expect(top[0].sales).toBe(2);
-    expect(top[0].earned).toEqual([{ currency: "usd", total: "30.00" }]);
+    expect(top[0].earned).toEqual([{ currency: "usd", total: "50.00" }]);
+  });
+
+  it("keeps a legacy PAID adjustment in Earned: history, unlike its unpaid counterparts", async () => {
+    const affiliate = await makeAffiliate("a");
+    const first = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "20.00",
+      status: "PAID",
+    });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "-5.00",
+      status: "PAID",
+      adjustsCommissionId: first.id,
+    });
+
+    const top = await getTopAffiliates(ownerId, merchantId, 5);
+
+    expect(top).toHaveLength(1);
+    expect(top[0].earned).toEqual([{ currency: "usd", total: "15.00" }]);
   });
 
   it("returns payable groups carrying the exact commission ids behind each total", async () => {
