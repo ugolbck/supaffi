@@ -788,6 +788,76 @@ describe("handleInvoicePaid", () => {
     });
   });
 
+  describe("referredChargeMinor", () => {
+    // Registers a real charge for the invoice, the way "applies a refund"
+    // above does, so the cap against charge.amount has something to compare.
+    function chargePaid(amount: number) {
+      stripeStub.invoicePayments.list.mockImplementation(async () => ({
+        data: [{ payment: { type: "payment_intent", payment_intent: "pi_renewal" } }],
+      }));
+      stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+        id: "pi_renewal",
+        latest_charge: { id: "ch_renewal", amount, amount_refunded: 0 },
+      }));
+    }
+
+    it("equals the charge amount on a simple, fully referred renewal", async () => {
+      chargePaid(12000);
+      await handleInvoicePaid(merchant, invoiceFixture());
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.referredChargeMinor).toBe(12000);
+    });
+
+    it("never stores more than the charge itself, even when the computed share is larger", async () => {
+      // The invoice's own total (12000) computes a larger share than the
+      // charge actually moved (10000, as if a rounding or shipping
+      // difference separated the two); the cap must hold.
+      chargePaid(10000);
+      await handleInvoicePaid(merchant, invoiceFixture());
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.referredChargeMinor).toBe(10000);
+    });
+
+    it("reads the share from each line's own tax, not spread evenly over an untaxed referred line next to a taxed add-on", async () => {
+      // 100.00 referred plan with no tax, 100.00 add-on with 20.00 of
+      // exclusive tax on top: 220.00 charged. Spreading the 20.00 evenly
+      // across both lines would store 110.00; only the referred line's own
+      // (untaxed) share, 100.00, is correct.
+      const invoice = invoiceFixture(
+        {
+          total: 22000,
+          total_excluding_tax: 20000,
+          total_taxes: [{ amount: 2000, tax_behavior: "exclusive", taxable_amount: 10000 }],
+          amount_paid: 22000,
+        },
+        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: 10000, exclusiveTax: 2000, product: "prod_addon" })]
+      );
+
+      await handleInvoicePaid(merchant, invoice);
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.referredChargeMinor).toBe(10000);
+    });
+
+    it("rounds a fractional exact share down, never up", async () => {
+      // 100 minor units referred, 100 of another product, both untaxed, 200
+      // total; only 101 was actually paid in money. The referred share of
+      // what was paid is exactly 50.5, which must round down to 50, not up
+      // to 51.
+      const invoice = invoiceFixture(
+        { total: 200, total_excluding_tax: 200, total_taxes: [], amount_paid: 101 },
+        [invoiceLine({ amount: 100 }), invoiceLine({ amount: 100, product: "prod_other" })]
+      );
+
+      await handleInvoicePaid(merchant, invoice);
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.referredChargeMinor).toBe(50);
+    });
+  });
+
   describe("card check on renewals", () => {
     // The renewal was paid by pi_card, whose card is also saved on one of the
     // affiliate's own Stripe customers.

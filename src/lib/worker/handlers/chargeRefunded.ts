@@ -132,11 +132,14 @@ function logPaidIsFinal(commissionId: string, cause: string): void {
  * charge then left commission on money refunded from a part that was never
  * referred. When `referredChargeMinor` is recorded, refunds are prorated
  * against that share instead, and taken out of it first: `remaining =
- * max(0, referredChargeMinor - refunded)`. A refund of the non-referred share
- * alone still voids nothing under this reading; that is the accepted,
- * merchant-safe cost of not tracking which part of a refund a merchant meant.
- * Rows without the value (checkout, and rows written before this existed)
- * keep prorating against the whole charge.
+ * max(0, referredChargeMinor - refunded)`. `refunded` is the charge's whole
+ * cumulative total, with no way to tell which part of it a merchant meant, so
+ * a refund of only the non-referred share still counts fully against the
+ * referred share here and lowers or voids the commission the same as any
+ * other refund of that size. That is the accepted, merchant-safe cost of not
+ * tracking which part of a refund a merchant meant. Rows without the value
+ * (checkout, and rows written before this existed) keep prorating against
+ * the whole charge.
  */
 export function prorateCommission(input: {
   gross: Prisma.Decimal.Value;

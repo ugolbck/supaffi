@@ -30,7 +30,13 @@ describe("referredInvoiceBase", () => {
         SUB,
         REFERRED
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 10000, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 10000,
+        referredChargeMinor: 12000,
+        productIds: REFERRED,
+        otherProductIds: [],
+      });
     });
 
     it("leaves tax added on top out, since it was never in the line's amount", () => {
@@ -123,7 +129,13 @@ describe("referredInvoiceBase", () => {
         SUB,
         REFERRED
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 10000, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 10000,
+        referredChargeMinor: 10000,
+        productIds: REFERRED,
+        otherProductIds: [],
+      });
     });
 
     it("leaves out a one-off item the merchant added to the subscription itself", () => {
@@ -167,7 +179,13 @@ describe("referredInvoiceBase", () => {
         SUB,
         REFERRED
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 10000, productIds: REFERRED, otherProductIds: ["prod_other"] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 10000,
+        referredChargeMinor: 10000,
+        productIds: REFERRED,
+        otherProductIds: ["prod_other"],
+      });
     });
 
     it("earns nothing at all after a switch to another product", () => {
@@ -210,7 +228,13 @@ describe("referredInvoiceBase", () => {
         SUB,
         REFERRED
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 6000, productIds: REFERRED, otherProductIds: ["prod_addon"] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 6000,
+        referredChargeMinor: 6000,
+        productIds: REFERRED,
+        otherProductIds: ["prod_addon"],
+      });
     });
 
     it("lowers the referred base when the credit is the only other line on the invoice", () => {
@@ -220,7 +244,13 @@ describe("referredInvoiceBase", () => {
         SUB,
         REFERRED
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 6000, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 6000,
+        referredChargeMinor: 6000,
+        productIds: REFERRED,
+        otherProductIds: [],
+      });
     });
 
     it("leaves a negative proration of another product out, since it already belongs to that product", () => {
@@ -232,7 +262,13 @@ describe("referredInvoiceBase", () => {
         SUB,
         REFERRED
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 8000, productIds: REFERRED, otherProductIds: ["prod_other"] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 8000,
+        referredChargeMinor: 8000,
+        productIds: REFERRED,
+        otherProductIds: ["prod_other"],
+      });
     });
   });
 
@@ -255,7 +291,13 @@ describe("referredInvoiceBase", () => {
         REFERRED,
         ["si_basic"]
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 10000, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 10000,
+        referredChargeMinor: 10000,
+        productIds: REFERRED,
+        otherProductIds: [],
+      });
     });
 
     it("earns nothing on the same line when no item list is supplied", () => {
@@ -265,7 +307,7 @@ describe("referredInvoiceBase", () => {
         SUB,
         REFERRED
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 0, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({ kind: "earned", baseMinor: 0, referredChargeMinor: 0, productIds: REFERRED, otherProductIds: [] });
     });
 
     it("earns nothing on a null-subscription line whose item is not in the supplied list", () => {
@@ -276,7 +318,7 @@ describe("referredInvoiceBase", () => {
         REFERRED,
         ["si_other"]
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 0, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({ kind: "earned", baseMinor: 0, referredChargeMinor: 0, productIds: REFERRED, otherProductIds: [] });
     });
 
     it("earns nothing on a subscription line naming another subscription, without failing the whole invoice", () => {
@@ -286,7 +328,7 @@ describe("referredInvoiceBase", () => {
         SUB,
         REFERRED
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 0, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({ kind: "earned", baseMinor: 0, referredChargeMinor: 0, productIds: REFERRED, otherProductIds: [] });
     });
 
     it("earns nothing on a proration invoice item with no subscription id", () => {
@@ -306,7 +348,13 @@ describe("referredInvoiceBase", () => {
         SUB,
         REFERRED
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 3000, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 3000,
+        referredChargeMinor: 3000,
+        productIds: REFERRED,
+        otherProductIds: [],
+      });
     });
 
     it("earns nothing on a subscription line naming another subscription even when its item is in the supplied list", () => {
@@ -317,7 +365,7 @@ describe("referredInvoiceBase", () => {
         REFERRED,
         ["si_basic"]
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 0, productIds: REFERRED, otherProductIds: [] });
+      expect(result).toEqual({ kind: "earned", baseMinor: 0, referredChargeMinor: 0, productIds: REFERRED, otherProductIds: [] });
     });
 
     it("earns nothing on a proration invoice item naming another subscription", () => {
@@ -339,7 +387,13 @@ describe("referredInvoiceBase", () => {
         SUB,
         []
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 8000, productIds: [PRODUCT_ID], otherProductIds: ["prod_old"] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 8000,
+        referredChargeMinor: 8000,
+        productIds: [PRODUCT_ID],
+        otherProductIds: ["prod_old"],
+      });
     });
 
     it("learns nothing from an invoice of prorations only", () => {
@@ -359,7 +413,58 @@ describe("referredInvoiceBase", () => {
         SUB,
         []
       );
-      expect(result).toEqual({ kind: "earned", baseMinor: 10000, productIds: [PRODUCT_ID], otherProductIds: [] });
+      expect(result).toEqual({
+        kind: "earned",
+        baseMinor: 10000,
+        referredChargeMinor: 10000,
+        productIds: [PRODUCT_ID],
+        otherProductIds: [],
+      });
+    });
+  });
+
+  describe("referredChargeMinor", () => {
+    it("reads it from each counted line's own tax, not spread evenly, when an untaxed referred line sits next to a taxed add-on", () => {
+      // 100.00 referred, untaxed; 100.00 add-on with 20.00 of exclusive tax
+      // on top; 220.00 charged. Spread evenly the 20.00 would land 10.00 on
+      // each line, storing 110.00; only the referred line's own tax (none)
+      // is correct here.
+      const result = referredInvoiceBase(
+        invoice({
+          total: 22000,
+          total_excluding_tax: 20000,
+          total_taxes: [{ amount: 2000, tax_behavior: "exclusive" }],
+        }),
+        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: 10000, exclusiveTax: 2000, product: "prod_addon" })],
+        SUB,
+        REFERRED
+      );
+      expect(result).toMatchObject({ kind: "earned", baseMinor: 10000, referredChargeMinor: 10000 });
+    });
+
+    it("falls back to spreading the invoice's tax evenly, rounded down, when a line's own tax cannot be read", () => {
+      // Same 100.00 referred (untaxed) next to a 100.00 add-on with 20.00 of
+      // exclusive tax as the accurate case above, but the referred line's own
+      // taxes field is neither an array nor null, a shape this module does
+      // not expect. Rather than fail the whole invoice, the charge-unit share
+      // falls back to spreading the invoice's tax evenly instead of reading
+      // each line's own: 100.00 grossed up by 220.00/200.00 lands on 110.00,
+      // not the 100.00 the accurate reading would give.
+      const unreadableTaxes = {
+        ...invoiceLine({ amount: 10000 }),
+        taxes: undefined,
+      } as unknown as Stripe.InvoiceLineItem;
+      const result = referredInvoiceBase(
+        invoice({
+          total: 22000,
+          total_excluding_tax: 20000,
+          total_taxes: [{ amount: 2000, tax_behavior: "exclusive" }],
+        }),
+        [unreadableTaxes, invoiceLine({ amount: 10000, exclusiveTax: 2000, product: "prod_addon" })],
+        SUB,
+        REFERRED
+      );
+      expect(result).toMatchObject({ kind: "earned", baseMinor: 10000, referredChargeMinor: 11000 });
     });
   });
 

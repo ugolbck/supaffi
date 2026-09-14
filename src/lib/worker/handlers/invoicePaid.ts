@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
@@ -18,7 +17,6 @@ import {
   paymentIntentForInvoice,
 } from "../paymentState";
 import { listInvoiceLines, referredInvoiceBase, type ReferredRevenue } from "../referredRevenue";
-import { invoiceLinesBeforeTax } from "../saleBase";
 import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import {
@@ -179,23 +177,6 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   }
   const baseMinor = earned.baseMinor;
 
-  // The referred base in charge units (the base is pre-tax and already scaled
-  // to what was paid; grossing it back up by total/linesBeforeTax restates it
-  // in the same units as the charge, which includes tax). A refund then takes
-  // itself out of this share first, never out of a one-off item or another
-  // product billed on the same charge (see chargeRefunded.ts). Null when the
-  // pre-tax total cannot be read; that case never reaches here since
-  // referredInvoiceBase would already have answered no_tax_breakdown.
-  const linesBeforeTax = invoiceLinesBeforeTax(invoiceForBase);
-  const referredChargeMinor =
-    linesBeforeTax && linesBeforeTax > 0
-      ? new Prisma.Decimal(baseMinor)
-          .mul(invoiceForBase.total)
-          .div(linesBeforeTax)
-          .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
-          .toNumber()
-      : null;
-
   const affiliate = click.affiliate;
   const rate = commissionRateFor(affiliate, program);
   const amount = computeCommissionAmount(baseMinor, invoice.currency, rate);
@@ -217,11 +198,10 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   const charge = chargeIntentId ? await latestChargeFor(stripe, chargeIntentId) : null;
   const dispute = await disputeStateAtCreation(stripe, chargeIntentId, charge);
 
-  // Never more than the charge itself: grossing baseMinor back up can round
-  // past the charge amount when a shipping or rounding difference separates
-  // the invoice's total from what the charge actually moved.
-  const cappedReferredChargeMinor =
-    referredChargeMinor !== null && charge ? Math.min(referredChargeMinor, charge.amount) : referredChargeMinor;
+  // Never more than the charge itself: a rounding or shipping difference can
+  // still separate the invoice's own total from what the charge actually
+  // moved, even though referredInvoiceBase already rounds its own figure down.
+  const cappedReferredChargeMinor = charge ? Math.min(earned.referredChargeMinor, charge.amount) : earned.referredChargeMinor;
 
   try {
     // Checked against a self referral confirmed since the check above.

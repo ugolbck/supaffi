@@ -94,6 +94,18 @@ describe("prorateCommission", () => {
         amount: 15,
       });
     });
+
+    it("voids on a full refund of a referred share that was itself rounded down from a fractional exact value", () => {
+      // 200 charge, 100 referred and 100 of another product, both untaxed,
+      // only 101 ever paid in money: the exact referred share is 50.5, stored
+      // rounded down to 50 (see referredRevenue.ts). A refund of exactly that
+      // stored 50 must still void the commission outright, not leave
+      // gross/101 pending, which is what rounding the share up to 51 would
+      // have left behind.
+      expect(prorateCommission({ gross: 10.1, chargeTotal: 101, refunded: 50, referredChargeMinor: 50 })).toEqual({
+        void: true,
+      });
+    });
   });
 });
 

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
 import { invoiceLinesBeforeTax, scaleToAmountPaid } from "./saleBase";
 
@@ -61,6 +62,15 @@ export type ReferredRevenue =
       kind: "earned";
       /** The referred lines before tax, scaled to what was paid in money. */
       baseMinor: number;
+      /**
+       * The referred share restated in charge units (tax included), scaled to
+       * what was paid, rounded down so it can never claim more of the charge
+       * than was actually earned. Read from each referred and credit line's
+       * own tax, not spread evenly across the invoice, unless a line's own
+       * tax could not be read, in which case it falls back to spreading the
+       * invoice's tax evenly and rounds that down too.
+       */
+      referredChargeMinor: number;
       /** The products the base was earned on, learned from this invoice when none were stored. */
       productIds: string[];
       /** Products on this subscription's lines that its referral did not buy. */
@@ -166,6 +176,22 @@ function credits(line: Stripe.InvoiceLineItem): number {
   return line.pretax_credit_amounts != null ? sumAmounts(line.pretax_credit_amounts) : sumAmounts(line.discount_amounts);
 }
 
+// Tax added on top of the price, never folded into `amount` (see
+// inclusiveTax above). This is what restates a line's pre-tax base in charge
+// units: "taxes.tax_behavior (enum) Whether this tax is inclusive or
+// exclusive" and "taxes.amount (integer) The amount of the tax, in the
+// smallest currency unit" (Stripe docs, invoice-line-item object).
+function exclusiveTax(line: Stripe.InvoiceLineItem): number {
+  return sumAmounts((line.taxes ?? []).filter((tax) => tax.tax_behavior === "exclusive"));
+}
+
+// `taxes` is documented as "array of objects, nullable", so null is a
+// legitimate answer of "no tax on this line", not a failure to read it.
+// Anything else that is not an array is the shape this code does not expect.
+function taxesUnreadable(line: Stripe.InvoiceLineItem): boolean {
+  return line.taxes !== null && !Array.isArray(line.taxes);
+}
+
 /**
  * Each line's base before tax and after discounts, in the reading of `amount`
  * that adds up to the invoice's own total before tax. Stripe does not say
@@ -237,8 +263,6 @@ export function referredInvoiceBase(
     return { kind: "unreadable", reason: `bills no price of subscription ${subscriptionId} to learn its products from` };
   }
 
-  const referredLines = ownLines.filter((line) => productIds.includes(line.product));
-  const referredOwn = referredLines.reduce((total, line) => total + line.base, 0);
   const otherProductIds = uniqueSorted(
     ownLines.filter((line) => !productIds.includes(line.product)).map((line) => line.product)
   );
@@ -248,22 +272,60 @@ export function referredInvoiceBase(
   // bare credit belongs to. So unless it is a proration (which already
   // belongs to whichever product it names, referred or not), every such
   // credit is taken off the referred base before the clamp, rather than only
-  // mattering once it outweighs every other line on the invoice.
-  const creditsElsewhere = placed.reduce((total, place, index) => {
-    if (place.kind === "unreadable" || place.proration) return total;
-    if (place.kind === "subscription" && productIds.includes(place.product)) return total;
-    const base = bases[index];
-    return base < 0 ? total + base : total;
-  }, 0);
-
-  const referred = referredOwn + creditsElsewhere;
+  // mattering once it outweighs every other line on the invoice. The same
+  // lines also feed the charge-unit total below, for the same reason.
+  let referred = 0;
+  let chargeUnits = 0;
+  let chargeUnitsReadable = true;
+  for (const [index, place] of placed.entries()) {
+    if (place.kind === "unreadable") continue; // unreachable: already returned above
+    const isReferredLine = place.kind === "subscription" && productIds.includes(place.product);
+    const isCredit = !isReferredLine && !place.proration && bases[index] < 0;
+    if (!isReferredLine && !isCredit) continue;
+    referred += bases[index];
+    if (taxesUnreadable(lines[index])) {
+      chargeUnitsReadable = false;
+    } else {
+      // bases[index] already has inclusive tax taken off (see lineBases), and
+      // inclusive tax is still part of what the charge actually collected, so
+      // it is added back here together with any exclusive tax on top.
+      chargeUnits += bases[index] + inclusiveTax(lines[index]) + exclusiveTax(lines[index]);
+    }
+  }
 
   // Never more than the whole invoice before tax: a credit the merchant added
   // lowers what the customer paid, and commission is owed on money paid.
   const base = Math.max(0, Math.min(referred, invoiceBeforeTax));
+  const paidInvoice = { total: invoice.total, amount_paid: onStripePaid };
+
+  // Restated in charge units (tax included) so a later refund can be
+  // prorated against only the revenue that earned, see chargeRefunded.ts.
+  // Read from each counted line's own tax rather than spread evenly across
+  // the invoice, so an untaxed referred line next to a taxed add-on is not
+  // overstated. Rounded down, never up, so this share can never claim more
+  // of the charge than was actually earned; only if a line's own tax could
+  // not be read does this fall back to spreading the invoice's tax evenly
+  // over the pre-tax base, rounded down the same way.
+  const chargeBase = chargeUnitsReadable
+    ? Math.max(0, Math.min(chargeUnits, invoice.total))
+    : invoiceBeforeTax > 0
+      ? new Prisma.Decimal(base).mul(invoice.total).div(invoiceBeforeTax).toDecimalPlaces(0, Prisma.Decimal.ROUND_DOWN).toNumber()
+      : 0;
+  const referredChargeMinor =
+    paidInvoice.total <= 0
+      ? 0
+      : paidInvoice.amount_paid >= paidInvoice.total
+        ? chargeBase
+        : new Prisma.Decimal(chargeBase)
+            .mul(paidInvoice.amount_paid)
+            .div(paidInvoice.total)
+            .toDecimalPlaces(0, Prisma.Decimal.ROUND_DOWN)
+            .toNumber();
+
   return {
     kind: "earned",
-    baseMinor: scaleToAmountPaid(base, { total: invoice.total, amount_paid: onStripePaid }),
+    baseMinor: scaleToAmountPaid(base, paidInvoice),
+    referredChargeMinor,
     productIds,
     otherProductIds,
   };
