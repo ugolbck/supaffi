@@ -11,7 +11,7 @@ import {
   type CommissionStatus,
 } from "@/lib/commission";
 import { getOwedTotals, getPayableGroups, type CurrencyTotal } from "@/lib/analytics";
-import { formatMoney, money, moneyHint } from "@/lib/format";
+import { formatCount, formatMoney, money, moneyHint } from "@/lib/format";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
   Pagination,
@@ -52,14 +52,20 @@ const DATE = new Intl.DateTimeFormat("en-GB", {
  * one of these; a code that is not here is ignored rather than shown.
  */
 const REFUSALS: Record<string, string> = {
-  amount: "An amount changed since this page loaded. Check the new total before paying.",
   empty: "Nothing was selected, so there was nothing to pay.",
-  partial: "Some of those commissions are no longer payable. Reload and try again.",
   mixed: "A payout covers one affiliate and one currency at a time.",
-  clawback: "This affiliate has a refund adjustment outstanding. Include it in the payout.",
-  negative: "That selection owes money back. It carries to the next payout.",
   refused: "The ledger refused that payout.",
 };
+
+// Said after a payout that left some shown rows unpaid, for example one the
+// Owner voided in another tab between loading and clicking.
+function skippedNote(raw: string | undefined): string | null {
+  const skipped = Math.floor(Number(raw));
+  if (!Number.isFinite(skipped) || skipped < 1) return null;
+  return skipped === 1
+    ? "1 commission was not marked paid because it is no longer payable."
+    : `${formatCount(skipped)} commissions were not marked paid because they are no longer payable.`;
+}
 
 const TABS: { label: string; status: CommissionStatus | null }[] = [
   { label: "All", status: null },
@@ -134,6 +140,7 @@ export default async function CommissionsPage({
     page?: string;
     commission?: string;
     error?: string;
+    skipped?: string;
   }>;
 }) {
   const { product } = await params;
@@ -154,8 +161,12 @@ export default async function CommissionsPage({
   };
   const page = Math.max(1, Math.floor(Number(query.page)) || 1);
 
-  // Owed and payable now are netted per affiliate by the same helper the
-  // overview uses, so one affiliate's debt never lowers what the others are due.
+  // Taken before any commission is read. Mark paid compares it with when a
+  // refund voided a shown row, so it has to be no later than the read.
+  const renderedAt = new Date().toISOString();
+
+  // Owed and payable now come from the same helper the overview uses, so the
+  // two screens cannot disagree.
   const [{ rows, total }, options, { owed, payableNow }] = await Promise.all([
     listCommissions(ownerId, merchant.id, filters, { page, pageSize: COMMISSIONS_PAGE_SIZE }),
     getCommissionFilterOptions(ownerId, merchant.id),
@@ -252,6 +263,7 @@ export default async function CommissionsPage({
   const listHref = `${base}/commissions${unselected === "?" ? "" : unselected}`;
 
   const refusal = query.error ? REFUSALS[query.error] ?? null : null;
+  const skipped = skippedNote(query.skipped);
 
   return (
     <Page>
@@ -281,6 +293,7 @@ export default async function CommissionsPage({
       />
 
       {refusal && <p className="shrink-0 text-[13px] text-status-warning">{refusal}</p>}
+      {skipped && <p className="shrink-0 text-[13px] text-muted-foreground">{skipped}</p>}
 
       {/* Flush and clipped: the rows are the card, and the table scrolls
           inside it so the page never does. */}
@@ -310,6 +323,7 @@ export default async function CommissionsPage({
         product={{ id: merchant.id, slug: merchant.slug }}
         groups={payableGroups}
         listHref={listHref}
+        renderedAt={renderedAt}
       />
 
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
@@ -359,6 +373,7 @@ export default async function CommissionsPage({
           commission={sheetCommission}
           product={{ id: merchant.id, slug: merchant.slug }}
           listHref={listHref}
+          renderedAt={renderedAt}
         />
       )}
     </Page>

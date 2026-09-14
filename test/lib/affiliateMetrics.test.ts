@@ -412,8 +412,14 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     const b = await make("4.00");
     const c = await make("5.00");
 
-    expect(await markCommissionsPaid(owner.id, merchant.id, [a.id, b.id], "14.00")).toEqual({ count: 2 });
-    expect(await markCommissionsPaid(owner.id, merchant.id, [c.id], "5.00")).toEqual({ count: 1 });
+    const renderedAt = new Date().toISOString();
+    expect(
+      await markCommissionsPaid(owner.id, merchant.id, [{ id: a.id, amount: "10.00" }, { id: b.id, amount: "4.00" }], renderedAt)
+    ).toEqual({ count: 2, skipped: 0 });
+    expect(await markCommissionsPaid(owner.id, merchant.id, [{ id: c.id, amount: "5.00" }], renderedAt)).toEqual({
+      count: 1,
+      skipped: 0,
+    });
 
     const payments = await listAffiliatePayments(sarah.id);
     expect(payments).toHaveLength(2);

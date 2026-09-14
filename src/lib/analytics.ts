@@ -655,14 +655,17 @@ export type PayableGroup = {
   currency: string;
   total: string;
   commissionIds: string[];
+  /** Each commission behind `total` with its amount as rendered, two decimals. Mark paid binds these. */
+  commissions: { id: string; amount: string }[];
 };
 
 /**
  * What is ready to pay, per affiliate per currency.
  *
- * Carries the exact commission ids behind each total so the Pay button can
- * name them, rather than the mutation re-querying at write time and sweeping
- * in whatever turned payable in between (CONTEXT.md).
+ * Carries the exact commissions and amounts behind each total so the Pay
+ * button can name them, rather than the mutation re-querying at write time and
+ * sweeping in whatever turned payable in between (CONTEXT.md). Adjustment rows
+ * are left out: a refund after payout is no longer recovered.
  */
 export async function getPayableGroups(
   ownerId: string,
@@ -671,7 +674,7 @@ export async function getPayableGroups(
   await assertOwns(ownerId, merchantId);
 
   const rows = await db.commission.findMany({
-    where: { status: "PAYABLE", affiliate: { merchantId } },
+    where: { status: "PAYABLE", adjustsCommissionId: null, affiliate: { merchantId } },
     select: {
       id: true,
       amount: true,
@@ -684,10 +687,12 @@ export async function getPayableGroups(
   const groups = new Map<string, PayableGroup & { sum: Prisma.Decimal }>();
   for (const row of rows) {
     const key = `${row.affiliate.id}:${row.currency}`;
+    const shown = { id: row.id, amount: row.amount.toFixed(2) };
     const existing = groups.get(key);
     if (existing) {
       existing.sum = existing.sum.add(row.amount);
       existing.commissionIds.push(row.id);
+      existing.commissions.push(shown);
     } else {
       groups.set(key, {
         affiliateId: row.affiliate.id,
@@ -696,6 +701,7 @@ export async function getPayableGroups(
         currency: row.currency,
         total: "0.00",
         commissionIds: [row.id],
+        commissions: [shown],
         sum: row.amount,
       });
     }

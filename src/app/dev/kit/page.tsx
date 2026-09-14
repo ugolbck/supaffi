@@ -801,6 +801,7 @@ function DCommissionSheetDemo({ which }: { which: keyof typeof D_SHEETS }) {
         commission={D_SHEETS[which]}
         product={{ id: "m1", slug: "instantgradient" }}
         listHref="#"
+        renderedAt="2026-09-14T12:00:00.000Z"
       />
     </>
   );

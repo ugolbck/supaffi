@@ -37,7 +37,7 @@ export type SheetCommission = {
   amount: string;
   /**
    * The same amount as a plain two-decimal figure, no currency. Bound into
-   * Mark paid so the payout is refused if the amount changed since render.
+   * Mark paid, which records the commission at exactly this figure.
    */
   payTotal: string;
   /** What this commission was before a partial refund reduced it. Null when unchanged. */
@@ -123,10 +123,13 @@ export function CommissionSheet({
   commission,
   product,
   listHref,
+  renderedAt,
 }: {
   commission: SheetCommission;
   product: { id: string; slug: string };
   listHref: string;
+  /** When the page read this commission, as an ISO string. Bound into Mark paid. */
+  renderedAt: string;
 }) {
   const router = useRouter();
 
@@ -240,7 +243,15 @@ export function CommissionSheet({
           </div>
 
           {commission.status === "PAYABLE" && (
-            <form action={markPaidAction.bind(null, listHref, product, [commission.id], commission.payTotal)}>
+            <form
+              action={markPaidAction.bind(
+                null,
+                listHref,
+                product,
+                [{ id: commission.id, amount: commission.payTotal }],
+                renderedAt
+              )}
+            >
               <Button type="submit" size="sm" className="cursor-pointer">
                 Mark paid
               </Button>

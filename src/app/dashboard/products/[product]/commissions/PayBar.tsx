@@ -18,62 +18,45 @@ import { markPaidAction } from "./commissionActions";
  * and the actions in a column, and the card holds its height however many
  * there are.
  *
- * Each row carries the exact commission ids read at render time, never a
- * re-query at write time, so a commission that clears its holding period
- * between paint and click cannot be swept into a payout nobody decided to
- * make. It carries the total it shows too, so a refund that lowers an amount
- * in between refuses the payout instead of recording less than was sent.
+ * Each row carries the exact commissions and amounts read at render time,
+ * and the moment the page was rendered, never a re-query at write time. A
+ * commission that clears its holding period between paint and click is not
+ * swept in, and the payout is recorded at the amounts on screen, which are the
+ * amounts the Owner sent.
  */
 export function PayBar({
   product,
   groups,
   listHref,
+  renderedAt,
 }: {
   product: { id: string; slug: string };
   groups: PayableGroup[];
   /** The list as it is being read, so a payout lands back on this same tab. */
   listHref: string;
+  /** When the page read these groups, as an ISO string. */
+  renderedAt: string;
 }) {
   if (groups.length === 0) return null;
-
-  const payouts = groups.filter((group) => Number(group.total) >= 0).length;
 
   return (
     <section className="flex max-h-[260px] shrink-0 flex-col overflow-hidden rounded-(--radius-md) border border-(--card-hairline) bg-elevated shadow-(--shadow-raised)">
       <div className="flex shrink-0 items-center justify-between gap-3 px-4 pt-3.5 pb-2.5">
         <h2 className="font-heading text-sm font-semibold tracking-tight">Ready to pay</h2>
         <span className="text-xs text-muted-foreground tabular-nums">
-          {payouts === 1 ? "1 payout" : `${payouts} payouts`}
+          {groups.length === 1 ? "1 payout" : `${groups.length} payouts`}
         </span>
       </div>
 
       <ul className="min-h-0 flex-1 divide-y divide-neutral-200 overflow-y-auto border-t border-neutral-200">
         {groups.map((group) => {
           const name = group.affiliateName ?? group.affiliateEmail;
-          const amount = formatMoney(group.total, group.currency);
-          const count = group.commissionIds.length;
-
-          // A refund can land after everything it claws back is already paid,
-          // leaving a lone negative balance. There is nothing to pay, so
-          // there is no button: it carries to the next payout.
-          if (Number(group.total) < 0) {
-            return (
-              <li
-                key={`${group.affiliateId}:${group.currency}`}
-                className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-muted-foreground"
-              >
-                <span className="min-w-0 flex-1 truncate">{name}</span>
-                <span className="shrink-0 tabular-nums">
-                  owes {formatMoney(Math.abs(Number(group.total)), group.currency)} back, carried to the next payout
-                </span>
-              </li>
-            );
-          }
+          const count = group.commissions.length;
 
           return (
             <li key={`${group.affiliateId}:${group.currency}`}>
               <form
-                action={markPaidAction.bind(null, listHref, product, group.commissionIds, group.total)}
+                action={markPaidAction.bind(null, listHref, product, group.commissions, renderedAt)}
                 className="flex items-center gap-3 px-4 py-2"
               >
                 <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
@@ -81,9 +64,9 @@ export function PayBar({
                   {count === 1 ? "1 commission" : `${formatCount(count)} commissions`}
                 </span>
                 <span className="w-28 shrink-0 text-right text-sm font-semibold tabular-nums">
-                  {amount}
+                  {formatMoney(group.total, group.currency)}
                 </span>
-                <Button type="submit" size="sm" variant="secondary" className="shrink-0">
+                <Button type="submit" size="sm" variant="secondary" className="shrink-0 cursor-pointer">
                   Mark paid
                 </Button>
               </form>

@@ -231,134 +231,196 @@ export async function getCommissionFilterOptions(
   return { affiliates, currencies: currencies.map((c) => c.currency) };
 }
 
-export type MarkPaidResult = { count: number } | { error: string };
+/** One commission as a page showed it: its id and its amount as rendered, two decimals. */
+export type ShownCommission = { id: string; amount: string };
 
-/** The refusal for a payout whose amounts moved under the Owner. */
-const AMOUNT_CHANGED = "An amount changed since this page loaded. Check the new total before paying.";
+export type MarkPaidResult = { count: number; skipped: number } | { error: string };
+
+/** The refusal for bound input no page could have produced. */
+const REFUSED = "The ledger refused that payout.";
+
+/** Every amount a page renders is `Decimal.toFixed(2)` of a positive commission. */
+const TWO_DECIMALS = /^\d+\.\d{2}$/;
+
+/** The voids a refund or a lost chargeback writes, as opposed to the Owner's own. */
+const REFUND_VOID_REASONS: readonly string[] = ["refund", "chargeback"];
+
+type PayoutRow = {
+  status: CommissionStatus;
+  amount: Prisma.Decimal;
+  grossAmount: Prisma.Decimal | null;
+  voidedAt: Date | null;
+  voidReason: string | null;
+  adjustsCommissionId: string | null;
+};
+
+type Payout = "as stored" | "at shown amount" | "already paid" | "skip";
 
 /**
- * Mark an exact set of commissions paid.
+ * What one shown commission becomes when Mark paid is pressed.
  *
- * Bound to the ids the Owner selected, never to a re-query at write time: a
+ * The Owner pays outside Supaffi and then presses the button, so the figure
+ * on screen is the figure that left their account, and a paid commission is
+ * final. A refund that reached a shown row in the seconds between loading and
+ * clicking therefore does not stop it being recorded at the amount shown.
+ *
+ * A partial refund leaves the row PAYABLE at an amount below the one shown. A
+ * page only ever shows a figure above the stored one when the refund came
+ * after rendering, because a reduction before rendering is what it would have
+ * shown. A full refund or a lost chargeback voids the row with a `voidedAt`
+ * later than the moment the page was rendered.
+ *
+ * Neither is ever recorded above what the commission was worth before any
+ * refund, `grossAmount`, or `amount` on rows older than that column, so a
+ * posted figure can never raise what a sale earned.
+ *
+ * A row the Owner voided, or a confirmed self referral voided, is skipped:
+ * nobody paid it by mistake, the Owner chose not to. So is anything else that
+ * is not payable, and any leftover adjustment row, since a refund after payout
+ * is no longer recovered.
+ */
+function payoutFor(row: PayoutRow, shown: Prisma.Decimal, renderedAt: Date): Payout {
+  if (row.status === "PAID") return "already paid";
+  if (row.adjustsCommissionId !== null) return "skip";
+  if (shown.gt(row.grossAmount ?? row.amount)) return "skip";
+
+  if (row.status === "PAYABLE") {
+    if (shown.eq(row.amount)) return "as stored";
+    if (shown.gt(row.amount) && row.voidReason === "partial refund") return "at shown amount";
+    return "skip";
+  }
+
+  if (
+    row.status === "VOIDED" &&
+    row.voidReason !== null &&
+    REFUND_VOID_REASONS.includes(row.voidReason) &&
+    row.voidedAt !== null &&
+    row.voidedAt.getTime() >= renderedAt.getTime()
+  ) {
+    return "at shown amount";
+  }
+  return "skip";
+}
+
+/**
+ * Mark exactly the commissions the Owner saw paid, at the amounts they saw.
+ *
+ * Bound to the rows a page rendered, never to a re-query at write time: a
  * commission crossing its Holding Period between render and click would
- * otherwise be swept into a payout nobody decided to make, and PAID is a
- * terminal state (VOIDED is only reachable from PENDING, PAYABLE or FLAGGED).
+ * otherwise be swept into a payout nobody decided to make. New sales that land
+ * meanwhile stay unpaid.
  *
- * Bound to the total the Owner was shown as well. The Owner pays outside
- * Supaffi and then presses the button, so the figure on screen is the figure
- * that left their account. A partial refund can lower an amount in between,
- * and recording the lower figure would leave the ledger short of what was
- * sent with no clawback to recover it. The sum is taken inside the same
- * transaction as the write, so it reads the rows as they are being paid.
- *
- * Two refusals guard the refund-adjustment rule. A payout is per affiliate per
- * currency, so a selection spanning more than one of either is not a payout.
- * And a negative clawback row sitting PAYABLE in the same group has to go out
- * with the selection, otherwise marking only the positive rows paid would
- * quietly erase money the Affiliate still owes back instead of carrying it
- * forward. Both are checks that refuse, not sweeps that widen the write.
+ * Refuses only what is not a payout: nothing selected, rows spanning more than
+ * one affiliate or currency, and bound input no page could have produced. Rows
+ * that are no longer payable for a reason the Owner chose are skipped and
+ * counted, so the page can say so; see `payoutFor`.
  */
 export async function markCommissionsPaid(
   ownerId: string,
   merchantId: string,
-  commissionIds: string[],
-  expectedTotal: string
+  shown: ShownCommission[],
+  renderedAt: string
 ): Promise<MarkPaidResult> {
   await assertMerchantOwnership(ownerId, merchantId);
 
-  if (commissionIds.length === 0) {
+  if (!Array.isArray(shown) || shown.length === 0) {
     return { error: "Nothing selected" };
   }
 
-  // Every total a page renders is `Decimal.toFixed(2)`. Anything else did not
-  // come from a page, and comparing it would be comparing against a guess.
-  if (typeof expectedTotal !== "string" || !/^-?\d+\.\d{2}$/.test(expectedTotal)) {
-    return { error: AMOUNT_CHANGED };
+  // Bound arguments are values the browser posts, so their shape is checked
+  // rather than trusted: a page names every id once, at a positive two-decimal
+  // amount, and was rendered no later than now.
+  const amounts = new Map<string, Prisma.Decimal>();
+  for (const entry of shown) {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      typeof entry.id !== "string" ||
+      entry.id.length === 0 ||
+      typeof entry.amount !== "string" ||
+      !TWO_DECIMALS.test(entry.amount) ||
+      amounts.has(entry.id)
+    ) {
+      return { error: REFUSED };
+    }
+    const amount = new Prisma.Decimal(entry.amount);
+    if (amount.lte(0)) return { error: REFUSED };
+    amounts.set(entry.id, amount);
+  }
+  const loadedAt = typeof renderedAt === "string" ? new Date(renderedAt) : new Date(NaN);
+  if (Number.isNaN(loadedAt.getTime()) || loadedAt.getTime() > Date.now()) {
+    return { error: REFUSED };
   }
 
-  const selected = await db.commission.findMany({
-    where: { id: { in: commissionIds }, status: "PAYABLE", affiliate: { merchantId } },
-    select: { id: true, affiliateId: true, currency: true, amount: true },
-  });
+  const ids = [...amounts.keys()];
+  const paidAt = new Date();
 
-  if (selected.length !== commissionIds.length) {
-    return { error: "Some of those commissions are no longer payable. Reload and try again." };
-  }
+  return db.$transaction(async (tx): Promise<MarkPaidResult> => {
+    // Locks the shown rows for the length of the payout, in id order so two
+    // overlapping presses cannot deadlock. A refund, a void or a self referral
+    // confirmation on one of them waits for this to commit, then finds the row
+    // PAID and leaves it alone, so what is decided below is what stays written.
+    await tx.$queryRaw`SELECT id FROM "Commission" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
 
-  const affiliateIds = new Set(selected.map((c) => c.affiliateId));
-  const currencies = new Set(selected.map((c) => c.currency));
-  if (affiliateIds.size > 1 || currencies.size > 1) {
-    return { error: "A payout covers one affiliate and one currency at a time" };
-  }
-
-  const [affiliateId] = [...affiliateIds];
-  const [currency] = [...currencies];
-
-  const outstandingClawback = await db.commission.findFirst({
-    where: {
-      status: "PAYABLE",
-      currency,
-      affiliateId,
-      amount: { lt: 0 },
-      id: { notIn: commissionIds },
-    },
-    select: { id: true },
-  });
-  if (outstandingClawback) {
-    return {
-      error: "This affiliate has a refund adjustment outstanding. Include it in the payout.",
-    };
-  }
-
-  const total = selected.reduce((sum, c) => sum.add(c.amount), new Prisma.Decimal(0));
-  if (total.lessThan(0)) {
-    return { error: "That selection owes money back. It carries to the next payout." };
-  }
-
-  // All or nothing. A row can leave PAYABLE between the checks above and this
-  // write (a refund voids it), and paying the rest would record a payout that
-  // no longer matches what the Owner is about to send. Throwing inside the
-  // transaction rolls the partial write back.
-  try {
-    const count = await db.$transaction(async (tx) => {
-      const { count } = await tx.commission.updateMany({
-        where: {
-          status: "PAYABLE",
-          currency,
-          affiliate: { id: affiliateId, merchantId },
-          id: { in: commissionIds },
-        },
-        data: { status: "PAID", paidAt: new Date() },
-      });
-      if (count !== commissionIds.length) throw new StaleSelectionError();
-
-      // Summed after the update, not before it. The update holds these rows,
-      // so a refund that commits first is already in this sum, and a refund
-      // that arrives later waits, finds the row PAID, and becomes a clawback
-      // instead of a silent reduction.
-      const { _sum } = await tx.commission.aggregate({
-        where: { id: { in: commissionIds } },
-        _sum: { amount: true },
-      });
-      if ((_sum.amount ?? new Prisma.Decimal(0)).toFixed(2) !== expectedTotal) {
-        throw new AmountChangedError();
-      }
-      return count;
+    const rows = await tx.commission.findMany({
+      where: { id: { in: ids }, affiliate: { merchantId } },
+      select: {
+        id: true,
+        affiliateId: true,
+        currency: true,
+        status: true,
+        amount: true,
+        grossAmount: true,
+        voidedAt: true,
+        voidReason: true,
+        adjustsCommissionId: true,
+      },
     });
-    return { count };
-  } catch (err) {
-    if (err instanceof StaleSelectionError) {
-      return { error: "Some of those commissions are no longer payable. Reload and try again." };
-    }
-    if (err instanceof AmountChangedError) {
-      return { error: AMOUNT_CHANGED };
-    }
-    throw err;
-  }
-}
+    // An id this product does not have was not on its page.
+    if (rows.length !== ids.length) return { error: REFUSED };
 
-class StaleSelectionError extends Error {}
-class AmountChangedError extends Error {}
+    if (new Set(rows.map((row) => row.affiliateId)).size > 1 || new Set(rows.map((row) => row.currency)).size > 1) {
+      return { error: "A payout covers one affiliate and one currency at a time" };
+    }
+
+    const asStored: string[] = [];
+    const atShownAmount: { id: string; amount: Prisma.Decimal; ceiling: Prisma.Decimal }[] = [];
+    let skipped = 0;
+    for (const row of rows) {
+      const amount = amounts.get(row.id)!;
+      const payout = payoutFor(row, amount, loadedAt);
+      if (payout === "as stored") asStored.push(row.id);
+      else if (payout === "at shown amount") atShownAmount.push({ id: row.id, amount, ceiling: row.grossAmount ?? row.amount });
+      else if (payout === "skip") skipped += 1;
+    }
+
+    // One write for the usual case, so a payout of many rows stays well inside
+    // the transaction's time limit.
+    if (asStored.length > 0) {
+      await tx.commission.updateMany({
+        where: { id: { in: asStored } },
+        data: { status: "PAID", paidAt },
+      });
+    }
+    // The few a refund reached in between are written one by one, each at its
+    // shown amount. The row is paid, so it no longer reads as voided, and it
+    // says it was reduced only if what was paid is still below the gross.
+    for (const row of atShownAmount) {
+      await tx.commission.update({
+        where: { id: row.id },
+        data: {
+          status: "PAID",
+          paidAt,
+          amount: row.amount,
+          voidedAt: null,
+          voidReason: row.amount.lt(row.ceiling) ? "partial refund" : null,
+        },
+      });
+    }
+
+    return { count: asStored.length + atShownAmount.length, skipped };
+  });
+}
 
 export async function confirmCommissionFraud(
   ownerId: string,

@@ -312,6 +312,9 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].total).toBe("25.50");
     expect(groups[0].commissionIds).toHaveLength(2);
+    // The amounts each id was rendered at, which is what Mark paid binds.
+    expect(groups[0].commissions.map((c) => c.amount).sort()).toEqual(["10.00", "15.50"]);
+    expect(groups[0].commissions.map((c) => c.id).sort()).toEqual([...groups[0].commissionIds].sort());
   });
 
   it("splits payable groups by currency, never summing across them", async () => {

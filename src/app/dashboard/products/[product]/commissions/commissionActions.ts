@@ -9,6 +9,7 @@ import {
   confirmCommissionFraud,
   dismissCommissionFlag,
   voidCommission,
+  type ShownCommission,
 } from "@/lib/commission";
 
 /**
@@ -36,38 +37,44 @@ async function owner(): Promise<string> {
  * ignores anything it does not know.
  */
 function refusalCode(error: string): string {
-  if (error.includes("amount changed")) return "amount";
   if (error.includes("Nothing selected")) return "empty";
-  if (error.includes("no longer payable")) return "partial";
   if (error.includes("one currency")) return "mixed";
-  if (error.includes("refund adjustment")) return "clawback";
-  if (error.includes("carries to the next payout")) return "negative";
   return "refused";
 }
 
 // `markCommissionsPaid` refuses rather than throws, so its reason travels back
-// in the URL. Without it a payout the ledger declined would look like a button
-// that did nothing.
-function back(product: { slug: string }, listHref: string, error?: string): never {
+// in the URL, and so does how many shown rows it skipped. Without them a
+// payout the ledger declined or shortened would look like a button that did
+// nothing, or did everything.
+function back(
+  product: { slug: string },
+  listHref: string,
+  outcome?: { error?: string; skipped?: number }
+): never {
   const list = `/dashboard/products/${product.slug}/commissions`;
   const target = safeListHref(listHref, list);
-  const query = error ? `${target.includes("?") ? "&" : "?"}error=${error}` : "";
+  const params = new URLSearchParams();
+  if (outcome?.error) params.set("error", outcome.error);
+  if (outcome?.skipped) params.set("skipped", String(outcome.skipped));
+  const search = params.toString();
+  const query = search ? `${target.includes("?") ? "&" : "?"}${search}` : "";
   revalidatePath("/dashboard", "layout");
   redirect(`${target}${query}`);
 }
 
 /**
- * `expectedTotal` is the figure the Owner was looking at when they pressed the
- * button. The ledger refuses the payout if the rows no longer add up to it.
+ * `shown` is every commission the Owner was looking at when they pressed the
+ * button, each with the amount on screen, and `renderedAt` is when that page
+ * was drawn. The ledger records those amounts; see `markCommissionsPaid`.
  */
 export async function markPaidAction(
   listHref: string,
   product: { id: string; slug: string },
-  ids: string[],
-  expectedTotal: string
+  shown: ShownCommission[],
+  renderedAt: string
 ): Promise<void> {
-  const result = await markCommissionsPaid(await owner(), product.id, ids, expectedTotal);
-  back(product, listHref, "error" in result ? refusalCode(result.error) : undefined);
+  const result = await markCommissionsPaid(await owner(), product.id, shown, renderedAt);
+  back(product, listHref, "error" in result ? { error: refusalCode(result.error) } : { skipped: result.skipped });
 }
 
 export async function confirmFraudAction(
