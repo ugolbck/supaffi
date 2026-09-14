@@ -14,7 +14,7 @@ import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerpr
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_METADATA_KEY } from "@/lib/referral";
-import { claimFirstPayment, idOf, recordReferredSubscription } from "../referredSubscription";
+import { claimFirstPayment, idOf, recordReferredSubscription, subscriptionProductIds } from "../referredSubscription";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
 export async function handleCheckoutSessionCompleted(merchant: Merchant, session: Stripe.Checkout.Session): Promise<void> {
@@ -80,7 +80,17 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // trial's first paid invoice can earn. The first payment is claimed even
   // when this sale earns nothing, because it is when money first moved.
   if (subscriptionId) {
-    const referred = await recordReferredSubscription(merchant.id, click.id, subscriptionId);
+    // Its renewals earn only on the products it bills, so they are read now,
+    // before anything is written: a Stripe outage throws and the retried
+    // event records the row whole. A key that cannot answer records none, and
+    // the first renewal fills them.
+    const products = await subscriptionProductIds(stripeClientFor(merchant), subscriptionId);
+    const referred = await recordReferredSubscription(
+      merchant.id,
+      click.id,
+      subscriptionId,
+      products === "unanswered" ? [] : products
+    );
     if (moneyPaid && stripePaymentRef) {
       // A delayed payment method's Session is created unpaid, and
       // checkout.session.async_payment_succeeded brings it back, paid, once

@@ -18,6 +18,13 @@ const stripeStub = vi.hoisted(() => ({
   customers: {
     retrieve: vi.fn(async () => ({ id: "cus_test", metadata: {} })),
   },
+  // The subscription a checkout created is read once for the products it bills.
+  subscriptions: {
+    retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined),
+  },
+  subscriptionItems: {
+    list: vi.fn(async (_params: unknown): Promise<unknown> => undefined),
+  },
   invoicePayments: {
     list: vi.fn(async (): Promise<{ data: unknown[] }> => ({ data: [] })),
   },
@@ -104,6 +111,13 @@ describe("handleCheckoutSessionCompleted", () => {
   beforeEach(async () => {
     await clearAll();
     stripeStub.customers.retrieve.mockClear();
+    stripeStub.subscriptions.retrieve.mockReset();
+    stripeStub.subscriptions.retrieve.mockImplementation(async (id: string) => ({
+      id,
+      items: { data: [{ id: "si_1", price: { product: "prod_basic" } }], has_more: false },
+    }));
+    stripeStub.subscriptionItems.list.mockReset();
+    stripeStub.subscriptionItems.list.mockImplementation(async () => ({ data: [], has_more: false }));
     stripeStub.invoicePayments.list.mockReset();
     stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.paymentIntents.retrieve.mockReset();
@@ -520,6 +534,82 @@ describe("handleCheckoutSessionCompleted", () => {
     const after = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
     expect(after.firstPaymentRef).toBe(first.firstPaymentRef);
     expect(after.firstPaidAt?.getTime()).toBe(first.firstPaidAt?.getTime());
+  });
+
+  describe("the products a referral bought", () => {
+    const stripeFailure = (type: string) => Object.assign(new Error(type), { type });
+
+    it("records the products the subscription bills, for its renewals to earn on", async () => {
+      stripeStub.subscriptions.retrieve.mockImplementation(async (id: string) => ({
+        id,
+        items: {
+          data: [
+            { id: "si_1", price: { product: "prod_seats" } },
+            { id: "si_2", price: { product: { id: "prod_pro" } } },
+          ],
+          has_more: false,
+        },
+      }));
+
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
+
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.stripeProductIds).toEqual(["prod_pro", "prod_seats"]);
+      expect(stripeStub.subscriptions.retrieve).toHaveBeenCalledWith("sub_1");
+    });
+
+    it("still records the subscription and the sale's commission when the key cannot read its products", async () => {
+      const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+      stripeStub.subscriptions.retrieve.mockImplementation(async () => {
+        throw stripeFailure("StripePermissionError");
+      });
+      try {
+        await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
+        expect(warnings).toHaveBeenCalledTimes(1);
+      } finally {
+        warnings.mockRestore();
+      }
+
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.stripeProductIds).toEqual([]);
+      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(1);
+    });
+
+    it("fills the products on a redelivery after the first delivery could not read them", async () => {
+      const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+      stripeStub.subscriptions.retrieve.mockRejectedValueOnce(stripeFailure("StripePermissionError"));
+      const session = sessionFixture({ invoice: "in_first", subscription: "sub_1" });
+      try {
+        await handleCheckoutSessionCompleted(merchant, session);
+        await handleCheckoutSessionCompleted(merchant, session);
+      } finally {
+        warnings.mockRestore();
+      }
+
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.stripeProductIds).toEqual(["prod_basic"]);
+    });
+
+    it("throws before recording anything when Stripe cannot be reached, so the event is retried", async () => {
+      stripeStub.subscriptions.retrieve.mockImplementation(async () => {
+        throw stripeFailure("StripeConnectionError");
+      });
+
+      await expect(
+        handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }))
+      ).rejects.toThrow("StripeConnectionError");
+
+      expect(await db.referredSubscription.count()).toBe(0);
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("asks nothing about products on a one-time purchase", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ mode: "payment", paymentIntent: "pi_one_time", invoice: null, subscription: null })
+      );
+      expect(stripeStub.subscriptions.retrieve).not.toHaveBeenCalled();
+    });
   });
 
   it("dates a delayed payment's first payment from the session, not from when it settled", async () => {
