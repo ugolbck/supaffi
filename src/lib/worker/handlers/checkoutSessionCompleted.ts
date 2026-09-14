@@ -15,6 +15,7 @@ import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { claimFirstPayment, idOf, recordReferredSubscription, subscriptionProductIds } from "../referredSubscription";
+import { referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
 export async function handleCheckoutSessionCompleted(merchant: Merchant, session: Stripe.Checkout.Session): Promise<void> {
@@ -116,6 +117,16 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // with neither an invoice nor a payment intent gives us no key, and a
   // redelivery would duplicate. Nothing was paid on such a session anyway.
   if (!stripePaymentRef) return;
+
+  // One duration per referral. A new Checkout through the same click, to
+  // subscribe again or to move to another plan, earns only what the click's
+  // first payment still allows: nothing more on a one-time program, and only
+  // inside the months counted from that first payment on a fixed-months one.
+  // Checked after the subscription above claimed its first payment, so the
+  // click's very first sale is measured against itself, and before any Stripe
+  // call, so a sale that cannot earn costs none.
+  const sale = { ref: stripePaymentRef, at: completedAt };
+  if (!(await referralStillEarns(merchant.id, click.id, click.affiliate.program, sale))) return;
 
   const stripe = stripeClientFor(merchant);
 

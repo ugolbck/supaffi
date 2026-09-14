@@ -912,15 +912,17 @@ describe("handleInvoicePaid", () => {
       expect(await refsOn(click.id)).toEqual(["in_late_1"]);
     });
 
-    it("moves a fixed-months window back when an earlier subscription's first payment is processed late", async () => {
+    it("moves a fixed-months window back when an earlier subscription's first payment is processed late, keeping an already-earned payment now outside it", async () => {
       const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 2 });
       await seedReferredSubscription(merchant.id, click.id, "sub_early");
       await seedReferredSubscription(merchant.id, click.id, "sub_late");
 
-      // Processed first, it was the referral's start when it was judged.
+      // Processed first, it was the referral's start when it was judged, even
+      // though the window that later replaces it, once in_early_1 arrives,
+      // ends on March 31, before this payment's own date of April 2.
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_late_1", parent: subscriptionParent("sub_late"), created: seconds("2026-03-05T00:00:00Z") })
+        invoiceFixture({ id: "in_late_1", parent: subscriptionParent("sub_late"), created: seconds("2026-04-02T00:00:00Z") })
       );
       await handleInvoicePaid(
         merchant,
@@ -929,7 +931,7 @@ describe("handleInvoicePaid", () => {
       // Inside sub_late's own two months, past the referral's, which ended on March 31.
       await handleInvoicePaid(
         merchant,
-        invoiceFixture({ id: "in_late_2", parent: subscriptionParent("sub_late"), created: seconds("2026-04-05T00:00:00Z") })
+        invoiceFixture({ id: "in_late_2", parent: subscriptionParent("sub_late"), created: seconds("2026-05-05T00:00:00Z") })
       );
 
       expect(await refsOn(click.id)).toEqual(["in_early_1", "in_late_1"]);

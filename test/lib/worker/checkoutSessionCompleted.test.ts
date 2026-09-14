@@ -55,6 +55,8 @@ vi.mock("@/lib/worker/selfReferral", async () => {
 
 import { handleCheckoutSessionCompleted } from "@/lib/worker/handlers/checkoutSessionCompleted";
 import { REFERRAL_METADATA_KEY } from "@/lib/referral";
+import { handleInvoicePaid } from "@/lib/worker/handlers/invoicePaid";
+import { handleSubscriptionDeleted } from "@/lib/worker/handlers/subscriptionDeleted";
 
 const CUSTOMER_ID = "cus_test";
 
@@ -759,6 +761,199 @@ describe("handleCheckoutSessionCompleted", () => {
     await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
 
     expect(await db.commission.count()).toBe(0);
+  });
+
+  describe("one duration per referral", () => {
+    const at = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
+
+    async function useDuration(type: "ONE_TIME" | "FIXED_MONTHS", months: number | null = null) {
+      await db.program.updateMany({
+        where: { merchantId: merchant.id },
+        data: { commissionDurationType: type, commissionDurationMonths: months },
+      });
+    }
+
+    function checkoutOn(iso: string, opts: Parameters<typeof sessionFixture>[0]): Stripe.Checkout.Session {
+      return { ...sessionFixture(opts), created: at(iso) } as Stripe.Checkout.Session;
+    }
+
+    // Only renewals that must not earn are sent here. They return at the
+    // duration check, before anything reads the invoice's lines.
+    function renewalOn(iso: string, id: string, subscription: string): Stripe.Invoice {
+      return {
+        id,
+        customer: CUSTOMER_ID,
+        billing_reason: "subscription_cycle",
+        created: at(iso),
+        currency: "usd",
+        customer_email: "buyer@example.com",
+        metadata: {},
+        parent: { type: "subscription_details", subscription_details: { subscription, metadata: {} } },
+        total: 5000,
+        total_excluding_tax: 5000,
+        total_taxes: [],
+        amount_paid: 5000,
+        shipping_cost: null,
+      } as unknown as Stripe.Invoice;
+    }
+
+    async function cancel(subscription: string) {
+      await handleSubscriptionDeleted(merchant, { id: subscription, customer: CUSTOMER_ID } as unknown as Stripe.Subscription);
+    }
+
+    function refundedInFull(intent: string) {
+      stripeStub.invoicePayments.list.mockImplementationOnce(async () => ({
+        data: [{ payment: { type: "payment_intent", payment_intent: intent } }],
+      }));
+      stripeStub.paymentIntents.retrieve.mockImplementationOnce(async () => ({
+        id: intent,
+        latest_charge: { id: `ch_${intent}`, amount: 5000, amount_refunded: 5000, disputed: false },
+      }));
+    }
+
+    async function earnedRefs() {
+      const rows = await db.commission.findMany({ where: { clickId: click.id } });
+      return rows.map((c) => c.stripePaymentRef).sort();
+    }
+
+    it("pays a one-time program nothing when the customer cancels and subscribes again through the same click", async () => {
+      await useDuration("ONE_TIME");
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-01-10T00:00:00Z", { invoice: "in_a", subscription: "sub_a" }));
+      await cancel("sub_a");
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-02-20T00:00:00Z", { invoice: "in_b", subscription: "sub_b" }));
+
+      expect(await earnedRefs()).toEqual(["in_a"]);
+      // The new subscription is still recorded, with its own first payment.
+      const resubscribed = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_b" } });
+      expect(resubscribed.firstPaymentRef).toBe("in_b");
+    });
+
+    it("keeps a fixed-months window running from the first subscription when the customer cancels and subscribes again", async () => {
+      await useDuration("FIXED_MONTHS", 3);
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-01-10T00:00:00Z", { invoice: "in_a", subscription: "sub_a" }));
+      await cancel("sub_a");
+      // Inside the three months that started on January 10, so it earns.
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-02-20T00:00:00Z", { invoice: "in_b", subscription: "sub_b" }));
+      // Inside sub_b's own three months, past the referral's.
+      await handleInvoicePaid(merchant, renewalOn("2026-04-20T00:00:00Z", "in_b_3", "sub_b"));
+      await cancel("sub_b");
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-04-25T00:00:00Z", { invoice: "in_c", subscription: "sub_c" }));
+
+      expect(await earnedRefs()).toEqual(["in_a", "in_b"]);
+    });
+
+    it("earns nothing on a switch from monthly to annual through a new Checkout after the window ended", async () => {
+      await useDuration("FIXED_MONTHS", 3);
+      await handleCheckoutSessionCompleted(
+        merchant,
+        checkoutOn("2026-01-15T00:00:00Z", { invoice: "in_monthly", subscription: "sub_monthly" })
+      );
+      await cancel("sub_monthly");
+      await handleCheckoutSessionCompleted(
+        merchant,
+        checkoutOn("2026-05-01T00:00:00Z", { invoice: "in_annual", subscription: "sub_annual", amountTotal: 50000 })
+      );
+
+      expect(await earnedRefs()).toEqual(["in_monthly"]);
+    });
+
+    it("pays a one-time program nothing on a switch from monthly to annual through a new Checkout", async () => {
+      await useDuration("ONE_TIME");
+      await handleCheckoutSessionCompleted(
+        merchant,
+        checkoutOn("2026-01-15T00:00:00Z", { invoice: "in_monthly", subscription: "sub_monthly" })
+      );
+      await cancel("sub_monthly");
+      await handleCheckoutSessionCompleted(
+        merchant,
+        checkoutOn("2026-02-01T00:00:00Z", { invoice: "in_annual", subscription: "sub_annual", amountTotal: 50000 })
+      );
+
+      expect(await earnedRefs()).toEqual(["in_monthly"]);
+    });
+
+    it("pays a one-time program once for two subscriptions bought through one click at the same moment", async () => {
+      await useDuration("ONE_TIME");
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-03-01T00:00:00Z", { invoice: "in_a", subscription: "sub_a" }));
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-03-01T00:00:00Z", { invoice: "in_b", subscription: "sub_b" }));
+
+      expect(await earnedRefs()).toEqual(["in_a"]);
+    });
+
+    it("pays a one-time program nothing on a subscription bought after a one-time purchase through the same click", async () => {
+      await useDuration("ONE_TIME");
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-01-10T00:00:00Z", { mode: "payment", paymentIntent: "pi_once" }));
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-02-10T00:00:00Z", { invoice: "in_sub", subscription: "sub_1" }));
+
+      expect(await earnedRefs()).toEqual(["pi_once"]);
+    });
+
+    it("starts a fixed-months window at a one-time purchase made before any subscription", async () => {
+      await useDuration("FIXED_MONTHS", 3);
+      // Recorded when that purchase was processed; a one-time sale keeps no other date.
+      await db.commission.create({
+        data: {
+          affiliateId: clickInput.affiliateId,
+          clickId: click.id,
+          stripePaymentRef: "pi_once",
+          amount: 10,
+          grossAmount: 10,
+          currency: "usd",
+          payableAt: new Date("2026-02-09T00:00:00Z"),
+          createdAt: new Date("2026-01-10T00:00:00Z"),
+        },
+      });
+      // Inside the three months that started on January 10, so it earns.
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-03-01T00:00:00Z", { invoice: "in_sub", subscription: "sub_1" }));
+      await handleInvoicePaid(merchant, renewalOn("2026-04-20T00:00:00Z", "in_sub_2", "sub_1"));
+      await cancel("sub_1");
+      // Past the referral's window, which ended on April 10.
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-04-25T00:00:00Z", { invoice: "in_sub_again", subscription: "sub_2" }));
+
+      expect(await earnedRefs()).toEqual(["in_sub", "pi_once"]);
+    });
+
+    it("counts a refunded first payment as the one-time commission already used", async () => {
+      await useDuration("ONE_TIME");
+      refundedInFull("pi_a");
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-01-10T00:00:00Z", { invoice: "in_a", subscription: "sub_a" }));
+      await cancel("sub_a");
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-01-20T00:00:00Z", { invoice: "in_b", subscription: "sub_b" }));
+
+      const rows = await db.commission.findMany({ where: { clickId: click.id } });
+      expect(rows.map((c) => [c.stripePaymentRef, c.status, c.voidReason])).toEqual([["in_a", "VOIDED", "refund"]]);
+    });
+
+    it("starts a fixed-months window at a refunded first payment", async () => {
+      await useDuration("FIXED_MONTHS", 3);
+      refundedInFull("pi_a");
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-01-10T00:00:00Z", { invoice: "in_a", subscription: "sub_a" }));
+      await cancel("sub_a");
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-04-20T00:00:00Z", { invoice: "in_b", subscription: "sub_b" }));
+
+      expect(await earnedRefs()).toEqual(["in_a"]);
+    });
+
+    it("measures a click from before 0.2.5, with commissions but no recorded subscription, from its first commission", async () => {
+      await useDuration("FIXED_MONTHS", 3);
+      await db.commission.create({
+        data: {
+          affiliateId: clickInput.affiliateId,
+          clickId: click.id,
+          stripePaymentRef: "in_legacy",
+          amount: 10,
+          grossAmount: 10,
+          currency: "usd",
+          status: "PAID",
+          paidAt: new Date("2026-02-15T00:00:00Z"),
+          payableAt: new Date("2026-02-09T00:00:00Z"),
+          createdAt: new Date("2026-01-10T00:00:00Z"),
+        },
+      });
+      await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-05-01T00:00:00Z", { invoice: "in_new", subscription: "sub_new" }));
+
+      expect(await earnedRefs()).toEqual(["in_legacy"]);
+    });
   });
 
   it("records no subscription for a token that belongs to a different Merchant's affiliate", async () => {

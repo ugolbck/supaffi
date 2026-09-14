@@ -37,7 +37,7 @@ export type ReferralHistory = {
  * subscription processed in between. An out-of-order first payment can also
  * pay one commission outside a FIXED_MONTHS window, because the start moves
  * earlier once that commission was already written; this is accepted and
- * bounded to one commission (Risk 7 in the plan).
+ * bounded to one commission.
  */
 export function isWithinReferralDuration(program: Program, history: ReferralHistory, payment: PaymentRef): boolean {
   if (program.commissionDurationType === "FOREVER") return true;
