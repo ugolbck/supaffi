@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { generateLinkCode } from "@/lib/referralCode";
 import { isCodeRetiredByAnother, lockLinkCodes } from "@/lib/affiliateLink";
 import { Prisma } from "@prisma/client";
-import { dayKey, type CurrencyTotal } from "@/lib/analytics";
+import type { CurrencyTotal } from "@/lib/analytics";
 import type { CommissionStatus } from "@/lib/commission";
 
 // Owner-scoping is done in the query, never inferred from the route guard.
@@ -322,7 +322,7 @@ export async function updateAffiliate(
 }
 
 export type AffiliatePaymentGroup = {
-  /** Midnight UTC of the day these were marked paid. */
+  /** The moment the Owner pressed Mark paid. Every commission in one payout carries the same one. */
   paidAt: Date;
   totals: CurrencyTotal[];
   count: number;
@@ -330,13 +330,15 @@ export type AffiliatePaymentGroup = {
 
 /**
  * Payment history, derived rather than read from a table: Supaffi has no
- * payment rail, so a "payment" is just paid commissions grouped by the
- * calendar day the Merchant marked them paid.
+ * payment rail, so a "payment" is the set of commissions one press of Mark
+ * paid covered.
  *
- * Grouped in TypeScript, not SQL: `paidAt` is a timestamp and the bucket is a
- * UTC day, the same rule `dayKey` already applies to click and commission
- * series in analytics.ts. A day's rows keep their currencies separate
- * (CONTEXT.md: never convert), so one bucket can carry several totals.
+ * Grouped by the exact `paidAt`, not by day. `markCommissionsPaid` stamps
+ * every row of a payout with one moment in a single write, so that moment is
+ * the payout's identity. Grouping by day merged two separate payouts made the
+ * same day into one figure that matched neither transfer. Currencies stay
+ * separate within a group (CONTEXT.md: never convert); a real payout only ever
+ * has one, but seeded demo rows can share a moment across currencies.
  */
 export async function listAffiliatePayments(affiliateId: string): Promise<AffiliatePaymentGroup[]> {
   const rows = await db.commission.findMany({
@@ -344,14 +346,13 @@ export async function listAffiliatePayments(affiliateId: string): Promise<Affili
     select: { amount: true, currency: true, paidAt: true },
   });
 
-  const byDay = new Map<string, { paidAt: Date; totals: Map<string, Prisma.Decimal>; count: number }>();
+  const byPayout = new Map<number, { paidAt: Date; totals: Map<string, Prisma.Decimal>; count: number }>();
   for (const row of rows) {
     const paidAt = row.paidAt!;
-    const key = dayKey(paidAt);
-    let bucket = byDay.get(key);
+    let bucket = byPayout.get(paidAt.getTime());
     if (!bucket) {
-      bucket = { paidAt: new Date(`${key}T00:00:00.000Z`), totals: new Map(), count: 0 };
-      byDay.set(key, bucket);
+      bucket = { paidAt, totals: new Map(), count: 0 };
+      byPayout.set(paidAt.getTime(), bucket);
     }
     bucket.count += 1;
     bucket.totals.set(
@@ -360,7 +361,7 @@ export async function listAffiliatePayments(affiliateId: string): Promise<Affili
     );
   }
 
-  return [...byDay.values()]
+  return [...byPayout.values()]
     .sort((a, b) => b.paidAt.getTime() - a.paidAt.getTime())
     .map((bucket) => ({
       paidAt: bucket.paidAt,

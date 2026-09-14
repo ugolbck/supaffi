@@ -21,12 +21,17 @@ const DATE = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   month: "short",
   year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
   timeZone: "UTC",
 });
 
 /**
- * One row per day a payment landed. A day can carry more than one currency, so
- * the amount is `money()` plus `moneyHint()`, never a sum across them.
+ * One row per payout, at the moment it was made. Two payouts made the same
+ * day are two rows, each with its own time, because they were two transfers.
+ * A row can carry more than one currency, so the amount is `money()` plus
+ * `moneyHint()`, never a sum across them.
  */
 function PaymentRows({ payments }: { payments: AffiliatePaymentGroup[] }) {
   return (

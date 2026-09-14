@@ -230,12 +230,6 @@ async function assertOwns(ownerId: string, merchantId: string): Promise<void> {
   }
 }
 
-/** Exported for `listAffiliatePayments` in affiliate.ts, which buckets `paidAt`
- * by the same UTC day the rest of this file uses. */
-export function dayKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 /**
  * Every bucket in the window, in order, with zeros where nothing happened.
  *

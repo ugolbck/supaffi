@@ -1114,7 +1114,7 @@ function EPayouts({ empty = false }: { empty?: boolean }) {
           ? []
           : [
               {
-                paidAt: day("2026-08-28"),
+                paidAt: new Date("2026-08-28T14:35:00.000Z"),
                 count: 6,
                 totals: [
                   { currency: "usd", total: "420.00" },
@@ -1122,7 +1122,7 @@ function EPayouts({ empty = false }: { empty?: boolean }) {
                 ],
               },
               {
-                paidAt: day("2026-07-30"),
+                paidAt: new Date("2026-07-30T09:10:00.000Z"),
                 count: 3,
                 totals: [{ currency: "usd", total: "180.00" }],
               },

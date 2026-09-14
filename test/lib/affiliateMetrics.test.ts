@@ -11,6 +11,7 @@ import {
 } from "@/lib/affiliate";
 import { getPrimaryLink } from "@/lib/affiliateLink";
 import { getAffiliateMetrics } from "@/lib/analytics";
+import { markCommissionsPaid } from "@/lib/commission";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
@@ -344,7 +345,7 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     });
   }
 
-  it("collapses two commissions paid the same day in the same currency into one row", async () => {
+  it("keeps two payouts made the same day as two rows, newest first", async () => {
     const { merchant, program } = await seedProgram();
     const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
     const click = await seedClick(sarah.id);
@@ -352,32 +353,33 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     await payCommission(sarah.id, click.id, "5.00", "usd", new Date("2026-08-15T18:00:00.000Z"));
 
     const payments = await listAffiliatePayments(sarah.id);
+    expect(payments).toHaveLength(2);
+    expect(payments[0].paidAt).toEqual(new Date("2026-08-15T18:00:00.000Z"));
+    expect(payments[0].totals).toEqual([{ currency: "usd", total: "5.00" }]);
+    expect(payments[1].totals).toEqual([{ currency: "usd", total: "10.00" }]);
+  });
+
+  it("collapses the commissions of one payout into one row", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const click = await seedClick(sarah.id);
+    const moment = new Date("2026-08-15T09:00:00.000Z");
+    await payCommission(sarah.id, click.id, "10.00", "usd", moment);
+    await payCommission(sarah.id, click.id, "5.00", "usd", moment);
+
+    const payments = await listAffiliatePayments(sarah.id);
     expect(payments).toHaveLength(1);
     expect(payments[0].count).toBe(2);
     expect(payments[0].totals).toEqual([{ currency: "usd", total: "15.00" }]);
   });
 
-  it("keeps two commissions paid on different days as separate rows, newest first", async () => {
+  it("keeps currencies separate within one payout's row rather than summing across them", async () => {
     const { merchant, program } = await seedProgram();
     const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
     const click = await seedClick(sarah.id);
-    await payCommission(sarah.id, click.id, "10.00", "usd", new Date("2026-08-14T09:00:00.000Z"));
-    await payCommission(sarah.id, click.id, "5.00", "usd", new Date("2026-08-15T09:00:00.000Z"));
-
-    const payments = await listAffiliatePayments(sarah.id);
-    expect(payments).toHaveLength(2);
-    expect(payments[0].totals).toEqual([{ currency: "usd", total: "5.00" }]);
-    expect(payments[0].count).toBe(1);
-    expect(payments[1].totals).toEqual([{ currency: "usd", total: "10.00" }]);
-    expect(payments[1].count).toBe(1);
-  });
-
-  it("keeps currencies separate within one day's row rather than summing across them", async () => {
-    const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
-    const click = await seedClick(sarah.id);
-    await payCommission(sarah.id, click.id, "10.00", "usd", new Date("2026-08-15T09:00:00.000Z"));
-    await payCommission(sarah.id, click.id, "7.00", "eur", new Date("2026-08-15T18:00:00.000Z"));
+    const moment = new Date("2026-08-15T09:00:00.000Z");
+    await payCommission(sarah.id, click.id, "10.00", "usd", moment);
+    await payCommission(sarah.id, click.id, "7.00", "eur", moment);
 
     const payments = await listAffiliatePayments(sarah.id);
     expect(payments).toHaveLength(1);
@@ -386,5 +388,35 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
       { currency: "eur", total: "7.00" },
       { currency: "usd", total: "10.00" },
     ]);
+  });
+
+  it("shows each press of Mark paid as its own payment", async () => {
+    // Proves the grouping key against the real write: one press stamps one
+    // moment on every row it pays, and a second press stamps another.
+    const { owner, merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const click = await seedClick(sarah.id);
+    const make = (amount: string) =>
+      db.commission.create({
+        data: {
+          affiliateId: sarah.id,
+          clickId: click.id,
+          amount,
+          currency: "usd",
+          status: "PAYABLE",
+          payableAt: new Date(Date.now() - 1000),
+          stripePaymentRef: crypto.randomUUID(),
+        },
+      });
+    const a = await make("10.00");
+    const b = await make("4.00");
+    const c = await make("5.00");
+
+    expect(await markCommissionsPaid(owner.id, merchant.id, [a.id, b.id], "14.00")).toEqual({ count: 2 });
+    expect(await markCommissionsPaid(owner.id, merchant.id, [c.id], "5.00")).toEqual({ count: 1 });
+
+    const payments = await listAffiliatePayments(sarah.id);
+    expect(payments).toHaveLength(2);
+    expect(payments.map((p) => p.totals[0].total).sort()).toEqual(["14.00", "5.00"]);
   });
 });
