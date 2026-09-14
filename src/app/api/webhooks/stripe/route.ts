@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { Prisma } from "@prisma/client";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { shouldLogSignatureFailure } from "@/lib/webhookSignatureLog";
 
 // One instance can host several Merchants (ADR 0006), each on their own
 // domain, so the Merchant is resolved by which domain the request arrived
@@ -38,7 +39,17 @@ export async function POST(req: NextRequest) {
     const webhookSecret = decrypt(merchant.stripeWebhookSecretEnc);
     event = Stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
   } catch {
-    // Bad signature — reject outright, never queue an unverified payload.
+    // Bad signature: reject outright, never queue an unverified payload.
+    //
+    // This used to fail in silence, so a rotated or mistyped signing secret
+    // left nothing in the logs to say why no sale arrived. The address is
+    // public, so the line does not claim the secret is wrong, and it is
+    // limited to one per product every 15 minutes.
+    if (shouldLogSignatureFailure(merchant.id)) {
+      console.warn(
+        `[webhook] rejected a request for merchant ${merchant.id}: its signature did not verify against the signing secret on file.`
+      );
+    }
     return new NextResponse(null, { status: 400 });
   }
 
