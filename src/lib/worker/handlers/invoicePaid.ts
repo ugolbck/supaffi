@@ -20,6 +20,7 @@ import { invoiceBaseMinor } from "../saleBase";
 import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { claimFirstPayment, findReferredSubscription, idOf, subscriptionIdOf } from "../referredSubscription";
+import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
 export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invoice): Promise<void> {
   const stripeCustomerId = idOf(invoice.customer);
@@ -108,7 +109,8 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   const dispute = await disputeStateAtCreation(stripe, chargeIntentId, charge);
 
   try {
-    const commission = await db.commission.create({
+    // Checked against a self referral confirmed since the check above.
+    const written = await createCommissionUnlessSelfReferral({
       data: {
         affiliateId: affiliate.id,
         clickId: click.id,
@@ -122,9 +124,12 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
         ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute }),
       },
     });
-    if (dispute === "unknown") {
+    if (written && dispute === "unknown") {
+      // The write only reports whether it happened, not the row: looked up by
+      // its unique payment reference so the log still names the commission.
+      const commission = await db.commission.findFirst({ where: { stripePaymentRef: invoice.id }, select: { id: true } });
       console.warn(
-        `[worker] commission ${commission.id} was created while its disputes could not be read, so it is held until a dispute event or the owner releases it.`
+        `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event or the owner releases it.`
       );
     }
   } catch (err) {

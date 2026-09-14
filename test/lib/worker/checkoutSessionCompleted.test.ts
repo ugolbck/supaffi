@@ -634,6 +634,19 @@ describe("handleCheckoutSessionCompleted", () => {
     expect((await db.merchant.findUniqueOrThrow({ where: { id: merchant.id } })).trackingVerifiedAt).not.toBeNull();
   });
 
+  it("creates nothing when the self referral is confirmed while the sale is being processed", async () => {
+    // Confirmed after the handler's first check on the click, during its
+    // Stripe reads, and before it writes.
+    stripeStub.invoicePayments.list.mockImplementationOnce(async () => {
+      await db.click.update({ where: { id: click.id }, data: { fraudConfirmedAt: new Date() } });
+      return { data: [] };
+    });
+
+    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
+
+    expect(await db.commission.count()).toBe(0);
+  });
+
   it("records no subscription for a token that belongs to a different Merchant's affiliate", async () => {
     const other = await db.merchant.create({
       data: {

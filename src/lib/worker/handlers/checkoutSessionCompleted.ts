@@ -15,6 +15,7 @@ import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { claimFirstPayment, idOf, recordReferredSubscription } from "../referredSubscription";
+import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
 export async function handleCheckoutSessionCompleted(merchant: Merchant, session: Stripe.Checkout.Session): Promise<void> {
   const referralToken = session.metadata?.[REFERRAL_METADATA_KEY];
@@ -145,7 +146,8 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   const dispute = await disputeStateAtCreation(stripe, chargeIntentId, charge);
 
   try {
-    const commission = await db.commission.create({
+    // Checked against a self referral confirmed since the check above.
+    const written = await createCommissionUnlessSelfReferral({
       data: {
         affiliateId: affiliate.id,
         clickId: click.id,
@@ -159,9 +161,12 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
         ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute }),
       },
     });
-    if (dispute === "unknown") {
+    if (written && dispute === "unknown") {
+      // The write only reports whether it happened, not the row: looked up by
+      // its unique payment reference so the log still names the commission.
+      const commission = await db.commission.findFirst({ where: { stripePaymentRef }, select: { id: true } });
       console.warn(
-        `[worker] commission ${commission.id} was created while its disputes could not be read, so it is held until a dispute event or the owner releases it.`
+        `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event or the owner releases it.`
       );
     }
   } catch (err) {

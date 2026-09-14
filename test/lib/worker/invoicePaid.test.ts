@@ -414,6 +414,19 @@ describe("handleInvoicePaid", () => {
       expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("VOIDED");
     });
 
+    it("creates nothing when the self referral is confirmed while the renewal is being processed", async () => {
+      // Confirmed after the handler's first check on the click, during its
+      // Stripe reads, and before it writes.
+      stripeStub.invoicePayments.list.mockImplementationOnce(async () => {
+        await db.click.update({ where: { id: clickId }, data: { fraudConfirmedAt: new Date() } });
+        return { data: [] };
+      });
+
+      await handleInvoicePaid(merchant, invoiceFixture());
+
+      expect(await db.commission.count()).toBe(0);
+    });
+
     it("flags a renewal billed to the affiliate's own email", async () => {
       const { click } = await seedReferral(merchant, { affiliateEmail: "own@example.com" });
       await seedReferredSubscription(merchant.id, click.id, "sub_own", { ref: "in_first", at: new Date() });
