@@ -665,7 +665,9 @@ export type PayableGroup = {
  * Carries the exact commissions and amounts behind each total so the Pay
  * button can name them, rather than the mutation re-querying at write time and
  * sweeping in whatever turned payable in between (CONTEXT.md). Adjustment rows
- * are left out: a refund after payout is no longer recovered.
+ * are left out: a refund after payout is no longer recovered. Also excludes
+ * anything at zero or below, so a stray negative row with a nulled adjustment
+ * link can never sit in a group a payout button offers to pay.
  */
 export async function getPayableGroups(
   ownerId: string,
@@ -674,7 +676,12 @@ export async function getPayableGroups(
   await assertOwns(ownerId, merchantId);
 
   const rows = await db.commission.findMany({
-    where: { status: "PAYABLE", adjustsCommissionId: null, affiliate: { merchantId } },
+    where: {
+      status: "PAYABLE",
+      adjustsCommissionId: null,
+      amount: { gt: 0 },
+      affiliate: { merchantId },
+    },
     select: {
       id: true,
       amount: true,

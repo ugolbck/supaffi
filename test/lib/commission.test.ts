@@ -505,6 +505,39 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect(row.voidReason).toBe("voided by owner");
   });
 
+  it("never reads an Owner's own void as the refund void it happens to spell the same way", async () => {
+    // "refund" typed by an Owner must not read as the worker's own refund
+    // void: payoutFor tells the two apart only by voidReason, and paying this
+    // row over a stale render would overturn a decision the Owner made.
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const kept = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const voided = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const renderedAt = loadedNow();
+
+    await voidCommission(ownerId, merchantId, voided.id, "refund");
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(kept, voided), renderedAt)).toEqual({
+      count: 1,
+      skipped: 1,
+    });
+    const row = await db.commission.findUniqueOrThrow({ where: { id: voided.id } });
+    expect(row.status).toBe("VOIDED");
+  });
+
+  it("stores an Owner's typed reason distinguishably when it matches a worker reason, any case", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const voided = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+
+    await voidCommission(ownerId, merchantId, voided.id, "Chargeback");
+
+    const row = await db.commission.findUniqueOrThrow({ where: { id: voided.id } });
+    expect(row.voidReason).not.toBe("chargeback");
+    expect(row.voidReason).not.toBeNull();
+    expect(row.voidReason!.toLowerCase()).not.toBe("chargeback");
+    expect(row.voidReason).toContain("Chargeback");
+    expect(row.voidReason).toContain("owner");
+  });
+
   it("skips a shown commission a confirmed self referral voided after the page loaded", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);
@@ -609,6 +642,19 @@ describe.skipIf(!hasDatabase)("commission", () => {
     }
     expect((await db.commission.findUniqueOrThrow({ where: { id: only.id } })).status).toBe("PAYABLE");
     expect((await db.commission.findUniqueOrThrow({ where: { id: foreign.id } })).status).toBe("PAYABLE");
+  });
+
+  it("refuses a shown list larger than any page could render, before any write", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const only = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const tooMany = Array.from({ length: 5001 }, (_, i) => ({
+      id: i === 0 ? only.id : `not-a-real-id-${i}`,
+      amount: "10.00",
+    }));
+
+    const result = await markCommissionsPaid(ownerId, merchantId, tooMany, loadedNow());
+    expect(result).toEqual({ error: expect.stringContaining("refused") });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: only.id } })).status).toBe("PAYABLE");
   });
 
   it("voidCommission refuses a commission paid out between its check and its write", async () => {

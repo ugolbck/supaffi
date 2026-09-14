@@ -317,6 +317,20 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(groups[0].commissions.map((c) => c.id).sort()).toEqual([...groups[0].commissionIds].sort());
   });
 
+  it("never lets a negative PAYABLE row with no adjustment link into a group", async () => {
+    // A stray negative row that is not (or is no longer) linked as an
+    // adjustment must not block or shrink a group a payout button offers.
+    const affiliate = await makeAffiliate("a");
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "10.00" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "-5.00" });
+
+    const groups = await getPayableGroups(ownerId, merchantId);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].total).toBe("10.00");
+    expect(groups[0].commissionIds).toHaveLength(1);
+  });
+
   it("splits payable groups by currency, never summing across them", async () => {
     const affiliate = await makeAffiliate("a");
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "10.00" });

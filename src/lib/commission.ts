@@ -242,6 +242,9 @@ const REFUSED = "The ledger refused that payout.";
 /** Every amount a page renders is `Decimal.toFixed(2)` of a positive commission. */
 const TWO_DECIMALS = /^\d+\.\d{2}$/;
 
+/** No page renders anywhere near this many rows in one payout. */
+const MAX_SHOWN = 5000;
+
 /** The voids a refund or a lost chargeback writes, as opposed to the Owner's own. */
 const REFUND_VOID_REASONS: readonly string[] = ["refund", "chargeback"];
 
@@ -326,6 +329,11 @@ export async function markCommissionsPaid(
   if (!Array.isArray(shown) || shown.length === 0) {
     return { error: "Nothing selected" };
   }
+  // No page renders anywhere near this many rows in one payout; a request
+  // this large is not a payout a page produced.
+  if (shown.length > MAX_SHOWN) {
+    return { error: REFUSED };
+  }
 
   // Bound arguments are values the browser posts, so their shape is checked
   // rather than trusted: a page names every id once, at a positive two-decimal
@@ -360,7 +368,9 @@ export async function markCommissionsPaid(
     // overlapping presses cannot deadlock. A refund, a void or a self referral
     // confirmation on one of them waits for this to commit, then finds the row
     // PAID and leaves it alone, so what is decided below is what stays written.
-    await tx.$queryRaw`SELECT id FROM "Commission" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
+    // Scoped to this merchant's affiliates, so a foreign id never locks
+    // another merchant's row before the ownership check below refuses it.
+    await tx.$queryRaw`SELECT id FROM "Commission" WHERE id IN (${Prisma.join(ids)}) AND "affiliateId" IN (SELECT id FROM "Affiliate" WHERE "merchantId" = ${merchantId}) ORDER BY id FOR UPDATE`;
 
     const rows = await tx.commission.findMany({
       where: { id: { in: ids }, affiliate: { merchantId } },
@@ -474,6 +484,17 @@ export async function confirmCommissionFraud(
   });
 }
 
+// The reasons the worker and `confirmCommissionFraud` write verbatim, never
+// typed by an Owner. Compared case-insensitively: an Owner typing the same
+// words is still the Owner's own decision, not the automatic void those
+// literals otherwise mean to `payoutFor` and `voidReasonText`.
+const SYSTEM_VOID_REASONS: readonly string[] = [
+  "refund",
+  "chargeback",
+  "partial refund",
+  "confirmed self-referral",
+];
+
 /**
  * Cancel a commission the Owner has decided not to pay, with a reason.
  *
@@ -485,6 +506,11 @@ export async function confirmCommissionFraud(
  * An adjustment row is refused outright. It is a debt, not a payout: the
  * commission it claws back stays PAID, so voiding the clawback would quietly
  * write off money the Affiliate owes back.
+ *
+ * A typed reason that happens to match one of the worker's own words is
+ * suffixed before it is stored. Without that, `payoutFor` reads an Owner's
+ * void of "refund" as the refund void a stale Mark paid is allowed to record
+ * over, which would silently overturn the Owner's decision.
  */
 export async function voidCommission(
   ownerId: string,
@@ -507,12 +533,16 @@ export async function voidCommission(
     throw new Error("Commission not found, or already paid, voided, or a refund adjustment");
   }
 
+  const stored = SYSTEM_VOID_REASONS.includes(reason.trim().toLowerCase())
+    ? `${reason} (by owner)`
+    : reason;
+
   // Conditional on the same statuses as the read, so a commission paid out
   // in the moment between the two is refused rather than voided after the
   // money left.
   const { count } = await db.commission.updateMany({
     where: { id: commissionId, status: { in: ["PENDING", "PAYABLE", "FLAGGED"] } },
-    data: { status: "VOIDED", voidedAt: new Date(), voidReason: reason },
+    data: { status: "VOIDED", voidedAt: new Date(), voidReason: stored },
   });
   if (count === 0) {
     throw new Error("Commission not found, or already paid, voided, or a refund adjustment");
