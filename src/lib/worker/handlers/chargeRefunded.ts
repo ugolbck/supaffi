@@ -31,11 +31,16 @@ export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Ch
  * Scoped to the Merchant whose webhook this is, so a payment reference that
  * happens to match another Merchant's commission is ignored rather than voided.
  *
+ * A paid commission is final. A refund or lost chargeback that lands after
+ * payout is the merchant's loss and is never recovered from the affiliate, so
+ * that case writes nothing and logs one line. The holding period is what
+ * protects the merchant.
+ *
  * Every write names the status it expects. The status read a moment ago can
  * change underneath (the Owner marks the commission paid, or voids it), and an
- * update by id alone would then void a row that has already been paid out, so
- * the money would never be clawed back. When nothing was written, the row is
- * read again and a commission that became PAID takes the clawback path.
+ * update by id alone would then void or lower a row that has already been
+ * paid out. When nothing was written, the row is read again so that a payout
+ * in between is logged the same way.
  *
  * A partial reduction never raises the amount. Stripe does not guarantee event
  * order, so an older refund event carrying a smaller cumulative refund can land
@@ -58,7 +63,7 @@ export async function reverseCommission(
   if (!commission) return;
 
   if (commission.status === "PAID") {
-    await createClawbackAdjustment(commission, outcomeFor(commission));
+    logPaidIsFinal(commission.id, voidReason);
     return;
   }
   if (commission.status === "VOIDED") return; // idempotent no-op (redelivered event)
@@ -80,11 +85,17 @@ export async function reverseCommission(
   if (count > 0) return;
 
   // Nothing written: the amount was already at or below this figure, or the
-  // status moved since the read. Only a payout in between needs acting on.
-  const current = await db.commission.findUnique({ where: { id: commission.id } });
-  if (current?.status === "PAID") {
-    await createClawbackAdjustment(current, outcomeFor(current));
-  }
+  // status moved since the read. Only a payout in between is worth a log line.
+  const current = await db.commission.findUnique({ where: { id: commission.id }, select: { status: true } });
+  if (current?.status === "PAID") logPaidIsFinal(commission.id, voidReason);
+}
+
+// One line per event, so an operator reading the log can see which refunds
+// the merchant absorbed. A redelivered event logs again, which is harmless.
+function logPaidIsFinal(commissionId: string, cause: string): void {
+  console.info(
+    `[worker] ${cause} on commission ${commissionId} arrived after it was paid. A paid commission is final, so nothing changed.`
+  );
 }
 
 /**
@@ -166,46 +177,4 @@ export async function resolvePaymentReferenceId(
   // path stores the PaymentIntent ID itself as stripePaymentRef, so it's
   // the correct fallback key here too.
   return paymentIntentId;
-}
-
-// Claws back only what the refund actually took, and only the part that has
-// not been clawed back already.
-//
-// The basis is what the affiliate was paid, `amount` on the PAID row, not the
-// gross: a commission reduced by an earlier partial refund was paid out at the
-// reduced figure, so charging the gross back would take more than they ever
-// received.
-//
-// `charge.amount_refunded` is cumulative, so the total owed back is recomputed
-// from scratch on every delivery and only the difference against the existing
-// adjustment rows is written. Two partial refunds therefore stop overlapping,
-// and a redelivered event writes nothing at all.
-async function createClawbackAdjustment(original: Commission, outcome: ReversalOutcome): Promise<void> {
-  const paid = original.amount;
-  const owed = outcome.void ? paid : paid.sub(outcome.amount);
-
-  const existing = await db.commission.findMany({
-    where: { adjustsCommissionId: original.id },
-    select: { amount: true },
-  });
-  // Adjustment rows carry a negative amount; the magnitude is what it took back.
-  const alreadyClawedBack = existing.reduce((total, row) => total.add(row.amount.abs()), new Prisma.Decimal(0));
-  const delta = owed.sub(alreadyClawedBack).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-  if (delta.lte(0)) return;
-
-  await db.commission.create({
-    data: {
-      affiliateId: original.affiliateId,
-      clickId: original.clickId,
-      adjustsCommissionId: original.id,
-      stripePaymentRef: null, // not tied to a new payment
-      amount: delta.negated(),
-      currency: original.currency,
-      // Ready to net against the Affiliate's next payout immediately, no
-      // Holding Period — this isn't new money that itself needs time to
-      // prove out before a refund, it already is the refund.
-      status: "PAYABLE",
-      payableAt: new Date(),
-    },
-  });
 }

@@ -7,6 +7,7 @@ import type { Commission, Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
+import { getAffiliateMetrics } from "@/lib/analytics";
 
 // The handler resolves a Stripe client for the Merchant and asks it to trace
 // the Charge back to an Invoice. These fixtures are one-time purchases with no
@@ -207,55 +208,32 @@ describe("handleChargeRefunded", () => {
     expect(updated.voidedAt).not.toBeNull();
   });
 
-  it("claws back only the refunded portion of a commission already paid", async () => {
+  it("leaves a paid commission, and what the affiliate earned and was paid, untouched by a later refund", async () => {
+    // A paid commission is final: the merchant absorbs a refund after payout.
     const commission = await givenCommission({ status: "PAID", paidAt: new Date() });
-    await handleChargeRefunded(merchant, chargeFixture(3900));
+    const before = await getAffiliateMetrics(affiliateId, 30);
 
-    const adjustments = await adjustmentsOf(commission);
-    expect(adjustments).toHaveLength(1);
-    expect(adjustments[0].amount.toString()).toBe("-7.8");
-    expect(adjustments[0].status).toBe("PAYABLE");
+    const log = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      await handleChargeRefunded(merchant, chargeFixture(3900));
+      await handleChargeRefunded(merchant, chargeFixture(7800));
+      expect(log).toHaveBeenCalledTimes(2);
+      expect(String(log.mock.calls[0][0])).toContain(commission.id);
+    } finally {
+      log.mockRestore();
+    }
 
-    // The paid row itself is never rewritten.
     const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
     expect(updated.status).toBe("PAID");
     expect(updated.amount.toString()).toBe("15.6");
-  });
+    expect(updated.voidReason).toBeNull();
+    expect(await adjustmentsOf(commission)).toHaveLength(0);
 
-  it("adds only the difference when a second refund raises the cumulative total", async () => {
-    const commission = await givenCommission({ status: "PAID", paidAt: new Date() });
-    await handleChargeRefunded(merchant, chargeFixture(3900)); // half back, claws 7.80
-    await handleChargeRefunded(merchant, chargeFixture(5850)); // now 75% back, owes 11.70
-
-    const adjustments = await adjustmentsOf(commission);
-    expect(adjustments.map((row) => row.amount.toString())).toEqual(["-7.8", "-3.9"]);
-  });
-
-  it("adds nothing on a redelivery of the same refund", async () => {
-    const commission = await givenCommission({ status: "PAID", paidAt: new Date() });
-    await handleChargeRefunded(merchant, chargeFixture(3900));
-    await handleChargeRefunded(merchant, chargeFixture(3900));
-
-    const adjustments = await adjustmentsOf(commission);
-    expect(adjustments).toHaveLength(1);
-  });
-
-  it("claws back what the affiliate was paid, not the gross, on a commission reduced before payout", async () => {
-    // Half the sale came back while the commission was still pending, so it was
-    // paid out at 7.80. A later refund taking the total to 75% must not charge
-    // back more than the 7.80 that ever left the merchant's hands.
-    const commission = await givenCommission({
-      status: "PAID",
-      paidAt: new Date(),
-      amount: new Prisma.Decimal(7.8),
-      grossAmount: new Prisma.Decimal(15.6),
-      voidReason: "partial refund",
-    });
-    await handleChargeRefunded(merchant, chargeFixture(5850));
-
-    const adjustments = await adjustmentsOf(commission);
-    expect(adjustments).toHaveLength(1);
-    expect(adjustments[0].amount.toString()).toBe("-3.9");
+    const after = await getAffiliateMetrics(affiliateId, 30);
+    expect(after.paid).toEqual(before.paid);
+    expect(after.unpaid).toEqual(before.unpaid);
+    expect(after.payable).toEqual(before.payable);
+    expect(after.current.amounts).toEqual(before.current.amounts);
   });
 
   it("does nothing when the charge traces to no commission", async () => {
@@ -295,23 +273,27 @@ describe("handleChargeRefunded", () => {
     expect(updated.status).toBe("PENDING");
   });
 
-  it("claws back instead of voiding when the commission is paid out between the read and the write", async () => {
+  it("changes nothing when the commission is paid out between the read and the write", async () => {
     const commission = await givenCommission();
     const realUpdateMany = db.commission.updateMany.bind(db.commission);
     const spy = vi.spyOn(db.commission, "updateMany").mockImplementationOnce((async (args: Prisma.CommissionUpdateManyArgs) => {
       await db.commission.update({ where: { id: commission.id }, data: { status: "PAID", paidAt: new Date() } });
       return realUpdateMany(args);
     }) as unknown as typeof db.commission.updateMany);
+    const log = vi.spyOn(console, "info").mockImplementation(() => {});
     try {
       await handleChargeRefunded(merchant, chargeFixture(7800));
+      expect(log).toHaveBeenCalledTimes(1);
     } finally {
       spy.mockRestore();
+      log.mockRestore();
     }
 
     const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
     expect(updated.status).toBe("PAID");
-    const adjustments = await adjustmentsOf(commission);
-    expect(adjustments.map((row) => row.amount.toString())).toEqual(["-15.6"]);
+    expect(updated.amount.toString()).toBe("15.6");
+    expect(updated.voidedAt).toBeNull();
+    expect(await adjustmentsOf(commission)).toHaveLength(0);
   });
 
   function disputeFixture(status: string): Stripe.Dispute {
@@ -332,13 +314,21 @@ describe("handleChargeRefunded", () => {
     expect(updated.voidReason).toBe("chargeback");
   });
 
-  it("claws back a paid commission in full when a chargeback is lost", async () => {
+  it("changes nothing on a paid commission when a chargeback is lost", async () => {
     const commission = await givenCommission({ status: "PAID", paidAt: new Date() });
-    await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
-    await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
+    const log = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
+      expect(log).toHaveBeenCalledTimes(1);
+    } finally {
+      log.mockRestore();
+    }
 
-    const adjustments = await adjustmentsOf(commission);
-    expect(adjustments.map((row) => row.amount.toString())).toEqual(["-15.6"]);
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("PAID");
+    expect(updated.amount.toString()).toBe("15.6");
+    expect(updated.voidReason).toBeNull();
+    expect(await adjustmentsOf(commission)).toHaveLength(0);
   });
 
   it("leaves the commission alone when the chargeback is won", async () => {

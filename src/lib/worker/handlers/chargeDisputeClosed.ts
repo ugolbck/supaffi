@@ -4,14 +4,15 @@ import { stripeClientFor } from "@/lib/stripe";
 import { idOf, resolvePaymentReferenceId, reverseCommission } from "./chargeRefunded";
 
 /**
- * A lost chargeback takes the whole sale back, so it takes the whole
- * commission back too, through the same void or clawback path as a full refund.
+ * A lost chargeback takes the whole sale back, so it takes the whole unpaid
+ * commission back too, through the same path as a full refund. A commission
+ * already paid is final and stays as it is.
  *
  * Only a closed dispute that was lost counts. `charge.dispute.funds_withdrawn`
  * fires when the dispute opens, and a Merchant who then wins it gets the money
- * reinstated; clawing back at that point would mean un-voiding later, and a
- * voided commission never comes back. Waiting for the outcome costs nothing,
- * since a disputed commission is almost always still inside its Holding Period.
+ * reinstated; voiding at that point would mean un-voiding later, and a voided
+ * commission never comes back. Waiting for the outcome costs nothing, since a
+ * disputed commission is almost always still inside its Holding Period.
  */
 export async function handleChargeDisputeClosed(merchant: Merchant, dispute: Stripe.Dispute): Promise<void> {
   if (dispute.status !== "lost") return;
