@@ -63,6 +63,38 @@ describe("prorateCommission", () => {
       amount: 10,
     });
   });
+
+  // 200.00 charge of 100.00 referred plan plus 100.00 of a non-referred add-on,
+  // commission 30.00 on the 100.00 referred base.
+  describe("when the row records the referred share of the charge", () => {
+    it("voids on a refund of exactly the referred share, even though most of the charge remains", () => {
+      expect(
+        prorateCommission({ gross: 30, chargeTotal: 20000, refunded: 10000, referredChargeMinor: 10000 })
+      ).toEqual({ void: true });
+    });
+
+    it("keeps half the commission when half the referred share is refunded", () => {
+      expect(
+        prorateCommission({ gross: 30, chargeTotal: 20000, refunded: 5000, referredChargeMinor: 10000 })
+      ).toEqual({ void: false, amount: 15 });
+    });
+
+    it("takes the referred share out of the refund first, so refunding the whole charge still leaves nothing beyond the referred voiding", () => {
+      expect(
+        prorateCommission({ gross: 30, chargeTotal: 20000, refunded: 20000, referredChargeMinor: 10000 })
+      ).toEqual({ void: true });
+    });
+
+    it("behaves exactly as before when the row has no referred share recorded", () => {
+      // Same charge and refund as the merchant-safe void case above, but
+      // without referredChargeMinor: prorates against the whole charge, the
+      // rule every row used before this existed.
+      expect(prorateCommission({ gross: 30, chargeTotal: 20000, refunded: 10000 })).toEqual({
+        void: false,
+        amount: 15,
+      });
+    });
+  });
 });
 
 const PAYMENT_INTENT_ID = "pi_refund_test";
@@ -234,6 +266,27 @@ describe("handleChargeRefunded", () => {
     expect(after.unpaid).toEqual(before.unpaid);
     expect(after.payable).toEqual(before.payable);
     expect(after.current.amounts).toEqual(before.current.amounts);
+  });
+
+  it("voids a commission recorded against only the referred share of the charge once that share alone is refunded", async () => {
+    // The 78.00 charge here stands in for a 100.00 referred plan next to a
+    // non-referred add-on; only 39.00 of it (half) is ever recorded as
+    // referred, in the same units chargeFixture already uses.
+    const commission = await givenCommission({ referredChargeMinor: 3900 });
+    await handleChargeRefunded(merchant, chargeFixture(3900));
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("VOIDED");
+    expect(updated.voidReason).toBe("refund");
+  });
+
+  it("keeps most of the commission when a refund smaller than the referred share lands", async () => {
+    const commission = await givenCommission({ referredChargeMinor: 3900 });
+    await handleChargeRefunded(merchant, chargeFixture(1950));
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.amount.toString()).toBe("7.8");
+    expect(updated.status).toBe("PENDING");
   });
 
   it("does nothing when the charge traces to no commission", async () => {

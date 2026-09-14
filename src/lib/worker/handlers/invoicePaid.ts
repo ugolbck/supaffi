@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
@@ -16,7 +17,8 @@ import {
   latestChargeFor,
   paymentIntentForInvoice,
 } from "../paymentState";
-import { listInvoiceLines, referredInvoiceBase } from "../referredRevenue";
+import { listInvoiceLines, referredInvoiceBase, type ReferredRevenue } from "../referredRevenue";
+import { invoiceLinesBeforeTax } from "../saleBase";
 import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import {
@@ -35,6 +37,30 @@ import { createCommissionUnlessSelfReferral } from "../recordCommission";
 // subscription_threshold usage billing is left out by the owner's rule.
 // subscription_create belongs to checkout.session.completed.
 const EARNING_BILLING_REASONS: ReadonlySet<string> = new Set(["subscription_cycle", "subscription_update"]);
+
+type Earned = Extract<ReferredRevenue, { kind: "earned" }>;
+
+// Logs the one line a non-earning outcome gets and reports whether the caller
+// should stop. Shared by the first read and the recompute after a legacy row
+// learns its products, so a recompute that turns out unreadable or off Stripe
+// is never quietly replaced by the stale figure computed before the fill.
+function earnedOrLog(invoiceId: string, revenue: ReferredRevenue): Earned | null {
+  if (revenue.kind === "no_tax_breakdown") {
+    console.error(`[worker] invoice ${invoiceId} carries no tax breakdown, so no commission was recorded for it`);
+    return null;
+  }
+  if (revenue.kind === "unreadable") {
+    console.error(`[worker] invoice ${invoiceId} ${revenue.reason}, so no commission was recorded for it`);
+    return null;
+  }
+  if (revenue.kind === "off_stripe") {
+    // amount_paid already counts a payment made outside Stripe, so an invoice
+    // paid entirely that way has nothing left to scale a commission on.
+    console.warn(`[worker] invoice ${invoiceId} was paid outside Stripe, so no commission was recorded for it`);
+    return null;
+  }
+  return revenue;
+}
 
 export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invoice): Promise<void> {
   const stripeCustomerId = idOf(invoice.customer);
@@ -93,27 +119,43 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   });
   if (excluded) return;
 
+  // amount_paid_off_stripe is expandable, and Stripe never sends an
+  // expandable field's value on a webhook payload: "Objekte, die in
+  // Ereignissen gesendet werden, sind immer in ihrer Minimalform" (Stripe
+  // docs, expand.md). So it has to be read back here, never trusted from
+  // `invoice`. A failed read throws, so the event is retried.
+  const invoiceRead = await stripe.invoices.retrieve(invoice.id, { expand: ["amount_paid_off_stripe"] });
+  if (typeof invoiceRead.amount_paid_off_stripe !== "number") {
+    // Stripe answered without the field even when it was asked for, which
+    // this pinned API version is not documented to do. Earning on an
+    // unscaled amount_paid risks paying on money moved outside Stripe, so
+    // this invoice earns nothing instead.
+    console.error(
+      `[worker] invoice ${invoice.id} did not answer amount_paid_off_stripe when read with expand, so no commission was recorded for it`
+    );
+    return;
+  }
+  // total_excluding_tax, total_taxes and shipping_cost are not expandable and
+  // stay as the webhook sent them; only the figures the out-of-band read
+  // exists for are replaced.
+  const invoiceForBase = {
+    ...invoice,
+    total: invoiceRead.total,
+    amount_paid: invoiceRead.amount_paid,
+    amount_paid_off_stripe: invoiceRead.amount_paid_off_stripe,
+  };
+
   // Earned only on this subscription's own lines for the products its referral
   // bought, before tax and scaled to what was paid in money, see
   // referredRevenue.ts. An invoice whose tax or lines cannot be read is logged
   // and earns nothing; returning normally stops a retry that could never
   // succeed. A failed read of the lines throws, so the event is retried.
   const lines = await listInvoiceLines(stripe, invoice.id);
-  const revenue = referredInvoiceBase(invoice, lines, subscriptionId, referred.stripeProductIds);
-  if (revenue.kind === "no_tax_breakdown") {
-    console.error(`[worker] invoice ${invoice.id} carries no tax breakdown, so no commission was recorded for it`);
-    return;
-  }
-  if (revenue.kind === "unreadable") {
-    console.error(`[worker] invoice ${invoice.id} ${revenue.reason}, so no commission was recorded for it`);
-    return;
-  }
-  if (revenue.kind === "off_stripe") {
-    // amount_paid already counts a payment made outside Stripe, so an invoice
-    // paid entirely that way has nothing left to scale a commission on.
-    console.warn(`[worker] invoice ${invoice.id} was paid outside Stripe, so no commission was recorded for it`);
-    return;
-  }
+  const revenue = earnedOrLog(
+    invoice.id,
+    referredInvoiceBase(invoiceForBase, lines, subscriptionId, referred.stripeProductIds)
+  );
+  if (!revenue) return;
 
   let earned = revenue;
   if (referred.stripeProductIds.length === 0) {
@@ -122,8 +164,12 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
     // a different set a moment earlier, this invoice is measured against that.
     const stored = await fillStripeProductIds(referred.id, revenue.productIds);
     if (stored.join() !== revenue.productIds.join()) {
-      const again = referredInvoiceBase(invoice, lines, subscriptionId, stored);
-      if (again.kind === "earned") earned = again;
+      const again = earnedOrLog(invoice.id, referredInvoiceBase(invoiceForBase, lines, subscriptionId, stored));
+      // Never falls back to the figure computed against the stale, empty
+      // product list: if the recompute against what is now stored cannot
+      // earn, this invoice earns nothing, not the earlier guess.
+      if (!again) return;
+      earned = again;
     }
   }
   if (earned.otherProductIds.length > 0) {
@@ -132,6 +178,23 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
     );
   }
   const baseMinor = earned.baseMinor;
+
+  // The referred base in charge units (the base is pre-tax and already scaled
+  // to what was paid; grossing it back up by total/linesBeforeTax restates it
+  // in the same units as the charge, which includes tax). A refund then takes
+  // itself out of this share first, never out of a one-off item or another
+  // product billed on the same charge (see chargeRefunded.ts). Null when the
+  // pre-tax total cannot be read; that case never reaches here since
+  // referredInvoiceBase would already have answered no_tax_breakdown.
+  const linesBeforeTax = invoiceLinesBeforeTax(invoiceForBase);
+  const referredChargeMinor =
+    linesBeforeTax && linesBeforeTax > 0
+      ? new Prisma.Decimal(baseMinor)
+          .mul(invoiceForBase.total)
+          .div(linesBeforeTax)
+          .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
+          .toNumber()
+      : null;
 
   const affiliate = click.affiliate;
   const rate = commissionRateFor(affiliate, program);
@@ -154,6 +217,12 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   const charge = chargeIntentId ? await latestChargeFor(stripe, chargeIntentId) : null;
   const dispute = await disputeStateAtCreation(stripe, chargeIntentId, charge);
 
+  // Never more than the charge itself: grossing baseMinor back up can round
+  // past the charge amount when a shipping or rounding difference separates
+  // the invoice's total from what the charge actually moved.
+  const cappedReferredChargeMinor =
+    referredChargeMinor !== null && charge ? Math.min(referredChargeMinor, charge.amount) : referredChargeMinor;
+
   try {
     // Checked against a self referral confirmed since the check above.
     const written = await createCommissionUnlessSelfReferral({
@@ -165,9 +234,10 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
         saleAmount: saleAmountFor(baseMinor, invoice.currency),
         payableAt: computePayableAt(program),
         flagReason,
+        referredChargeMinor: cappedReferredChargeMinor,
         // amount, grossAmount (the figure a later refund prorates against),
         // status, voidedAt, voidReason and disputeOpenedAt.
-        ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute }),
+        ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute, referredChargeMinor: cappedReferredChargeMinor }),
       },
     });
     if (written && dispute === "unknown") {

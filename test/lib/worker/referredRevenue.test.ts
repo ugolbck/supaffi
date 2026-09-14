@@ -191,6 +191,51 @@ describe("referredInvoiceBase", () => {
     });
   });
 
+  // A negative invoice item is Stripe's documented credit ("Passing in a
+  // negative amount will reduce the amount_due on the invoice"). Supaffi
+  // cannot tell which product a bare credit was meant for, so it must not be
+  // assumed to leave the referred product's own base untouched: it is
+  // subtracted before the clamp, not only once it outweighs every other line.
+  describe("a credit line not tied to any product", () => {
+    it("lowers the referred base even with a non-referred line still on the invoice", () => {
+      // Referred plan A 100.00, non-referred add-on B 50.00, a 40.00 goodwill
+      // credit naming no subscription: 100.00 - 40.00 = 60.00 earns, not 100.00.
+      const result = referredInvoiceBase(
+        invoice({ total: 11000, total_excluding_tax: 11000 }),
+        [
+          invoiceLine({ amount: 10000 }),
+          invoiceLine({ amount: 5000, product: "prod_addon" }),
+          invoiceLine({ amount: -4000, source: "invoice_item" }),
+        ],
+        SUB,
+        REFERRED
+      );
+      expect(result).toEqual({ kind: "earned", baseMinor: 6000, productIds: REFERRED, otherProductIds: ["prod_addon"] });
+    });
+
+    it("lowers the referred base when the credit is the only other line on the invoice", () => {
+      const result = referredInvoiceBase(
+        invoice({ total: 6000, total_excluding_tax: 6000 }),
+        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: -4000, source: "invoice_item" })],
+        SUB,
+        REFERRED
+      );
+      expect(result).toEqual({ kind: "earned", baseMinor: 6000, productIds: REFERRED, otherProductIds: [] });
+    });
+
+    it("leaves a negative proration of another product out, since it already belongs to that product", () => {
+      // A downgrade credit for a different, non-referred product on the same
+      // subscription must not spill onto the referred base either.
+      const result = referredInvoiceBase(
+        invoice({ total: 8000, total_excluding_tax: 8000 }),
+        [invoiceLine({ amount: 10000 }), invoiceLine({ amount: -2000, proration: true, product: "prod_other" })],
+        SUB,
+        REFERRED
+      );
+      expect(result).toEqual({ kind: "earned", baseMinor: 8000, productIds: REFERRED, otherProductIds: ["prod_other"] });
+    });
+  });
+
   // Stripe's API reference does not say when a subscription_item_details
   // line's `subscription` field comes back null, so it is never assumed to
   // belong to the referred subscription on its own. It is placed by its

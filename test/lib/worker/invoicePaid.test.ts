@@ -69,6 +69,14 @@ const SUBSCRIPTION_ID = "sub_renewal";
 // The lines Stripe lists for each invoice id, registered by invoiceFixture.
 const linesByInvoice = new Map<string, Stripe.InvoiceLineItem[]>();
 
+// What `stripe.invoices.retrieve(id, { expand: ["amount_paid_off_stripe"] })`
+// answers for each invoice id, registered by invoiceFixture. The webhook
+// payload itself never carries amount_paid_off_stripe (it is an expandable
+// field, see the handler's comment), so this is the only place a case can set
+// it; a case that wants the field to come back absent overrides
+// stripeStub.invoices.retrieve directly instead of using this map.
+const invoiceReadsById = new Map<string, { total: number; amount_paid: number; amount_paid_off_stripe: number }>();
+
 function subscriptionParent(subscription: string) {
   return { type: "subscription_details", subscription_details: { subscription, metadata: {} } };
 }
@@ -93,7 +101,14 @@ describe("handleInvoicePaid", () => {
 
   // A 120.00 EUR renewal whose price includes 20.00 VAT, paid in full. Its
   // lines default to the one subscription line that makes up that total.
-  function invoiceFixture(fields: Record<string, unknown> = {}, lines?: Stripe.InvoiceLineItem[]): Stripe.Invoice {
+  // `amount_paid_off_stripe` never goes on the payload itself (it is an
+  // expandable field Stripe never sends on a webhook object); passing it in
+  // `fields` only feeds the registered retrieve stub's answer.
+  function invoiceFixture(
+    fields: Record<string, unknown> & { amount_paid_off_stripe?: number } = {},
+    lines?: Stripe.InvoiceLineItem[]
+  ): Stripe.Invoice {
+    const { amount_paid_off_stripe, ...payloadFields } = fields;
     const invoice = {
       id: "in_renewal",
       customer: CUSTOMER_ID,
@@ -108,7 +123,7 @@ describe("handleInvoicePaid", () => {
       total_taxes: [{ amount: 2000, tax_behavior: "inclusive", taxable_amount: 10000 }],
       amount_paid: 12000,
       shipping_cost: null,
-      ...fields,
+      ...payloadFields,
     } as unknown as Stripe.Invoice;
     linesByInvoice.set(
       invoice.id,
@@ -120,6 +135,11 @@ describe("handleInvoicePaid", () => {
         }),
       ]
     );
+    invoiceReadsById.set(invoice.id, {
+      total: invoice.total,
+      amount_paid: invoice.amount_paid,
+      amount_paid_off_stripe: amount_paid_off_stripe ?? 0,
+    });
     return invoice;
   }
 
@@ -133,6 +153,14 @@ describe("handleInvoicePaid", () => {
     stripeStub.disputes.list.mockReset();
     stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.invoices.retrieve.mockReset();
+    invoiceReadsById.clear();
+    // Answers the out-of-band read for whichever invoice invoiceFixture
+    // registered. Legacy-recognition tests queue their own answer ahead of
+    // this with mockResolvedValueOnce, which this default never overrides.
+    stripeStub.invoices.retrieve.mockImplementation(async (id: string) => {
+      const read = invoiceReadsById.get(id);
+      return read ? { id, ...read } : undefined;
+    });
     linesByInvoice.clear();
     stripeStub.invoices.listLineItems.mockReset();
     stripeStub.invoices.listLineItems.mockImplementation(async (id: string) => ({
@@ -726,6 +754,37 @@ describe("handleInvoicePaid", () => {
       const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
       expect(commission.saleAmount?.toString()).toBe("100");
       expect(commission.amount.toString()).toBe("20");
+    });
+
+    it("throws so the event is retried when Stripe cannot answer the out-of-band read", async () => {
+      const invoice = invoiceFixture();
+      const failure = new Error("StripeConnectionError");
+      stripeStub.invoices.retrieve.mockImplementation(async () => {
+        throw failure;
+      });
+
+      await expect(handleInvoicePaid(merchant, invoice)).rejects.toBe(failure);
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("earns nothing, and logs once, when Stripe answers the retrieve without amount_paid_off_stripe even though it was expanded", async () => {
+      const invoice = invoiceFixture();
+      // Answers the read without the field at all, as this pinned version is
+      // not documented to ever do, rather than a queued 0 or the payload's own
+      // (also absent) value.
+      stripeStub.invoices.retrieve.mockImplementation(async (id: string) => ({ id, total: 12000, amount_paid: 12000 }));
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await handleInvoicePaid(merchant, invoice);
+        expect(errors).toHaveBeenCalledTimes(1);
+        const [message] = errors.mock.calls[0];
+        expect(message).toContain("in_renewal");
+        expect(message).toContain("amount_paid_off_stripe");
+      } finally {
+        errors.mockRestore();
+      }
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.listLineItems).not.toHaveBeenCalled();
     });
   });
 

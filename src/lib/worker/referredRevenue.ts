@@ -37,6 +37,16 @@ import { invoiceLinesBeforeTax, scaleToAmountPaid } from "./saleBase";
  * nothing earns. Underpaying an affiliate is the accepted cost of never paying
  * on revenue nobody referred.
  *
+ * A negative invoice item lowers what is due (Stripe's own docs for creating
+ * one: "Passing in a negative `amount` will reduce the `amount_due` on the
+ * invoice"). When such a credit is not itself a referred product's own line,
+ * Supaffi cannot tell which product it was meant for, so it is taken off the
+ * referred base before the base is capped at the invoice, rather than only
+ * mattering once it is larger than every other line combined. A negative
+ * proration is different: it already belongs to whichever product it names
+ * (a plan change crediting the product being left), so it is never folded in
+ * here.
+ *
  * Since API version 2025-03-31.basil an invoice can be paid partly or wholly
  * outside Stripe, and `invoice.paid` fires for that too. `amount_paid` already
  * counts an out-of-band payment, so scaling on it as before would pay a
@@ -92,7 +102,7 @@ export async function listInvoiceLines(stripe: Stripe, invoiceId: string): Promi
 
 type PlacedLine =
   | { kind: "subscription"; product: string; proration: boolean }
-  | { kind: "not_referred" }
+  | { kind: "not_referred"; proration: boolean }
   | { kind: "unreadable"; reason: string };
 
 function productOf(line: Stripe.InvoiceLineItem): string | null {
@@ -116,7 +126,7 @@ function placeLine(
     const referred =
       details.subscription === subscriptionId ||
       (details.subscription === null && (subscriptionItemIds ?? []).includes(details.subscription_item));
-    if (!referred) return { kind: "not_referred" };
+    if (!referred) return { kind: "not_referred", proration: details.proration };
     const product = productOf(line);
     if (!product) return { kind: "unreadable", reason: `has a subscription line ${line.id} without a product` };
     return { kind: "subscription", product, proration: details.proration };
@@ -130,7 +140,9 @@ function placeLine(
     // subscription lets an invoice item ride on any subscription's invoice, so
     // only an exact match on this subscription's id is referred; a null one is
     // not.
-    if (!details.proration || details.subscription !== subscriptionId) return { kind: "not_referred" };
+    if (!details.proration || details.subscription !== subscriptionId) {
+      return { kind: "not_referred", proration: details.proration };
+    }
     const product = productOf(line);
     if (!product) return { kind: "unreadable", reason: `has a proration line ${line.id} without a product` };
     return { kind: "subscription", product, proration: true };
@@ -225,12 +237,26 @@ export function referredInvoiceBase(
     return { kind: "unreadable", reason: `bills no price of subscription ${subscriptionId} to learn its products from` };
   }
 
-  const referred = ownLines
-    .filter((line) => productIds.includes(line.product))
-    .reduce((total, line) => total + line.base, 0);
+  const referredLines = ownLines.filter((line) => productIds.includes(line.product));
+  const referredOwn = referredLines.reduce((total, line) => total + line.base, 0);
   const otherProductIds = uniqueSorted(
     ownLines.filter((line) => !productIds.includes(line.product)).map((line) => line.product)
   );
+
+  // A negative line that never counts as a referred product's own line still
+  // lowers what the customer paid, and Supaffi cannot tell which product a
+  // bare credit belongs to. So unless it is a proration (which already
+  // belongs to whichever product it names, referred or not), every such
+  // credit is taken off the referred base before the clamp, rather than only
+  // mattering once it outweighs every other line on the invoice.
+  const creditsElsewhere = placed.reduce((total, place, index) => {
+    if (place.kind === "unreadable" || place.proration) return total;
+    if (place.kind === "subscription" && productIds.includes(place.product)) return total;
+    const base = bases[index];
+    return base < 0 ? total + base : total;
+  }, 0);
+
+  const referred = referredOwn + creditsElsewhere;
 
   // Never more than the whole invoice before tax: a credit the merchant added
   // lowers what the customer paid, and commission is owed on money paid.

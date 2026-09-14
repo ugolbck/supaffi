@@ -94,6 +94,16 @@ describe("commissionFieldsAtCreation", () => {
     expect(fields.voidReason).toBe("refund");
   });
 
+  it("folds an earlier refund against the referred share, not the whole charge, when the row records one", () => {
+    // Same 2500 refunded as the "starts reduced" case above, but this row's
+    // referred share of the 5000 charge is only 2500: the whole referred
+    // part came back, so it must void here rather than keep half.
+    const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: snapshot(2500), referredChargeMinor: 2500, now });
+    expect(fields.status).toBe("VOIDED");
+    expect(fields.voidReason).toBe("refund");
+    expect(fields.voidedAt).toEqual(now);
+  });
+
   it("starts untouched when every dispute closed in the merchant's favour", () => {
     const fields = commissionFieldsAtCreation({ amount, flagReason: null, charge: snapshot(0, true), dispute: "clear", now });
     expect(fields.status).toBe("PENDING");

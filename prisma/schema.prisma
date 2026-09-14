@@ -277,6 +277,14 @@ model Commission {
   // this existed.
   grossAmount Decimal? @db.Decimal(18, 2)
 
+  // The referred share of the charge, in Stripe minor units, capped at the
+  // charge amount. Set at creation for a renewal so a later refund prorates
+  // against only the revenue that earned, not the whole charge; a one-off
+  // item or another product on the same charge is never taken back out of
+  // this commission first. Null for checkout rows and rows written before
+  // this existed, which keep the whole-charge proration they always used.
+  referredChargeMinor Int?
+
   status     CommissionStatus @default(PENDING)
   payableAt  DateTime // createdAt + Program.holdingPeriodDays
   paidAt     DateTime?

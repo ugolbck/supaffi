@@ -109,6 +109,8 @@ export function commissionFieldsAtCreation(input: {
   charge: ChargeSnapshot | null;
   /** What Stripe says about disputes on the charge. Null or absent when not checked. */
   dispute?: DisputeState | null;
+  /** The referred share of the charge, in minor units, when the row records one. */
+  referredChargeMinor?: number | null;
   now?: Date;
 }): CreationFields {
   const now = input.now ?? new Date();
@@ -127,6 +129,7 @@ export function commissionFieldsAtCreation(input: {
       gross: input.amount,
       chargeTotal: input.charge.amount,
       refunded: input.charge.amountRefunded,
+      referredChargeMinor: input.referredChargeMinor,
     });
     if (outcome.void) {
       return { ...fields, status: "VOIDED", voidedAt: now, voidReason: "refund", disputeOpenedAt: null };

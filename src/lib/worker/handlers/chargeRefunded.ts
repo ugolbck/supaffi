@@ -21,6 +21,7 @@ export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Ch
       gross: commission.grossAmount ?? commission.amount,
       chargeTotal: charge.amount,
       refunded: charge.amount_refunded,
+      referredChargeMinor: commission.referredChargeMinor,
     })
   );
 }
@@ -124,18 +125,34 @@ function logPaidIsFinal(commissionId: string, cause: string): void {
  * the commission where it could be argued the sale should void instead. That
  * predates this release and errs toward the affiliate, so it is left as is for
  * a later release.
+ *
+ * Since F4 the commission on a renewal is earned on the referred share of the
+ * charge only, not the whole thing: a charge can bill a referred plan next to
+ * an add-on or another product nobody referred. Prorating against the whole
+ * charge then left commission on money refunded from a part that was never
+ * referred. When `referredChargeMinor` is recorded, refunds are prorated
+ * against that share instead, and taken out of it first: `remaining =
+ * max(0, referredChargeMinor - refunded)`. A refund of the non-referred share
+ * alone still voids nothing under this reading; that is the accepted,
+ * merchant-safe cost of not tracking which part of a refund a merchant meant.
+ * Rows without the value (checkout, and rows written before this existed)
+ * keep prorating against the whole charge.
  */
 export function prorateCommission(input: {
   gross: Prisma.Decimal.Value;
   chargeTotal: number;
   refunded: number;
+  /** The referred share of the charge, in minor units, when the row records one. */
+  referredChargeMinor?: number | null;
 }): ReversalOutcome {
   if (input.chargeTotal <= 0) return { void: true };
-  const remaining = input.chargeTotal - input.refunded;
+  const denominator = input.referredChargeMinor ?? input.chargeTotal;
+  if (denominator <= 0) return { void: true };
+  const remaining = denominator - input.refunded;
   if (remaining <= 0) return { void: true };
   const amount = new Prisma.Decimal(input.gross)
     .mul(remaining)
-    .div(input.chargeTotal)
+    .div(denominator)
     .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
   if (amount.lte(0)) return { void: true };
   return { void: false, amount: amount.toNumber() };
