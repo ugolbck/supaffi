@@ -34,7 +34,10 @@ export type ReferralHistory = {
  * one arrives and becomes the start; the existing commission is what stops the
  * earlier one earning too. And a payment that is not the start never earns, so
  * a first sale whose event failed and is retried still wins over a second
- * subscription processed in between.
+ * subscription processed in between. An out-of-order first payment can also
+ * pay one commission outside a FIXED_MONTHS window, because the start moves
+ * earlier once that commission was already written; this is accepted and
+ * bounded to one commission (Risk 7 in the plan).
  */
 export function isWithinReferralDuration(program: Program, history: ReferralHistory, payment: PaymentRef): boolean {
   if (program.commissionDurationType === "FOREVER") return true;
@@ -71,11 +74,12 @@ export async function readReferralHistory(
         AND "firstPaymentRef" IS NOT NULL
         AND "firstPaidAt" IS NOT NULL
       UNION ALL
-      SELECT "stripePaymentRef" AS ref, "createdAt" AS at, 'commission' AS source
+      SELECT "Commission"."stripePaymentRef" AS ref, "Commission"."createdAt" AS at, 'commission' AS source
       FROM "Commission"
-      WHERE "clickId" = ${clickId}
-        AND "adjustsCommissionId" IS NULL
-        AND "stripePaymentRef" IS NOT NULL
+      JOIN "Affiliate" a ON a.id = "Commission"."affiliateId" AND a."merchantId" = ${merchantId}
+      WHERE "Commission"."clickId" = ${clickId}
+        AND "Commission"."adjustsCommissionId" IS NULL
+        AND "Commission"."stripePaymentRef" IS NOT NULL
     )
     SELECT
       (SELECT ref FROM payments ORDER BY at ASC, ref ASC LIMIT 1) AS "startRef",

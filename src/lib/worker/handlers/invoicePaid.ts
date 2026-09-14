@@ -7,7 +7,6 @@ import {
   computeCommissionAmount,
   computePayableAt,
   isExcluded,
-  isPaymentWithinCommissionDuration,
   saleAmountFor,
 } from "../commission";
 import {
@@ -26,6 +25,7 @@ import {
   idOf,
   subscriptionIdOf,
 } from "../referredSubscription";
+import { referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
 // A renewal or a plan change is revenue of the subscription the referral
@@ -99,10 +99,15 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // first payment is when money first moved on the subscription, whether or
   // not that payment earned.
   const payment = { ref: invoice.id, at: new Date(invoice.created * 1000) };
-  const firstPayment = await claimFirstPayment(referred, payment);
+  await claimFirstPayment(referred, payment);
 
+  // The duration belongs to the click, not to this subscription. A customer
+  // who cancels and subscribes again through the same click, or moves to
+  // another plan with a new Checkout, carries on from the click's first
+  // payment instead of starting the program over. Measured after the claim
+  // above, so this subscription's own first payment is part of that history.
   const program = click.affiliate.program;
-  if (!isPaymentWithinCommissionDuration(program, firstPayment, payment)) return;
+  if (!(await referralStillEarns(merchant.id, click.id, program, payment))) return;
 
   const stripe = stripeClientFor(merchant);
   const subscriptionMetadata =

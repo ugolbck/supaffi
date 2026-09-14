@@ -151,6 +151,19 @@ describe("readReferralHistory", () => {
     expect((await readReferralHistory(merchant.id, click.id, "in_new")).earnedOnAnotherPayment).toBe(true);
   });
 
+  it("ignores a commission on another merchant's affiliate even if it carried the same click id", async () => {
+    // A commission's affiliate always belongs to the click's own merchant by
+    // construction (recordCommission.ts locks the click and writes its own
+    // affiliateId), so this cannot happen through the app. The filter is kept
+    // as a defence anyway, matching the subscription branch above.
+    const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+    const other = await seedMerchant(merchant.ownerId);
+    const { affiliate: otherAffiliate } = await seedReferral(other, { durationType: "ONE_TIME" });
+    await seedCommission({ id: click.id, affiliateId: otherAffiliate.id }, "in_other_merchant");
+
+    expect((await readReferralHistory(merchant.id, click.id, "in_new")).earnedOnAnotherPayment).toBe(false);
+  });
+
   it("does not count the payment's own commission or its refund adjustments, so a redelivery is not blocked by itself", async () => {
     const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
     const own = await seedCommission(click, "in_own", { status: "PAID", paidAt: new Date() });

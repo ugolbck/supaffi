@@ -858,6 +858,100 @@ describe("handleInvoicePaid", () => {
     });
   });
 
+  describe("one duration per referral", () => {
+    async function refsOn(clickId: string) {
+      const rows = await db.commission.findMany({ where: { clickId } });
+      return rows.map((c) => c.stripePaymentRef).sort();
+    }
+
+    it("measures a second subscription on the same click from the click's first payment", async () => {
+      const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 3 });
+      await seedReferredSubscription(merchant.id, click.id, "sub_first", { ref: "in_first", at: new Date("2026-01-31T00:00:00Z") });
+      await seedReferredSubscription(merchant.id, click.id, "sub_second", { ref: "in_second", at: new Date("2026-03-15T00:00:00Z") });
+      const parent = subscriptionParent("sub_second");
+
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_second_2", parent, created: seconds("2026-04-15T00:00:00Z") }));
+      // Inside sub_second's own three months, but past the referral's, which
+      // started on January 31 and ended on April 30.
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_second_3", parent, created: seconds("2026-05-15T00:00:00Z") }));
+
+      expect(await refsOn(click.id)).toEqual(["in_second_2"]);
+    });
+
+    it("pays a one-time program nothing on a second subscription once the first spent the referral's payment", async () => {
+      // The first subscription's checkout was excluded, so it left no
+      // commission, but money moved and the referral's one payment is used.
+      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+      await seedReferredSubscription(merchant.id, click.id, "sub_first", { ref: "in_first", at: new Date("2026-01-10T00:00:00Z") });
+      await seedReferredSubscription(merchant.id, click.id, "sub_trial");
+
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_trial_paid", parent: subscriptionParent("sub_trial"), created: seconds("2026-02-10T00:00:00Z") })
+      );
+
+      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(0);
+      const trial = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_trial" } });
+      expect(trial.firstPaymentRef).toBe("in_trial_paid");
+    });
+
+    it("pays a one-time program once when a later subscription's first payment is processed before an earlier one's", async () => {
+      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+      await seedReferredSubscription(merchant.id, click.id, "sub_early");
+      await seedReferredSubscription(merchant.id, click.id, "sub_late");
+
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_late_1", parent: subscriptionParent("sub_late"), created: seconds("2026-02-20T00:00:00Z") })
+      );
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_early_1", parent: subscriptionParent("sub_early"), created: seconds("2026-02-10T00:00:00Z") })
+      );
+
+      expect(await refsOn(click.id)).toEqual(["in_late_1"]);
+    });
+
+    it("moves a fixed-months window back when an earlier subscription's first payment is processed late", async () => {
+      const { click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 2 });
+      await seedReferredSubscription(merchant.id, click.id, "sub_early");
+      await seedReferredSubscription(merchant.id, click.id, "sub_late");
+
+      // Processed first, it was the referral's start when it was judged.
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_late_1", parent: subscriptionParent("sub_late"), created: seconds("2026-03-05T00:00:00Z") })
+      );
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_early_1", parent: subscriptionParent("sub_early"), created: seconds("2026-01-31T00:00:00Z") })
+      );
+      // Inside sub_late's own two months, past the referral's, which ended on March 31.
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ id: "in_late_2", parent: subscriptionParent("sub_late"), created: seconds("2026-04-05T00:00:00Z") })
+      );
+
+      expect(await refsOn(click.id)).toEqual(["in_early_1", "in_late_1"]);
+    });
+
+    it("measures a referral recognised from before 0.2.5 from its checkout invoice", async () => {
+      const { affiliate, click } = await seedReferral(merchant, { durationType: "FIXED_MONTHS", months: 3 });
+      await seedLegacyClick(click.id, "cus_legacy");
+      await seedInvoiceCommission(affiliate.id, click.id, "in_legacy_first", new Date("2026-01-10T00:00:00Z"));
+      stripeStub.invoices.retrieve.mockResolvedValueOnce(
+        retrievedInvoice("in_legacy_first", "sub_legacy", { created: new Date("2026-01-10T00:00:00Z") })
+      );
+      const legacy = (id: string, iso: string) =>
+        invoiceFixture({ id, customer: "cus_legacy", parent: subscriptionParent("sub_legacy"), created: seconds(iso) });
+
+      await handleInvoicePaid(merchant, legacy("in_legacy_2", "2026-02-10T00:00:00Z"));
+      await handleInvoicePaid(merchant, legacy("in_legacy_5", "2026-05-10T00:00:00Z"));
+
+      expect(await refsOn(click.id)).toEqual(["in_legacy_2", "in_legacy_first"]);
+    });
+  });
+
   describe("card check on renewals", () => {
     // The renewal was paid by pi_card, whose card is also saved on one of the
     // affiliate's own Stripe customers.
