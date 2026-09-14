@@ -341,6 +341,59 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(groups[0].commissions.map((c) => c.id).sort()).toEqual([...groups[0].commissionIds].sort());
   });
 
+  it("leaves a commission held by a dispute out of the payable groups", async () => {
+    // A held row is never PAYABLE by construction; this pins the Pay bar's own
+    // guard in case a row ever carries both.
+    const affiliate = await makeAffiliate("a");
+    const kept = await db.commission.create({
+      data: {
+        affiliateId: affiliate.id,
+        clickId: (await makeClick(affiliate.id)).id,
+        amount: "10.00",
+        currency: "usd",
+        status: "PAYABLE",
+        payableAt: new Date(Date.now() - 1000),
+      },
+    });
+    await db.commission.create({
+      data: {
+        affiliateId: affiliate.id,
+        clickId: (await makeClick(affiliate.id)).id,
+        amount: "15.50",
+        currency: "usd",
+        status: "PAYABLE",
+        payableAt: new Date(Date.now() - 1000),
+        disputeOpenedAt: new Date(),
+      },
+    });
+
+    const groups = await getPayableGroups(ownerId, merchantId);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].total).toBe("10.00");
+    expect(groups[0].commissionIds).toEqual([kept.id]);
+  });
+
+  it("keeps a disputed commission owed but not payable now", async () => {
+    const affiliate = await makeAffiliate("a");
+    await db.commission.create({
+      data: {
+        affiliateId: affiliate.id,
+        clickId: (await makeClick(affiliate.id)).id,
+        amount: "12.00",
+        currency: "usd",
+        status: "PENDING",
+        payableAt: new Date(Date.now() - 1000),
+        disputeOpenedAt: new Date(),
+      },
+    });
+
+    const { owed, payableNow } = await getOwedTotals(ownerId, merchantId);
+
+    expect(owed).toEqual([{ currency: "usd", total: "12.00" }]);
+    expect(payableNow).toEqual([]);
+  });
+
   it("never lets a negative PAYABLE row with no adjustment link into a group", async () => {
     // A stray negative row that is not (or is no longer) linked as an
     // adjustment must not block or shrink a group a payout button offers.

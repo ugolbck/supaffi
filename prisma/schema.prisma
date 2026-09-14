@@ -278,6 +278,12 @@ model Commission {
   voidReason String? // e.g. "refund", "confirmed self-referral"
   flagReason String? // e.g. "email:buyer@x.com affiliate@x.com" or "card"
 
+  // When an open dispute began holding this commission back from payment.
+  // Null when no dispute is open. A held row is never PAYABLE: opening a
+  // dispute moves a PAYABLE row back to PENDING, and neither the sweep nor a
+  // dismissed flag promotes a held row. See src/lib/worker/disputes.ts.
+  disputeOpenedAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@index([status, payableAt])

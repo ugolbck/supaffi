@@ -561,19 +561,26 @@ export async function dismissCommissionFlag(
 
   const existing = await db.commission.findFirst({
     where: { id: commissionId, status: "FLAGGED", affiliate: { merchantId } },
-    select: { id: true, payableAt: true },
+    select: { id: true },
   });
   if (!existing) {
     throw new Error("Flagged commission not found");
   }
 
-  const newStatus = existing.payableAt <= new Date() ? "PAYABLE" : "PENDING";
+  // Straight to PAYABLE only when the Holding Period is over and no dispute
+  // holds the commission. Both conditions sit in the write rather than in a
+  // read before it, so a dispute that opens in between leaves the row PENDING.
+  // Still FLAGGED at write time in both writes, so a commission a refund voided
+  // in between is not brought back to life.
+  const payable = await db.commission.updateMany({
+    where: { id: commissionId, status: "FLAGGED", disputeOpenedAt: null, payableAt: { lte: new Date() } },
+    data: { status: "PAYABLE", flagReason: null },
+  });
+  if (payable.count > 0) return;
 
-  // Still FLAGGED at write time, so a commission a refund voided in between
-  // is not brought back to life.
   const { count } = await db.commission.updateMany({
     where: { id: commissionId, status: "FLAGGED" },
-    data: { status: newStatus, flagReason: null },
+    data: { status: "PENDING", flagReason: null },
   });
   if (count === 0) {
     throw new Error("Flagged commission not found");

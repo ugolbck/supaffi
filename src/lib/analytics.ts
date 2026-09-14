@@ -664,6 +664,9 @@ export async function getPayableGroups(
       status: "PAYABLE",
       adjustsCommissionId: null,
       amount: { gt: 0 },
+      // A disputed commission is never PAYABLE, so this matches nothing today.
+      // It stays as a guard: a payout button must never offer a held row.
+      disputeOpenedAt: null,
       affiliate: { merchantId },
     },
     select: {

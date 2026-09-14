@@ -752,6 +752,24 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect(updated.flagReason).toBeNull();
   });
 
+  it("dismissCommissionFlag keeps a disputed commission pending even past its Holding Period", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const commission = await makeCommission(affiliate.id, click.id, {
+      status: "FLAGGED",
+      flagReason: "card",
+      payableAt: new Date(Date.now() - 1000),
+    });
+    await db.commission.update({ where: { id: commission.id }, data: { disputeOpenedAt: new Date() } });
+
+    await dismissCommissionFlag(ownerId, merchantId, commission.id);
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("PENDING");
+    expect(updated.flagReason).toBeNull();
+    expect(updated.disputeOpenedAt).not.toBeNull();
+  });
+
   it("voidCommission voids a pending commission and records the reason", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);
