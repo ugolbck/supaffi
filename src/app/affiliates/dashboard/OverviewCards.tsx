@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { AffiliateCommissionRow } from "@/lib/affiliate";
 import { cn } from "@/lib/utils";
-import { change, rangeLabel, type Bucket, type ChartRange, type CurrencyTotal, type DayPoint, type Period } from "@/lib/analytics";
+import { change, earnedTrend, rangeLabel, type Bucket, type ChartRange, type CurrencyTotal, type DayPoint, type Period } from "@/lib/analytics";
 import { formatCount, formatMoney, money, moneyHint } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
@@ -144,7 +144,7 @@ export function OverviewScreen({
         <StatTile
           label="Earned"
           value={currency ? formatMoney(earnedNow, currency) : "0.00"}
-          series={currency ? series.map((d) => d.amounts[currency]?.gross ?? 0) : undefined}
+          series={currency ? earnedTrend(series, currency) : undefined}
           delta={currency ? delta(earnedNow, earnedBefore) : undefined}
         />
         <StatTile

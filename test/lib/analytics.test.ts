@@ -8,6 +8,8 @@ import {
   getPayableGroups,
   getOwedTotals,
   toWeeks,
+  change,
+  earnedTrend,
   type DayPoint,
 } from "@/lib/analytics";
 
@@ -139,6 +141,35 @@ describe.skipIf(!hasDatabase)("analytics", () => {
       },
     });
   }
+
+  it("leaves the owner's revenue, commission cost and sales untouched by a clawback", async () => {
+    // Revenue is what customers paid. A refund after payout is a debt the
+    // affiliate carries, not a sale, so it stays out of the Owner's figures.
+    const affiliate = await makeAffiliate("a");
+    const click = await makeClick(affiliate.id);
+    const sale = await db.commission.create({
+      data: {
+        affiliateId: affiliate.id,
+        clickId: click.id,
+        amount: "30.00",
+        saleAmount: "100.00",
+        currency: "usd",
+        status: "PAID",
+        payableAt: daysAgo(3),
+        createdAt: daysAgo(3),
+      },
+    });
+    await makeCommission(affiliate.id, click.id, {
+      amount: "-10.00",
+      createdAt: daysAgo(1),
+      adjustsCommissionId: sale.id,
+    });
+
+    const metrics = await getProductMetrics(ownerId, merchantId, 30);
+
+    expect(metrics.conversions).toBe(1);
+    expect(metrics.current.amounts.usd).toEqual({ gross: 100, commission: 30, sales: 1 });
+  });
 
   it("zero-fills every day in the window, oldest first", async () => {
     // A chart drawn straight from grouped rows closes its own gaps, which
@@ -400,5 +431,45 @@ describe("toWeeks", () => {
     expect(weeks[0].clicks).toBe(7);
     expect(weeks[1].clicks).toBe(0);
     expect(weeks[2].clicks).toBe(7);
+  });
+});
+
+describe("change", () => {
+  it("is the share of the earlier figure", () => {
+    expect(change(150, 100)).toBe(50);
+    expect(change(50, 100)).toBe(-50);
+  });
+
+  it("offers no comparison when the earlier figure was zero, below zero or missing", () => {
+    // A clawback can take an affiliate's earlier period below zero. Dividing
+    // by it would print a recovery from -10 to 20 as a 300% fall.
+    expect(change(20, -10)).toBeNull();
+    expect(change(-5, -10)).toBeNull();
+    expect(change(20, 0)).toBeNull();
+    expect(change(20, null)).toBeNull();
+    expect(change(20, undefined)).toBeNull();
+  });
+});
+
+describe("earnedTrend", () => {
+  const point = (date: string, amounts: DayPoint["amounts"]): DayPoint => ({
+    date,
+    clicks: 0,
+    conversions: 0,
+    revenue: 0,
+    signups: 0,
+    amounts,
+  });
+
+  it("draws a day a clawback outweighed the sales at zero, never below it", () => {
+    const series = [
+      point("2026-09-01", { usd: { gross: 30, commission: 30, sales: 1 } }),
+      point("2026-09-02", { usd: { gross: -10, commission: -10, sales: 0 } }),
+      point("2026-09-03", {}),
+      point("2026-09-04", { eur: { gross: 12, commission: 12, sales: 1 } }),
+    ];
+
+    expect(earnedTrend(series, "usd")).toEqual([30, 0, 0, 0]);
+    expect(earnedTrend(series, "eur")).toEqual([0, 0, 0, 12]);
   });
 });

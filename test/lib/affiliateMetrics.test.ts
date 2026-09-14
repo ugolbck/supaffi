@@ -52,10 +52,82 @@ async function seedProgram() {
   return { owner, merchant, program };
 }
 
+/** Noon UTC, `n` days ago: far from any day or window boundary. */
+function noonDaysAgo(n: number): Date {
+  const date = new Date();
+  date.setUTCHours(12, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() - n);
+  return date;
+}
+
+/** A paid sale and the clawback a later refund wrote against it. */
+async function seedClawedBackSale(saleDaysAgo: number, clawbackDaysAgo: number) {
+  const { merchant, program } = await seedProgram();
+  const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+  const primary = await getPrimaryLink(sarah.id);
+  const click = await db.click.create({
+    data: {
+      affiliateId: sarah.id,
+      linkId: primary!.id,
+      referralToken: crypto.randomUUID(),
+      expiresAt: new Date(Date.now() + 86400_000),
+    },
+  });
+  const sale = await db.commission.create({
+    data: {
+      affiliateId: sarah.id,
+      clickId: click.id,
+      amount: "30.00",
+      currency: "usd",
+      status: "PAID",
+      payableAt: noonDaysAgo(saleDaysAgo),
+      paidAt: noonDaysAgo(saleDaysAgo),
+      createdAt: noonDaysAgo(saleDaysAgo),
+      stripePaymentRef: crypto.randomUUID(),
+    },
+  });
+  await db.commission.create({
+    data: {
+      affiliateId: sarah.id,
+      clickId: click.id,
+      adjustsCommissionId: sale.id,
+      amount: "-10.00",
+      currency: "usd",
+      status: "PAYABLE",
+      payableAt: noonDaysAgo(clawbackDaysAgo),
+      createdAt: noonDaysAgo(clawbackDaysAgo),
+    },
+  });
+  return sarah;
+}
+
 afterAll(clearAll);
 
 describe.skipIf(!hasDatabase)("affiliate metrics", () => {
   beforeEach(clearAll);
+
+  it("takes a clawback off Earned on the day it landed, without counting it as a sale", async () => {
+    const sarah = await seedClawedBackSale(5, 1);
+
+    const metrics = await getAffiliateMetrics(sarah.id, 30);
+
+    // 30.00 earned, 10.00 taken back: what they will actually be paid.
+    expect(metrics.current.amounts.usd).toEqual({ gross: 20, commission: 20, sales: 1 });
+    expect(metrics.conversions).toBe(1);
+    const landed = metrics.series.find((p) => p.date === noonDaysAgo(1).toISOString().slice(0, 10));
+    expect(landed?.amounts.usd).toEqual({ gross: -10, commission: -10, sales: 0 });
+    expect(landed?.conversions).toBe(0);
+  });
+
+  it("nets the clawback in the previous period too, so the comparison is like for like", async () => {
+    // Both fall in the seven days before the current seven-day window.
+    const sarah = await seedClawedBackSale(9, 8);
+
+    const metrics = await getAffiliateMetrics(sarah.id, 7);
+
+    expect(metrics.previous?.amounts.usd).toEqual({ gross: 20, commission: 20, sales: 1 });
+    expect(metrics.previous?.conversions).toBe(1);
+  });
 
   it("reports zeros and a full zero-filled series for a brand new affiliate", async () => {
     const { merchant, program } = await seedProgram();

@@ -182,11 +182,26 @@ export function sumAmounts(series: DayPoint[]): Record<string, Amounts> {
 /**
  * Change from one period to the next, as a share of the earlier one. Null
  * when there is nothing earlier to compare against, or the earlier figure
- * was zero, since growth from nothing is not a percentage.
+ * was zero or below. Growth from nothing is not a percentage, and dividing by
+ * a negative flips the sign: an Affiliate whose earlier period a clawback took
+ * below zero would see a recovery printed as a fall.
  */
 export function change(current: number, previous: number | null | undefined): number | null {
-  if (previous === null || previous === undefined || previous === 0) return null;
+  if (previous === null || previous === undefined || previous <= 0) return null;
   return Math.round(((current - previous) / previous) * 1000) / 10;
+}
+
+/**
+ * The Earned tile's trend line for one currency.
+ *
+ * A bucket where a clawback outweighed the sales nets below zero. The
+ * sparkline scales between its own lowest and highest point, so it would draw
+ * that without breaking, but every empty bucket would then sit above the
+ * baseline and read as money earned. Clamped at zero, the same way the main
+ * chart draws no bar for a bucket that netted nothing or less.
+ */
+export function earnedTrend(series: DayPoint[], currency: string): number[] {
+  return series.map((point) => Math.max(0, point.amounts[currency]?.gross ?? 0));
 }
 
 /** The key a moment falls under, for the bucket in use. */
@@ -239,12 +254,16 @@ function emptySeries(window: Window): Map<string, DayPoint> {
   return series;
 }
 
-function addAmount(point: DayPoint, currency: string, gross: number, commission: number): void {
+/**
+ * Adds money to a bucket. `sales` is 1 for a sale and 0 for a clawback, which
+ * moves the money without being something anybody bought.
+ */
+function addAmount(point: DayPoint, currency: string, gross: number, commission: number, sales = 1): void {
   const entry = point.amounts[currency] ?? { gross: 0, commission: 0, sales: 0 };
   point.amounts[currency] = {
     gross: Math.round((entry.gross + gross) * 100) / 100,
     commission: Math.round((entry.commission + commission) * 100) / 100,
-    sales: entry.sales + 1,
+    sales: entry.sales + sales,
   };
 }
 
@@ -356,7 +375,14 @@ export type ProductMetrics = {
   previous: Period | null;
 };
 
-/** Clicks and sales in a window, without the day-by-day shape. */
+/**
+ * Clicks and money in a window, without the day-by-day shape.
+ *
+ * The Owner's figures are sales, and a clawback is not one, so adjustment rows
+ * stay out. The Affiliate's figure is what they earned, and a refund taken back
+ * after payout comes off it on the day it landed, so Earned matches what they
+ * will be paid. Either way an adjustment is never counted as a conversion.
+ */
 async function periodFor(where: { merchantId?: string; affiliateId?: string }, window: Window): Promise<Period> {
   const scope = where.merchantId ? { affiliate: { merchantId: where.merchantId } } : { affiliateId: where.affiliateId };
   const [clicks, rows] = await Promise.all([
@@ -366,13 +392,16 @@ async function periodFor(where: { merchantId?: string; affiliateId?: string }, w
         ...scope,
         createdAt: { gte: window.since, lte: window.until },
         status: { not: "VOIDED" },
-        adjustsCommissionId: null,
+        ...(where.merchantId ? { adjustsCommissionId: null } : {}),
       },
-      select: { saleAmount: true, amount: true, currency: true },
+      select: { saleAmount: true, amount: true, currency: true, adjustsCommissionId: true },
     }),
   ]);
   const amounts: Record<string, Amounts> = {};
+  let conversions = 0;
   for (const row of rows) {
+    const isAdjustment = row.adjustsCommissionId !== null;
+    if (!isAdjustment) conversions += 1;
     const entry = amounts[row.currency] ?? { gross: 0, commission: 0, sales: 0 };
     const commission = row.amount.toNumber();
     // For the affiliate the money is what they earned, on both sides.
@@ -380,10 +409,10 @@ async function periodFor(where: { merchantId?: string; affiliateId?: string }, w
     amounts[row.currency] = {
       gross: Math.round((entry.gross + gross) * 100) / 100,
       commission: Math.round((entry.commission + commission) * 100) / 100,
-      sales: entry.sales + 1,
+      sales: entry.sales + (isAdjustment ? 0 : 1),
     };
   }
-  return { clicks, conversions: rows.length, amounts };
+  return { clicks, conversions, amounts };
 }
 
 export async function getProductMetrics(
@@ -797,12 +826,12 @@ export async function getAffiliateMetrics(
       where: {
         affiliateId,
         createdAt: { gte: since, lte: window.until },
-        // Same rule as the Owner's: a void earned nothing, and an adjustment
-        // corrects a sale rather than being one.
+        // A void earned nothing. An adjustment stays in: it is money taken
+        // back, and leaving it out showed an Earned figure higher than what the
+        // affiliate will be paid. It is kept out of the counts below.
         status: { not: "VOIDED" },
-        adjustsCommissionId: null,
       },
-      select: { createdAt: true, amount: true, currency: true },
+      select: { createdAt: true, amount: true, currency: true, adjustsCommissionId: true },
     }),
     db.commission.groupBy({
       by: ["currency", "status"],
@@ -823,9 +852,10 @@ export async function getAffiliateMetrics(
   for (const commission of commissionRows) {
     const point = series.get(key(commission.createdAt));
     if (!point) continue;
-    point.conversions += 1;
+    const isAdjustment = commission.adjustsCommissionId !== null;
+    if (!isAdjustment) point.conversions += 1;
     const amount = commission.amount.toNumber();
-    addAmount(point, commission.currency, amount, amount);
+    addAmount(point, commission.currency, amount, amount, isAdjustment ? 0 : 1);
   }
 
   // statusRows is grouped by currency AND status, so folding e.g. PENDING and
@@ -846,7 +876,8 @@ export async function getAffiliateMetrics(
   };
 
   const clicks = clickRows.length;
-  const conversions = commissionRows.length;
+  // Sales only: a clawback row moves money but is not a commission they won.
+  const conversions = commissionRows.filter((c) => c.adjustsCommissionId === null).length;
 
   return {
     clicks,
