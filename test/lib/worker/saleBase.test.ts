@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type Stripe from "stripe";
-import { checkoutSessionBaseMinor, invoiceBaseMinor } from "@/lib/worker/saleBase";
+import { checkoutSessionBaseMinor, invoiceBaseMinor, invoiceLinesBeforeTax, scaleToAmountPaid } from "@/lib/worker/saleBase";
 
 function session(fields: Record<string, unknown>): Stripe.Checkout.Session {
   return { amount_total: 5000, total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0 }, shipping_cost: null, ...fields } as unknown as Stripe.Checkout.Session;
@@ -112,5 +112,26 @@ describe("invoiceBaseMinor", () => {
   it("rounds a scaled half unit up", () => {
     // 101 * 1 / 2 = 50.5 minor units.
     expect(invoiceBaseMinor(invoice({ total: 2, total_excluding_tax: 101, amount_paid: 1 }))).toBe(51);
+  });
+});
+
+describe("invoiceLinesBeforeTax", () => {
+  it("is the total before tax and shipping, not clamped, so lines can be checked against it", () => {
+    expect(invoiceLinesBeforeTax(invoice({ total: -500, total_excluding_tax: -500 }))).toBe(-500);
+    expect(
+      invoiceLinesBeforeTax(invoice({ total: 12000, total_excluding_tax: 11000, shipping_cost: { amount_total: 1200, amount_tax: 200 } }))
+    ).toBe(10000);
+  });
+
+  it("refuses to guess when the tax breakdown is missing", () => {
+    expect(invoiceLinesBeforeTax(invoice({ total_excluding_tax: null, total_taxes: null }))).toBeNull();
+  });
+});
+
+describe("scaleToAmountPaid", () => {
+  it("keeps the base when the invoice was paid in full, and scales it when credit covered part", () => {
+    expect(scaleToAmountPaid(8000, { total: 10000, amount_paid: 10000 })).toBe(8000);
+    expect(scaleToAmountPaid(8000, { total: 10000, amount_paid: 5000 })).toBe(4000);
+    expect(scaleToAmountPaid(8000, { total: 0, amount_paid: 0 })).toBe(0);
   });
 });

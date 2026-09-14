@@ -57,24 +57,43 @@ function invoiceTotalBeforeTax(
   return null;
 }
 
-export function invoiceBaseMinor(
-  invoice: Pick<Stripe.Invoice, "total" | "total_excluding_tax" | "total_taxes" | "amount_paid" | "shipping_cost">
+/**
+ * What an invoice's lines add up to before tax: the total before tax, less
+ * shipping, which is not a line. Not clamped at zero, so the lines can be
+ * checked against it. Null when the invoice does not say how much tax it
+ * carried.
+ */
+export function invoiceLinesBeforeTax(
+  invoice: Pick<Stripe.Invoice, "total" | "total_excluding_tax" | "total_taxes" | "shipping_cost">
 ): number | null {
   const beforeTax = invoiceTotalBeforeTax(invoice);
   if (beforeTax === null) return null;
-  const base = Math.max(0, beforeTax - shippingBeforeTax(invoice.shipping_cost));
+  return beforeTax - shippingBeforeTax(invoice.shipping_cost);
+}
 
+/**
+ * A base scaled to the part of the invoice paid in money. Credit balance or a
+ * partial payment covered the rest, and only money that was actually paid
+ * earns commission, in the same pre-tax proportion.
+ */
+export function scaleToAmountPaid(baseMinor: number, invoice: Pick<Stripe.Invoice, "total" | "amount_paid">): number {
   // A fully discounted invoice has nothing to earn on, and nothing to divide by.
   if (invoice.total <= 0) return 0;
-  if (invoice.amount_paid >= invoice.total) return base;
+  if (invoice.amount_paid >= invoice.total) return baseMinor;
 
-  // Credit balance or a partial payment covered the rest. Only money that was
-  // actually paid earns commission, in the same pre-tax proportion. Decimal
-  // because a large VND base times a large amount_paid passes what a float
-  // holds exactly.
-  return new Prisma.Decimal(base)
+  // Decimal because a large VND base times a large amount_paid passes what a
+  // float holds exactly.
+  return new Prisma.Decimal(baseMinor)
     .mul(invoice.amount_paid)
     .div(invoice.total)
     .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
     .toNumber();
+}
+
+export function invoiceBaseMinor(
+  invoice: Pick<Stripe.Invoice, "total" | "total_excluding_tax" | "total_taxes" | "amount_paid" | "shipping_cost">
+): number | null {
+  const linesBeforeTax = invoiceLinesBeforeTax(invoice);
+  if (linesBeforeTax === null) return null;
+  return scaleToAmountPaid(Math.max(0, linesBeforeTax), invoice);
 }
