@@ -84,6 +84,26 @@ describe("referredInvoiceBase", () => {
       expect(result).toMatchObject({ kind: "earned", baseMinor: 5000 });
     });
 
+    it("earns nothing when the invoice was paid entirely outside Stripe", () => {
+      const result = referredInvoiceBase(
+        invoice({ total: 12000, total_excluding_tax: 10000, total_taxes: inclusive(2000), amount_paid_off_stripe: 12000 }),
+        [invoiceLine({ amount: 12000, inclusiveTax: 2000 })],
+        SUB,
+        REFERRED
+      );
+      expect(result).toEqual({ kind: "off_stripe" });
+    });
+
+    it("scales the base to the part paid through Stripe when the rest was paid outside it", () => {
+      const result = referredInvoiceBase(
+        invoice({ total: 12000, total_excluding_tax: 10000, total_taxes: inclusive(2000), amount_paid_off_stripe: 6000 }),
+        [invoiceLine({ amount: 12000, inclusiveTax: 2000 })],
+        SUB,
+        REFERRED
+      );
+      expect(result).toMatchObject({ kind: "earned", baseMinor: 5000 });
+    });
+
     it("says so when the invoice does not carry its tax", () => {
       const result = referredInvoiceBase(
         invoice({ total_excluding_tax: null, total_taxes: null }),

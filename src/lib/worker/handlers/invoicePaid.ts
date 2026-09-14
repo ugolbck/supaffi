@@ -16,11 +16,25 @@ import {
   latestChargeFor,
   paymentIntentForInvoice,
 } from "../paymentState";
-import { invoiceBaseMinor } from "../saleBase";
+import { listInvoiceLines, referredInvoiceBase } from "../referredRevenue";
 import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import { claimFirstPayment, findReferredSubscription, idOf, subscriptionIdOf } from "../referredSubscription";
+import {
+  claimFirstPayment,
+  fillStripeProductIds,
+  findReferredSubscription,
+  idOf,
+  subscriptionIdOf,
+} from "../referredSubscription";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
+
+// A renewal or a plan change is revenue of the subscription the referral
+// bought. Every other billing reason earns nothing: manual, quote_accept and
+// automatic_pending_invoice_item_invoice bill things the referral did not buy,
+// upcoming is a preview, subscription is a reason Stripe retired, and
+// subscription_threshold usage billing is left out by the owner's rule.
+// subscription_create belongs to checkout.session.completed.
+const EARNING_BILLING_REASONS: ReadonlySet<string> = new Set(["subscription_cycle", "subscription_update"]);
 
 export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invoice): Promise<void> {
   const stripeCustomerId = idOf(invoice.customer);
@@ -29,8 +43,10 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // The first invoice of a subscription started through Checkout belongs to
   // checkout.session.completed, which matches it by the Referral Token this
   // invoice doesn't carry. After a free trial that first invoice is $0, and
-  // the first paid invoice comes later as subscription_cycle.
-  if (invoice.billing_reason === "subscription_create") return;
+  // the first paid invoice comes later as subscription_cycle. Checked before
+  // the first payment is claimed, so a manual invoice on a trial cannot use up
+  // a one-time commission.
+  if (!invoice.billing_reason || !EARNING_BILLING_REASONS.has(invoice.billing_reason)) return;
 
   // A $0 invoice (a trial, or one fully covered by credit) moved no money, so
   // it must not be claimed as the first payment and use up a one-time
@@ -77,15 +93,45 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   });
   if (excluded) return;
 
-  // Earned on the renewal before tax and shipping, scaled to what was paid in
-  // money, see saleBase.ts. An invoice that does not say how much tax it
-  // carried is logged and skipped rather than paid on a total with the tax in
-  // it; returning normally stops a retry that could never succeed.
-  const baseMinor = invoiceBaseMinor(invoice);
-  if (baseMinor === null) {
+  // Earned only on this subscription's own lines for the products its referral
+  // bought, before tax and scaled to what was paid in money, see
+  // referredRevenue.ts. An invoice whose tax or lines cannot be read is logged
+  // and earns nothing; returning normally stops a retry that could never
+  // succeed. A failed read of the lines throws, so the event is retried.
+  const lines = await listInvoiceLines(stripe, invoice.id);
+  const revenue = referredInvoiceBase(invoice, lines, subscriptionId, referred.stripeProductIds);
+  if (revenue.kind === "no_tax_breakdown") {
     console.error(`[worker] invoice ${invoice.id} carries no tax breakdown, so no commission was recorded for it`);
     return;
   }
+  if (revenue.kind === "unreadable") {
+    console.error(`[worker] invoice ${invoice.id} ${revenue.reason}, so no commission was recorded for it`);
+    return;
+  }
+  if (revenue.kind === "off_stripe") {
+    // amount_paid already counts a payment made outside Stripe, so an invoice
+    // paid entirely that way has nothing left to scale a commission on.
+    console.warn(`[worker] invoice ${invoice.id} was paid outside Stripe, so no commission was recorded for it`);
+    return;
+  }
+
+  let earned = revenue;
+  if (referred.stripeProductIds.length === 0) {
+    // Recorded before products were stored, or when Stripe could not say. The
+    // products this renewal bills are kept from now on. If another event kept
+    // a different set a moment earlier, this invoice is measured against that.
+    const stored = await fillStripeProductIds(referred.id, revenue.productIds);
+    if (stored.join() !== revenue.productIds.join()) {
+      const again = referredInvoiceBase(invoice, lines, subscriptionId, stored);
+      if (again.kind === "earned") earned = again;
+    }
+  }
+  if (earned.otherProductIds.length > 0) {
+    console.warn(
+      `[worker] invoice ${invoice.id} bills ${earned.otherProductIds.join(", ")} on subscription ${subscriptionId}, which its referral did not buy, so those lines earned nothing`
+    );
+  }
+  const baseMinor = earned.baseMinor;
 
   const affiliate = click.affiliate;
   const rate = commissionRateFor(affiliate, program);

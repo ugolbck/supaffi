@@ -36,6 +36,14 @@ import { invoiceLinesBeforeTax, scaleToAmountPaid } from "./saleBase";
  * When a line cannot be placed, or the lines do not add up to the invoice,
  * nothing earns. Underpaying an affiliate is the accepted cost of never paying
  * on revenue nobody referred.
+ *
+ * Since API version 2025-03-31.basil an invoice can be paid partly or wholly
+ * outside Stripe, and `invoice.paid` fires for that too. `amount_paid` already
+ * counts an out-of-band payment, so scaling on it as before would pay a
+ * commission on money that never moved through Stripe. `amount_paid_off_stripe`
+ * is what to take back out: the base is scaled to `amount_paid` minus
+ * `amount_paid_off_stripe`, and an invoice with nothing left on that side earns
+ * nothing at all.
  */
 
 export type ReferredRevenue =
@@ -49,7 +57,8 @@ export type ReferredRevenue =
       otherProductIds: string[];
     }
   | { kind: "no_tax_breakdown" }
-  | { kind: "unreadable"; reason: string };
+  | { kind: "unreadable"; reason: string }
+  | { kind: "off_stripe" };
 
 // Stripe caps a list page at 100.
 const LINES_PAGE_SIZE = 100;
@@ -165,7 +174,10 @@ function lineBases(lines: Stripe.InvoiceLineItem[], invoiceBeforeTax: number): n
 const uniqueSorted = (values: string[]) => [...new Set(values)].sort();
 
 export function referredInvoiceBase(
-  invoice: Pick<Stripe.Invoice, "total" | "total_excluding_tax" | "total_taxes" | "amount_paid" | "shipping_cost">,
+  invoice: Pick<
+    Stripe.Invoice,
+    "total" | "total_excluding_tax" | "total_taxes" | "amount_paid" | "shipping_cost" | "amount_paid_off_stripe"
+  >,
   lines: Stripe.InvoiceLineItem[],
   subscriptionId: string,
   referredProductIds: string[],
@@ -179,6 +191,12 @@ export function referredInvoiceBase(
 ): ReferredRevenue {
   const invoiceBeforeTax = invoiceLinesBeforeTax(invoice);
   if (invoiceBeforeTax === null) return { kind: "no_tax_breakdown" };
+
+  // An out-of-band payment is money the affiliate's referral never brought
+  // through Stripe, so it is taken back out before scaling. An invoice paid
+  // entirely that way earns nothing.
+  const onStripePaid = invoice.amount_paid - (invoice.amount_paid_off_stripe ?? 0);
+  if (onStripePaid <= 0) return { kind: "off_stripe" };
 
   const placed: PlacedLine[] = [];
   for (const line of lines) {
@@ -217,5 +235,10 @@ export function referredInvoiceBase(
   // Never more than the whole invoice before tax: a credit the merchant added
   // lowers what the customer paid, and commission is owed on money paid.
   const base = Math.max(0, Math.min(referred, invoiceBeforeTax));
-  return { kind: "earned", baseMinor: scaleToAmountPaid(base, invoice), productIds, otherProductIds };
+  return {
+    kind: "earned",
+    baseMinor: scaleToAmountPaid(base, { total: invoice.total, amount_paid: onStripePaid }),
+    productIds,
+    otherProductIds,
+  };
 }

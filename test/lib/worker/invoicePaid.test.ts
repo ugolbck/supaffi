@@ -27,9 +27,14 @@ const stripeStub = vi.hoisted(() => ({
   paymentIntents: {
     retrieve: vi.fn(async (): Promise<unknown> => ({ id: "pi_renewal", latest_charge: null })),
   },
-  // Only reached when recognising a referral from before 0.2.5; the tests
-  // that expect it queue a value.
-  invoices: { retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined) },
+  invoices: {
+    // Only reached when recognising a referral from before 0.2.5; the tests
+    // that expect it queue a value.
+    retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined),
+    // Every renewal that can earn reads its lines. beforeEach answers from the
+    // lines invoiceFixture registered for that invoice.
+    listLineItems: vi.fn(async (_id: string, _params?: unknown): Promise<unknown> => undefined),
+  },
   // Read when a legacy referral is recognised, for the products it bills.
   subscriptions: {
     retrieve: vi.fn(async (id: string): Promise<unknown> => ({
@@ -53,11 +58,16 @@ import {
   seedReferral,
   seedReferredSubscription,
 } from "./referralFixtures";
+import { invoiceLine, PRODUCT_ID } from "./invoiceLines";
+import { subscriptionIdOf } from "@/lib/worker/referredSubscription";
 
 const CUSTOMER_ID = "cus_renewal";
 // Renewals are matched on the subscription a referred checkout created, so
 // every invoice here belongs to one unless a case says otherwise.
 const SUBSCRIPTION_ID = "sub_renewal";
+
+// The lines Stripe lists for each invoice id, registered by invoiceFixture.
+const linesByInvoice = new Map<string, Stripe.InvoiceLineItem[]>();
 
 function subscriptionParent(subscription: string) {
   return { type: "subscription_details", subscription_details: { subscription, metadata: {} } };
@@ -81,9 +91,10 @@ describe("handleInvoicePaid", () => {
   let merchant: Merchant;
   let clickId: string;
 
-  // A 120.00 EUR renewal whose price includes 20.00 VAT, paid in full.
-  function invoiceFixture(fields: Record<string, unknown> = {}): Stripe.Invoice {
-    return {
+  // A 120.00 EUR renewal whose price includes 20.00 VAT, paid in full. Its
+  // lines default to the one subscription line that makes up that total.
+  function invoiceFixture(fields: Record<string, unknown> = {}, lines?: Stripe.InvoiceLineItem[]): Stripe.Invoice {
+    const invoice = {
       id: "in_renewal",
       customer: CUSTOMER_ID,
       billing_reason: "subscription_cycle",
@@ -99,6 +110,17 @@ describe("handleInvoicePaid", () => {
       shipping_cost: null,
       ...fields,
     } as unknown as Stripe.Invoice;
+    linesByInvoice.set(
+      invoice.id,
+      lines ?? [
+        invoiceLine({
+          amount: invoice.total,
+          inclusiveTax: invoice.total - (invoice.total_excluding_tax ?? invoice.total),
+          subscription: subscriptionIdOf(invoice),
+        }),
+      ]
+    );
+    return invoice;
   }
 
   beforeEach(async () => {
@@ -111,6 +133,12 @@ describe("handleInvoicePaid", () => {
     stripeStub.disputes.list.mockReset();
     stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.invoices.retrieve.mockReset();
+    linesByInvoice.clear();
+    stripeStub.invoices.listLineItems.mockReset();
+    stripeStub.invoices.listLineItems.mockImplementation(async (id: string) => ({
+      data: linesByInvoice.get(id) ?? [],
+      has_more: false,
+    }));
     stripeStub.customers.list.mockReset();
     stripeStub.customers.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.paymentMethods.list.mockReset();
@@ -157,10 +185,13 @@ describe("handleInvoicePaid", () => {
     });
     clickId = click.id;
     // The referred checkout recorded this subscription, and was its first payment.
-    await seedReferredSubscription(merchant.id, clickId, SUBSCRIPTION_ID, {
-      ref: "in_checkout",
-      at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-    });
+    await seedReferredSubscription(
+      merchant.id,
+      clickId,
+      SUBSCRIPTION_ID,
+      { ref: "in_checkout", at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      [PRODUCT_ID]
+    );
   });
 
   afterAll(async () => {
@@ -499,6 +530,202 @@ describe("handleInvoicePaid", () => {
 
       expect(await db.commission.count({ where: { stripePaymentRef: "in_after_upgrade" } })).toBe(0);
       expect(await db.referredSubscription.count({ where: { stripeSubscriptionId: "sub_trial" } })).toBe(0);
+    });
+  });
+
+  describe("only referred subscription revenue earns", () => {
+    it.each(["manual", "quote_accept", "automatic_pending_invoice_item_invoice", "subscription_threshold", "upcoming", "subscription", null])(
+      "earns nothing on an invoice billed for %s, even on the referred subscription",
+      async (billingReason) => {
+        await handleInvoicePaid(merchant, invoiceFixture({ id: "in_other_reason", billing_reason: billingReason }));
+
+        expect(await db.commission.count()).toBe(0);
+        expect(stripeStub.invoices.listLineItems).not.toHaveBeenCalled();
+      }
+    );
+
+    it("does not let a manual invoice on a free trial use up a one-time program's first payment", async () => {
+      const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
+      await seedReferredSubscription(merchant.id, click.id, "sub_trial_manual", undefined, [PRODUCT_ID]);
+      const parent = subscriptionParent("sub_trial_manual");
+
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_manual_fee", billing_reason: "manual", parent }));
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_first_cycle", parent }));
+
+      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      expect(refs).toEqual(["in_first_cycle"]);
+    });
+
+    it("earns only on the subscription's line when a customer's one-off item is swept into the renewal", async () => {
+      // The 120.00 renewal with 20.00 VAT inside, plus a 60.00 setup fee with
+      // 10.00 VAT inside that the merchant added to the customer.
+      const invoice = invoiceFixture(
+        {
+          total: 18000,
+          total_excluding_tax: 15000,
+          total_taxes: [{ amount: 3000, tax_behavior: "inclusive", taxable_amount: 15000 }],
+          amount_paid: 18000,
+        },
+        [invoiceLine({ amount: 12000, inclusiveTax: 2000 }), invoiceLine({ amount: 6000, inclusiveTax: 1000, source: "invoice_item" })]
+      );
+
+      await handleInvoicePaid(merchant, invoice);
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.saleAmount?.toString()).toBe("100");
+      expect(commission.amount.toString()).toBe("20");
+    });
+
+    it("earns on a discounted renewal with VAT inside the price, before tax and after the discount", async () => {
+      // 120.00 with 20% VAT inside, 20% off: 96.00 paid, 16.00 of it VAT.
+      const invoice = invoiceFixture(
+        {
+          total: 9600,
+          total_excluding_tax: 8000,
+          total_taxes: [{ amount: 1600, tax_behavior: "inclusive", taxable_amount: 8000 }],
+          amount_paid: 9600,
+        },
+        [invoiceLine({ amount: 12000, discount: 2400, inclusiveTax: 1600 })]
+      );
+
+      await handleInvoicePaid(merchant, invoice);
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.saleAmount?.toString()).toBe("80");
+      expect(commission.amount.toString()).toBe("16");
+    });
+
+    it("earns on a plan change inside the same product, prorations included", async () => {
+      // From 100.00 to 160.00 a month halfway through, no tax: 50.00 back for
+      // the old price's unused half, 80.00 for the new price's.
+      const invoice = invoiceFixture(
+        { id: "in_upgrade", billing_reason: "subscription_update", total: 3000, total_excluding_tax: 3000, total_taxes: [], amount_paid: 3000 },
+        [invoiceLine({ amount: -5000, proration: true }), invoiceLine({ amount: 8000, proration: true })]
+      );
+
+      await handleInvoicePaid(merchant, invoice);
+
+      const commission = await db.commission.findFirstOrThrow({ where: { stripePaymentRef: "in_upgrade" } });
+      expect(commission.saleAmount?.toString()).toBe("30");
+      expect(commission.amount.toString()).toBe("6");
+    });
+
+    it("earns nothing, and logs once, after the subscription moved to another product", async () => {
+      const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        await handleInvoicePaid(
+          merchant,
+          invoiceFixture({ id: "in_switched" }, [invoiceLine({ amount: 12000, inclusiveTax: 2000, product: "prod_other" })])
+        );
+        expect(warnings).toHaveBeenCalledTimes(1);
+        const [message] = warnings.mock.calls[0];
+        expect(message).toContain("in_switched");
+        expect(message).toContain("prod_other");
+        expect(message).not.toContain("\n");
+      } finally {
+        warnings.mockRestore();
+      }
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("takes the products of a subscription recorded before 0.2.7 from its next renewal, then holds it to them", async () => {
+      const { click } = await seedReferral(merchant);
+      await seedReferredSubscription(merchant.id, click.id, "sub_no_products", { ref: "in_first", at: new Date() });
+      const parent = subscriptionParent("sub_no_products");
+
+      await handleInvoicePaid(merchant, invoiceFixture({ id: "in_fills", parent }));
+      const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        await handleInvoicePaid(
+          merchant,
+          invoiceFixture({ id: "in_after_switch", parent }, [
+            invoiceLine({ amount: 12000, inclusiveTax: 2000, subscription: "sub_no_products", product: "prod_other" }),
+          ])
+        );
+      } finally {
+        warnings.mockRestore();
+      }
+
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_no_products" } });
+      expect(referred.stripeProductIds).toEqual([PRODUCT_ID]);
+      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      expect(refs).toEqual(["in_fills"]);
+    });
+
+    it("reads every page of a renewal's lines before earning", async () => {
+      stripeStub.invoices.listLineItems.mockImplementation(async (_id: string, params?: unknown) =>
+        (params as { starting_after?: string } | undefined)?.starting_after === "il_page_1"
+          ? { data: [invoiceLine({ id: "il_page_2", amount: 6000, inclusiveTax: 1000 })], has_more: false }
+          : { data: [invoiceLine({ id: "il_page_1", amount: 6000, inclusiveTax: 1000 })], has_more: true }
+      );
+
+      await handleInvoicePaid(merchant, invoiceFixture());
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.saleAmount?.toString()).toBe("100");
+      expect(stripeStub.invoices.listLineItems).toHaveBeenCalledWith("in_renewal", { limit: 100, starting_after: "il_page_1" });
+    });
+
+    it("earns nothing, and logs once, when a line's origin cannot be read", async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await handleInvoicePaid(
+          merchant,
+          invoiceFixture({ id: "in_unknown" }, [invoiceLine({ amount: 12000, inclusiveTax: 2000, source: "unknown" })])
+        );
+        expect(errors).toHaveBeenCalledTimes(1);
+        const [message] = errors.mock.calls[0];
+        expect(message).toContain("in_unknown");
+        expect(message).not.toContain("\n");
+      } finally {
+        errors.mockRestore();
+      }
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("throws so the event is retried when Stripe cannot list the lines", async () => {
+      const failure = new Error("StripeConnectionError");
+      stripeStub.invoices.listLineItems.mockImplementation(async () => {
+        throw failure;
+      });
+
+      await expect(handleInvoicePaid(merchant, invoiceFixture())).rejects.toBe(failure);
+      expect(await db.commission.count()).toBe(0);
+    });
+  });
+
+  describe("out-of-band payments", () => {
+    it("earns nothing, and logs once, on a renewal paid entirely outside Stripe", async () => {
+      const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        await handleInvoicePaid(merchant, invoiceFixture({ amount_paid_off_stripe: 12000 }));
+        expect(warnings).toHaveBeenCalledTimes(1);
+        const [message] = warnings.mock.calls[0];
+        expect(message).toContain("in_renewal");
+        expect(message).not.toContain("buyer@example.com");
+        expect(message).not.toContain("cus_renewal");
+      } finally {
+        warnings.mockRestore();
+      }
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("earns only on the part paid through Stripe when a renewal is paid partly out of band", async () => {
+      // 120.00 with 20.00 VAT inside; 60.00 of the 120.00 paid was settled
+      // outside Stripe, so only the other half is scaled into the base.
+      await handleInvoicePaid(merchant, invoiceFixture({ amount_paid_off_stripe: 6000 }));
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.saleAmount?.toString()).toBe("50");
+      expect(commission.amount.toString()).toBe("10");
+    });
+
+    it("earns the same as before amount_paid_off_stripe existed, when a renewal carries none of it", async () => {
+      await handleInvoicePaid(merchant, invoiceFixture());
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.saleAmount?.toString()).toBe("100");
+      expect(commission.amount.toString()).toBe("20");
     });
   });
 
