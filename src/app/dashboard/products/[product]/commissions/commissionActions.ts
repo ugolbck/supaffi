@@ -36,6 +36,7 @@ async function owner(): Promise<string> {
  * ignores anything it does not know.
  */
 function refusalCode(error: string): string {
+  if (error.includes("amount changed")) return "amount";
   if (error.includes("Nothing selected")) return "empty";
   if (error.includes("no longer payable")) return "partial";
   if (error.includes("one currency")) return "mixed";
@@ -55,12 +56,17 @@ function back(product: { slug: string }, listHref: string, error?: string): neve
   redirect(`${target}${query}`);
 }
 
+/**
+ * `expectedTotal` is the figure the Owner was looking at when they pressed the
+ * button. The ledger refuses the payout if the rows no longer add up to it.
+ */
 export async function markPaidAction(
   listHref: string,
   product: { id: string; slug: string },
-  ids: string[]
+  ids: string[],
+  expectedTotal: string
 ): Promise<void> {
-  const result = await markCommissionsPaid(await owner(), product.id, ids);
+  const result = await markCommissionsPaid(await owner(), product.id, ids, expectedTotal);
   back(product, listHref, "error" in result ? refusalCode(result.error) : undefined);
 }
 

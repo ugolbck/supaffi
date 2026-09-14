@@ -54,6 +54,7 @@ const DATE = new Intl.DateTimeFormat("en-GB", {
  * one of these; a code that is not here is ignored rather than shown.
  */
 const REFUSALS: Record<string, string> = {
+  amount: "An amount changed since this page loaded. Check the new total before paying.",
   empty: "Nothing was selected, so there was nothing to pay.",
   partial: "Some of those commissions are no longer payable. Reload and try again.",
   mixed: "A payout covers one affiliate and one currency at a time.",
@@ -228,6 +229,7 @@ export default async function CommissionsPage({
         id: selected.id,
         status: selected.status,
         amount: formatMoney(selected.amount, selected.currency),
+        payTotal: selected.amount,
         // Only carried when it actually differs, so the sheet can tell "was
         // reduced" from "was always this" with a single null check.
         grossAmount:

@@ -233,6 +233,9 @@ export async function getCommissionFilterOptions(
 
 export type MarkPaidResult = { count: number } | { error: string };
 
+/** The refusal for a payout whose amounts moved under the Owner. */
+const AMOUNT_CHANGED = "An amount changed since this page loaded. Check the new total before paying.";
+
 /**
  * Mark an exact set of commissions paid.
  *
@@ -240,6 +243,13 @@ export type MarkPaidResult = { count: number } | { error: string };
  * commission crossing its Holding Period between render and click would
  * otherwise be swept into a payout nobody decided to make, and PAID is a
  * terminal state (VOIDED is only reachable from PENDING, PAYABLE or FLAGGED).
+ *
+ * Bound to the total the Owner was shown as well. The Owner pays outside
+ * Supaffi and then presses the button, so the figure on screen is the figure
+ * that left their account. A partial refund can lower an amount in between,
+ * and recording the lower figure would leave the ledger short of what was
+ * sent with no clawback to recover it. The sum is taken inside the same
+ * transaction as the write, so it reads the rows as they are being paid.
  *
  * Two refusals guard the refund-adjustment rule. A payout is per affiliate per
  * currency, so a selection spanning more than one of either is not a payout.
@@ -251,12 +261,19 @@ export type MarkPaidResult = { count: number } | { error: string };
 export async function markCommissionsPaid(
   ownerId: string,
   merchantId: string,
-  commissionIds: string[]
+  commissionIds: string[],
+  expectedTotal: string
 ): Promise<MarkPaidResult> {
   await assertMerchantOwnership(ownerId, merchantId);
 
   if (commissionIds.length === 0) {
     return { error: "Nothing selected" };
+  }
+
+  // Every total a page renders is `Decimal.toFixed(2)`. Anything else did not
+  // come from a page, and comparing it would be comparing against a guess.
+  if (typeof expectedTotal !== "string" || !/^-?\d+\.\d{2}$/.test(expectedTotal)) {
+    return { error: AMOUNT_CHANGED };
   }
 
   const selected = await db.commission.findMany({
@@ -314,6 +331,18 @@ export async function markCommissionsPaid(
         data: { status: "PAID", paidAt: new Date() },
       });
       if (count !== commissionIds.length) throw new StaleSelectionError();
+
+      // Summed after the update, not before it. The update holds these rows,
+      // so a refund that commits first is already in this sum, and a refund
+      // that arrives later waits, finds the row PAID, and becomes a clawback
+      // instead of a silent reduction.
+      const { _sum } = await tx.commission.aggregate({
+        where: { id: { in: commissionIds } },
+        _sum: { amount: true },
+      });
+      if ((_sum.amount ?? new Prisma.Decimal(0)).toFixed(2) !== expectedTotal) {
+        throw new AmountChangedError();
+      }
       return count;
     });
     return { count };
@@ -321,11 +350,15 @@ export async function markCommissionsPaid(
     if (err instanceof StaleSelectionError) {
       return { error: "Some of those commissions are no longer payable. Reload and try again." };
     }
+    if (err instanceof AmountChangedError) {
+      return { error: AMOUNT_CHANGED };
+    }
     throw err;
   }
 }
 
 class StaleSelectionError extends Error {}
+class AmountChangedError extends Error {}
 
 export async function confirmCommissionFraud(
   ownerId: string,

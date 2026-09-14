@@ -35,6 +35,11 @@ export type SheetCommission = {
   status: CommissionStatus;
   /** Already carries its currency, since amounts are never converted. */
   amount: string;
+  /**
+   * The same amount as a plain two-decimal figure, no currency. Bound into
+   * Mark paid so the payout is refused if the amount changed since render.
+   */
+  payTotal: string;
   /** What this commission was before a partial refund reduced it. Null when unchanged. */
   grossAmount: string | null;
   affiliate: string;
@@ -235,7 +240,7 @@ export function CommissionSheet({
           </div>
 
           {commission.status === "PAYABLE" && (
-            <form action={markPaidAction.bind(null, listHref, product, [commission.id])}>
+            <form action={markPaidAction.bind(null, listHref, product, [commission.id], commission.payTotal)}>
               <Button type="submit" size="sm" className="cursor-pointer">
                 Mark paid
               </Button>

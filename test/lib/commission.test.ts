@@ -306,7 +306,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     const first = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
     const second = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
 
-    const result = await markCommissionsPaid(ownerId, merchantId, [first.id]);
+    const result = await markCommissionsPaid(ownerId, merchantId, [first.id], "10.00");
     expect(result).toEqual({ count: 1 });
 
     expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("PAID");
@@ -334,7 +334,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       amount: "20.00",
     });
 
-    expect(await markCommissionsPaid(ownerId, merchantId, seen)).toEqual({ count: 2 });
+    expect(await markCommissionsPaid(ownerId, merchantId, seen, "25.00")).toEqual({ count: 2 });
     expect((await db.commission.findUniqueOrThrow({ where: { id: late.id } })).status).toBe(
       "PAYABLE"
     );
@@ -349,7 +349,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       currency: "eur",
     });
 
-    const result = await markCommissionsPaid(ownerId, merchantId, [usd.id, eur.id]);
+    const result = await markCommissionsPaid(ownerId, merchantId, [usd.id, eur.id], "20.00");
     expect(result).toEqual({ error: expect.stringContaining("one currency") });
     expect((await db.commission.findUniqueOrThrow({ where: { id: usd.id } })).status).toBe(
       "PAYABLE"
@@ -365,7 +365,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "-10.00" });
 
-    const result = await markCommissionsPaid(ownerId, merchantId, [earned.id]);
+    const result = await markCommissionsPaid(ownerId, merchantId, [earned.id], "30.00");
     expect(result).toEqual({ error: expect.stringContaining("refund adjustment") });
     expect((await db.commission.findUniqueOrThrow({ where: { id: earned.id } })).status).toBe(
       "PAYABLE"
@@ -381,7 +381,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       amount: "-12.00",
     });
 
-    const result = await markCommissionsPaid(ownerId, merchantId, [earned.id, clawback.id]);
+    const result = await markCommissionsPaid(ownerId, merchantId, [earned.id, clawback.id], "-7.00");
     expect(result).toEqual({ error: expect.stringContaining("carries to the next payout") });
   });
 
@@ -392,7 +392,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       status: "PENDING",
     });
 
-    const result = await markCommissionsPaid(ownerId, merchantId, [payable.id, pending.id]);
+    const result = await markCommissionsPaid(ownerId, merchantId, [payable.id, pending.id], "20.00");
     expect(result).toEqual({ error: expect.stringContaining("no longer payable") });
     expect((await db.commission.findUniqueOrThrow({ where: { id: payable.id } })).status).toBe(
       "PAYABLE"
@@ -412,12 +412,71 @@ describe.skipIf(!hasDatabase)("commission", () => {
       return result;
     }) as unknown as typeof db.commission.findFirst);
     try {
-      const result = await markCommissionsPaid(ownerId, merchantId, [first.id, second.id]);
+      const result = await markCommissionsPaid(ownerId, merchantId, [first.id, second.id], "20.00");
       expect(result).toEqual({ error: expect.stringContaining("no longer payable") });
     } finally {
       spy.mockRestore();
     }
     expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("PAYABLE");
+  });
+
+  it("refuses a payout when a partial refund lowered an amount after the page was rendered", async () => {
+    // The Owner saw 20.00 and sent 20.00. Recording 16.00 would leave the
+    // ledger short of what left their account, with no clawback to show for it.
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const first = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "10.00",
+    });
+    const second = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "10.00",
+    });
+
+    await db.commission.update({ where: { id: second.id }, data: { amount: "6.00" } });
+
+    const result = await markCommissionsPaid(ownerId, merchantId, [first.id, second.id], "20.00");
+    expect(result).toEqual({ error: expect.stringContaining("amount changed") });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("PAYABLE");
+    expect((await db.commission.findUniqueOrThrow({ where: { id: second.id } })).status).toBe("PAYABLE");
+  });
+
+  it("refuses when an amount changes after the checks but before the write", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const first = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "10.00",
+    });
+    const second = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "10.00",
+    });
+
+    // The outstanding-clawback lookup is the last read before the transaction,
+    // so a refund reducing the row right after it is the latest possible moment.
+    const realFindFirst = db.commission.findFirst.bind(db.commission);
+    const spy = vi.spyOn(db.commission, "findFirst").mockImplementationOnce((async (args: object) => {
+      const found = await realFindFirst(args);
+      await db.commission.update({ where: { id: second.id }, data: { amount: "6.00" } });
+      return found;
+    }) as unknown as typeof db.commission.findFirst);
+    try {
+      const result = await markCommissionsPaid(ownerId, merchantId, [first.id, second.id], "20.00");
+      expect(result).toEqual({ error: expect.stringContaining("amount changed") });
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("PAYABLE");
+    expect((await db.commission.findUniqueOrThrow({ where: { id: second.id } })).status).toBe("PAYABLE");
+  });
+
+  it("refuses a total that is not a two-decimal figure", async () => {
+    // The total is a bound argument the browser posts back, so it is checked
+    // rather than trusted.
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const only = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "10.00",
+    });
+
+    const result = await markCommissionsPaid(ownerId, merchantId, [only.id], "10");
+    expect(result).toEqual({ error: expect.stringContaining("amount changed") });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: only.id } })).status).toBe("PAYABLE");
   });
 
   it("voidCommission refuses a commission paid out between its check and its write", async () => {

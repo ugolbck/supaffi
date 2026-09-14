@@ -21,7 +21,8 @@ import { markPaidAction } from "./commissionActions";
  * Each row carries the exact commission ids read at render time, never a
  * re-query at write time, so a commission that clears its holding period
  * between paint and click cannot be swept into a payout nobody decided to
- * make.
+ * make. It carries the total it shows too, so a refund that lowers an amount
+ * in between refuses the payout instead of recording less than was sent.
  */
 export function PayBar({
   product,
@@ -72,7 +73,7 @@ export function PayBar({
           return (
             <li key={`${group.affiliateId}:${group.currency}`}>
               <form
-                action={markPaidAction.bind(null, listHref, product, group.commissionIds)}
+                action={markPaidAction.bind(null, listHref, product, group.commissionIds, group.total)}
                 className="flex items-center gap-3 px-4 py-2"
               >
                 <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
