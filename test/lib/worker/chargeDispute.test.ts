@@ -347,6 +347,31 @@ describe("dispute handlers", () => {
     expect(row.disputeOpenedAt).not.toBeNull();
   });
 
+  it("holds a commission when the opening event's own dispute is missing from Stripe's list", async () => {
+    // The list can briefly lag behind the event that reports the dispute.
+    // Reading "clear" from an empty list would let the row be swept
+    // PAYABLE, so the event's own dispute is folded in before reducing.
+    const commission = await givenCommission();
+    stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
+
+    await handleChargeDisputeCreated(merchant, dispute("needs_response"));
+
+    const held = await reload(commission);
+    expect(held.status).toBe("PENDING");
+    expect(held.disputeOpenedAt).not.toBeNull();
+  });
+
+  it("voids an unpaid commission on a closed event with status lost whose dispute is missing from the list", async () => {
+    const commission = await givenCommission();
+    stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
+
+    await handleChargeDisputeClosed(merchant, dispute("lost"));
+
+    const row = await reload(commission);
+    expect(row.status).toBe("VOIDED");
+    expect(row.voidReason).toBe("chargeback");
+  });
+
   it("finds the payment through the charge when the dispute carries no PaymentIntent", async () => {
     const commission = await givenCommission();
     stripeStub.charges.retrieve.mockImplementation(async (id: string) => ({ id, payment_intent: PAYMENT_INTENT_ID }));

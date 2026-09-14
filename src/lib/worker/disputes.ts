@@ -32,13 +32,27 @@ export function disputeStateOf(disputes: { status: string }[]): "clear" | "open"
  * charge can carry more than one dispute over time. The list is the only view
  * that is right in every order.
  *
+ * `trigger` is the dispute the caller's own event is about. Stripe's list can
+ * briefly lag behind the event that reports it, most often right after the
+ * dispute opens; when the trigger is missing from what came back, it is added
+ * before reducing, so a handler never reads "clear" for a dispute it was just
+ * told about.
+ *
  * Never throws. A key without Disputes read, or a Stripe outage, answers
  * "unknown", which holds the commission; the log line says how to fix it.
  */
-export async function disputeStateFor(stripe: Stripe, paymentIntentId: string): Promise<DisputeState> {
+export async function disputeStateFor(
+  stripe: Stripe,
+  paymentIntentId: string,
+  trigger?: Stripe.Dispute
+): Promise<DisputeState> {
   try {
     const page = await stripe.disputes.list({ payment_intent: paymentIntentId, limit: 100 });
-    return disputeStateOf(page.data);
+    const disputes =
+      trigger && !page.data.some((d) => d.id === trigger.id)
+        ? [...page.data, { status: trigger.status }]
+        : page.data;
+    return disputeStateOf(disputes);
   } catch (err) {
     console.warn(
       `[worker] could not read the disputes on payment ${paymentIntentId}: ${(err as Error).message}. Its commission is held until they can be read; replacing the Stripe key in settings lets Supaffi read disputes.`
@@ -137,7 +151,7 @@ export async function settleDisputeHold(merchant: Merchant, dispute: Stripe.Disp
 
   let state: DisputeState = "unknown";
   if (payment.paymentIntentId) {
-    state = await disputeStateFor(stripe, payment.paymentIntentId);
+    state = await disputeStateFor(stripe, payment.paymentIntentId, dispute);
   } else {
     console.warn(
       `[worker] dispute ${dispute.id} has no payment to list disputes by, so commission ${commission.id} is held.`

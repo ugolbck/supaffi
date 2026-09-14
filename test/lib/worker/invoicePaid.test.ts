@@ -21,6 +21,9 @@ const stripeStub = vi.hoisted(() => ({
   invoicePayments: {
     list: vi.fn(async (): Promise<{ data: unknown[] }> => ({ data: [] })),
   },
+  disputes: {
+    list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({ data: [] })),
+  },
   paymentIntents: {
     retrieve: vi.fn(async (): Promise<unknown> => ({ id: "pi_renewal", latest_charge: null })),
   },
@@ -97,6 +100,8 @@ describe("handleInvoicePaid", () => {
     stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.paymentIntents.retrieve.mockReset();
     stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({ id: "pi_renewal", latest_charge: null }));
+    stripeStub.disputes.list.mockReset();
+    stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.invoices.retrieve.mockReset();
     stripeStub.customers.list.mockReset();
     stripeStub.customers.list.mockImplementation(async () => ({ data: [] }));
@@ -207,6 +212,24 @@ describe("handleInvoicePaid", () => {
     expect(commission.grossAmount?.toString()).toBe("20");
     expect(commission.voidReason).toBe("partial refund");
     expect(stripeStub.invoicePayments.list).toHaveBeenCalledWith({ invoice: "in_renewal", status: "paid", limit: 1 });
+  });
+
+  it("holds a renewal whose charge is already under an open dispute", async () => {
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({
+      data: [{ payment: { type: "payment_intent", payment_intent: "pi_renewal" } }],
+    }));
+    stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+      id: "pi_renewal",
+      latest_charge: { id: "ch_renewal", amount: 12000, amount_refunded: 0, disputed: true },
+    }));
+    stripeStub.disputes.list.mockImplementation(async () => ({ data: [{ id: "dp_1", status: "under_review" }] }));
+
+    await handleInvoicePaid(merchant, invoiceFixture());
+
+    const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+    expect(commission.status).toBe("PENDING");
+    expect(commission.disputeOpenedAt).not.toBeNull();
+    expect(stripeStub.disputes.list).toHaveBeenCalledWith({ payment_intent: "pi_renewal", limit: 100 });
   });
 
   it("creates nothing on a redelivery of the same invoice", async () => {

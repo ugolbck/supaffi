@@ -2,8 +2,9 @@ import { Prisma } from "@prisma/client";
 import type { CommissionStatus } from "@prisma/client";
 import type Stripe from "stripe";
 import { prorateCommission } from "./handlers/chargeRefunded";
+import { disputeStateFor, type DisputeState } from "./disputes";
 
-export type ChargeSnapshot = { amount: number; amountRefunded: number };
+export type ChargeSnapshot = { amount: number; amountRefunded: number; disputed: boolean };
 
 /**
  * The PaymentIntent that paid an invoice. Takes the first paid payment only:
@@ -28,8 +29,8 @@ export async function paymentIntentForInvoice(stripe: Stripe, invoiceId: string)
 }
 
 /**
- * How much of a payment's charge has been refunded so far, according to
- * Stripe right now.
+ * How much of a payment's charge has been refunded so far, and whether it was
+ * ever disputed, according to Stripe right now.
  *
  * Expanding the charge needs Charges read, which keys made before 0.2.4 do
  * not have. Stripe does not promise one error type for that: it can come back
@@ -42,7 +43,7 @@ export async function latestChargeFor(stripe: Stripe, paymentIntentId: string): 
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] });
     const charge = intent.latest_charge;
     if (!charge || typeof charge === "string") return null;
-    return { amount: charge.amount, amountRefunded: charge.amount_refunded };
+    return { amount: charge.amount, amountRefunded: charge.amount_refunded, disputed: charge.disputed === true };
   } catch (err) {
     console.warn(
       `[worker] could not read the charge behind payment ${paymentIntentId}: ${(err as Error).message}. The refund check was skipped; replacing the Stripe key in settings lets Supaffi read charges.`
@@ -50,6 +51,33 @@ export async function latestChargeFor(stripe: Stripe, paymentIntentId: string): 
     return null;
   }
 }
+
+/**
+ * Whether a new commission's sale is already disputed.
+ *
+ * Null when the charge could not be read: the commission is then created as it
+ * was before this check existed, the same fallback as the refund check. A
+ * charge Stripe says was never disputed costs no further request. A disputed
+ * one lists its disputes, since `disputed` stays true after a dispute is won.
+ */
+export async function disputeStateAtCreation(
+  stripe: Stripe,
+  paymentIntentId: string | null,
+  charge: ChargeSnapshot | null
+): Promise<DisputeState | null> {
+  if (!paymentIntentId || !charge) return null;
+  if (!charge.disputed) return "clear";
+  return disputeStateFor(stripe, paymentIntentId);
+}
+
+export type CreationFields = {
+  amount: Prisma.Decimal;
+  grossAmount: Prisma.Decimal;
+  status: CommissionStatus;
+  voidedAt: Date | null;
+  voidReason: string | null;
+  disputeOpenedAt: Date | null;
+};
 
 /**
  * What a commission is written with when it is first created.
@@ -63,30 +91,46 @@ export async function latestChargeFor(stripe: Stripe, paymentIntentId: string): 
  *
  * The rules match the refund handler's: a partial refund lowers the amount
  * and keeps the status, flag included; a full one voids.
+ *
+ * A dispute can arrive early in the same way, and is read back here too. One
+ * still open, or one that could not be read, holds the new row from the start;
+ * one already lost voids it as a chargeback, unless a full refund already
+ * voided it, which stays the recorded cause. A dispute closed in the
+ * merchant's favour changes nothing.
  */
 export function commissionFieldsAtCreation(input: {
   amount: Prisma.Decimal;
   flagReason: string | null;
   charge: ChargeSnapshot | null;
+  /** What Stripe says about disputes on the charge. Null or absent when not checked. */
+  dispute?: DisputeState | null;
   now?: Date;
-}): {
-  amount: Prisma.Decimal;
-  grossAmount: Prisma.Decimal;
-  status: CommissionStatus;
-  voidedAt: Date | null;
-  voidReason: string | null;
-} {
-  const status: CommissionStatus = input.flagReason ? "FLAGGED" : "PENDING";
-  const untouched = { amount: input.amount, grossAmount: input.amount, status, voidedAt: null, voidReason: null };
-  if (!input.charge || input.charge.amountRefunded <= 0) return untouched;
+}): CreationFields {
+  const now = input.now ?? new Date();
+  const held = input.dispute === "open" || input.dispute === "unknown";
+  let fields: CreationFields = {
+    amount: input.amount,
+    grossAmount: input.amount,
+    status: input.flagReason ? "FLAGGED" : "PENDING",
+    voidedAt: null,
+    voidReason: null,
+    disputeOpenedAt: held ? now : null,
+  };
 
-  const outcome = prorateCommission({
-    gross: input.amount,
-    chargeTotal: input.charge.amount,
-    refunded: input.charge.amountRefunded,
-  });
-  if (outcome.void) {
-    return { ...untouched, status: "VOIDED", voidedAt: input.now ?? new Date(), voidReason: "refund" };
+  if (input.charge && input.charge.amountRefunded > 0) {
+    const outcome = prorateCommission({
+      gross: input.amount,
+      chargeTotal: input.charge.amount,
+      refunded: input.charge.amountRefunded,
+    });
+    if (outcome.void) {
+      return { ...fields, status: "VOIDED", voidedAt: now, voidReason: "refund", disputeOpenedAt: null };
+    }
+    fields = { ...fields, amount: new Prisma.Decimal(outcome.amount), voidReason: "partial refund" };
   }
-  return { ...untouched, amount: new Prisma.Decimal(outcome.amount), voidReason: "partial refund" };
+
+  if (input.dispute === "lost") {
+    return { ...fields, status: "VOIDED", voidedAt: now, voidReason: "chargeback", disputeOpenedAt: null };
+  }
+  return fields;
 }

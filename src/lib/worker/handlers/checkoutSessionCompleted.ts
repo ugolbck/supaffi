@@ -3,7 +3,12 @@ import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
 import { commissionRateFor, computeCommissionAmount, computePayableAt, isExcluded, saleAmountFor } from "../commission";
-import { commissionFieldsAtCreation, latestChargeFor, paymentIntentForInvoice } from "../paymentState";
+import {
+  commissionFieldsAtCreation,
+  disputeStateAtCreation,
+  latestChargeFor,
+  paymentIntentForInvoice,
+} from "../paymentState";
 import { checkoutSessionBaseMinor } from "../saleBase";
 import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
@@ -132,10 +137,12 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     flagReason = await checkPaymentMethodOverlap(stripe, affiliate, fingerprint, stripeCustomerId);
   }
 
-  // A refund made before this event was processed has already been and gone
-  // unapplied, so it is read back from the charge now and folded into the row.
+  // A refund or a dispute made before this event was processed has already
+  // been and gone unapplied, so both are read back from the charge now and
+  // folded into the row.
   const chargeIntentId = paymentIntentId ?? (invoiceId ? await paymentIntentForInvoice(stripe, invoiceId) : null);
   const charge = chargeIntentId ? await latestChargeFor(stripe, chargeIntentId) : null;
+  const dispute = await disputeStateAtCreation(stripe, chargeIntentId, charge);
 
   try {
     await db.commission.create({
@@ -148,8 +155,8 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
         payableAt: computePayableAt(program),
         flagReason,
         // amount, grossAmount (the figure a later refund prorates against),
-        // status, voidedAt and voidReason.
-        ...commissionFieldsAtCreation({ amount, flagReason, charge }),
+        // status, voidedAt, voidReason and disputeOpenedAt.
+        ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute }),
       },
     });
   } catch (err) {

@@ -10,7 +10,12 @@ import {
   isPaymentWithinCommissionDuration,
   saleAmountFor,
 } from "../commission";
-import { commissionFieldsAtCreation, latestChargeFor, paymentIntentForInvoice } from "../paymentState";
+import {
+  commissionFieldsAtCreation,
+  disputeStateAtCreation,
+  latestChargeFor,
+  paymentIntentForInvoice,
+} from "../paymentState";
 import { invoiceBaseMinor } from "../saleBase";
 import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
@@ -96,10 +101,11 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
     flagReason = await checkPaymentMethodOverlap(stripe, affiliate, fingerprint, stripeCustomerId);
   }
 
-  // A refund made before this event was processed is read back from the
-  // charge now and folded into the row, see paymentState.ts.
+  // A refund or a dispute made before this event was processed is read back
+  // from the charge now and folded into the row, see paymentState.ts.
   const chargeIntentId = await paymentIntentForInvoice(stripe, invoice.id);
   const charge = chargeIntentId ? await latestChargeFor(stripe, chargeIntentId) : null;
+  const dispute = await disputeStateAtCreation(stripe, chargeIntentId, charge);
 
   try {
     await db.commission.create({
@@ -112,8 +118,8 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
         payableAt: computePayableAt(program),
         flagReason,
         // amount, grossAmount (the figure a later refund prorates against),
-        // status, voidedAt and voidReason.
-        ...commissionFieldsAtCreation({ amount, flagReason, charge }),
+        // status, voidedAt, voidReason and disputeOpenedAt.
+        ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute }),
       },
     });
   } catch (err) {

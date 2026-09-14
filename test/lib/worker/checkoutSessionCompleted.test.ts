@@ -24,6 +24,9 @@ const stripeStub = vi.hoisted(() => ({
   paymentIntents: {
     retrieve: vi.fn(async (): Promise<unknown> => ({ id: "pi_test", latest_charge: null })),
   },
+  disputes: {
+    list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({ data: [] })),
+  },
 }));
 vi.mock("@/lib/stripe", async () => {
   const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
@@ -105,6 +108,8 @@ describe("handleCheckoutSessionCompleted", () => {
     stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.paymentIntents.retrieve.mockReset();
     stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({ id: "pi_test", latest_charge: null }));
+    stripeStub.disputes.list.mockReset();
+    stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
 
     const owner = await db.owner.create({
       data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
@@ -373,6 +378,84 @@ describe("handleCheckoutSessionCompleted", () => {
     expect(commission.voidReason).toBe("partial refund");
     // Payment-mode Sessions never carry a subscription, so nothing is recorded.
     expect(await db.referredSubscription.count()).toBe(0);
+  });
+
+  describe("a dispute made before the commission was recorded", () => {
+    function disputedCharge(paymentIntent: string) {
+      stripeStub.invoicePayments.list.mockImplementation(async () => ({
+        data: [{ payment: { type: "payment_intent", payment_intent: paymentIntent } }],
+      }));
+      stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+        id: paymentIntent,
+        latest_charge: { id: "ch_disputed", amount: 5000, amount_refunded: 0, disputed: true },
+      }));
+    }
+
+    it("holds the commission while the dispute is open", async () => {
+      disputedCharge("pi_disputed");
+      stripeStub.disputes.list.mockImplementation(async () => ({ data: [{ id: "dp_1", status: "needs_response" }] }));
+
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_disputed" }));
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.status).toBe("PENDING");
+      expect(commission.amount.toString()).toBe("10");
+      expect(commission.disputeOpenedAt).not.toBeNull();
+      expect(stripeStub.disputes.list).toHaveBeenCalledWith({ payment_intent: "pi_disputed", limit: 100 });
+    });
+
+    it("records the commission voided when the chargeback was already lost", async () => {
+      disputedCharge("pi_lost");
+      stripeStub.disputes.list.mockImplementation(async () => ({ data: [{ id: "dp_1", status: "lost" }] }));
+
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_lost" }));
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.status).toBe("VOIDED");
+      expect(commission.voidReason).toBe("chargeback");
+    });
+
+    it("holds the commission, and logs, when the disputes cannot be read", async () => {
+      const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+      disputedCharge("pi_unreadable");
+      stripeStub.disputes.list.mockImplementation(async () => {
+        throw Object.assign(new Error("permission"), { type: "StripePermissionError", statusCode: 403 });
+      });
+      try {
+        await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_unreadable" }));
+        expect(warnings).toHaveBeenCalledTimes(1);
+      } finally {
+        warnings.mockRestore();
+      }
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.status).toBe("PENDING");
+      expect(commission.disputeOpenedAt).not.toBeNull();
+    });
+
+    it("records the commission as usual when the dispute was already won", async () => {
+      disputedCharge("pi_won");
+      stripeStub.disputes.list.mockImplementation(async () => ({ data: [{ id: "dp_1", status: "won" }] }));
+
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_won" }));
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.status).toBe("PENDING");
+      expect(commission.disputeOpenedAt).toBeNull();
+    });
+
+    it("does not look for disputes on a charge that was never disputed", async () => {
+      stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+        id: "pi_quiet",
+        latest_charge: { id: "ch_quiet", amount: 5000, amount_refunded: 0, disputed: false },
+      }));
+
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_quiet", invoice: null }));
+
+      expect(stripeStub.disputes.list).not.toHaveBeenCalled();
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.disputeOpenedAt).toBeNull();
+    });
   });
 
   it("records a dong sale larger than the ledger used to hold", async () => {
