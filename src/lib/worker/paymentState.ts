@@ -59,6 +59,11 @@ export async function latestChargeFor(stripe: Stripe, paymentIntentId: string): 
  * was before this check existed, the same fallback as the refund check. A
  * charge Stripe says was never disputed costs no further request. A disputed
  * one lists its disputes, since `disputed` stays true after a dispute is won.
+ *
+ * An empty list here reads as "unknown", not "clear": a disputed charge
+ * always has at least one dispute, so an empty answer is the opening event
+ * having arrived, and been dropped, before this row existed, with its own
+ * list not caught up yet. See disputeStateFor's `emptyMeansUnknown` for why.
  */
 export async function disputeStateAtCreation(
   stripe: Stripe,
@@ -67,7 +72,7 @@ export async function disputeStateAtCreation(
 ): Promise<DisputeState | null> {
   if (!paymentIntentId || !charge) return null;
   if (!charge.disputed) return "clear";
-  return disputeStateFor(stripe, paymentIntentId);
+  return disputeStateFor(stripe, paymentIntentId, undefined, true);
 }
 
 export type CreationFields = {

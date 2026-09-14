@@ -421,9 +421,35 @@ describe("handleCheckoutSessionCompleted", () => {
       stripeStub.disputes.list.mockImplementation(async () => {
         throw Object.assign(new Error("permission"), { type: "StripePermissionError", statusCode: 403 });
       });
+      let commissionId: string;
       try {
         await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_unreadable" }));
+        const created = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+        commissionId = created.id;
+        // One line from the failed list read itself, one from the commission
+        // being created held because of it.
+        expect(warnings).toHaveBeenCalledTimes(2);
+        expect(warnings).toHaveBeenCalledWith(expect.stringContaining(commissionId));
+      } finally {
+        warnings.mockRestore();
+      }
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.status).toBe("PENDING");
+      expect(commission.disputeOpenedAt).not.toBeNull();
+    });
+
+    it("holds the commission, and logs, when a disputed charge's dispute list is still empty", async () => {
+      // A disputed charge always has at least one dispute, so an empty list
+      // is the opening event having arrived and been dropped before this row
+      // existed, not a charge cleared of every dispute.
+      const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+      disputedCharge("pi_lagging");
+      try {
+        await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_lagging" }));
+        const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
         expect(warnings).toHaveBeenCalledTimes(1);
+        expect(warnings).toHaveBeenCalledWith(expect.stringContaining(commission.id));
       } finally {
         warnings.mockRestore();
       }

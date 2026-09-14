@@ -123,6 +123,22 @@ describe("disputeStateAtCreation", () => {
     expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("lost");
     expect(list).toHaveBeenCalledWith({ payment_intent: "pi_1", limit: 100 });
   });
+
+  it("reads an empty list on a disputed charge as unknown, not clear", async () => {
+    // A disputed charge always has at least one dispute, so an empty answer
+    // here is the opening event having arrived and been dropped before this
+    // row existed, with the list not caught up yet, not a charge that was
+    // never really disputed.
+    const list = vi.fn(async () => ({ data: [] }));
+    const stripe = { disputes: { list } } as unknown as Stripe;
+    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("unknown");
+  });
+
+  it("still reads a list settled entirely in the merchant's favour as clear", async () => {
+    const list = vi.fn(async () => ({ data: [{ id: "dp_1", status: "won" }] }));
+    const stripe = { disputes: { list } } as unknown as Stripe;
+    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("clear");
+  });
 });
 
 describe("Stripe lookups", () => {

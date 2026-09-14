@@ -38,13 +38,22 @@ export function disputeStateOf(disputes: { status: string }[]): "clear" | "open"
  * before reducing, so a handler never reads "clear" for a dispute it was just
  * told about.
  *
+ * `emptyMeansUnknown` is for the creation path only (paymentState.ts), which
+ * has no event and so no trigger to fall back on. It is only ever asked for
+ * when the charge itself says it was disputed, and a disputed charge always
+ * has at least one dispute, so an empty list there is never really "clear":
+ * it is the opening event that arrived first, found no commission yet and was
+ * dropped, with nothing later to add the hold. Reading that as "unknown"
+ * holds the new row instead of creating it unheld.
+ *
  * Never throws. A key without Disputes read, or a Stripe outage, answers
  * "unknown", which holds the commission; the log line says how to fix it.
  */
 export async function disputeStateFor(
   stripe: Stripe,
   paymentIntentId: string,
-  trigger?: Stripe.Dispute
+  trigger?: Stripe.Dispute,
+  emptyMeansUnknown = false
 ): Promise<DisputeState> {
   try {
     const page = await stripe.disputes.list({ payment_intent: paymentIntentId, limit: 100 });
@@ -52,6 +61,7 @@ export async function disputeStateFor(
       trigger && !page.data.some((d) => d.id === trigger.id)
         ? [...page.data, { status: trigger.status }]
         : page.data;
+    if (emptyMeansUnknown && disputes.length === 0) return "unknown";
     return disputeStateOf(disputes);
   } catch (err) {
     console.warn(

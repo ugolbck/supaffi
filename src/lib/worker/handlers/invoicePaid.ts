@@ -108,7 +108,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   const dispute = await disputeStateAtCreation(stripe, chargeIntentId, charge);
 
   try {
-    await db.commission.create({
+    const commission = await db.commission.create({
       data: {
         affiliateId: affiliate.id,
         clickId: click.id,
@@ -122,6 +122,11 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
         ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute }),
       },
     });
+    if (dispute === "unknown") {
+      console.warn(
+        `[worker] commission ${commission.id} was created while its disputes could not be read, so it is held until a dispute event or the owner releases it.`
+      );
+    }
   } catch (err) {
     // Redelivery of the same invoice.paid event.
     if (!isUniqueConstraintError(err)) throw err;

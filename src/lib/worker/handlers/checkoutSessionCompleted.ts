@@ -145,7 +145,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   const dispute = await disputeStateAtCreation(stripe, chargeIntentId, charge);
 
   try {
-    await db.commission.create({
+    const commission = await db.commission.create({
       data: {
         affiliateId: affiliate.id,
         clickId: click.id,
@@ -159,6 +159,11 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
         ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute }),
       },
     });
+    if (dispute === "unknown") {
+      console.warn(
+        `[worker] commission ${commission.id} was created while its disputes could not be read, so it is held until a dispute event or the owner releases it.`
+      );
+    }
   } catch (err) {
     // Unique constraint on stripePaymentRef. checkout.session.completed and
     // checkout.session.async_payment_succeeded can both land on the same

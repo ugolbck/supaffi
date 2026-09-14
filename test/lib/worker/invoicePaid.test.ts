@@ -232,6 +232,33 @@ describe("handleInvoicePaid", () => {
     expect(stripeStub.disputes.list).toHaveBeenCalledWith({ payment_intent: "pi_renewal", limit: 100 });
   });
 
+  it("holds a renewal, and logs, when its disputed charge's dispute list is still empty", async () => {
+    // A disputed charge always has at least one dispute, so an empty list is
+    // the opening event having arrived and been dropped before this row
+    // existed, not a charge cleared of every dispute.
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({
+      data: [{ payment: { type: "payment_intent", payment_intent: "pi_renewal" } }],
+    }));
+    stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+      id: "pi_renewal",
+      latest_charge: { id: "ch_renewal", amount: 12000, amount_refunded: 0, disputed: true },
+    }));
+
+    try {
+      await handleInvoicePaid(merchant, invoiceFixture());
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(warnings).toHaveBeenCalledTimes(1);
+      expect(warnings).toHaveBeenCalledWith(expect.stringContaining(commission.id));
+    } finally {
+      warnings.mockRestore();
+    }
+
+    const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+    expect(commission.status).toBe("PENDING");
+    expect(commission.disputeOpenedAt).not.toBeNull();
+  });
+
   it("creates nothing on a redelivery of the same invoice", async () => {
     await handleInvoicePaid(merchant, invoiceFixture());
     await handleInvoicePaid(merchant, invoiceFixture());
