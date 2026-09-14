@@ -83,8 +83,17 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     // Its renewals earn only on the products it bills, so they are read now,
     // before anything is written: a Stripe outage throws and the retried
     // event records the row whole. A key that cannot answer records none, and
-    // the first renewal fills them.
-    const products = await subscriptionProductIds(stripeClientFor(merchant), subscriptionId);
+    // the first renewal fills them. A redelivery whose row already carries
+    // products skips the read entirely: the write-once guard would keep the
+    // data safe either way, but there is no reason to spend the Stripe call
+    // or retry a redelivery on a transient failure that changes nothing.
+    const existing = await db.referredSubscription.findUnique({
+      where: { merchantId_stripeSubscriptionId: { merchantId: merchant.id, stripeSubscriptionId: subscriptionId } },
+    });
+    const products =
+      existing && existing.stripeProductIds.length > 0
+        ? existing.stripeProductIds
+        : await subscriptionProductIds(stripeClientFor(merchant), subscriptionId);
     const referred = await recordReferredSubscription(
       merchant.id,
       click.id,

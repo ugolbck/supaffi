@@ -558,6 +558,30 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(stripeStub.subscriptions.retrieve).toHaveBeenCalledWith("sub_1");
     });
 
+    it("does not re-read products it already has on a redelivery", async () => {
+      stripeStub.subscriptions.retrieve.mockImplementation(async (id: string) => ({
+        id,
+        items: {
+          data: [
+            { id: "si_1", price: { product: "prod_seats" } },
+            { id: "si_2", price: { product: { id: "prod_pro" } } },
+          ],
+          has_more: false,
+        },
+      }));
+      const session = sessionFixture({ invoice: "in_first", subscription: "sub_1" });
+
+      await handleCheckoutSessionCompleted(merchant, session);
+      stripeStub.subscriptions.retrieve.mockClear();
+      stripeStub.subscriptionItems.list.mockClear();
+      await handleCheckoutSessionCompleted(merchant, session);
+
+      expect(stripeStub.subscriptions.retrieve).not.toHaveBeenCalled();
+      expect(stripeStub.subscriptionItems.list).not.toHaveBeenCalled();
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.stripeProductIds).toEqual(["prod_pro", "prod_seats"]);
+    });
+
     it("still records the subscription and the sale's commission when the key cannot read its products", async () => {
       const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
       stripeStub.subscriptions.retrieve.mockImplementation(async () => {
