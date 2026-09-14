@@ -30,6 +30,13 @@ const stripeStub = vi.hoisted(() => ({
   // Only reached when recognising a referral from before 0.2.5; the tests
   // that expect it queue a value.
   invoices: { retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined) },
+  // Read when a legacy referral is recognised, for the products it bills.
+  subscriptions: {
+    retrieve: vi.fn(async (id: string): Promise<unknown> => ({
+      id,
+      items: { data: [{ id: "si_basic", price: { product: "prod_basic" } }], has_more: false },
+    })),
+  },
 }));
 vi.mock("@/lib/stripe", async () => {
   const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");

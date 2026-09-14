@@ -83,7 +83,8 @@ export async function seedReferredSubscription(
   merchantId: string,
   clickId: string,
   stripeSubscriptionId: string,
-  firstPayment?: { ref: string; at: Date }
+  firstPayment?: { ref: string; at: Date },
+  stripeProductIds?: string[]
 ) {
   return db.referredSubscription.create({
     data: {
@@ -92,6 +93,9 @@ export async function seedReferredSubscription(
       stripeSubscriptionId,
       firstPaymentRef: firstPayment?.ref ?? null,
       firstPaidAt: firstPayment?.at ?? null,
+      // Left to the column default when a case does not care, which is how
+      // rows recorded before 0.2.7 look.
+      ...(stripeProductIds ? { stripeProductIds } : {}),
     },
   });
 }

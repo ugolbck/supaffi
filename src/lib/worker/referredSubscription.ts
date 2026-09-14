@@ -49,21 +49,96 @@ export function subscriptionIdOf(invoice: Stripe.Invoice): string | null {
 }
 
 /**
- * Records that a referred Checkout Session created this subscription. A
- * redelivered or retried checkout lands on the row already there.
+ * Records that a referred Checkout Session created this subscription, with the
+ * Stripe products it bills. A redelivered or retried checkout lands on the row
+ * already there, and fills its products if the first attempt could not read
+ * them.
  */
 export async function recordReferredSubscription(
   merchantId: string,
   clickId: string,
-  stripeSubscriptionId: string
+  stripeSubscriptionId: string,
+  stripeProductIds: string[] = []
 ): Promise<ReferredSubscription> {
+  const where = { merchantId_stripeSubscriptionId: { merchantId, stripeSubscriptionId } };
   try {
-    return await db.referredSubscription.create({ data: { merchantId, clickId, stripeSubscriptionId } });
+    return await db.referredSubscription.create({
+      data: { merchantId, clickId, stripeSubscriptionId, stripeProductIds },
+    });
   } catch (err) {
     if (!isUniqueConstraintError(err)) throw err;
-    return db.referredSubscription.findUniqueOrThrow({
-      where: { merchantId_stripeSubscriptionId: { merchantId, stripeSubscriptionId } },
+    const existing = await db.referredSubscription.findUniqueOrThrow({ where });
+    if (existing.stripeProductIds.length > 0 || stripeProductIds.length === 0) return existing;
+    await fillStripeProductIds(existing.id, stripeProductIds);
+    return db.referredSubscription.findUniqueOrThrow({ where });
+  }
+}
+
+/**
+ * Stores the products of a subscription recorded without them, unless another
+ * event stored them first, and returns what is stored now. The first writer
+ * wins so every later invoice is measured against one set.
+ */
+export async function fillStripeProductIds(referredId: string, stripeProductIds: string[]): Promise<string[]> {
+  if (stripeProductIds.length > 0) {
+    await db.referredSubscription.updateMany({
+      where: { id: referredId, stripeProductIds: { isEmpty: true } },
+      data: { stripeProductIds },
     });
+  }
+  const current = await db.referredSubscription.findUniqueOrThrow({
+    where: { id: referredId },
+    select: { stripeProductIds: true },
+  });
+  return current.stripeProductIds;
+}
+
+// Stripe caps a list page at 100.
+const ITEMS_PAGE_SIZE = 100;
+
+/**
+ * The Stripe products a subscription bills now, read from its items, each
+ * once and sorted.
+ *
+ * Read from the subscription rather than from the Checkout Session's line
+ * items: a one-time price sold in the same Checkout is not a subscription
+ * item, and the key reads subscriptions but not Checkout Sessions. The read
+ * goes through Supaffi's pinned API version, so the shape is always the one
+ * the SDK types describe.
+ *
+ * A key that cannot read subscriptions, or a subscription Stripe no longer
+ * has, answers "unanswered" with one warning: the products are then taken
+ * from the subscription's next renewal. Anything else throws, so the event is
+ * retried.
+ */
+export async function subscriptionProductIds(
+  stripe: Stripe,
+  subscriptionId: string
+): Promise<string[] | "unanswered"> {
+  try {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const items = [...subscription.items.data];
+    let hasMore = subscription.items.has_more;
+    while (hasMore && items.length > 0) {
+      const page = await stripe.subscriptionItems.list({
+        subscription: subscriptionId,
+        limit: ITEMS_PAGE_SIZE,
+        starting_after: items[items.length - 1].id,
+      });
+      items.push(...page.data);
+      hasMore = page.has_more && page.data.length > 0;
+    }
+    const products = items.map((item) => idOf(item.price.product)).filter((id): id is string => id !== null);
+    return [...new Set(products)].sort();
+  } catch (err) {
+    const { type, code } = err as { type?: string; code?: string };
+    if (code === "resource_missing" || (type && KEY_STRIPE_ERRORS.has(type))) {
+      console.warn(
+        `[worker] subscription ${subscriptionId}: Stripe could not say which products it bills, so they are taken from its next renewal`
+      );
+      return "unanswered";
+    }
+    throw err;
   }
 }
 
@@ -158,8 +233,8 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
   if (!click) return;
 
   const invoices: Stripe.Invoice[] = [];
-  if (click.commissions.length > 0) {
-    const stripe = stripeClientFor(merchant);
+  const stripe = click.commissions.length > 0 ? stripeClientFor(merchant) : null;
+  if (stripe) {
     for (const { stripePaymentRef } of click.commissions) {
       if (!stripePaymentRef) continue;
       const invoice = await retrieveLegacyInvoice(stripe, click.id, stripePaymentRef);
@@ -181,6 +256,9 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
     const firstPaid = invoices
       .filter((invoice) => subscriptionIdOf(invoice) === stripeSubscriptionId && invoice.amount_paid > 0)
       .sort((a, b) => a.created - b.created)[0];
+    // What it bills now, which is what its checkout bought unless the plan
+    // changed since. Left empty when Stripe cannot say; the next renewal fills it.
+    const products = stripe ? await subscriptionProductIds(stripe, stripeSubscriptionId) : "unanswered";
     try {
       await db.referredSubscription.create({
         data: {
@@ -189,6 +267,7 @@ async function recognizeLegacyClick(merchant: Merchant, stripeCustomerId: string
           stripeSubscriptionId,
           firstPaymentRef: firstPaid?.id ?? null,
           firstPaidAt: firstPaid ? new Date(firstPaid.created * 1000) : null,
+          stripeProductIds: products === "unanswered" ? [] : products,
         },
       });
     } catch (err) {

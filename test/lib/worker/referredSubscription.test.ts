@@ -10,6 +10,10 @@ import { db } from "@/lib/db";
 // a call queue a value; the rest assert nothing was asked.
 const stripeStub = vi.hoisted(() => ({
   invoices: { retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined) },
+  // The products a subscription bills, read when a referral is recorded or
+  // recognised. Answered per case in beforeEach.
+  subscriptions: { retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined) },
+  subscriptionItems: { list: vi.fn(async (_params: unknown): Promise<unknown> => undefined) },
 }));
 vi.mock("@/lib/stripe", async () => {
   const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
@@ -19,9 +23,11 @@ vi.mock("@/lib/stripe", async () => {
 import { deleteMerchant } from "@/lib/merchant";
 import {
   claimFirstPayment,
+  fillStripeProductIds,
   findReferredSubscription,
   recordReferredSubscription,
   subscriptionIdOf,
+  subscriptionProductIds,
 } from "@/lib/worker/referredSubscription";
 import {
   clearReferralTables,
@@ -48,6 +54,17 @@ function invoicesById(invoices: Array<ReturnType<typeof retrievedInvoice>>) {
   });
 }
 
+/** A subscription as `stripe.subscriptions.retrieve` returns it, with only its items. */
+function subscriptionBilling(id: string, products: Array<string | { id: string }>, hasMore = false) {
+  return {
+    id,
+    items: {
+      data: products.map((product, index) => ({ id: `si_${index + 1}`, price: { product } })),
+      has_more: hasMore,
+    },
+  };
+}
+
 describe("subscriptionIdOf", () => {
   it("reads the subscription from parent on current API versions", () => {
     const invoice = invoiceWith({ parent: { type: "subscription_details", subscription_details: { subscription: "sub_1" } } });
@@ -71,6 +88,10 @@ describe("referred subscriptions", () => {
   beforeEach(async () => {
     await clearReferralTables();
     stripeStub.invoices.retrieve.mockReset();
+    stripeStub.subscriptions.retrieve.mockReset();
+    stripeStub.subscriptions.retrieve.mockImplementation(async (id: string) => subscriptionBilling(id, ["prod_basic"]));
+    stripeStub.subscriptionItems.list.mockReset();
+    stripeStub.subscriptionItems.list.mockImplementation(async () => ({ data: [], has_more: false }));
     ownerId = (await seedOwner()).id;
     merchant = await seedMerchant(ownerId);
   });
@@ -135,6 +156,82 @@ describe("referred subscriptions", () => {
     expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
   });
 
+  describe("the products a referral bought", () => {
+    const stripe = () => stripeStub as unknown as Stripe;
+
+    it("reads each product a subscription bills once, across every page of its items", async () => {
+      stripeStub.subscriptions.retrieve.mockImplementation(async (id: string) =>
+        subscriptionBilling(id, ["prod_seats", { id: "prod_pro" }, "prod_seats"], true)
+      );
+      stripeStub.subscriptionItems.list.mockImplementation(async () => ({
+        data: [{ id: "si_4", price: { product: "prod_addon" } }],
+        has_more: false,
+      }));
+
+      expect(await subscriptionProductIds(stripe(), "sub_1")).toEqual(["prod_addon", "prod_pro", "prod_seats"]);
+      expect(stripeStub.subscriptionItems.list).toHaveBeenCalledWith({
+        subscription: "sub_1",
+        limit: 100,
+        starting_after: "si_3",
+      });
+    });
+
+    it.each([
+      ["a key that cannot read subscriptions", () => stripeError("StripePermissionError")],
+      ["a key Stripe no longer accepts", () => stripeError("StripeAuthenticationError")],
+      ["a subscription Stripe no longer has", () => stripeError("StripeInvalidRequestError", "resource_missing")],
+    ])("answers unanswered with one warning for %s", async (_label, makeError) => {
+      const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+      stripeStub.subscriptions.retrieve.mockImplementation(async () => {
+        throw makeError();
+      });
+      try {
+        expect(await subscriptionProductIds(stripe(), "sub_1")).toBe("unanswered");
+        expect(warnings).toHaveBeenCalledTimes(1);
+        const [message] = warnings.mock.calls[0];
+        expect(message).toContain("sub_1");
+        expect(message).not.toContain("\n");
+      } finally {
+        warnings.mockRestore();
+      }
+    });
+
+    it("throws when Stripe cannot be reached, so the event is retried", async () => {
+      stripeStub.subscriptions.retrieve.mockImplementation(async () => {
+        throw stripeError("StripeConnectionError");
+      });
+      await expect(subscriptionProductIds(stripe(), "sub_1")).rejects.toThrow("StripeConnectionError");
+    });
+
+    it("records the products with the subscription", async () => {
+      const { click } = await seedReferral(merchant);
+      const row = await recordReferredSubscription(merchant.id, click.id, "sub_1", ["prod_basic"]);
+      expect(row.stripeProductIds).toEqual(["prod_basic"]);
+    });
+
+    it("fills an empty row on a redelivery, and never replaces products already stored", async () => {
+      const { click } = await seedReferral(merchant);
+      await recordReferredSubscription(merchant.id, click.id, "sub_1");
+
+      const filled = await recordReferredSubscription(merchant.id, click.id, "sub_1", ["prod_basic"]);
+      const kept = await recordReferredSubscription(merchant.id, click.id, "sub_1", ["prod_other"]);
+
+      expect(filled.stripeProductIds).toEqual(["prod_basic"]);
+      expect(kept.stripeProductIds).toEqual(["prod_basic"]);
+      expect(await db.referredSubscription.count()).toBe(1);
+    });
+
+    it("fills products only while none are stored, and returns what is stored", async () => {
+      const { click } = await seedReferral(merchant);
+      const row = await seedReferredSubscription(merchant.id, click.id, "sub_1");
+      expect(row.stripeProductIds).toEqual([]);
+
+      expect(await fillStripeProductIds(row.id, ["prod_basic"])).toEqual(["prod_basic"]);
+      expect(await fillStripeProductIds(row.id, ["prod_other"])).toEqual(["prod_basic"]);
+      expect(await fillStripeProductIds(row.id, [])).toEqual(["prod_basic"]);
+    });
+  });
+
   describe("recognising a referral linked before 0.2.5", () => {
     it("adopts the subscription its checkout invoice started, anchored at that invoice's date", async () => {
       const { affiliate, click } = await seedReferral(merchant);
@@ -150,6 +247,38 @@ describe("referred subscriptions", () => {
       expect(found?.clickId).toBe(click.id);
       expect(found?.firstPaymentRef).toBe("in_first");
       expect(found?.firstPaidAt?.toISOString()).toBe(invoiceAt.toISOString());
+      expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).legacyCheckedAt).not.toBeNull();
+    });
+
+    it("stores the products the adopted subscription bills now", async () => {
+      const { affiliate, click } = await seedReferral(merchant);
+      await seedLegacyClick(click.id, "cus_1");
+      await seedInvoiceCommission(affiliate.id, click.id, "in_first");
+      invoicesById([retrievedInvoice("in_first", "sub_1")]);
+      stripeStub.subscriptions.retrieve.mockImplementation(async (id: string) => subscriptionBilling(id, ["prod_pro"]));
+
+      const found = await findReferredSubscription(merchant, "sub_1", "cus_1");
+
+      expect(stripeStub.subscriptions.retrieve).toHaveBeenCalledWith("sub_1");
+      expect(found?.stripeProductIds).toEqual(["prod_pro"]);
+    });
+
+    it("adopts with no products, warning once, when the key cannot read subscriptions", async () => {
+      const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { affiliate, click } = await seedReferral(merchant);
+      await seedLegacyClick(click.id, "cus_1");
+      await seedInvoiceCommission(affiliate.id, click.id, "in_first");
+      invoicesById([retrievedInvoice("in_first", "sub_1")]);
+      stripeStub.subscriptions.retrieve.mockImplementation(async () => {
+        throw stripeError("StripePermissionError");
+      });
+      try {
+        const found = await findReferredSubscription(merchant, "sub_1", "cus_1");
+        expect(found?.stripeProductIds).toEqual([]);
+        expect(warnings).toHaveBeenCalledTimes(1);
+      } finally {
+        warnings.mockRestore();
+      }
       expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).legacyCheckedAt).not.toBeNull();
     });
 

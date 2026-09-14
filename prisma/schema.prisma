@@ -225,6 +225,12 @@ model ReferredSubscription {
   // When Stripe reported this subscription deleted.
   cancelledAt DateTime?
 
+  // The Stripe products the referred checkout bought, read from the
+  // subscription's items. Renewals earn only on this subscription's lines for
+  // these products. Empty on rows recorded before 0.2.7, or when Stripe could
+  // not say, until the next renewal fills it.
+  stripeProductIds String[] @default([])
+
   createdAt DateTime @default(now())
 
   @@unique([merchantId, stripeSubscriptionId])

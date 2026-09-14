@@ -12,6 +12,11 @@ const stripeStub = vi.hoisted(() => ({
   invoices: { retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined) },
   subscriptions: {
     list: vi.fn(async (_params: unknown): Promise<unknown> => ({ data: [], has_more: false })),
+    // Read when a legacy referral is recognised, for the products it bills.
+    retrieve: vi.fn(async (id: string): Promise<unknown> => ({
+      id,
+      items: { data: [{ id: "si_basic", price: { product: "prod_basic" } }], has_more: false },
+    })),
   },
 }));
 vi.mock("@/lib/stripe", async () => {
