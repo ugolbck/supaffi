@@ -61,6 +61,10 @@ export type SheetCommission = {
   /** The link that click came through, when it still has one. */
   linkLabel: string | null;
   reference: { text: string; href: string | null } | null;
+  /** A refund adjustment row an older version wrote. It has no referral to confirm. */
+  isAdjustment?: boolean;
+  /** The Owner already confirmed this commission's referral as a self referral. */
+  selfReferralConfirmed?: boolean;
 };
 
 const STATUS_LABELS: Record<CommissionStatus, string> = {
@@ -141,6 +145,23 @@ export function CommissionSheet({
   const reasonText = voidReasonText(commission.voidReason, "owner");
   const voidCause = commission.status === "VOIDED" ? reasonText : null;
   const reduced = commission.status !== "VOIDED" && commission.grossAmount !== null;
+  // Any commission of a referral can confirm it, whatever became of this row:
+  // a self referral the checks missed is only spotted later, often after a
+  // void or a payout. An adjustment row belongs to no referral of its own.
+  const canConfirm = !commission.isAdjustment && !commission.selfReferralConfirmed;
+  // Once confirmed, said plainly, unless this row's void cause already says it.
+  const confirmedNote =
+    !commission.isAdjustment &&
+    commission.selfReferralConfirmed === true &&
+    !(commission.status === "VOIDED" && commission.voidReason === "confirmed self-referral");
+
+  const confirmForm = (
+    <form action={confirmFraudAction.bind(null, listHref, product, commission.id)}>
+      <Button type="submit" size="sm" variant="destructive" className="cursor-pointer">
+        Confirm self referral and stop its commissions
+      </Button>
+    </form>
+  );
 
   return (
     <Sheet
@@ -285,11 +306,7 @@ export function CommissionSheet({
 
           {commission.status === "FLAGGED" && (
             <div className="flex gap-2">
-              <form action={confirmFraudAction.bind(null, listHref, product, commission.id)}>
-                <Button type="submit" size="sm" variant="destructive" className="cursor-pointer">
-                  Confirm self referral and stop its commissions
-                </Button>
-              </form>
+              {canConfirm && confirmForm}
               <form action={dismissFlagAction.bind(null, listHref, product, commission.id)}>
                 <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
                   Dismiss flag
@@ -301,6 +318,10 @@ export function CommissionSheet({
           {commission.status === "PAID" && (
             <p className="text-sm text-muted-foreground">{commission.stateLabel}</p>
           )}
+
+          {commission.status !== "FLAGGED" && canConfirm && confirmForm}
+
+          {confirmedNote && <p className="text-sm text-muted-foreground">Self referral confirmed</p>}
         </div>
       </SheetContent>
     </Sheet>

@@ -911,6 +911,152 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect((await db.click.findUniqueOrThrow({ where: { id: otherClick.id } })).fraudConfirmedAt).toBeNull();
   });
 
+  it("confirmCommissionFraud from a pending commission voids the referral's unpaid rows and marks the click", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const pending = await makeCommission(affiliate.id, click.id, { status: "PENDING", stripePaymentRef: "in_p" });
+    const payable = await makeCommission(affiliate.id, click.id, { status: "PAYABLE", stripePaymentRef: "in_y" });
+
+    await confirmCommissionFraud(ownerId, merchantId, pending.id);
+
+    for (const row of [pending, payable]) {
+      const updated = await db.commission.findUniqueOrThrow({ where: { id: row.id } });
+      expect(updated.status).toBe("VOIDED");
+      expect(updated.voidReason).toBe("confirmed self-referral");
+    }
+    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).fraudConfirmedAt).not.toBeNull();
+  });
+
+  it("confirmCommissionFraud from a flagged commission a refund already voided keeps the refund and stops the rest", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const refunded = await makeCommission(affiliate.id, click.id, {
+      status: "VOIDED",
+      flagReason: "card",
+      voidReason: "refund",
+      voidedAt: new Date(Date.now() - 60_000),
+      stripePaymentRef: "in_r",
+    });
+    const sibling = await makeCommission(affiliate.id, click.id, { status: "PENDING", stripePaymentRef: "in_s" });
+
+    await confirmCommissionFraud(ownerId, merchantId, refunded.id);
+
+    const row = await db.commission.findUniqueOrThrow({ where: { id: refunded.id } });
+    expect(row.status).toBe("VOIDED");
+    expect(row.voidReason).toBe("refund");
+    expect((await db.commission.findUniqueOrThrow({ where: { id: sibling.id } })).voidReason).toBe(
+      "confirmed self-referral"
+    );
+    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).fraudConfirmedAt).not.toBeNull();
+  });
+
+  it("confirmCommissionFraud from a paid commission voids the unpaid siblings only", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const paid = await makeCommission(affiliate.id, click.id, { status: "PAID", stripePaymentRef: "in_paid" });
+    const olderPaid = await makeCommission(affiliate.id, click.id, { status: "PAID", stripePaymentRef: "in_old" });
+    const pending = await makeCommission(affiliate.id, click.id, { status: "PENDING", stripePaymentRef: "in_next" });
+
+    await confirmCommissionFraud(ownerId, merchantId, paid.id);
+
+    expect((await db.commission.findUniqueOrThrow({ where: { id: paid.id } })).status).toBe("PAID");
+    expect((await db.commission.findUniqueOrThrow({ where: { id: olderPaid.id } })).status).toBe("PAID");
+    expect((await db.commission.findUniqueOrThrow({ where: { id: pending.id } })).status).toBe("VOIDED");
+    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).fraudConfirmedAt).not.toBeNull();
+  });
+
+  it("confirmCommissionFraud pressed twice changes nothing the second time and does not throw", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const flagged = await makeCommission(affiliate.id, click.id, { status: "FLAGGED", flagReason: "card" });
+
+    await confirmCommissionFraud(ownerId, merchantId, flagged.id);
+    const first = await db.commission.findUniqueOrThrow({ where: { id: flagged.id } });
+    const firstClick = await db.click.findUniqueOrThrow({ where: { id: click.id } });
+
+    await expect(confirmCommissionFraud(ownerId, merchantId, flagged.id)).resolves.toBeUndefined();
+
+    const second = await db.commission.findUniqueOrThrow({ where: { id: flagged.id } });
+    expect(second.voidedAt?.getTime()).toBe(first.voidedAt?.getTime());
+    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).fraudConfirmedAt?.getTime()).toBe(
+      firstClick.fraudConfirmedAt?.getTime()
+    );
+  });
+
+  it("confirmCommissionFraud refuses a refund adjustment row and marks nothing", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const original = await makeCommission(affiliate.id, click.id, { status: "PAID", stripePaymentRef: "in_o" });
+    const adjustment = await makeCommission(affiliate.id, click.id, {
+      status: "VOIDED",
+      amount: "-10.00",
+      grossAmount: "-10.00",
+      voidReason: "refund after payout",
+      voidedAt: new Date(),
+      adjustsCommissionId: original.id,
+    });
+
+    await expect(confirmCommissionFraud(ownerId, merchantId, adjustment.id)).rejects.toThrow();
+    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).fraudConfirmedAt).toBeNull();
+  });
+
+  it("confirmCommissionFraud refuses a commission belonging to another Merchant", async () => {
+    const otherProgram = await makeProgram(otherMerchantId);
+    const affiliate = await makeAffiliate(otherMerchantId, otherProgram.id, "other");
+    const click = await makeClick(affiliate.id);
+    const commission = await makeCommission(affiliate.id, click.id, { status: "PENDING" });
+
+    await expect(confirmCommissionFraud(ownerId, merchantId, commission.id)).rejects.toThrow();
+    expect((await db.commission.findUniqueOrThrow({ where: { id: commission.id } })).status).toBe("PENDING");
+    expect((await db.click.findUniqueOrThrow({ where: { id: click.id } })).fraudConfirmedAt).toBeNull();
+  });
+
+  it("confirmCommissionFraud voids a commission a renewal was writing on the click while it waited", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const first = await makeCommission(affiliate.id, click.id, { status: "PENDING", stripePaymentRef: "in_first" });
+
+    let confirming!: Promise<void>;
+    await db.$transaction(async (tx) => {
+      // What the worker holds while it checks the click and writes its row.
+      await tx.$queryRaw`SELECT id FROM "Click" WHERE id = ${click.id} FOR SHARE`;
+      confirming = confirmCommissionFraud(ownerId, merchantId, first.id);
+      // Long enough for the confirmation to reach the click and wait on it.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await tx.commission.create({
+        data: {
+          affiliateId: affiliate.id,
+          clickId: click.id,
+          stripePaymentRef: "in_renewal",
+          amount: "10.00",
+          grossAmount: "10.00",
+          currency: "usd",
+          status: "PENDING",
+          payableAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+    });
+    await confirming;
+
+    const renewal = await db.commission.findUniqueOrThrow({ where: { stripePaymentRef: "in_renewal" } });
+    expect(renewal.status).toBe("VOIDED");
+    expect(renewal.voidReason).toBe("confirmed self-referral");
+  });
+
+  it("lists whether each commission's referral is already confirmed as a self referral", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const confirmedClick = await makeClick(affiliate.id);
+    await db.click.update({ where: { id: confirmedClick.id }, data: { fraudConfirmedAt: new Date() } });
+    const onConfirmed = await makeCommission(affiliate.id, confirmedClick.id, { status: "PAID" });
+    const plain = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+
+    const { rows } = await listCommissions(ownerId, merchantId, NO_FILTERS, PAGE);
+    const confirmedOf = (id: string) => rows.find((row) => row.id === id)?.click.selfReferralConfirmed;
+
+    expect(confirmedOf(onConfirmed.id)).toBe(true);
+    expect(confirmedOf(plain.id)).toBe(false);
+  });
+
   it("dismissCommissionFlag returns a still-holding commission to PENDING and clears the flag", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);

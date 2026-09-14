@@ -248,6 +248,8 @@ export default async function CommissionsPage({
         linkLabel: selected.click.linkCode
           ? `${selected.click.linkCode} · ${selected.click.destinationPath ?? "/"}`
           : null,
+        isAdjustment: selected.isAdjustment,
+        selfReferralConfirmed: selected.click.selfReferralConfirmed,
       }
     : null;
 

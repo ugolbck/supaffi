@@ -261,6 +261,12 @@ export default function Kit() {
         >
           <DCommissionSheetDemo which="reduced" />
         </Frame>
+        <Frame
+          label="Commission sheet, paid, self referral confirmed"
+          show={only === "d-commission-sheet-paid-confirmed"}
+        >
+          <DCommissionSheetDemo which="paid-confirmed" />
+        </Frame>
         <Frame label="Affiliate table" show={show("d-affiliate-table")}>
           <DAffiliateTable />
         </Frame>
@@ -778,6 +784,25 @@ const D_SHEETS: Record<string, SheetCommission> = {
     clickLabel: "6 Sept 2026",
     linkLabel: "tobias · /pricing",
     reference: { text: "pi_3QwKlM1dYuJXkn1B", href: null },
+  },
+  "paid-confirmed": {
+    id: "c9",
+    status: "PAID",
+    amount: "140.00 USD",
+    payTotal: "140.00",
+    grossAmount: null,
+    affiliate: "sarah@nw.example",
+    affiliateEmail: "sarah@nw.example",
+    createdLabel: "4 Aug 2026",
+    payableLabel: "3 Sept 2026",
+    voidedLabel: null,
+    voidReason: null,
+    flagReason: null,
+    stateLabel: "Paid 5 Sept 2026",
+    clickLabel: "2 Aug 2026",
+    linkLabel: "sarah · /pricing",
+    reference: { text: "in_1QzNoP6gBaNZqs4E", href: "https://dashboard.stripe.com" },
+    selfReferralConfirmed: true,
   },
 };
 

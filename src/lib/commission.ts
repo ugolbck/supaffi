@@ -51,8 +51,11 @@ export type CommissionRow = {
   isAdjustment: boolean;
   /** Unpaid and held back from payment by an open dispute. */
   disputed: boolean;
-  /** The click this sale was attributed to, and the link it arrived through. */
-  click: { at: Date; linkCode: string | null; destinationPath: string | null };
+  /**
+   * The click this sale was attributed to, the link it arrived through, and
+   * whether the Owner already confirmed that referral as a self referral.
+   */
+  click: { at: Date; linkCode: string | null; destinationPath: string | null; selfReferralConfirmed: boolean };
 };
 
 export const COMMISSIONS_PAGE_SIZE = 25;
@@ -120,6 +123,7 @@ export async function listCommissions(
         click: {
           select: {
             createdAt: true,
+            fraudConfirmedAt: true,
             // Nullable: deleting a link leaves its clicks behind, and
             // attribution reads the affiliate, not the link.
             link: { select: { code: true, destinationPath: true } },
@@ -165,6 +169,7 @@ export async function listCommissions(
         at: c.click.createdAt,
         linkCode: c.click.link?.code ?? null,
         destinationPath: c.click.link?.destinationPath ?? null,
+        selfReferralConfirmed: c.click.fraudConfirmedAt !== null,
       },
     })),
   };
@@ -468,6 +473,23 @@ export async function markCommissionsPaid(
   });
 }
 
+/**
+ * Confirm that a referral was the affiliate referring themselves, from any of
+ * its commissions.
+ *
+ * Any status is accepted, because a self referral the checks missed is often
+ * spotted after its row was voided by hand, refunded, or paid. The row pressed
+ * on is only the way in: the decision is about its click. Every unpaid
+ * commission on the click is voided, paid ones stay paid because a paid
+ * commission is final, and the click is marked so nothing it brings later
+ * earns.
+ *
+ * Pressing it again, or on another row of a referral already confirmed, does
+ * nothing new and does not throw: the first confirmation's date is kept.
+ *
+ * An adjustment row is refused. It records a refund on a sale, not a referral
+ * the Owner is judging.
+ */
 export async function confirmCommissionFraud(
   ownerId: string,
   merchantId: string,
@@ -476,35 +498,32 @@ export async function confirmCommissionFraud(
   await assertMerchantOwnership(ownerId, merchantId);
 
   const existing = await db.commission.findFirst({
-    where: { id: commissionId, status: "FLAGGED", affiliate: { merchantId } },
-    select: { id: true, clickId: true },
+    where: { id: commissionId, adjustsCommissionId: null, affiliate: { merchantId } },
+    select: { clickId: true },
   });
   if (!existing) {
-    throw new Error("Flagged commission not found");
+    throw new Error("Commission not found, or a refund adjustment");
   }
 
   const now = new Date();
   const confirmed = { status: "VOIDED" as const, voidedAt: now, voidReason: "confirmed self-referral" };
   await db.$transaction(async (tx) => {
-    // The status goes in the write, not just the read above: a refund can void
-    // the row in between, and this must not overwrite that reason.
-    const { count } = await tx.commission.updateMany({
-      where: { id: commissionId, status: "FLAGGED" },
-      data: confirmed,
-    });
-    if (count === 0) {
-      throw new Error("Flagged commission not found");
-    }
+    // The click first. The worker holds it for share while it checks it and
+    // writes a commission, so either that row is committed before the void
+    // below reads the click's rows, or the worker waits and then finds the
+    // click confirmed. Without it a renewal written in between earned.
+    await tx.$queryRaw`SELECT id FROM "Click" WHERE id = ${existing.clickId} FOR UPDATE`;
 
-    // Locked in id order first, matching Mark paid, so the two can never wait
+    // Locked in id order next, matching Mark paid, so the two can never wait
     // on each other's rows in opposite order: a renewal of this click held by
     // a payout in another tab is waited for here rather than deadlocked.
     await tx.$queryRaw`SELECT id FROM "Commission" WHERE "clickId" = ${existing.clickId} AND "adjustsCommissionId" IS NULL AND status IN ('PENDING', 'PAYABLE', 'FLAGGED') ORDER BY id FOR UPDATE`;
 
     // The referral was the self referral, not only this one payment, so
-    // nothing it earned that has not been paid out yet stands. Paid
-    // commissions stay paid: a paid commission is final. Adjustment rows are
-    // left out, they are not commissions this referral earned.
+    // nothing it earned that has not been paid out yet stands. Only unpaid
+    // statuses are written, so a row a refund or the Owner already voided
+    // keeps its own reason, and paid commissions stay paid. Adjustment rows
+    // are left out, they are not commissions this referral earned.
     await tx.commission.updateMany({
       where: {
         clickId: existing.clickId,

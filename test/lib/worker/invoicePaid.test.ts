@@ -37,6 +37,7 @@ vi.mock("@/lib/stripe", async () => {
 });
 
 import { handleInvoicePaid } from "@/lib/worker/handlers/invoicePaid";
+import { confirmCommissionFraud } from "@/lib/commission";
 import {
   retrievedInvoice,
   seedInvoiceCommission,
@@ -389,6 +390,28 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoiceFixture());
 
       expect(await db.commission.count()).toBe(0);
+    });
+
+    it("earns nothing on the next renewal once the Owner confirmed a self referral from an unflagged commission", async () => {
+      const { affiliateId } = await db.click.findUniqueOrThrow({ where: { id: clickId } });
+      const first = await db.commission.create({
+        data: {
+          affiliateId,
+          clickId,
+          stripePaymentRef: "in_checkout",
+          amount: "20.00",
+          grossAmount: "20.00",
+          currency: "eur",
+          status: "PENDING",
+          payableAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      await confirmCommissionFraud(merchant.ownerId, merchant.id, first.id);
+      await handleInvoicePaid(merchant, invoiceFixture());
+
+      expect(await db.commission.count({ where: { stripePaymentRef: "in_renewal" } })).toBe(0);
+      expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("VOIDED");
     });
 
     it("flags a renewal billed to the affiliate's own email", async () => {
