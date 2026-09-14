@@ -110,15 +110,16 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   if (!(await referralStillEarns(merchant.id, click.id, program, payment))) return;
 
   const stripe = stripeClientFor(merchant);
-  const subscriptionMetadata =
-    invoice.parent?.type === "subscription_details"
-      ? (invoice.parent.subscription_details?.metadata ?? null)
-      : null;
 
+  // The subscription is read from Stripe rather than from the payload, whose
+  // shape follows the merchant's account version: the older shape went unread,
+  // so an excluded subscription earned on every renewal. A read that fails
+  // throws, so the event is retried rather than earning on a sale the merchant
+  // may have excluded.
   const excluded = await isExcluded(stripe, {
-    invoiceMetadata: invoice.metadata,
-    subscriptionMetadata,
-    customerId: stripeCustomerId,
+    invoice,
+    subscription: subscriptionId,
+    customer: stripeCustomerId,
   });
   if (excluded) return;
 

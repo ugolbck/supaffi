@@ -87,36 +87,83 @@ export function isPaymentWithinCommissionDuration(
   }
 }
 
-function readMetadataFlag(metadata: Stripe.Metadata | null | undefined): boolean {
+/** Whether a metadata map carries the exclusion flag (CONTEXT.md). */
+export function hasExclusionFlag(metadata: Stripe.Metadata | null | undefined): boolean {
   return metadata?.supaffi === "false";
 }
 
-// Checks the exclusion metadata flag (CONTEXT.md) on Invoice and
-// Subscription, plus one Customer retrieve. Charge-level metadata is
-// deliberately not checked — reaching it costs an extra API hop the other
-// three vectors don't need, and Charges are usually system-generated for
-// subscriptions rather than something a Merchant's own integration code
-// touches directly. A documented scope narrowing, not an oversight.
-export async function isExcluded(
-  stripe: Stripe,
-  opts: {
-    invoiceMetadata?: Stripe.Metadata | null;
-    subscriptionMetadata?: Stripe.Metadata | null;
-    customerId: string | null;
-  }
-): Promise<boolean> {
-  if (readMetadataFlag(opts.invoiceMetadata)) return true;
-  if (readMetadataFlag(opts.subscriptionMetadata)) return true;
-  if (!opts.customerId) return false;
+type Flaggable = { id: string; metadata?: Stripe.Metadata | null };
 
+/**
+ * Where a sale's exclusion flag can sit. Each is an object the handler already
+ * holds, which costs nothing to check, or an id, which is read from Stripe.
+ * Null or absent means the sale has none of that kind.
+ */
+export type ExclusionSources = {
+  invoice?: string | Flaggable | null;
+  subscription?: string | Flaggable | null;
+  customer?: string | Stripe.Customer | Stripe.DeletedCustomer | null;
+};
+
+// A failed read is never taken as "not excluded". Earning on a sale the
+// merchant excluded is the loss this check exists to prevent, so the event
+// fails instead and the worker retries it; an outage delays the commission
+// rather than letting it through unchecked.
+async function readForExclusion<T>(what: string, id: string, read: () => Promise<T>): Promise<T> {
   try {
-    const customer = await stripe.customers.retrieve(opts.customerId);
-    if ("deleted" in customer && customer.deleted) return false;
-    return readMetadataFlag((customer as Stripe.Customer).metadata);
+    return await read();
   } catch (err) {
-    console.error(`[worker] failed to check exclusion metadata for customer ${opts.customerId}`, err);
-    // Fail open: losing a real Commission during a transient Stripe outage
-    // is worse than rarely not honoring an opt-in exclusion flag during one.
-    return false;
+    throw new Error(
+      `could not read ${what} ${id} to check whether its sale is excluded, so no commission was recorded and the event will be retried: ${(err as Error).message}`,
+      { cause: err }
+    );
   }
+}
+
+function customerIsExcluded(customer: Stripe.Customer | Stripe.DeletedCustomer): boolean {
+  // A deleted customer has no metadata left to carry the flag.
+  if ("deleted" in customer && customer.deleted) return false;
+  return hasExclusionFlag((customer as Stripe.Customer).metadata);
+}
+
+// Checks the exclusion flag on the invoice, the subscription and the customer,
+// in that order, and stops at the first one set. Charge-level metadata is
+// deliberately not checked: reaching it costs an extra API hop the other three
+// do not need, and charges are usually made by Stripe for subscriptions rather
+// than touched by a merchant's own code. A documented scope narrowing, not an
+// oversight.
+//
+// Nothing here trusts a webhook payload for the subscription's flag. Where an
+// invoice event carries its subscription's metadata depends on the API version
+// of the merchant's account, it is only a snapshot taken when the invoice was
+// finalized, and a Checkout Session carries none at all. Callers pass objects
+// Supaffi read back through its own pinned client, or ids to read here.
+export async function isExcluded(stripe: Stripe, sources: ExclusionSources): Promise<boolean> {
+  const { invoice, subscription, customer } = sources;
+
+  if (invoice) {
+    const read =
+      typeof invoice === "string"
+        ? await readForExclusion("invoice", invoice, () => stripe.invoices.retrieve(invoice))
+        : invoice;
+    if (hasExclusionFlag(read.metadata)) return true;
+  }
+
+  if (subscription) {
+    const read =
+      typeof subscription === "string"
+        ? await readForExclusion("subscription", subscription, () => stripe.subscriptions.retrieve(subscription))
+        : subscription;
+    if (hasExclusionFlag(read.metadata)) return true;
+  }
+
+  if (customer) {
+    const read =
+      typeof customer === "string"
+        ? await readForExclusion("customer", customer, () => stripe.customers.retrieve(customer))
+        : customer;
+    if (customerIsExcluded(read)) return true;
+  }
+
+  return false;
 }

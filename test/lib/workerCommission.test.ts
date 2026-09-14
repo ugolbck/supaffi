@@ -1,8 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { Program } from "@prisma/client";
+import type Stripe from "stripe";
 import {
   addMonthsClamped,
   computeCommissionAmount,
+  isExcluded,
   isPaymentWithinCommissionDuration,
   saleAmountFor,
 } from "@/lib/worker/commission";
@@ -84,4 +86,101 @@ describe("isPaymentWithinCommissionDuration", () => {
     const late = { ref: "in_first", at: at("2026-03-01T00:05:00Z") };
     expect(isPaymentWithinCommissionDuration(program, late, { ref: "in_2", at: at("2026-04-01T00:00:00Z") })).toBe(false);
   });
+});
+
+describe("isExcluded", () => {
+  const FLAG = { supaffi: "false" };
+
+  // Answers the three reads the check can make, each clear unless a case says
+  // otherwise, and fails one of them the way an outage does.
+  function stripeStub(
+    opts: {
+      invoice?: Record<string, unknown>;
+      subscription?: Record<string, unknown>;
+      customer?: Record<string, unknown>;
+      failing?: "invoice" | "subscription" | "customer";
+    } = {}
+  ) {
+    const unavailable = () => Object.assign(new Error("Stripe is unavailable"), { type: "StripeConnectionError" });
+    const stub = {
+      invoices: {
+        retrieve: vi.fn(async (id: string): Promise<unknown> => {
+          if (opts.failing === "invoice") throw unavailable();
+          return { id, metadata: {}, ...opts.invoice };
+        }),
+      },
+      subscriptions: {
+        retrieve: vi.fn(async (id: string): Promise<unknown> => {
+          if (opts.failing === "subscription") throw unavailable();
+          return { id, metadata: {}, ...opts.subscription };
+        }),
+      },
+      customers: {
+        retrieve: vi.fn(async (id: string): Promise<unknown> => {
+          if (opts.failing === "customer") throw unavailable();
+          return { id, metadata: {}, ...opts.customer };
+        }),
+      },
+    };
+    return { stub, stripe: stub as unknown as Stripe };
+  }
+
+  it("checks objects the caller already holds without asking Stripe anything", async () => {
+    const { stub, stripe } = stripeStub();
+
+    await expect(
+      isExcluded(stripe, {
+        invoice: { id: "in_1", metadata: {} },
+        subscription: { id: "sub_1", metadata: FLAG },
+        customer: { id: "cus_1", metadata: {} } as unknown as Stripe.Customer,
+      })
+    ).resolves.toBe(true);
+    expect(stub.invoices.retrieve).not.toHaveBeenCalled();
+    expect(stub.subscriptions.retrieve).not.toHaveBeenCalled();
+    expect(stub.customers.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("stops at the first flag it finds", async () => {
+    const { stub, stripe } = stripeStub({ subscription: { metadata: FLAG } });
+
+    await expect(isExcluded(stripe, { invoice: { id: "in_1", metadata: FLAG }, subscription: "sub_1", customer: "cus_1" })).resolves.toBe(true);
+    expect(stub.subscriptions.retrieve).not.toHaveBeenCalled();
+    expect(stub.customers.retrieve).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["invoice", { invoice: { metadata: { supaffi: "false" } } }],
+    ["subscription", { subscription: { metadata: { supaffi: "false" } } }],
+    ["customer", { customer: { metadata: { supaffi: "false" } } }],
+  ] as const)("reads the %s by id and excludes on its flag", async (_what, flagged) => {
+    const { stripe } = stripeStub(flagged);
+
+    await expect(isExcluded(stripe, { invoice: "in_1", subscription: "sub_1", customer: "cus_1" })).resolves.toBe(true);
+  });
+
+  it("does not exclude a sale whose customer was deleted", async () => {
+    const { stripe } = stripeStub({ customer: { deleted: true, metadata: undefined } });
+
+    await expect(isExcluded(stripe, { customer: "cus_1" })).resolves.toBe(false);
+  });
+
+  it("does not exclude a sale nothing marks, and reads nothing it was not given", async () => {
+    const { stub, stripe } = stripeStub();
+
+    await expect(isExcluded(stripe, { customer: "cus_1" })).resolves.toBe(false);
+    expect(stub.invoices.retrieve).not.toHaveBeenCalled();
+    expect(stub.subscriptions.retrieve).not.toHaveBeenCalled();
+    expect(stub.customers.retrieve).toHaveBeenCalledWith("cus_1");
+  });
+
+  it.each(["invoice", "subscription", "customer"] as const)(
+    "throws, rather than answering not excluded, when the %s cannot be read",
+    async (failing) => {
+      const { stripe } = stripeStub({ failing });
+
+      await expect(isExcluded(stripe, { invoice: "in_1", subscription: "sub_1", customer: "cus_1" })).rejects.toThrow(
+        new RegExp(`${failing} .*will be retried`)
+      );
+    }
+  );
 });

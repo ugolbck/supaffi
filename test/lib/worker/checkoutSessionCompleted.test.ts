@@ -34,6 +34,11 @@ const stripeStub = vi.hoisted(() => ({
   disputes: {
     list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({ data: [] })),
   },
+  // Read for the exclusion flag on a Session's invoice, with its subscription
+  // and customer expanded.
+  invoices: {
+    retrieve: vi.fn(async (id: string, _params?: unknown): Promise<unknown> => ({ id, metadata: {} })),
+  },
 }));
 vi.mock("@/lib/stripe", async () => {
   const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
@@ -126,6 +131,8 @@ describe("handleCheckoutSessionCompleted", () => {
     stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({ id: "pi_test", latest_charge: null }));
     stripeStub.disputes.list.mockReset();
     stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
+    stripeStub.invoices.retrieve.mockReset();
+    stripeStub.invoices.retrieve.mockImplementation(async (id: string) => ({ id, metadata: {} }));
 
     const owner = await db.owner.create({
       data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },

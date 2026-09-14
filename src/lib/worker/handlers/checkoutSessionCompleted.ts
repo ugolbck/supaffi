@@ -130,10 +130,14 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
 
   const stripe = stripeClientFor(merchant);
 
+  // The Session carries none of the metadata the flag can sit on, so the
+  // invoice and the customer are read from Stripe here; Task 3 of F7 adds the
+  // subscription through the invoice's expansion. A read that fails throws, so
+  // the event is retried rather than earning on a sale the merchant may have
+  // excluded.
   const excluded = await isExcluded(stripe, {
-    invoiceMetadata: null, // the Session doesn't embed Invoice metadata inline
-    subscriptionMetadata: null,
-    customerId: stripeCustomerId,
+    invoice: invoiceId,
+    customer: stripeCustomerId,
   });
   if (excluded) return;
 
