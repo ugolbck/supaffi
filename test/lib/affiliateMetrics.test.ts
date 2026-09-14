@@ -243,6 +243,38 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     expect(metrics.conversions).toBe(4);
   });
 
+  it("shows a commission held by a dispute to the affiliate as pending, never payable", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const click = await db.click.create({
+      data: {
+        affiliateId: sarah.id,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 86400_000),
+      },
+    });
+    await db.commission.create({
+      data: {
+        affiliateId: sarah.id,
+        clickId: click.id,
+        amount: "12.00",
+        currency: "usd",
+        status: "PENDING",
+        payableAt: new Date(Date.now() - 86400_000),
+        disputeOpenedAt: new Date(),
+        stripePaymentRef: crypto.randomUUID(),
+      },
+    });
+
+    const metrics = await getAffiliateMetrics(sarah.id, 30);
+    expect(metrics.pending).toEqual([{ currency: "usd", total: "12.00" }]);
+    expect(metrics.payable).toEqual([]);
+    expect(metrics.unpaid).toEqual([{ currency: "usd", total: "12.00" }]);
+
+    const { rows } = await listAffiliateCommissions(sarah.id, { page: 1, pageSize: 25 });
+    expect(rows.map((row) => row.status)).toEqual(["PENDING"]);
+  });
+
   it("folds a flagged commission into pending, in the tile counts and in the filtered rows", async () => {
     const { merchant, program } = await seedProgram();
     const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });

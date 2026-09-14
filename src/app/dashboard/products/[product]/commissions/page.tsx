@@ -226,6 +226,7 @@ export default async function CommissionsPage({
     ? {
         id: selected.id,
         status: selected.status,
+        disputed: selected.disputed,
         amount: formatMoney(selected.amount, selected.currency),
         payTotal: selected.amount,
         // Only carried when it actually differs, so the sheet can tell "was

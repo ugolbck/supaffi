@@ -49,6 +49,8 @@ export type CommissionRow = {
   affiliateEmail: string;
   /** A refund adjustment row an older version wrote. None are written any more. */
   isAdjustment: boolean;
+  /** Unpaid and held back from payment by an open dispute. */
+  disputed: boolean;
   /** The click this sale was attributed to, and the link it arrived through. */
   click: { at: Date; linkCode: string | null; destinationPath: string | null };
 };
@@ -113,6 +115,7 @@ export async function listCommissions(
         grossAmount: true,
         stripePaymentRef: true,
         adjustsCommissionId: true,
+        disputeOpenedAt: true,
         affiliate: { select: { id: true, name: true, email: true } },
         click: {
           select: {
@@ -155,6 +158,9 @@ export async function listCommissions(
       affiliateName: c.affiliate.name,
       affiliateEmail: c.affiliate.email,
       isAdjustment: c.adjustsCommissionId !== null,
+      // A voided or paid row can keep the date a dispute began; only an unpaid
+      // one is still held by it.
+      disputed: c.disputeOpenedAt !== null && ["PENDING", "PAYABLE", "FLAGGED"].includes(c.status),
       click: {
         at: c.click.createdAt,
         linkCode: c.click.link?.code ?? null,
@@ -252,9 +258,11 @@ type PayoutRow = {
   status: CommissionStatus;
   amount: Prisma.Decimal;
   grossAmount: Prisma.Decimal | null;
+  payableAt: Date;
   voidedAt: Date | null;
   voidReason: string | null;
   adjustsCommissionId: string | null;
+  disputeOpenedAt: Date | null;
 };
 
 type Payout = "as stored" | "at shown amount" | "already paid" | "skip";
@@ -281,11 +289,26 @@ type Payout = "as stored" | "at shown amount" | "already paid" | "skip";
  * nobody paid it by mistake, the Owner chose not to. So is anything else that
  * is not payable, and any leftover adjustment row, since a refund after payout
  * is no longer recovered.
+ *
+ * A row already disputed when the page was rendered is skipped outright: it
+ * was never offered for payment, so there is nothing for the Owner to have
+ * already sent. A row a dispute reaches after the page was rendered is still
+ * paid at the amount shown, because by then the Owner has already sent that
+ * money outside Supaffi. That covers a row that was payable and is now held
+ * pending by the dispute, so long as its Holding Period had already passed
+ * when the page was rendered, and a row a refund or a lost chargeback voided
+ * after the dispute opened, on the existing rule above. A row still pending
+ * whose Holding Period had not yet passed when the page was rendered was never
+ * payable, dispute or not, so it is skipped.
  */
 function payoutFor(row: PayoutRow, shown: Prisma.Decimal, renderedAt: Date): Payout {
   if (row.status === "PAID") return "already paid";
   if (row.adjustsCommissionId !== null) return "skip";
   if (shown.gt(row.grossAmount ?? row.amount)) return "skip";
+
+  if (row.disputeOpenedAt !== null && row.disputeOpenedAt.getTime() < renderedAt.getTime()) {
+    return "skip";
+  }
 
   if (row.status === "PAYABLE") {
     if (shown.eq(row.amount)) return "as stored";
@@ -302,6 +325,11 @@ function payoutFor(row: PayoutRow, shown: Prisma.Decimal, renderedAt: Date): Pay
   ) {
     return "at shown amount";
   }
+
+  if (row.disputeOpenedAt !== null && row.status === "PENDING" && row.payableAt.getTime() <= renderedAt.getTime()) {
+    return "at shown amount";
+  }
+
   return "skip";
 }
 
@@ -381,9 +409,11 @@ export async function markCommissionsPaid(
         status: true,
         amount: true,
         grossAmount: true,
+        payableAt: true,
         voidedAt: true,
         voidReason: true,
         adjustsCommissionId: true,
+        disputeOpenedAt: true,
       },
     });
     // An id this product does not have was not on its page.

@@ -107,6 +107,7 @@ async function makeCommission(
     voidedAt: Date;
     stripePaymentRef: string;
     adjustsCommissionId: string;
+    disputeOpenedAt: Date;
   }>
 ) {
   return db.commission.create({
@@ -123,6 +124,7 @@ async function makeCommission(
       voidedAt: overrides.voidedAt,
       stripePaymentRef: overrides.stripePaymentRef,
       adjustsCommissionId: overrides.adjustsCommissionId,
+      disputeOpenedAt: overrides.disputeOpenedAt,
     },
   });
 }
@@ -605,6 +607,123 @@ describe.skipIf(!hasDatabase)("commission", () => {
 
     expect(await markCommissionsPaid(ownerId, merchantId, shownOf(only), renderedAt)).toEqual({ count: 1, skipped: 0 });
     expect(await markCommissionsPaid(ownerId, merchantId, shownOf(only), renderedAt)).toEqual({ count: 0, skipped: 0 });
+  });
+
+  it("records a shown commission a dispute opened on after the page loaded, at the shown amount", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const disputed = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const renderedAt = loadedNow();
+
+    // What the dispute handler writes: back to PENDING, held. Its payableAt
+    // stays in the past, proof it was payable when the page loaded, so the
+    // Owner has already sent this money outside Supaffi.
+    await db.commission.update({
+      where: { id: disputed.id },
+      data: { status: "PENDING", disputeOpenedAt: new Date() },
+    });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(disputed), renderedAt)).toEqual({
+      count: 1,
+      skipped: 0,
+    });
+    const row = await db.commission.findUniqueOrThrow({ where: { id: disputed.id } });
+    expect(row.status).toBe("PAID");
+    expect(row.paidAt).not.toBeNull();
+    expect(row.amount.toFixed(2)).toBe(disputed.amount.toFixed(2));
+  });
+
+  it("records a commission a refund voided after a dispute opened, both after the page loaded", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const disputed = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const renderedAt = loadedNow();
+    await db.commission.update({
+      where: { id: disputed.id },
+      data: { disputeOpenedAt: new Date() },
+    });
+    await db.commission.update({
+      where: { id: disputed.id },
+      data: { status: "VOIDED", voidedAt: new Date(), voidReason: "refund" },
+    });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(disputed), renderedAt)).toEqual({
+      count: 1,
+      skipped: 0,
+    });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: disputed.id } })).status).toBe("PAID");
+  });
+
+  it("skips a commission already disputed before the page loaded, even if a refund voided it after", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    // A whole second before rendering, so the ordering does not depend on how
+    // fast the database round trip happens to be.
+    const disputed = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      disputeOpenedAt: new Date(Date.now() - 1000),
+    });
+    const renderedAt = loadedNow();
+    await db.commission.update({
+      where: { id: disputed.id },
+      data: { status: "VOIDED", voidedAt: new Date(), voidReason: "refund" },
+    });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(disputed), renderedAt)).toEqual({
+      count: 0,
+      skipped: 1,
+    });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: disputed.id } })).status).toBe("VOIDED");
+  });
+
+  it("skips a disputed commission even if it still reads PAYABLE", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const disputed = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      disputeOpenedAt: new Date(Date.now() - 1000),
+    });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(disputed), loadedNow())).toEqual({
+      count: 0,
+      skipped: 1,
+    });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: disputed.id } })).status).toBe("PAYABLE");
+  });
+
+  it("skips a PENDING commission disputed after the page loaded whose holding period had not passed at render", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const disputed = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      status: "PENDING",
+      payableAt: new Date(Date.now() + 86400_000),
+    });
+    const renderedAt = loadedNow();
+    await db.commission.update({
+      where: { id: disputed.id },
+      data: { disputeOpenedAt: new Date() },
+    });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(disputed), renderedAt)).toEqual({
+      count: 0,
+      skipped: 1,
+    });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: disputed.id } })).status).toBe("PENDING");
+  });
+
+  it("lists an unpaid commission held by a dispute as disputed, and a voided one as not", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const held = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      status: "PENDING",
+      disputeOpenedAt: new Date(),
+    });
+    const voided = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      status: "VOIDED",
+      voidReason: "chargeback",
+      voidedAt: new Date(),
+      disputeOpenedAt: new Date(),
+    });
+    const plain = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+
+    const { rows } = await listCommissions(ownerId, merchantId, NO_FILTERS, PAGE);
+    const disputedOf = (id: string) => rows.find((row) => row.id === id)?.disputed;
+
+    expect(disputedOf(held.id)).toBe(true);
+    expect(disputedOf(voided.id)).toBe(false);
+    expect(disputedOf(plain.id)).toBe(false);
   });
 
   it("refuses bound input that did not come from a page, and writes nothing", async () => {
