@@ -82,7 +82,7 @@ export default async function ProductsPage() {
                 <span className="w-28 text-right text-sm tabular-nums">
                   {row.affiliates} affiliates
                 </span>
-                <span className="w-32 text-right text-sm tabular-nums">{row.owed} pending</span>
+                <span className="w-32 text-right text-sm tabular-nums">{row.owed} owed</span>
                 <span
                   className={
                     row.live

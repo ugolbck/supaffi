@@ -179,6 +179,61 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.status === "PENDING")).toBe(true);
   });
+
+  it("counts flagged money as unpaid and nets a clawback against it, never below zero", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const primary = await getPrimaryLink(sarah.id);
+    const click = await db.click.create({
+      data: {
+        affiliateId: sarah.id,
+        linkId: primary!.id,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 86400_000),
+      },
+    });
+    for (const [status, amount, currency] of [
+      ["FLAGGED", "9.00", "usd"],
+      ["PAYABLE", "-3.00", "usd"],
+      ["PAYABLE", "-4.00", "eur"],
+    ] as const) {
+      await db.commission.create({
+        data: { affiliateId: sarah.id, clickId: click.id, amount, currency, status, payableAt: new Date() },
+      });
+    }
+
+    const metrics = await getAffiliateMetrics(sarah.id, 30);
+    // Pending is as earned. Payable is only debt in both currencies, so it
+    // shows nothing rather than a negative. Unpaid is 9.00 less the 3.00 owed
+    // back in usd, and nothing in eur.
+    expect(metrics.pending).toEqual([{ currency: "usd", total: "9.00" }]);
+    expect(metrics.payable).toEqual([]);
+    expect(metrics.unpaid).toEqual([{ currency: "usd", total: "6.00" }]);
+  });
+
+  it("takes a clawback off the payable figure", async () => {
+    const { merchant, program } = await seedProgram();
+    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
+    const primary = await getPrimaryLink(sarah.id);
+    const click = await db.click.create({
+      data: {
+        affiliateId: sarah.id,
+        linkId: primary!.id,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 86400_000),
+      },
+    });
+    for (const amount of ["10.00", "-3.00"]) {
+      await db.commission.create({
+        data: { affiliateId: sarah.id, clickId: click.id, amount, currency: "usd", status: "PAYABLE", payableAt: new Date() },
+      });
+    }
+
+    const metrics = await getAffiliateMetrics(sarah.id, 30);
+    // What the merchant will actually send on the next payout.
+    expect(metrics.payable).toEqual([{ currency: "usd", total: "7.00" }]);
+    expect(metrics.unpaid).toEqual([{ currency: "usd", total: "7.00" }]);
+  });
 });
 
 describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {

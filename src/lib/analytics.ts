@@ -288,12 +288,56 @@ function totalsByCurrency(
     .sort((a, b) => a.currency.localeCompare(b.currency));
 }
 
+/**
+ * What "owed" means, on every screen that says it: money earned and not yet
+ * handed over. Flagged commissions are in it, because they are still owed until
+ * the Owner voids them; the flagged count is shown on its own where it matters.
+ */
+export const OWED_STATUSES = ["PENDING", "PAYABLE", "FLAGGED"] as const;
+
+/**
+ * Money still to hand over per currency, for a whole product or for one
+ * affiliate. Owed by default; pass `["PAYABLE"]` for what can be paid today.
+ *
+ * Netted per affiliate before it is summed. A clawback row is money one
+ * affiliate owes back, and it can only come out of that affiliate's own next
+ * payout, so it reduces their balance and nobody else's. A balance that nets
+ * to zero or below counts as nothing rather than as a negative that would hide
+ * part of what the Owner has to send to everyone else, or show an Affiliate a
+ * payable figure below zero.
+ */
+async function owedTotals(
+  scope: { merchantId: string } | { affiliateId: string },
+  statuses: readonly (typeof OWED_STATUSES)[number][] = OWED_STATUSES
+): Promise<CurrencyTotal[]> {
+  const where: Prisma.CommissionWhereInput =
+    "merchantId" in scope
+      ? { affiliate: { merchantId: scope.merchantId } }
+      : { affiliateId: scope.affiliateId };
+
+  const rows = await db.commission.groupBy({
+    by: ["affiliateId", "currency"],
+    where: { ...where, status: { in: [...statuses] } },
+    _sum: { amount: true },
+  });
+
+  const byCurrency = new Map<string, Prisma.Decimal>();
+  for (const row of rows) {
+    const net = row._sum.amount ?? new Prisma.Decimal(0);
+    if (net.lte(0)) continue;
+    byCurrency.set(row.currency, (byCurrency.get(row.currency) ?? new Prisma.Decimal(0)).add(net));
+  }
+  return [...byCurrency.entries()]
+    .map(([currency, amount]) => ({ currency, total: amount.toFixed(2) }))
+    .sort((a, b) => a.currency.localeCompare(b.currency));
+}
+
 export type ProductMetrics = {
   clicks: number;
   conversions: number;
   /** Percent with one decimal. Zero, never NaN, when nothing has been clicked. */
   conversionRate: number;
-  /** PENDING plus PAYABLE: money the Owner still has to hand over. */
+  /** Pending, payable and flagged money still to hand over, netted per affiliate. See `owedTotals`. */
   owed: CurrencyTotal[];
   paid: CurrencyTotal[];
   /** What customers paid on attributed sales in the window, by currency. Unknown for commissions older than the column. */
@@ -357,7 +401,7 @@ export async function getProductMetrics(
   const since = window.since;
   const before = previousWindow(window, range);
 
-  const [clickRows, commissionRows, owedRows, paidRows, revenueRows, signupRows, flagged, previous] =
+  const [clickRows, commissionRows, owed, paidRows, revenueRows, signupRows, flagged, previous] =
     await Promise.all([
       db.click.findMany({
         where: { affiliate: { merchantId }, createdAt: { gte: since, lte: window.until } },
@@ -376,11 +420,7 @@ export async function getProductMetrics(
         },
         select: { createdAt: true, saleAmount: true, amount: true, currency: true },
       }),
-      db.commission.groupBy({
-        by: ["currency"],
-        where: { affiliate: { merchantId }, status: { in: ["PENDING", "PAYABLE"] } },
-        _sum: { amount: true },
-      }),
+      owedTotals({ merchantId }),
       db.commission.groupBy({
         by: ["currency"],
         where: { affiliate: { merchantId }, status: "PAID" },
@@ -437,7 +477,7 @@ export async function getProductMetrics(
     clicks,
     conversions,
     conversionRate: clicks === 0 ? 0 : Math.round((conversions / clicks) * 1000) / 10,
-    owed: totalsByCurrency(owedRows),
+    owed,
     paid: totalsByCurrency(paidRows),
     revenue: totalsByCurrency(
       revenueRows.map((row) => ({ currency: row.currency, _sum: { amount: row._sum.saleAmount } }))
@@ -643,6 +683,23 @@ export async function getPayableGroups(
     .sort((a, b) => Number(b.total) - Number(a.total));
 }
 
+/**
+ * The product's owed and payable-now totals on their own, for a screen that
+ * does not need the rest of `getProductMetrics`. Same helper as the overview,
+ * so the figures cannot disagree.
+ */
+export async function getOwedTotals(
+  ownerId: string,
+  merchantId: string
+): Promise<{ owed: CurrencyTotal[]; payableNow: CurrencyTotal[] }> {
+  await assertOwns(ownerId, merchantId);
+  const [owed, payableNow] = await Promise.all([
+    owedTotals({ merchantId }),
+    owedTotals({ merchantId }, ["PAYABLE"]),
+  ]);
+  return { owed, payableNow };
+}
+
 export type WebhookHealth = {
   lastEventAt: Date | null;
   last24h: number;
@@ -686,9 +743,22 @@ export type AffiliateMetrics = {
   conversions: number;
   /** Percent with one decimal. Zero, never NaN, when nothing has been clicked. */
   conversionRate: number;
-  /** PENDING plus PAYABLE: money the Affiliate is owed but has not been sent. */
+  /**
+   * Everything not yet sent: pending, flagged and payable, net of clawbacks per
+   * currency and never below zero. See `owedTotals`.
+   */
   unpaid: CurrencyTotal[];
+  /**
+   * Pending and flagged, as earned. Nothing is netted here: a clawback is
+   * always written PAYABLE, so no negative row waits in these statuses.
+   */
   pending: CurrencyTotal[];
+  /**
+   * Payable net of clawbacks, never below zero. While it nets to zero or more,
+   * `unpaid` is `pending` plus this. When a debt is bigger than what is
+   * payable this is empty, and `unpaid` is `pending` less the rest of the
+   * debt, which comes off the next commission to clear its holding period.
+   */
   payable: CurrencyTotal[];
   paid: CurrencyTotal[];
   series: DayPoint[];
@@ -718,7 +788,7 @@ export async function getAffiliateMetrics(
   const since = window.since;
   const before = previousWindow(window, range);
 
-  const [clickRows, commissionRows, statusRows, previous] = await Promise.all([
+  const [clickRows, commissionRows, statusRows, unpaid, payable, previous] = await Promise.all([
     db.click.findMany({
       where: { affiliateId, createdAt: { gte: since, lte: window.until } },
       select: { createdAt: true },
@@ -739,6 +809,8 @@ export async function getAffiliateMetrics(
       where: { affiliateId },
       _sum: { amount: true },
     }),
+    owedTotals({ affiliateId }),
+    owedTotals({ affiliateId }, ["PAYABLE"]),
     before ? periodFor({ affiliateId }, before) : Promise.resolve(null),
   ]);
 
@@ -783,8 +855,8 @@ export async function getAffiliateMetrics(
     // FLAGGED sits with PENDING, matching toDisplayStatus: an Affiliate is
     // never shown a fraud check the Merchant has not finished reviewing.
     pending: totalsByCurrency(rowsFor(["PENDING", "FLAGGED"])),
-    payable: totalsByCurrency(rowsFor(["PAYABLE"])),
-    unpaid: totalsByCurrency(rowsFor(["PENDING", "FLAGGED", "PAYABLE"])),
+    payable,
+    unpaid,
     paid: totalsByCurrency(rowsFor(["PAID"])),
     series: [...series.values()],
     bucket: window.bucket,

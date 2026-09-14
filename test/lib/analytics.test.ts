@@ -6,6 +6,7 @@ import {
   getProductMetrics,
   getTopAffiliates,
   getPayableGroups,
+  getOwedTotals,
   toWeeks,
   type DayPoint,
 } from "@/lib/analytics";
@@ -161,13 +162,17 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(metrics.clicks).toBe(0);
   });
 
-  it("keeps owed money per currency and counts PENDING with PAYABLE", async () => {
+  it("keeps owed money per currency and counts pending, payable and flagged", async () => {
     const affiliate = await makeAffiliate("a");
     const click = await makeClick(affiliate.id);
     await makeCommission(affiliate.id, click.id, { amount: "10.00", status: "PENDING" });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "15.50",
       status: "PAYABLE",
+    });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "4.00",
+      status: "FLAGGED",
     });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       amount: "9.00",
@@ -183,9 +188,36 @@ describe.skipIf(!hasDatabase)("analytics", () => {
 
     expect(metrics.owed).toEqual([
       { currency: "eur", total: "9.00" },
-      { currency: "usd", total: "25.50" },
+      { currency: "usd", total: "29.50" },
     ]);
     expect(metrics.paid).toEqual([{ currency: "usd", total: "99.00" }]);
+    // The commissions page reads the same helper, so the two screens cannot drift.
+    const { owed, payableNow } = await getOwedTotals(ownerId, merchantId);
+    expect(owed).toEqual(metrics.owed);
+    expect(payableNow).toEqual([
+      { currency: "eur", total: "9.00" },
+      { currency: "usd", total: "15.50" },
+    ]);
+  });
+
+  it("nets a clawback against its own affiliate's balance, never against anyone else's", async () => {
+    // Sarah is owed 6.00 pending and 20.00 payable, and owes 5.00 back: 21.00
+    // owed, 15.00 payable now. Rob only owes 8.00 back, which cannot be taken
+    // out of Sarah's payout, so it lowers neither figure.
+    const sarah = await makeAffiliate("sarah");
+    const rob = await makeAffiliate("rob");
+    await makeCommission(sarah.id, (await makeClick(sarah.id)).id, { amount: "6.00", status: "PENDING" });
+    await makeCommission(sarah.id, (await makeClick(sarah.id)).id, { amount: "20.00" });
+    await makeCommission(sarah.id, (await makeClick(sarah.id)).id, { amount: "-5.00" });
+    await makeCommission(rob.id, (await makeClick(rob.id)).id, { amount: "-8.00" });
+
+    const metrics = await getProductMetrics(ownerId, merchantId, 30);
+
+    expect(metrics.owed).toEqual([{ currency: "usd", total: "21.00" }]);
+    expect(await getOwedTotals(ownerId, merchantId)).toEqual({
+      owed: [{ currency: "usd", total: "21.00" }],
+      payableNow: [{ currency: "usd", total: "15.00" }],
+    });
   });
 
   it("reports a conversion rate of 0 rather than NaN when nothing was clicked", async () => {
@@ -198,6 +230,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     await expect(getProductMetrics(otherOwnerId, merchantId, 30)).rejects.toThrow();
     await expect(getPayableGroups(otherOwnerId, merchantId)).rejects.toThrow();
     await expect(getTopAffiliates(otherOwnerId, merchantId)).rejects.toThrow();
+    await expect(getOwedTotals(otherOwnerId, merchantId)).rejects.toThrow();
   });
 
   it("ranks top affiliates by money earned, not by clicks", async () => {

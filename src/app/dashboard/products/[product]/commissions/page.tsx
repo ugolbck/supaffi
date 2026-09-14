@@ -4,15 +4,13 @@ import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import {
   listCommissions,
-  getCommissionTotals,
   getCommissionFilterOptions,
   COMMISSION_STATUSES,
   COMMISSIONS_PAGE_SIZE,
   type CommissionRow,
   type CommissionStatus,
-  type StatusTotal,
 } from "@/lib/commission";
-import { getPayableGroups, type CurrencyTotal } from "@/lib/analytics";
+import { getOwedTotals, getPayableGroups, type CurrencyTotal } from "@/lib/analytics";
 import { formatMoney, money, moneyHint } from "@/lib/format";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
@@ -118,19 +116,6 @@ function referenceFor(ref: string | null): { text: string; href: string | null }
   return { text: ref, href: null };
 }
 
-// Money is never converted, so a total is a list, one entry per currency.
-function totalFor(totals: StatusTotal[], statuses: CommissionStatus[]): CurrencyTotal[] {
-  const cents = new Map<string, number>();
-  for (const status of statuses) {
-    for (const amount of totals.find((t) => t.status === status)?.amounts ?? []) {
-      cents.set(amount.currency, (cents.get(amount.currency) ?? 0) + Math.round(Number(amount.total) * 100));
-    }
-  }
-  return [...cents.entries()]
-    .map(([currency, total]) => ({ currency, total: (total / 100).toFixed(2) }))
-    .sort((a, b) => a.currency.localeCompare(b.currency));
-}
-
 function amountText(totals: CurrencyTotal[]): string {
   const hint = moneyHint(totals);
   return hint ? `${money(totals)} and ${hint}` : money(totals);
@@ -169,10 +154,12 @@ export default async function CommissionsPage({
   };
   const page = Math.max(1, Math.floor(Number(query.page)) || 1);
 
-  const [{ rows, total }, totals, options] = await Promise.all([
+  // Owed and payable now are netted per affiliate by the same helper the
+  // overview uses, so one affiliate's debt never lowers what the others are due.
+  const [{ rows, total }, options, { owed, payableNow }] = await Promise.all([
     listCommissions(ownerId, merchant.id, filters, { page, pageSize: COMMISSIONS_PAGE_SIZE }),
-    getCommissionTotals(ownerId, merchant.id),
     getCommissionFilterOptions(ownerId, merchant.id),
+    getOwedTotals(ownerId, merchant.id),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / COMMISSIONS_PAGE_SIZE));
@@ -256,9 +243,6 @@ export default async function CommissionsPage({
   // to cover, so the groups are read only when that tab is on.
   const payableGroups =
     filters.status === "PAYABLE" ? await getPayableGroups(ownerId, merchant.id) : [];
-
-  const owed = totalFor(totals, ["PENDING", "PAYABLE", "FLAGGED"]);
-  const payableNow = totalFor(totals, ["PAYABLE"]);
 
   const firstShown = total === 0 ? 0 : (page - 1) * COMMISSIONS_PAGE_SIZE + 1;
   const lastShown = Math.min(page * COMMISSIONS_PAGE_SIZE, total);
