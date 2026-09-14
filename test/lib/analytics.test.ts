@@ -231,26 +231,6 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     ]);
   });
 
-  it("nets a clawback against its own affiliate's balance, never against anyone else's", async () => {
-    // Sarah is owed 6.00 pending and 20.00 payable, and owes 5.00 back: 21.00
-    // owed, 15.00 payable now. Rob only owes 8.00 back, which cannot be taken
-    // out of Sarah's payout, so it lowers neither figure.
-    const sarah = await makeAffiliate("sarah");
-    const rob = await makeAffiliate("rob");
-    await makeCommission(sarah.id, (await makeClick(sarah.id)).id, { amount: "6.00", status: "PENDING" });
-    await makeCommission(sarah.id, (await makeClick(sarah.id)).id, { amount: "20.00" });
-    await makeCommission(sarah.id, (await makeClick(sarah.id)).id, { amount: "-5.00" });
-    await makeCommission(rob.id, (await makeClick(rob.id)).id, { amount: "-8.00" });
-
-    const metrics = await getProductMetrics(ownerId, merchantId, 30);
-
-    expect(metrics.owed).toEqual([{ currency: "usd", total: "21.00" }]);
-    expect(await getOwedTotals(ownerId, merchantId)).toEqual({
-      owed: [{ currency: "usd", total: "21.00" }],
-      payableNow: [{ currency: "usd", total: "15.00" }],
-    });
-  });
-
   it("reports a conversion rate of 0 rather than NaN when nothing was clicked", async () => {
     const metrics = await getProductMetrics(ownerId, emptyMerchantId, 30);
     expect(metrics.conversionRate).toBe(0);
@@ -478,7 +458,7 @@ describe("earnedTrend", () => {
     amounts,
   });
 
-  it("draws a day a clawback outweighed the sales at zero, never below it", () => {
+  it("draws a bucket below zero at zero, never below it", () => {
     const series = [
       point("2026-09-01", { usd: { gross: 30, commission: 30, sales: 1 } }),
       point("2026-09-02", { usd: { gross: -10, commission: -10, sales: 0 } }),

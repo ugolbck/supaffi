@@ -670,18 +670,6 @@ const D_LEDGER: LedgerRow[] = [
     reference: "pi_3QtHiJ9bWsHVil9Z",
     href: "#",
   },
-  {
-    id: "c7",
-    amount: "-62.00 USD",
-    status: "PAYABLE",
-    affiliateName: "Ines Okonkwo",
-    affiliateEmail: "ines@okonkwo.example",
-    isAdjustment: true,
-    createdLabel: "26 Aug 2026",
-    stateLabel: "Refund adjustment, carries forward",
-    reference: null,
-    href: "#",
-  },
 ];
 
 function DCommissionTable() {
@@ -1196,18 +1184,6 @@ const E_LEDGER: AffiliateLedgerRow[] = [
     stateLabel: "Voided",
     voidReason: "refund",
     voidedLabel: "19 Aug 2026",
-  },
-  {
-    id: "e6",
-    dateLabel: "9 Aug 2026",
-    amount: "-18.00 USD",
-    grossAmount: null,
-    status: "PAYABLE",
-    linkCode: null,
-    isAdjustment: true,
-    stateLabel: "Comes off your next payout",
-    voidReason: null,
-    voidedLabel: null,
   },
   {
     id: "e7",

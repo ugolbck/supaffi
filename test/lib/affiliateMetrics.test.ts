@@ -61,8 +61,11 @@ function noonDaysAgo(n: number): Date {
   return date;
 }
 
-/** A paid sale and the clawback a later refund wrote against it. */
-async function seedClawedBackSale(saleDaysAgo: number, clawbackDaysAgo: number) {
+/**
+ * A paid sale and a PAYABLE refund adjustment against it, the row an older
+ * version wrote for a refund after payout.
+ */
+async function seedSaleWithLegacyAdjustment(saleDaysAgo: number, adjustmentDaysAgo: number) {
   const { merchant, program } = await seedProgram();
   const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
   const primary = await getPrimaryLink(sarah.id);
@@ -95,8 +98,8 @@ async function seedClawedBackSale(saleDaysAgo: number, clawbackDaysAgo: number) 
       amount: "-10.00",
       currency: "usd",
       status: "PAYABLE",
-      payableAt: noonDaysAgo(clawbackDaysAgo),
-      createdAt: noonDaysAgo(clawbackDaysAgo),
+      payableAt: noonDaysAgo(adjustmentDaysAgo),
+      createdAt: noonDaysAgo(adjustmentDaysAgo),
     },
   });
   return sarah;
@@ -107,26 +110,25 @@ afterAll(clearAll);
 describe.skipIf(!hasDatabase)("affiliate metrics", () => {
   beforeEach(clearAll);
 
-  it("takes a clawback off Earned on the day it landed, without counting it as a sale", async () => {
-    const sarah = await seedClawedBackSale(5, 1);
+  it("leaves a refund adjustment out of Earned: a paid commission is final", async () => {
+    const sarah = await seedSaleWithLegacyAdjustment(5, 1);
 
     const metrics = await getAffiliateMetrics(sarah.id, 30);
 
-    // 30.00 earned, 10.00 taken back: what they will actually be paid.
-    expect(metrics.current.amounts.usd).toEqual({ gross: 20, commission: 20, sales: 1 });
+    expect(metrics.current.amounts.usd).toEqual({ gross: 30, commission: 30, sales: 1 });
     expect(metrics.conversions).toBe(1);
     const landed = metrics.series.find((p) => p.date === noonDaysAgo(1).toISOString().slice(0, 10));
-    expect(landed?.amounts.usd).toEqual({ gross: -10, commission: -10, sales: 0 });
+    expect(landed?.amounts.usd).toBeUndefined();
     expect(landed?.conversions).toBe(0);
   });
 
-  it("nets the clawback in the previous period too, so the comparison is like for like", async () => {
+  it("leaves it out of the previous period too, so the comparison is like for like", async () => {
     // Both fall in the seven days before the current seven-day window.
-    const sarah = await seedClawedBackSale(9, 8);
+    const sarah = await seedSaleWithLegacyAdjustment(9, 8);
 
     const metrics = await getAffiliateMetrics(sarah.id, 7);
 
-    expect(metrics.previous?.amounts.usd).toEqual({ gross: 20, commission: 20, sales: 1 });
+    expect(metrics.previous?.amounts.usd).toEqual({ gross: 30, commission: 30, sales: 1 });
     expect(metrics.previous?.conversions).toBe(1);
   });
 
@@ -253,7 +255,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     expect(rows.every((r) => r.status === "PENDING")).toBe(true);
   });
 
-  it("counts flagged money as unpaid and nets a clawback against it, never below zero", async () => {
+  it("counts flagged money as unpaid and keeps currencies apart", async () => {
     const { merchant, program } = await seedProgram();
     const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
     const primary = await getPrimaryLink(sarah.id);
@@ -267,8 +269,8 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     });
     for (const [status, amount, currency] of [
       ["FLAGGED", "9.00", "usd"],
-      ["PAYABLE", "-3.00", "usd"],
-      ["PAYABLE", "-4.00", "eur"],
+      ["PAYABLE", "3.00", "usd"],
+      ["PAYABLE", "4.00", "eur"],
     ] as const) {
       await db.commission.create({
         data: { affiliateId: sarah.id, clickId: click.id, amount, currency, status, payableAt: new Date() },
@@ -276,36 +278,15 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     }
 
     const metrics = await getAffiliateMetrics(sarah.id, 30);
-    // Pending is as earned. Payable is only debt in both currencies, so it
-    // shows nothing rather than a negative. Unpaid is 9.00 less the 3.00 owed
-    // back in usd, and nothing in eur.
     expect(metrics.pending).toEqual([{ currency: "usd", total: "9.00" }]);
-    expect(metrics.payable).toEqual([]);
-    expect(metrics.unpaid).toEqual([{ currency: "usd", total: "6.00" }]);
-  });
-
-  it("takes a clawback off the payable figure", async () => {
-    const { merchant, program } = await seedProgram();
-    const sarah = await createAffiliate(merchant.id, program.id, { name: "Sarah", email: "s@example.com" });
-    const primary = await getPrimaryLink(sarah.id);
-    const click = await db.click.create({
-      data: {
-        affiliateId: sarah.id,
-        linkId: primary!.id,
-        referralToken: crypto.randomUUID(),
-        expiresAt: new Date(Date.now() + 86400_000),
-      },
-    });
-    for (const amount of ["10.00", "-3.00"]) {
-      await db.commission.create({
-        data: { affiliateId: sarah.id, clickId: click.id, amount, currency: "usd", status: "PAYABLE", payableAt: new Date() },
-      });
-    }
-
-    const metrics = await getAffiliateMetrics(sarah.id, 30);
-    // What the merchant will actually send on the next payout.
-    expect(metrics.payable).toEqual([{ currency: "usd", total: "7.00" }]);
-    expect(metrics.unpaid).toEqual([{ currency: "usd", total: "7.00" }]);
+    expect(metrics.payable).toEqual([
+      { currency: "eur", total: "4.00" },
+      { currency: "usd", total: "3.00" },
+    ]);
+    expect(metrics.unpaid).toEqual([
+      { currency: "eur", total: "4.00" },
+      { currency: "usd", total: "12.00" },
+    ]);
   });
 });
 

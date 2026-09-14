@@ -63,7 +63,7 @@ export type LedgerRow = {
   grossAmount: string | null;
   status: AffiliateCommissionStatus;
   linkCode: string | null;
-  /** A negative clawback row netting against a refund, not new money. */
+  /** A refund adjustment row an older version wrote. None are written any more. */
   isAdjustment: boolean;
   /** When the money arrives. The first thing an affiliate asks a row. */
   stateLabel: string;
@@ -92,7 +92,7 @@ export function commissionStateLabel(row: AffiliateCommissionRow): string {
       return `Clears ${DATE.format(row.payableAt)}`;
     }
     case "PAYABLE":
-      return row.isAdjustment ? "Comes off your next payout" : "Ready to pay";
+      return "Ready to pay";
     case "PAID":
       return row.paidAt ? `Paid ${DATE.format(row.paidAt)}` : "Paid";
     case "VOIDED":

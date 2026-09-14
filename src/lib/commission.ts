@@ -47,7 +47,7 @@ export type CommissionRow = {
   affiliateId: string;
   affiliateName: string | null;
   affiliateEmail: string;
-  /** A negative clawback row for a refund that landed after payout. */
+  /** A refund adjustment row an older version wrote. None are written any more. */
   isAdjustment: boolean;
   /** The click this sale was attributed to, and the link it arrived through. */
   click: { at: Date; linkCode: string | null; destinationPath: string | null };
@@ -462,9 +462,8 @@ export async function confirmCommissionFraud(
 
     // The referral was the self referral, not only this one payment, so
     // nothing it earned that has not been paid out yet stands. Paid
-    // commissions stay paid: the money has already left, and getting it back
-    // is the Owner's call, not a row update. Refund adjustments stay too,
-    // they are money the affiliate owes back.
+    // commissions stay paid: a paid commission is final. Adjustment rows are
+    // left out, they are not commissions this referral earned.
     await tx.commission.updateMany({
       where: {
         clickId: existing.clickId,
@@ -498,14 +497,13 @@ const SYSTEM_VOID_REASONS: readonly string[] = [
 /**
  * Cancel a commission the Owner has decided not to pay, with a reason.
  *
- * PAID is terminal: money that has already gone out cannot be taken back by
- * editing a row, and a refund arrives as its own negative adjustment instead.
- * Voiding twice is refused for the same reason it is refused elsewhere, so a
- * double submit cannot overwrite the reason the first one recorded.
+ * PAID is terminal: a paid commission is final, whether the Owner or a later
+ * refund would change it. Voiding twice is refused for the same reason it is
+ * refused elsewhere, so a double submit cannot overwrite the reason the first
+ * one recorded.
  *
- * An adjustment row is refused outright. It is a debt, not a payout: the
- * commission it claws back stays PAID, so voiding the clawback would quietly
- * write off money the Affiliate owes back.
+ * An adjustment row is refused outright. None are written any more, and the
+ * few an older version left unpaid are voided by a migration.
  *
  * A typed reason that happens to match one of the worker's own words is
  * suffixed before it is stored. Without that, `payoutFor` reads an Owner's

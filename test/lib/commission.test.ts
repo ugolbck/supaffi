@@ -704,8 +704,6 @@ describe.skipIf(!hasDatabase)("commission", () => {
     const payable = await makeCommission(affiliate.id, click.id, { status: "PAYABLE", stripePaymentRef: "in_y" });
     const flagged = await makeCommission(affiliate.id, click.id, { status: "FLAGGED", flagReason: "card", stripePaymentRef: "in_f" });
     const paid = await makeCommission(affiliate.id, click.id, { status: "PAID", stripePaymentRef: "in_d" });
-    // A refund clawback on the paid one is money the affiliate owes back.
-    const clawback = await makeCommission(affiliate.id, click.id, { status: "PAYABLE", amount: "-10.00", adjustsCommissionId: paid.id });
     const unrelated = await makeCommission(affiliate.id, otherClick.id, { status: "PENDING", stripePaymentRef: "in_u" });
 
     await confirmCommissionFraud(ownerId, merchantId, confirmed.id);
@@ -718,7 +716,6 @@ describe.skipIf(!hasDatabase)("commission", () => {
       expect(updated.voidedAt).not.toBeNull();
     }
     expect((await statusOf(paid.id)).status).toBe("PAID");
-    expect((await statusOf(clawback.id)).status).toBe("PAYABLE");
     expect((await statusOf(unrelated.id)).status).toBe("PENDING");
     expect((await db.click.findUniqueOrThrow({ where: { id: otherClick.id } })).fraudConfirmedAt).toBeNull();
   });
@@ -803,7 +800,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     ).rejects.toThrow();
   });
 
-  it("voidCommission refuses a refund adjustment, which is a debt and not a payout", async () => {
+  it("voidCommission refuses a refund adjustment row", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const original = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
       status: "PAID",

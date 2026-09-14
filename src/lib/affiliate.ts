@@ -138,7 +138,7 @@ export type AffiliateCommissionRow = {
   payableAt: Date;
   paidAt: Date | null;
   linkCode: string | null;
-  /** A negative clawback row netting against a refund, not new money. */
+  /** A refund adjustment row an older version wrote. None are written any more. */
   isAdjustment: boolean;
   /**
    * What this commission was before a partial refund reduced it, and null when

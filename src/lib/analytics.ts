@@ -183,8 +183,7 @@ export function sumAmounts(series: DayPoint[]): Record<string, Amounts> {
  * Change from one period to the next, as a share of the earlier one. Null
  * when there is nothing earlier to compare against, or the earlier figure
  * was zero or below. Growth from nothing is not a percentage, and dividing by
- * a negative flips the sign: an Affiliate whose earlier period a clawback took
- * below zero would see a recovery printed as a fall.
+ * a negative would flip the sign.
  */
 export function change(current: number, previous: number | null | undefined): number | null {
   if (previous === null || previous === undefined || previous <= 0) return null;
@@ -192,13 +191,10 @@ export function change(current: number, previous: number | null | undefined): nu
 }
 
 /**
- * The Earned tile's trend line for one currency.
+ * The Earned tile's trend line for one currency, one figure per bucket.
  *
- * A bucket where a clawback outweighed the sales nets below zero. The
- * sparkline scales between its own lowest and highest point, so it would draw
- * that without breaking, but every empty bucket would then sit above the
- * baseline and read as money earned. Clamped at zero, the same way the main
- * chart draws no bar for a bucket that netted nothing or less.
+ * Clamped at zero, the same way the main chart draws no bar for a bucket that
+ * came to nothing or less, so an empty bucket always sits on the baseline.
  */
 export function earnedTrend(series: DayPoint[], currency: string): number[] {
   return series.map((point) => Math.max(0, point.amounts[currency]?.gross ?? 0));
@@ -248,16 +244,13 @@ function emptySeries(window: Window): Map<string, DayPoint> {
   return series;
 }
 
-/**
- * Adds money to a bucket. `sales` is 1 for a sale and 0 for a clawback, which
- * moves the money without being something anybody bought.
- */
-function addAmount(point: DayPoint, currency: string, gross: number, commission: number, sales = 1): void {
+/** Adds one sale's money to a bucket. */
+function addAmount(point: DayPoint, currency: string, gross: number, commission: number): void {
   const entry = point.amounts[currency] ?? { gross: 0, commission: 0, sales: 0 };
   point.amounts[currency] = {
     gross: Math.round((entry.gross + gross) * 100) / 100,
     commission: Math.round((entry.commission + commission) * 100) / 100,
-    sales: entry.sales + sales,
+    sales: entry.sales + 1,
   };
 }
 
@@ -312,12 +305,8 @@ export const OWED_STATUSES = ["PENDING", "PAYABLE", "FLAGGED"] as const;
  * Money still to hand over per currency, for a whole product or for one
  * affiliate. Owed by default; pass `["PAYABLE"]` for what can be paid today.
  *
- * Netted per affiliate before it is summed. A clawback row is money one
- * affiliate owes back, and it can only come out of that affiliate's own next
- * payout, so it reduces their balance and nobody else's. A balance that nets
- * to zero or below counts as nothing rather than as a negative that would hide
- * part of what the Owner has to send to everyone else, or show an Affiliate a
- * payable figure below zero.
+ * A plain sum. A paid commission is final and a refund after payout writes
+ * nothing, so every row in these statuses is money the Owner still sends.
  */
 async function owedTotals(
   scope: { merchantId: string } | { affiliateId: string },
@@ -329,20 +318,11 @@ async function owedTotals(
       : { affiliateId: scope.affiliateId };
 
   const rows = await db.commission.groupBy({
-    by: ["affiliateId", "currency"],
+    by: ["currency"],
     where: { ...where, status: { in: [...statuses] } },
     _sum: { amount: true },
   });
-
-  const byCurrency = new Map<string, Prisma.Decimal>();
-  for (const row of rows) {
-    const net = row._sum.amount ?? new Prisma.Decimal(0);
-    if (net.lte(0)) continue;
-    byCurrency.set(row.currency, (byCurrency.get(row.currency) ?? new Prisma.Decimal(0)).add(net));
-  }
-  return [...byCurrency.entries()]
-    .map(([currency, amount]) => ({ currency, total: amount.toFixed(2) }))
-    .sort((a, b) => a.currency.localeCompare(b.currency));
+  return totalsByCurrency(rows);
 }
 
 export type ProductMetrics = {
@@ -350,7 +330,7 @@ export type ProductMetrics = {
   conversions: number;
   /** Percent with one decimal. Zero, never NaN, when nothing has been clicked. */
   conversionRate: number;
-  /** Pending, payable and flagged money still to hand over, netted per affiliate. See `owedTotals`. */
+  /** Pending, payable and flagged money still to hand over. See `owedTotals`. */
   owed: CurrencyTotal[];
   paid: CurrencyTotal[];
   /** What customers paid on attributed sales in the window, by currency. Unknown for commissions older than the column. */
@@ -372,10 +352,9 @@ export type ProductMetrics = {
 /**
  * Clicks and money in a window, without the day-by-day shape.
  *
- * The Owner's figures are sales, and a clawback is not one, so adjustment rows
- * stay out. The Affiliate's figure is what they earned, and a refund taken back
- * after payout comes off it on the day it landed, so Earned matches what they
- * will be paid. Either way an adjustment is never counted as a conversion.
+ * Sales only: a void earned nothing, and an adjustment row is not a sale. For
+ * the Owner the money is what customers paid; for the Affiliate it is what
+ * they earned.
  */
 async function periodFor(where: { merchantId?: string; affiliateId?: string }, window: Window): Promise<Period> {
   const scope = where.merchantId ? { affiliate: { merchantId: where.merchantId } } : { affiliateId: where.affiliateId };
@@ -386,16 +365,13 @@ async function periodFor(where: { merchantId?: string; affiliateId?: string }, w
         ...scope,
         createdAt: { gte: window.since, lte: window.until },
         status: { not: "VOIDED" },
-        ...(where.merchantId ? { adjustsCommissionId: null } : {}),
+        adjustsCommissionId: null,
       },
-      select: { saleAmount: true, amount: true, currency: true, adjustsCommissionId: true },
+      select: { saleAmount: true, amount: true, currency: true },
     }),
   ]);
   const amounts: Record<string, Amounts> = {};
-  let conversions = 0;
   for (const row of rows) {
-    const isAdjustment = row.adjustsCommissionId !== null;
-    if (!isAdjustment) conversions += 1;
     const entry = amounts[row.currency] ?? { gross: 0, commission: 0, sales: 0 };
     const commission = row.amount.toNumber();
     // For the affiliate the money is what they earned, on both sides.
@@ -403,10 +379,10 @@ async function periodFor(where: { merchantId?: string; affiliateId?: string }, w
     amounts[row.currency] = {
       gross: Math.round((entry.gross + gross) * 100) / 100,
       commission: Math.round((entry.commission + commission) * 100) / 100,
-      sales: entry.sales + (isAdjustment ? 0 : 1),
+      sales: entry.sales + 1,
     };
   }
-  return { clicks, conversions, amounts };
+  return { clicks, conversions: rows.length, amounts };
 }
 
 export async function getProductMetrics(
@@ -779,22 +755,11 @@ export type AffiliateMetrics = {
   conversions: number;
   /** Percent with one decimal. Zero, never NaN, when nothing has been clicked. */
   conversionRate: number;
-  /**
-   * Everything not yet sent: pending, flagged and payable, net of clawbacks per
-   * currency and never below zero. See `owedTotals`.
-   */
+  /** Everything not yet sent: pending, flagged and payable, per currency. See `owedTotals`. */
   unpaid: CurrencyTotal[];
-  /**
-   * Pending and flagged, as earned. Nothing is netted here: a clawback is
-   * always written PAYABLE, so no negative row waits in these statuses.
-   */
+  /** Pending and flagged, as earned. */
   pending: CurrencyTotal[];
-  /**
-   * Payable net of clawbacks, never below zero. While it nets to zero or more,
-   * `unpaid` is `pending` plus this. When a debt is bigger than what is
-   * payable this is empty, and `unpaid` is `pending` less the rest of the
-   * debt, which comes off the next commission to clear its holding period.
-   */
+  /** Ready to be paid now. `unpaid` is always `pending` plus this. */
   payable: CurrencyTotal[];
   paid: CurrencyTotal[];
   series: DayPoint[];
@@ -833,12 +798,12 @@ export async function getAffiliateMetrics(
       where: {
         affiliateId,
         createdAt: { gte: since, lte: window.until },
-        // A void earned nothing. An adjustment stays in: it is money taken
-        // back, and leaving it out showed an Earned figure higher than what the
-        // affiliate will be paid. It is kept out of the counts below.
+        // A void earned nothing, and an adjustment row is not a commission
+        // they earned: a paid commission is final.
         status: { not: "VOIDED" },
+        adjustsCommissionId: null,
       },
-      select: { createdAt: true, amount: true, currency: true, adjustsCommissionId: true },
+      select: { createdAt: true, amount: true, currency: true },
     }),
     db.commission.groupBy({
       by: ["currency", "status"],
@@ -859,10 +824,9 @@ export async function getAffiliateMetrics(
   for (const commission of commissionRows) {
     const point = series.get(key(commission.createdAt));
     if (!point) continue;
-    const isAdjustment = commission.adjustsCommissionId !== null;
-    if (!isAdjustment) point.conversions += 1;
+    point.conversions += 1;
     const amount = commission.amount.toNumber();
-    addAmount(point, commission.currency, amount, amount, isAdjustment ? 0 : 1);
+    addAmount(point, commission.currency, amount, amount);
   }
 
   // statusRows is grouped by currency AND status, so folding e.g. PENDING and
@@ -883,8 +847,7 @@ export async function getAffiliateMetrics(
   };
 
   const clicks = clickRows.length;
-  // Sales only: a clawback row moves money but is not a commission they won.
-  const conversions = commissionRows.filter((c) => c.adjustsCommissionId === null).length;
+  const conversions = commissionRows.length;
 
   return {
     clicks,

@@ -30,7 +30,7 @@ export type LedgerRow = {
   status: CommissionStatus;
   affiliateName: string | null;
   affiliateEmail: string;
-  /** A negative clawback row for a refund that landed after payout. */
+  /** A refund adjustment row an older version wrote. None are written any more. */
   isAdjustment: boolean;
   /** Formatted on the server, so the row and the sheet read the same date. */
   createdLabel: string;

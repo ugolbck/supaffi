@@ -98,7 +98,7 @@ function stateLabel(row: CommissionRow): string {
     case "PENDING":
       return `Payable ${DATE.format(row.payableAt)}`;
     case "PAYABLE":
-      return row.isAdjustment ? "Refund adjustment, carries forward" : "Ready to pay";
+      return "Ready to pay";
     case "FLAGGED":
       return flagReasonText(row.flagReason)?.title ?? "Flagged for review";
     case "PAID":
