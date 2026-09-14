@@ -89,6 +89,20 @@ describe("cleanupProcessedEvents", () => {
     expect((await webhookEventReceived(ownerId, merchant.id)).ok).toBe(true);
   });
 
+  it("keeps a quiet product's only event when another product has newer ones", async () => {
+    const { merchant: merchantA } = await seedMerchant();
+    const { ownerId: ownerIdB, merchant: merchantB } = await seedMerchant();
+    await row(merchantA.id, "PROCESSED", ago(300));
+    const newestA = await row(merchantA.id, "PROCESSED", ago(200));
+    const onlyB = await row(merchantB.id, "PROCESSED", ago(250));
+
+    expect(await cleanupProcessedEvents(NOW)).toBe(1);
+
+    const left = (await db.webhookEvent.findMany({ select: { id: true } })).map((r) => r.id).sort();
+    expect(left).toEqual([newestA.id, onlyB.id].sort());
+    expect((await webhookEventReceived(ownerIdB, merchantB.id)).ok).toBe(true);
+  });
+
   it("works through a large backlog in batches", async () => {
     const { merchant } = await seedMerchant();
     for (let i = 0; i < 5; i++) await row(merchant.id, "PROCESSED", ago(100 + i));

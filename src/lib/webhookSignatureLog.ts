@@ -9,6 +9,9 @@
  */
 const LOG_EVERY_MS = 15 * 60_000;
 
+// Never pruned. Its keys are merchant ids resolved from the database by host, so
+// it can only grow to the number of products on the install, and a public poster
+// with no valid host lookup cannot add entries to it.
 const lastLoggedAt = new Map<string, number>();
 
 export function shouldLogSignatureFailure(merchantId: string, now: number = Date.now()): boolean {
