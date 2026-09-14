@@ -216,9 +216,10 @@ model ReferredSubscription {
 
   // The first time money moved on this subscription: the paid checkout's
   // Invoice (or PaymentIntent) id, or after a free trial the first invoice
-  // with an amount. ONE_TIME programs pay on this payment only, and
-  // FIXED_MONTHS counts its months from firstPaidAt. Null while a free trial
-  // has not charged yet.
+  // with an amount. A program's duration belongs to the click, so the earliest
+  // of these among a click's subscriptions is when its referral started
+  // (src/lib/worker/referralDuration.ts). Null while a free trial has not
+  // charged yet.
   firstPaymentRef String?
   firstPaidAt     DateTime?
 
@@ -301,6 +302,9 @@ model Commission {
   createdAt DateTime @default(now())
 
   @@index([status, payableAt])
+  // The sale handlers read a click's earlier commissions on every sale of a
+  // program with a limited duration (src/lib/worker/referralDuration.ts).
+  @@index([clickId, createdAt])
 }
 
 // Postgres-only webhook queue (ADR 0007). Drained via SELECT ... FOR UPDATE SKIP LOCKED.

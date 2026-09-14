@@ -63,9 +63,11 @@ export function addMonthsClamped(from: Date, months: number): Date {
 const DURATION_BOUNDARY_GRACE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Whether a payment on a referred subscription still earns, measured from that
- * subscription's first payment, not from the click. A click can come weeks
- * before the purchase, and a free trial delays the first payment further.
+ * Whether a payment still earns, measured from the referral's first payment,
+ * not from when the click happened. A click can come weeks before the
+ * purchase, and a free trial delays the first payment further. Callers pass the
+ * first payment of the whole referral (referralDuration.ts), so a second
+ * subscription on the same click does not start the duration over.
  */
 export function isPaymentWithinCommissionDuration(
   program: Program,
