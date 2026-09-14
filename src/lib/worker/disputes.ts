@@ -15,12 +15,39 @@ export type DisputeState = "clear" | "open" | "lost" | "unknown";
 
 // The closed outcomes that leave the merchant with the money. Anything else,
 // including a status a newer API version adds, still counts as in progress.
-const SETTLED_FOR_MERCHANT: readonly string[] = ["won", "warning_closed", "prevented"];
+// "prevented" is decided separately below, since it hides two outcomes.
+const SETTLED_FOR_MERCHANT: readonly string[] = ["won", "warning_closed"];
+
+/** What matters from a dispute, wherever it came from: Stripe's list, or an event. */
+type DisputeLike = { status: string; payment_method_details?: { card?: { case_type?: string } } };
+
+/**
+ * Whether a "prevented" dispute left the merchant with the money.
+ *
+ * Stripe Dispute Prevention resolves a dispute as "prevented" for two
+ * different reasons, told apart only by `payment_method_details.card.case_type`.
+ * A "block" leaves the charge as it was: the merchant keeps the money. A
+ * "resolution" refunds the cardholder before it becomes a chargeback, so it
+ * cost the merchant the sale just as a lost dispute would. A missing or
+ * unrecognised case type is read the same as a resolution, since Supaffi
+ * cannot then tell a block happened.
+ */
+function preventedKeptTheMoney(dispute: DisputeLike): boolean {
+  return dispute.payment_method_details?.card?.case_type === "block";
+}
 
 /** One answer for every dispute on a charge. A single lost one decides it. */
-export function disputeStateOf(disputes: { status: string }[]): "clear" | "open" | "lost" {
-  if (disputes.some((dispute) => dispute.status === "lost")) return "lost";
-  if (disputes.some((dispute) => !SETTLED_FOR_MERCHANT.includes(dispute.status))) return "open";
+export function disputeStateOf(disputes: DisputeLike[]): "clear" | "open" | "lost" {
+  if (disputes.some((dispute) => dispute.status === "lost" || (dispute.status === "prevented" && !preventedKeptTheMoney(dispute)))) {
+    return "lost";
+  }
+  if (
+    disputes.some(
+      (dispute) => !SETTLED_FOR_MERCHANT.includes(dispute.status) && !(dispute.status === "prevented" && preventedKeptTheMoney(dispute))
+    )
+  ) {
+    return "open";
+  }
   return "clear";
 }
 
@@ -59,7 +86,7 @@ export async function disputeStateFor(
     const page = await stripe.disputes.list({ payment_intent: paymentIntentId, limit: 100 });
     const disputes =
       trigger && !page.data.some((d) => d.id === trigger.id)
-        ? [...page.data, { status: trigger.status }]
+        ? [...page.data, { status: trigger.status, payment_method_details: trigger.payment_method_details }]
         : page.data;
     if (emptyMeansUnknown && disputes.length === 0) return "unknown";
     return disputeStateOf(disputes);

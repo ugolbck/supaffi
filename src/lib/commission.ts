@@ -326,7 +326,12 @@ function payoutFor(row: PayoutRow, shown: Prisma.Decimal, renderedAt: Date): Pay
     return "at shown amount";
   }
 
-  if (row.disputeOpenedAt !== null && row.status === "PENDING" && row.payableAt.getTime() <= renderedAt.getTime()) {
+  if (
+    row.disputeOpenedAt !== null &&
+    row.status === "PENDING" &&
+    row.payableAt.getTime() <= renderedAt.getTime() &&
+    shown.gte(row.amount)
+  ) {
     return "at shown amount";
   }
 
@@ -344,7 +349,8 @@ function payoutFor(row: PayoutRow, shown: Prisma.Decimal, renderedAt: Date): Pay
  * Refuses only what is not a payout: nothing selected, rows spanning more than
  * one affiliate or currency, and bound input no page could have produced. Rows
  * that are no longer payable for a reason the Owner chose are skipped and
- * counted, so the page can say so; see `payoutFor`.
+ * counted, so the page can say so, and so is a row an open dispute already
+ * held before the page was rendered; see `payoutFor`.
  */
 export async function markCommissionsPaid(
   ownerId: string,

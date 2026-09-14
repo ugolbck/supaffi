@@ -704,6 +704,78 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect((await db.commission.findUniqueOrThrow({ where: { id: disputed.id } })).status).toBe("PENDING");
   });
 
+  it("treats a dispute opened at exactly the moment the page loaded as after load, and pays it", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const disputed = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const renderedAt = loadedNow();
+    await db.commission.update({
+      where: { id: disputed.id },
+      data: { status: "PENDING", disputeOpenedAt: new Date(renderedAt) },
+    });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(disputed), renderedAt)).toEqual({
+      count: 1,
+      skipped: 0,
+    });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: disputed.id } })).status).toBe("PAID");
+  });
+
+  it("records a commission voided as a chargeback after load, disputed after load too", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const disputed = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const renderedAt = loadedNow();
+    await db.commission.update({
+      where: { id: disputed.id },
+      data: { disputeOpenedAt: new Date() },
+    });
+    await db.commission.update({
+      where: { id: disputed.id },
+      data: { status: "VOIDED", voidedAt: new Date(), voidReason: "chargeback" },
+    });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(disputed), renderedAt)).toEqual({
+      count: 1,
+      skipped: 0,
+    });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: disputed.id } })).status).toBe("PAID");
+  });
+
+  it("skips a disputed PENDING row when the shown amount is above what the sale was worth before any refund", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const disputed = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "8.00",
+      grossAmount: "10.00",
+    });
+    const renderedAt = loadedNow();
+    await db.commission.update({
+      where: { id: disputed.id },
+      data: { status: "PENDING", disputeOpenedAt: new Date() },
+    });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, [{ id: disputed.id, amount: "12.00" }], renderedAt)).toEqual(
+      { count: 0, skipped: 1 }
+    );
+    expect((await db.commission.findUniqueOrThrow({ where: { id: disputed.id } })).status).toBe("PENDING");
+  });
+
+  it("skips a disputed PENDING row when the shown amount is below what is stored", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const disputed = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "8.00",
+      grossAmount: "10.00",
+    });
+    const renderedAt = loadedNow();
+    await db.commission.update({
+      where: { id: disputed.id },
+      data: { status: "PENDING", disputeOpenedAt: new Date() },
+    });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, [{ id: disputed.id, amount: "5.00" }], renderedAt)).toEqual(
+      { count: 0, skipped: 1 }
+    );
+    expect((await db.commission.findUniqueOrThrow({ where: { id: disputed.id } })).status).toBe("PENDING");
+  });
+
   it("lists an unpaid commission held by a dispute as disputed, and a voided one as not", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const held = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {

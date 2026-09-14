@@ -15,7 +15,13 @@ const stripeStub = vi.hoisted(() => ({
     list: vi.fn(async () => ({ data: [] })),
   },
   disputes: {
-    list: vi.fn(async (_params: unknown): Promise<{ data: Array<{ id: string; status: string }> }> => ({ data: [] })),
+    list: vi.fn(
+      async (
+        _params: unknown
+      ): Promise<{
+        data: Array<{ id: string; status: string; payment_method_details?: { card?: { case_type?: string } } }>;
+      }> => ({ data: [] })
+    ),
   },
   charges: {
     retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined),
@@ -37,7 +43,13 @@ const DAY = 24 * 60 * 60 * 1000;
 describe("disputeStateOf", () => {
   it("reads no disputes, or only ones settled for the merchant, as clear", () => {
     expect(disputeStateOf([])).toBe("clear");
-    expect(disputeStateOf([{ status: "won" }, { status: "warning_closed" }, { status: "prevented" }])).toBe("clear");
+    expect(
+      disputeStateOf([
+        { status: "won" },
+        { status: "warning_closed" },
+        { status: "prevented", payment_method_details: { card: { case_type: "block" } } },
+      ])
+    ).toBe("clear");
   });
 
   it("reads any dispute still in progress as open, including a status it does not know", () => {
@@ -48,6 +60,27 @@ describe("disputeStateOf", () => {
 
   it("reads a lost dispute as lost, whatever else is on the charge", () => {
     expect(disputeStateOf([{ status: "needs_response" }, { status: "lost" }])).toBe("lost");
+  });
+
+  it("reads a prevented dispute that blocked the chargeback as clear", () => {
+    expect(disputeStateOf([{ status: "prevented", payment_method_details: { card: { case_type: "block" } } }])).toBe(
+      "clear"
+    );
+  });
+
+  it("reads a prevented dispute that refunded the cardholder as lost", () => {
+    expect(
+      disputeStateOf([{ status: "prevented", payment_method_details: { card: { case_type: "resolution" } } }])
+    ).toBe("lost");
+  });
+
+  it("reads a prevented dispute with no case type, or an unrecognised one, as lost", () => {
+    expect(disputeStateOf([{ status: "prevented" }])).toBe("lost");
+    expect(disputeStateOf([{ status: "prevented", payment_method_details: {} }])).toBe("lost");
+    expect(disputeStateOf([{ status: "prevented", payment_method_details: { card: {} } }])).toBe("lost");
+    expect(
+      disputeStateOf([{ status: "prevented", payment_method_details: { card: { case_type: "compliance" } } }])
+    ).toBe("lost");
   });
 });
 
@@ -91,20 +124,35 @@ describe("dispute handlers", () => {
   let affiliateId: string;
   let clickId: string;
 
-  function dispute(status: string, overrides: { payment_intent?: string | null } = {}): Stripe.Dispute {
+  function dispute(
+    status: string,
+    overrides: { payment_intent?: string | null; case_type?: string } = {}
+  ): Stripe.Dispute {
+    const { case_type, ...rest } = overrides;
     return {
       id: "dp_1",
       status,
       charge: "ch_dispute_test",
       payment_intent: PAYMENT_INTENT_ID,
-      ...overrides,
+      ...(case_type ? { payment_method_details: { card: { case_type } } } : {}),
+      ...rest,
     } as unknown as Stripe.Dispute;
   }
 
-  /** What Stripe answers, now, for the disputes on the test payment. */
-  function disputesOnCharge(...statuses: string[]) {
+  /**
+   * What Stripe answers, now, for the disputes on the test payment. Each entry
+   * is a status, or a status paired with a "prevented" dispute's case type.
+   */
+  function disputesOnCharge(...entries: (string | { status: string; case_type?: string })[]) {
     stripeStub.disputes.list.mockImplementation(async () => ({
-      data: statuses.map((status, index) => ({ id: `dp_${index + 1}`, status })),
+      data: entries.map((entry, index) => {
+        const { status, case_type } = typeof entry === "string" ? { status: entry, case_type: undefined } : entry;
+        return {
+          id: `dp_${index + 1}`,
+          status,
+          ...(case_type ? { payment_method_details: { card: { case_type } } } : {}),
+        };
+      }),
     }));
   }
 
@@ -225,6 +273,56 @@ describe("dispute handlers", () => {
     const voided = await reload(commission);
     expect(voided.status).toBe("VOIDED");
     expect(voided.voidReason).toBe("chargeback");
+  });
+
+  it("releases a held commission when the dispute is prevented by a block", async () => {
+    const commission = await givenCommission({ payableAt: new Date(Date.now() - DAY) });
+    disputesOnCharge("needs_response");
+    await handleChargeDisputeCreated(merchant, dispute("needs_response"));
+
+    disputesOnCharge({ status: "prevented", case_type: "block" });
+    await handleChargeDisputeClosed(merchant, dispute("prevented", { case_type: "block" }));
+
+    const released = await reload(commission);
+    expect(released.status).toBe("PAYABLE");
+    expect(released.disputeOpenedAt).toBeNull();
+  });
+
+  it("voids an unpaid held commission when a prevented dispute refunded the cardholder instead of blocking the chargeback", async () => {
+    const commission = await givenCommission();
+    disputesOnCharge("needs_response");
+    await handleChargeDisputeCreated(merchant, dispute("needs_response"));
+
+    disputesOnCharge({ status: "prevented", case_type: "resolution" });
+    await handleChargeDisputeClosed(merchant, dispute("prevented", { case_type: "resolution" }));
+
+    const voided = await reload(commission);
+    expect(voided.status).toBe("VOIDED");
+    expect(voided.voidReason).toBe("chargeback");
+  });
+
+  it("voids an unpaid held commission when a prevented dispute carries no case type", async () => {
+    const commission = await givenCommission();
+    disputesOnCharge("needs_response");
+    await handleChargeDisputeCreated(merchant, dispute("needs_response"));
+
+    disputesOnCharge({ status: "prevented" });
+    await handleChargeDisputeClosed(merchant, dispute("prevented"));
+
+    const voided = await reload(commission);
+    expect(voided.status).toBe("VOIDED");
+    expect(voided.voidReason).toBe("chargeback");
+  });
+
+  it("changes nothing when a prevented dispute that refunded the cardholder closes on a commission already paid", async () => {
+    const commission = await givenCommission({ status: "PAID", paidAt: new Date() });
+    disputesOnCharge({ status: "prevented", case_type: "resolution" });
+
+    await handleChargeDisputeClosed(merchant, dispute("prevented", { case_type: "resolution" }));
+
+    const paid = await reload(commission);
+    expect(paid.status).toBe("PAID");
+    expect(stripeStub.disputes.list).not.toHaveBeenCalled();
   });
 
   it("takes a payable commission back to pending while the dispute is open", async () => {

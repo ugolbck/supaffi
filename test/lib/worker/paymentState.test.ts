@@ -139,6 +139,28 @@ describe("disputeStateAtCreation", () => {
     const stripe = { disputes: { list } } as unknown as Stripe;
     expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("clear");
   });
+
+  it("reads a prevented dispute that blocked the chargeback as clear", async () => {
+    const list = vi.fn(async () => ({
+      data: [{ id: "dp_1", status: "prevented", payment_method_details: { card: { case_type: "block" } } }],
+    }));
+    const stripe = { disputes: { list } } as unknown as Stripe;
+    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("clear");
+  });
+
+  it("reads a prevented dispute that refunded the cardholder as lost, at creation too", async () => {
+    const list = vi.fn(async () => ({
+      data: [{ id: "dp_1", status: "prevented", payment_method_details: { card: { case_type: "resolution" } } }],
+    }));
+    const stripe = { disputes: { list } } as unknown as Stripe;
+    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("lost");
+  });
+
+  it("reads a prevented dispute with no case type as lost, at creation too", async () => {
+    const list = vi.fn(async () => ({ data: [{ id: "dp_1", status: "prevented" }] }));
+    const stripe = { disputes: { list } } as unknown as Stripe;
+    expect(await disputeStateAtCreation(stripe, "pi_1", snapshot(0, true))).toBe("lost");
+  });
 });
 
 describe("Stripe lookups", () => {

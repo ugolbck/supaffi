@@ -214,7 +214,13 @@ export function CommissionSheet({
 
           <div className="flex flex-col gap-2">
             <Line label="Affiliate">{commission.affiliateEmail}</Line>
-            <Line label="Status">{commission.disputed ? "Disputed" : STATUS_LABELS[commission.status]}</Line>
+            <Line label="Status">
+              {commission.disputed
+                ? commission.status === "FLAGGED"
+                  ? "Flagged, disputed"
+                  : "Disputed"
+                : STATUS_LABELS[commission.status]}
+            </Line>
             {commission.status !== "VOIDED" && (
               <Line label="Payable on">{commission.payableLabel}</Line>
             )}
