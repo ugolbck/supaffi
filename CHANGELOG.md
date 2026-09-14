@@ -12,17 +12,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- Mark paid is refused when an amount changed after the page loaded, for
-  example by a partial refund, so a payout is never recorded for less than the
-  total you saw. The page shows the new total.
-- Owed and payable now are the same figures on every screen, and take off
-  refunds an affiliate owes back. An affiliate who owes money back no longer
-  lowers what you owe everyone else.
-- An affiliate's Payable figure takes off refunds they owe back and never shows
-  a negative amount.
-- An affiliate's Earned figure takes off refunds taken back after a payout, on
-  the day they landed, so it matches what they will be paid. Its comparison is
-  left out when the earlier period came to nothing or less.
+- Mark paid records the amounts you saw, so a payout is never recorded for
+  less than the total you sent.
+- Owed and payable now are the same figures on every screen.
+- An affiliate's Earned figure leaves out its comparison when the earlier
+  period came to nothing.
 - Two payouts to the same affiliate on the same day show as two payments in
   their history, each with the time it was made.
 - Processed messages from Stripe older than 90 days are removed, so the

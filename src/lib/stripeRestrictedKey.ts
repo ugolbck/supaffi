@@ -33,7 +33,7 @@ export const KEY_PERMISSIONS = [
     token: "rak_invoice_read",
     access: "Read",
     row: "Invoices",
-    why: "finds the payment behind a refunded charge, to claw the commission back",
+    why: "finds the payment behind a refunded charge, to lower or cancel its commission",
   },
   {
     token: "rak_payment_intent_read",

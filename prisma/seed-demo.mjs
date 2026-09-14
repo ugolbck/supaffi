@@ -285,30 +285,6 @@ async function main() {
       createdAt,
     };
     commissions.push(row);
-
-    // Now and then a refund lands after the payout: a negative row that
-    // carries to the next one.
-    if (row.status === "PAID" && random() < 0.02) {
-      const at = new Date(Math.min(NOW, row.paidAt.getTime() + (3 + random() * 20) * DAY));
-      commissions.push({
-        id: randomUUID(),
-        affiliateId: affiliate.id,
-        clickId,
-        adjustsCommissionId: row.id,
-        stripePaymentRef: null,
-        amount: (-amount).toFixed(2),
-        grossAmount: null,
-        saleAmount: null,
-        currency,
-        status: "PAYABLE",
-        payableAt: at,
-        paidAt: null,
-        voidedAt: null,
-        voidReason: null,
-        flagReason: null,
-        createdAt: at,
-      });
-    }
     return row;
   }
 

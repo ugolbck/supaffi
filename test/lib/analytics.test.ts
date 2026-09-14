@@ -231,6 +231,29 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     ]);
   });
 
+  it("leaves a legacy unpaid adjustment row out of owed and payable now, matching the Pay bar group", async () => {
+    const affiliate = await makeAffiliate("a");
+    const click = await makeClick(affiliate.id);
+    const sale = await makeCommission(affiliate.id, click.id, { amount: "30.00", status: "PAYABLE" });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      amount: "-10.00",
+      status: "PAYABLE",
+      adjustsCommissionId: sale.id,
+    });
+
+    const metrics = await getProductMetrics(ownerId, merchantId, 30);
+    expect(metrics.owed).toEqual([{ currency: "usd", total: "30.00" }]);
+
+    const { owed, payableNow } = await getOwedTotals(ownerId, merchantId);
+    expect(owed).toEqual([{ currency: "usd", total: "30.00" }]);
+    expect(payableNow).toEqual([{ currency: "usd", total: "30.00" }]);
+
+    const groups = await getPayableGroups(ownerId, merchantId);
+    expect(groups).toEqual([
+      expect.objectContaining({ affiliateId: affiliate.id, currency: "usd", total: "30.00" }),
+    ]);
+  });
+
   it("reports a conversion rate of 0 rather than NaN when nothing was clicked", async () => {
     const metrics = await getProductMetrics(ownerId, emptyMerchantId, 30);
     expect(metrics.conversionRate).toBe(0);

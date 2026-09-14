@@ -246,9 +246,9 @@ model Commission {
   clickId     String
   click       Click     @relation(fields: [clickId], references: [id])
 
-  // Null for a normal Commission. Set when this row is a negative clawback entry
-  // for a refund that landed after the original Commission was already Paid —
-  // the original stays Paid, untouched, this is a separate negative-amount row.
+  // Null for a normal Commission. Set on the negative rows an older version
+  // wrote for a refund after payout. A paid commission is now final and none
+  // are written; kept for an optional recovery setting on the roadmap.
   adjustsCommissionId String?
   adjustsCommission   Commission?  @relation("Adjustment", fields: [adjustsCommissionId], references: [id])
   adjustments         Commission[] @relation("Adjustment")

@@ -319,7 +319,7 @@ async function owedTotals(
 
   const rows = await db.commission.groupBy({
     by: ["currency"],
-    where: { ...where, status: { in: [...statuses] } },
+    where: { ...where, status: { in: [...statuses] }, adjustsCommissionId: null, amount: { gt: 0 } },
     _sum: { amount: true },
   });
   return totalsByCurrency(rows);
@@ -592,9 +592,10 @@ export async function getTopAffiliates(
       where: { affiliateId: { in: rankedIds }, ...inWindow },
       _count: { _all: true },
     }),
-    // Same scope as `earned`, minus the rows that are not a sale: adjustments
-    // carry the commission they correct, and a zero or negative amount is a
-    // correction rather than something somebody bought.
+    // Same scope as `earned`, minus the rows that are not a sale: adjustment
+    // rows are ones an older version wrote to carry the commission they
+    // corrected, and a zero or negative amount is a correction rather than
+    // something somebody bought.
     db.commission.groupBy({
       by: ["affiliateId"],
       where: {
@@ -807,7 +808,7 @@ export async function getAffiliateMetrics(
     }),
     db.commission.groupBy({
       by: ["currency", "status"],
-      where: { affiliateId },
+      where: { affiliateId, adjustsCommissionId: null },
       _sum: { amount: true },
     }),
     owedTotals({ affiliateId }),
