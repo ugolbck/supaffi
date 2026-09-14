@@ -6,6 +6,7 @@ import {
   commissionRateFor,
   computeCommissionAmount,
   computePayableAt,
+  hasExclusionFlag,
   isExcluded,
   saleAmountFor,
 } from "../commission";
@@ -15,7 +16,13 @@ import {
   latestChargeFor,
   paymentIntentForInvoice,
 } from "../paymentState";
-import { listInvoiceLines, referredInvoiceBase, type ReferredRevenue } from "../referredRevenue";
+import {
+  exclusionSourcesOf,
+  listInvoiceLines,
+  referredInvoiceBase,
+  retrieveInvoiceForEarning,
+  type ReferredRevenue,
+} from "../referredRevenue";
 import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import {
@@ -111,24 +118,27 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
 
   const stripe = stripeClientFor(merchant);
 
-  // The subscription is read from Stripe rather than from the payload, whose
-  // shape follows the merchant's account version: the older shape went unread,
-  // so an excluded subscription earned on every renewal. A read that fails
-  // throws, so the event is retried rather than earning on a sale the merchant
-  // may have excluded.
-  const excluded = await isExcluded(stripe, {
-    invoice,
-    subscription: subscriptionId,
-    customer: stripeCustomerId,
-  });
-  if (excluded) return;
+  // The invoice's own flag is on the payload, so an excluded invoice stops
+  // here without a call.
+  if (hasExclusionFlag(invoice.metadata)) return;
 
   // amount_paid_off_stripe is expandable, and Stripe never sends an
   // expandable field's value on a webhook payload: "Objekte, die in
   // Ereignissen gesendet werden, sind immer in ihrer Minimalform" (Stripe
   // docs, expand.md). So it has to be read back here, never trusted from
   // `invoice`. A failed read throws, so the event is retried.
-  const invoiceRead = await stripe.invoices.retrieve(invoice.id, { expand: ["amount_paid_off_stripe"] });
+  const invoiceRead = await retrieveInvoiceForEarning(stripe, invoice.id);
+
+  // The same read carries the subscription and the customer, so their flags
+  // cost no further call. The subscription is never taken from the payload:
+  // where a payload keeps it depends on the merchant's account version, and
+  // even then it is only a snapshot from when the invoice was finalized, so an
+  // excluded subscription earned on every renewal of an older account. Checked
+  // before the lines are listed, which an excluded renewal does not need. A
+  // subscription or customer Stripe did not expand is read by id, and a read
+  // that fails throws, so the event is retried rather than earning on a sale
+  // the merchant may have excluded.
+  if (await isExcluded(stripe, exclusionSourcesOf(invoiceRead, subscriptionId, stripeCustomerId))) return;
   if (typeof invoiceRead.amount_paid_off_stripe !== "number") {
     // Stripe answered without the field even when it was asked for, which
     // this pinned API version is not documented to do. Earning on an

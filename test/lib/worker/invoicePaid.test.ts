@@ -7,9 +7,10 @@ import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
 
-// Three Stripe calls are reachable: the Customer's exclusion flag, the
-// payment behind the invoice, and that payment's charge. The last two default
-// to "nothing on record" so only the refund cases see a charge.
+// The Stripe calls a renewal makes: the invoice read back with its customer
+// and subscription expanded (which answers the exclusion flags), its lines,
+// the payment behind it and that payment's charge. The last two default to
+// "nothing on record" so only the refund cases see a charge.
 const stripeStub = vi.hoisted(() => ({
   customers: {
     retrieve: vi.fn(async () => ({ id: "cus_renewal", metadata: {} })),
@@ -60,6 +61,7 @@ import {
 } from "./referralFixtures";
 import { invoiceLine, PRODUCT_ID } from "./invoiceLines";
 import { subscriptionIdOf } from "@/lib/worker/referredSubscription";
+import { EARNING_INVOICE_EXPAND } from "@/lib/worker/referredRevenue";
 
 const CUSTOMER_ID = "cus_renewal";
 // Renewals are matched on the subscription a referred checkout created, so
@@ -75,7 +77,18 @@ const linesByInvoice = new Map<string, Stripe.InvoiceLineItem[]>();
 // field, see the handler's comment), so this is the only place a case can set
 // it; a case that wants the field to come back absent overrides
 // stripeStub.invoices.retrieve directly instead of using this map.
-const invoiceReadsById = new Map<string, { total: number; amount_paid: number; amount_paid_off_stripe: number }>();
+const invoiceReadsById = new Map<string, Record<string, unknown>>();
+
+// The exclusion flags as Stripe holds them now, on the invoice read back and
+// on the subscription and customer expanded with it.
+type ExclusionRead = {
+  invoiceMetadata?: Record<string, string>;
+  subscriptionMetadata?: Record<string, string>;
+  customerMetadata?: Record<string, string>;
+  // Stripe's answer for a deleted customer: no metadata, just the id and the
+  // deleted flag.
+  customerDeleted?: boolean;
+};
 
 function subscriptionParent(subscription: string) {
   return { type: "subscription_details", subscription_details: { subscription, metadata: {} } };
@@ -106,7 +119,8 @@ describe("handleInvoicePaid", () => {
   // `fields` only feeds the registered retrieve stub's answer.
   function invoiceFixture(
     fields: Record<string, unknown> & { amount_paid_off_stripe?: number } = {},
-    lines?: Stripe.InvoiceLineItem[]
+    lines?: Stripe.InvoiceLineItem[],
+    read: ExclusionRead = {}
   ): Stripe.Invoice {
     const { amount_paid_off_stripe, ...payloadFields } = fields;
     const invoice = {
@@ -135,10 +149,23 @@ describe("handleInvoicePaid", () => {
         }),
       ]
     );
+    const subscription = subscriptionIdOf(invoice);
     invoiceReadsById.set(invoice.id, {
       total: invoice.total,
       amount_paid: invoice.amount_paid,
       amount_paid_off_stripe: amount_paid_off_stripe ?? 0,
+      metadata: read.invoiceMetadata ?? invoice.metadata ?? {},
+      customer: read.customerDeleted
+        ? { id: invoice.customer, deleted: true }
+        : { id: invoice.customer, metadata: read.customerMetadata ?? {} },
+      // Read through the pinned client, so always the newer shape, with the
+      // live subscription expanded, whatever shape the payload came in.
+      parent: subscription
+        ? {
+            type: "subscription_details",
+            subscription_details: { subscription: { id: subscription, metadata: read.subscriptionMetadata ?? {} }, metadata: {} },
+          }
+        : null,
     });
     return invoice;
   }
@@ -146,6 +173,7 @@ describe("handleInvoicePaid", () => {
   beforeEach(async () => {
     await clearAll();
     stripeStub.customers.retrieve.mockClear();
+    stripeStub.subscriptions.retrieve.mockClear();
     stripeStub.invoicePayments.list.mockReset();
     stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.paymentIntents.retrieve.mockReset();
@@ -330,6 +358,113 @@ describe("handleInvoicePaid", () => {
     await handleInvoicePaid(merchant, invoiceFixture());
     await handleInvoicePaid(merchant, invoiceFixture());
     expect(await db.commission.count()).toBe(1);
+  });
+
+  describe("exclusion", () => {
+    const FLAG = { supaffi: "false" };
+
+    it("earns nothing on a renewal of an excluded subscription sent in the older payload shape", async () => {
+      // Before 2025-03-31 the payload names its subscription at the top level
+      // and has no parent. The flag is only on the subscription in Stripe.
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({ parent: null, subscription: SUBSCRIPTION_ID }, undefined, { subscriptionMetadata: FLAG })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.retrieve).toHaveBeenCalledWith("in_renewal", { expand: EARNING_INVOICE_EXPAND });
+      expect(stripeStub.invoices.listLineItems).not.toHaveBeenCalled();
+      expect(stripeStub.subscriptions.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("earns nothing when the subscription was excluded after the payload's snapshot was taken", async () => {
+      // The payload's subscription_details.metadata is a snapshot from when
+      // the invoice was finalized; the live subscription carries the flag.
+      await handleInvoicePaid(merchant, invoiceFixture({}, undefined, { subscriptionMetadata: FLAG }));
+
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("earns nothing on an invoice flagged in its payload, without reading it back", async () => {
+      await handleInvoicePaid(merchant, invoiceFixture({ metadata: FLAG }));
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("earns nothing on an invoice flagged after it was sent", async () => {
+      await handleInvoicePaid(merchant, invoiceFixture({}, undefined, { invoiceMetadata: FLAG }));
+
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("earns nothing on a renewal whose customer is excluded, read from the same invoice read", async () => {
+      await handleInvoicePaid(merchant, invoiceFixture({}, undefined, { customerMetadata: FLAG }));
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("reads the subscription and the customer by id when Stripe did not expand them", async () => {
+      invoiceFixture();
+      stripeStub.invoices.retrieve.mockImplementation(async (id: string) => ({
+        id,
+        total: 12000,
+        amount_paid: 12000,
+        amount_paid_off_stripe: 0,
+        metadata: {},
+        customer: CUSTOMER_ID,
+        parent: { type: "subscription_details", subscription_details: { subscription: SUBSCRIPTION_ID, metadata: {} } },
+      }));
+      stripeStub.subscriptions.retrieve.mockResolvedValueOnce({ id: SUBSCRIPTION_ID, metadata: FLAG });
+
+      await handleInvoicePaid(merchant, invoiceFixture());
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.subscriptions.retrieve).toHaveBeenCalledWith(SUBSCRIPTION_ID);
+    });
+
+    it("records nothing and fails the event, so it is retried, when a subscription it has to read cannot be read", async () => {
+      stripeStub.invoices.retrieve.mockImplementation(async (id: string) => ({
+        id,
+        total: 12000,
+        amount_paid: 12000,
+        amount_paid_off_stripe: 0,
+        metadata: {},
+        customer: { id: CUSTOMER_ID, metadata: {} },
+        parent: null,
+      }));
+      stripeStub.subscriptions.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error("Stripe is unavailable"), { type: "StripeConnectionError" })
+      );
+
+      await expect(handleInvoicePaid(merchant, invoiceFixture())).rejects.toThrow(/sub_renewal.*retried/);
+      expect(await db.commission.count()).toBe(0);
+
+      // The retry, once Stripe answers, earns as usual.
+      await handleInvoicePaid(merchant, invoiceFixture());
+      expect(await db.commission.count()).toBe(1);
+    });
+
+    it("earns nothing on a renewal whose customer was deleted, since its flag can no longer be read", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await handleInvoicePaid(merchant, invoiceFixture({}, undefined, { customerDeleted: true }));
+
+      expect(await db.commission.count()).toBe(0);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("treated as excluded"));
+
+      warn.mockRestore();
+    });
+
+    it("checks every flag with no call beyond the invoice read", async () => {
+      await handleInvoicePaid(merchant, invoiceFixture());
+
+      expect(await db.commission.count()).toBe(1);
+      expect(stripeStub.invoices.retrieve).toHaveBeenCalledTimes(1);
+      expect(stripeStub.subscriptions.retrieve).not.toHaveBeenCalled();
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+    });
   });
 
   describe("referred subscriptions", () => {

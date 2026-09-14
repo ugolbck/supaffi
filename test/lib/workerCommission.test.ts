@@ -158,10 +158,15 @@ describe("isExcluded", () => {
     await expect(isExcluded(stripe, { invoice: "in_1", subscription: "sub_1", customer: "cus_1" })).resolves.toBe(true);
   });
 
-  it("does not exclude a sale whose customer was deleted", async () => {
+  it("excludes a sale whose customer was deleted, since the flag can no longer be read", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { stripe } = stripeStub({ customer: { deleted: true, metadata: undefined } });
 
-    await expect(isExcluded(stripe, { customer: "cus_1" })).resolves.toBe(false);
+    await expect(isExcluded(stripe, { customer: "cus_1" })).resolves.toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).not.toMatch(/cus_1/);
+
+    warn.mockRestore();
   });
 
   it("does not exclude a sale nothing marks, and reads nothing it was not given", async () => {

@@ -121,8 +121,15 @@ async function readForExclusion<T>(what: string, id: string, read: () => Promise
 }
 
 function customerIsExcluded(customer: Stripe.Customer | Stripe.DeletedCustomer): boolean {
-  // A deleted customer has no metadata left to carry the flag.
-  if ("deleted" in customer && customer.deleted) return false;
+  // A deleted customer comes back with no metadata left to carry the flag:
+  // "If it's for a deleted Customer, a subset of the customer's information
+  // is returned, including a deleted property that's set to true" (Stripe
+  // docs, Retrieve a customer). When Supaffi cannot tell whether the flag was
+  // set, it earns nothing, so a deleted customer counts as excluded.
+  if ("deleted" in customer && customer.deleted) {
+    console.warn("[worker] a sale's customer was deleted, so it was treated as excluded and earned nothing");
+    return true;
+  }
   return hasExclusionFlag((customer as Stripe.Customer).metadata);
 }
 

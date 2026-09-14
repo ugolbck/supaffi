@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type Stripe from "stripe";
-import { listInvoiceLines, referredInvoiceBase } from "@/lib/worker/referredRevenue";
+import { exclusionSourcesOf, listInvoiceLines, referredInvoiceBase } from "@/lib/worker/referredRevenue";
 import { invoiceLine, LINE_SUBSCRIPTION_ID, PRODUCT_ID } from "./invoiceLines";
 
 const SUB = LINE_SUBSCRIPTION_ID;
@@ -526,5 +526,52 @@ describe("listInvoiceLines", () => {
     const stripe = { invoices: { listLineItems } } as unknown as Stripe;
 
     await expect(listInvoiceLines(stripe, "in_1")).rejects.toThrow("stripe unavailable");
+  });
+});
+
+describe("exclusionSourcesOf", () => {
+  const read = (fields: Record<string, unknown>) => ({ id: "in_1", metadata: {}, ...fields }) as unknown as Stripe.Invoice;
+
+  it("uses the subscription and customer Stripe expanded on the invoice", () => {
+    const subscription = { id: "sub_1", metadata: { supaffi: "false" } };
+    const customer = { id: "cus_1", metadata: {} };
+    const sources = exclusionSourcesOf(
+      read({ customer, parent: { type: "subscription_details", subscription_details: { subscription, metadata: {} } } }),
+      "sub_1",
+      "cus_1"
+    );
+
+    expect(sources.subscription).toBe(subscription);
+    expect(sources.customer).toBe(customer);
+    expect((sources.invoice as { id: string }).id).toBe("in_1");
+  });
+
+  it("falls back to the ids when Stripe answered them unexpanded", () => {
+    const sources = exclusionSourcesOf(
+      read({ customer: "cus_1", parent: { type: "subscription_details", subscription_details: { subscription: "sub_1", metadata: {} } } }),
+      "sub_1",
+      "cus_1"
+    );
+
+    expect(sources.subscription).toBe("sub_1");
+    expect(sources.customer).toBe("cus_1");
+  });
+
+  it("never takes an expansion that names another subscription or customer", () => {
+    const sources = exclusionSourcesOf(
+      read({
+        customer: { id: "cus_other", metadata: {} },
+        parent: { type: "subscription_details", subscription_details: { subscription: { id: "sub_other", metadata: {} }, metadata: {} } },
+      }),
+      "sub_1",
+      "cus_1"
+    );
+
+    expect(sources.subscription).toBe("sub_1");
+    expect(sources.customer).toBe("cus_1");
+  });
+
+  it("has no subscription to check on an invoice outside one", () => {
+    expect(exclusionSourcesOf(read({ customer: "cus_1", parent: null }), null, "cus_1").subscription).toBeNull();
   });
 });

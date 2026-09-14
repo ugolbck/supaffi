@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
+import type { ExclusionSources } from "./commission";
 import { invoiceLinesBeforeTax, scaleToAmountPaid } from "./saleBase";
 
 /**
@@ -108,6 +109,47 @@ export async function listInvoiceLines(stripe: Stripe, invoiceId: string): Promi
     if (!page.has_more) return lines;
     startingAfter = page.data[page.data.length - 1].id;
   }
+}
+
+/**
+ * What an invoice that can earn is read with. A webhook object is always
+ * minimal ("Objekte, die in Ereignissen gesendet werden, sind immer in ihrer
+ * Minimalform", Stripe docs, expand.md), so `amount_paid_off_stripe`, which is
+ * only returned when asked for, has to be read back. The customer and the
+ * subscription come back whole in the same call, so their exclusion flags are
+ * checked with no further request. The read goes through Supaffi's pinned
+ * API version, so the shape does not depend on the version the payload was
+ * sent in.
+ */
+export const EARNING_INVOICE_EXPAND = ["amount_paid_off_stripe", "customer", "parent.subscription_details.subscription"];
+
+/** Reads an invoice that can earn. A failed read throws, so the event is retried. */
+export function retrieveInvoiceForEarning(stripe: Stripe, invoiceId: string): Promise<Stripe.Invoice> {
+  return stripe.invoices.retrieve(invoiceId, { expand: EARNING_INVOICE_EXPAND });
+}
+
+/**
+ * The exclusion sources an invoice read already answers. The expanded
+ * subscription and customer are used only when they are the sale's own;
+ * anything Stripe left as an id, or that names another object, is passed on as
+ * the sale's own id for isExcluded to read.
+ */
+export function exclusionSourcesOf(
+  read: Stripe.Invoice,
+  subscriptionId: string | null,
+  customerId: string | null
+): ExclusionSources {
+  const expandedSubscription =
+    read.parent?.type === "subscription_details" ? read.parent.subscription_details?.subscription : null;
+  const subscription =
+    subscriptionId && expandedSubscription && typeof expandedSubscription !== "string" && expandedSubscription.id === subscriptionId
+      ? expandedSubscription
+      : subscriptionId;
+  const customer =
+    customerId && read.customer && typeof read.customer !== "string" && read.customer.id === customerId
+      ? read.customer
+      : customerId;
+  return { invoice: read, subscription, customer };
 }
 
 type PlacedLine =
