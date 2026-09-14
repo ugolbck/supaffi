@@ -56,7 +56,13 @@ const LINES_PAGE_SIZE = 100;
 
 /**
  * Every line of an invoice, page by page. A failed read throws, so the event
- * is retried rather than a renewal judged on part of its lines.
+ * is retried rather than a renewal judged on part of its lines. Reconciling
+ * the lines against the invoice's own total does not catch every short list:
+ * a missing referred proration and a missing one-off item can net to zero and
+ * still add up. So a page that comes back empty while still claiming more
+ * throws instead of being read as the end of the list, since returning early
+ * there would silently judge the renewal on a partial list that happens to
+ * reconcile.
  */
 export async function listInvoiceLines(stripe: Stripe, invoiceId: string): Promise<Stripe.InvoiceLineItem[]> {
   const lines: Stripe.InvoiceLineItem[] = [];
@@ -66,11 +72,11 @@ export async function listInvoiceLines(stripe: Stripe, invoiceId: string): Promi
       invoiceId,
       startingAfter ? { limit: LINES_PAGE_SIZE, starting_after: startingAfter } : { limit: LINES_PAGE_SIZE }
     );
+    if (page.data.length === 0 && page.has_more) {
+      throw new Error(`invoice ${invoiceId} returned an empty page of lines while still claiming more`);
+    }
     lines.push(...page.data);
-    // An empty page that still claims more would be asked for forever.
-    // Stopping leaves the list short, and a short list never adds up to the
-    // invoice, so that invoice earns nothing.
-    if (!page.has_more || page.data.length === 0) return lines;
+    if (!page.has_more) return lines;
     startingAfter = page.data[page.data.length - 1].id;
   }
 }
@@ -165,9 +171,9 @@ export function referredInvoiceBase(
   referredProductIds: string[],
   /**
    * The referred subscription's own subscription item ids, used to place a
-   * subscription line whose `subscription` field came back null. Optional
-   * because the caller may not have them; Task 4 decides whether to supply
-   * this list.
+   * subscription line whose `subscription` field came back null. Without this
+   * list, a subscription line that does not name its subscription earns
+   * nothing.
    */
   subscriptionItemIds?: string[]
 ): ReferredRevenue {

@@ -243,6 +243,27 @@ describe("referredInvoiceBase", () => {
       );
       expect(result).toEqual({ kind: "earned", baseMinor: 3000, productIds: REFERRED, otherProductIds: [] });
     });
+
+    it("earns nothing on a subscription line naming another subscription even when its item is in the supplied list", () => {
+      const result = referredInvoiceBase(
+        invoice({ total: 10000, total_excluding_tax: 10000 }),
+        [invoiceLine({ amount: 10000, subscription: "sub_other" })],
+        SUB,
+        REFERRED,
+        ["si_basic"]
+      );
+      expect(result).toEqual({ kind: "earned", baseMinor: 0, productIds: REFERRED, otherProductIds: [] });
+    });
+
+    it("earns nothing on a proration invoice item naming another subscription", () => {
+      const result = referredInvoiceBase(
+        invoice({ total: 3000, total_excluding_tax: 3000 }),
+        [invoiceLine({ amount: 3000, source: "invoice_item", subscription: "sub_other", proration: true })],
+        SUB,
+        REFERRED
+      );
+      expect(result).toMatchObject({ kind: "earned", baseMinor: 0 });
+    });
   });
 
   describe("a subscription recorded without its products", () => {
@@ -317,11 +338,23 @@ describe("listInvoiceLines", () => {
     expect(listLineItems).toHaveBeenNthCalledWith(2, "in_1", { limit: 100, starting_after: "il_a" });
   });
 
-  it("stops on an empty page that still claims more, rather than asking forever", async () => {
+  it("throws on an empty page that still claims more, rather than reading a short list as complete", async () => {
+    // Reconciliation against the invoice's total does not catch every short
+    // list: a missing referred proration and a missing one-off item can net
+    // to zero and still add up, which would silently overpay the affiliate.
     const listLineItems = vi.fn(async () => ({ data: [], has_more: true }));
     const stripe = { invoices: { listLineItems } } as unknown as Stripe;
 
-    expect(await listInvoiceLines(stripe, "in_1")).toEqual([]);
+    await expect(listInvoiceLines(stripe, "in_1")).rejects.toThrow();
     expect(listLineItems).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws when a page read fails, rather than earning on a partial list", async () => {
+    const listLineItems = vi.fn(async () => {
+      throw new Error("stripe unavailable");
+    });
+    const stripe = { invoices: { listLineItems } } as unknown as Stripe;
+
+    await expect(listInvoiceLines(stripe, "in_1")).rejects.toThrow("stripe unavailable");
   });
 });
