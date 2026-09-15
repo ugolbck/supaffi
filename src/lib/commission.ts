@@ -254,7 +254,7 @@ const REFUSED = "The ledger refused that payout.";
 const TWO_DECIMALS = /^\d+\.\d{2}$/;
 
 /** No page renders anywhere near this many rows in one payout. */
-const MAX_SHOWN = 5000;
+export const MAX_SHOWN = 5000;
 
 /** The voids a refund or a lost chargeback writes, as opposed to the Owner's own. */
 const REFUND_VOID_REASONS: readonly string[] = ["refund", "chargeback"];
@@ -552,6 +552,7 @@ const SYSTEM_VOID_REASONS: readonly string[] = [
   "chargeback",
   "partial refund",
   "confirmed self-referral",
+  "refund after payout",
 ];
 
 /**

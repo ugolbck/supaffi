@@ -2,6 +2,7 @@
 // Affiliate / Program / Merchant / Owner. Runs against the scratch DATABASE_URL
 // that test/setup.ts enforces, never the dev one.
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import { inspect } from "node:util";
 import type { Commission, Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 
@@ -101,6 +102,32 @@ describe("disputeStateFor", () => {
     try {
       expect(await disputeStateFor(stripe, "pi_1")).toBe("unknown");
       expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("logs only the Stripe error's type and code, never its raw message", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stripe = {
+      disputes: {
+        list: vi.fn(async () => {
+          // A permission error's raw message names the masked key and the
+          // account; it must never reach the server log.
+          throw Object.assign(
+            new Error("The provided key does not have the required permissions on account acct_secret123"),
+            { type: "StripePermissionError", code: "permission_error" }
+          );
+        }),
+      },
+    } as unknown as Stripe;
+    try {
+      expect(await disputeStateFor(stripe, "pi_1")).toBe("unknown");
+      expect(warn).toHaveBeenCalledTimes(1);
+      const logged = warn.mock.calls[0][0] as string;
+      expect(logged).toMatch(/StripePermissionError\/permission_error/);
+      expect(logged).not.toMatch(/acct_secret123|required permissions/);
+      expect(inspect(warn.mock.calls[0])).not.toContain("acct_secret123");
     } finally {
       warn.mockRestore();
     }

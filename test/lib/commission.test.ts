@@ -540,6 +540,19 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect(row.voidReason).toContain("owner");
   });
 
+  it("suffixes an Owner's 'refund after payout' the same as the migration's own reserved words", async () => {
+    // The migration that voids unpaid legacy adjustment rows writes this
+    // reason verbatim; an Owner typing the same words must not be read as
+    // that automatic void.
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const voided = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+
+    await voidCommission(ownerId, merchantId, voided.id, "refund after payout");
+
+    const row = await db.commission.findUniqueOrThrow({ where: { id: voided.id } });
+    expect(row.voidReason).toBe("refund after payout (by owner)");
+  });
+
   it("skips a shown commission a confirmed self referral voided after the page loaded", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);

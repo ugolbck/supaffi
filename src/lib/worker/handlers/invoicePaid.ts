@@ -92,7 +92,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // Ereignissen gesendet werden, sind immer in ihrer Minimalform" (Stripe
   // docs, expand.md). So it has to be read back here, never trusted from
   // `invoice`. A failed read throws, so the event is retried.
-  const invoiceRead = await retrieveInvoiceForEarning(stripe, invoice.id);
+  const invoiceRead = await retrieveInvoiceForEarningOrThrow(stripe, invoice.id);
 
   // The same read carries the subscription and the customer, so their flags
   // cost no further call. The subscription is never taken from the payload:
@@ -179,11 +179,32 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
       // its unique payment reference so the log still names the commission.
       const commission = await db.commission.findFirst({ where: { stripePaymentRef: invoice.id }, select: { id: true } });
       console.warn(
-        `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event or the owner releases it.`
+        `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event arrives or the owner cancels it.`
       );
     }
   } catch (err) {
     // Redelivery of the same invoice.paid event.
     if (!isUniqueConstraintError(err)) throw err;
+  }
+}
+
+/**
+ * Reads the invoice for earning, never leaking Stripe's raw message.
+ *
+ * A failed read throws, so the event is retried. Only the error's type and
+ * code go into the thrown message, and the original error is not kept as
+ * `cause`: tick.ts logs the whole thrown error, and Node's default inspection
+ * of an Error prints its `cause` too, so keeping it there would still put
+ * Stripe's raw message (which, on a permission or authentication failure,
+ * names the masked key and the account) into the server log. claim.ts stores
+ * only the message in WebhookEvent.lastError, the same pattern
+ * retrieveSessionForEarning in checkoutSessionCompleted.ts uses.
+ */
+async function retrieveInvoiceForEarningOrThrow(stripe: Stripe, invoiceId: string): Promise<Stripe.Invoice> {
+  try {
+    return await retrieveInvoiceForEarning(stripe, invoiceId);
+  } catch (err) {
+    const { type, code } = err as { type?: string; code?: string };
+    throw new Error(`[worker] could not read invoice ${invoiceId} for earning (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`);
   }
 }

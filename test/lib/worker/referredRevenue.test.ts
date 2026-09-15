@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { inspect } from "node:util";
 import type Stripe from "stripe";
 import { exclusionSourcesOf, listInvoiceLines, referredInvoiceBase } from "@/lib/worker/referredRevenue";
 import { invoiceLine, LINE_SUBSCRIPTION_ID, PRODUCT_ID } from "./invoiceLines";
@@ -519,13 +520,28 @@ describe("listInvoiceLines", () => {
     expect(listLineItems).toHaveBeenCalledTimes(1);
   });
 
-  it("throws when a page read fails, rather than earning on a partial list", async () => {
+  it("throws when a page read fails, rather than earning on a partial list, without Stripe's raw message", async () => {
     const listLineItems = vi.fn(async () => {
-      throw new Error("stripe unavailable");
+      // A permission error's raw message names the masked key and the
+      // account; it must never reach tick.ts's logs or WebhookEvent.lastError.
+      throw Object.assign(new Error("The provided key does not have the required permissions on account acct_secret123"), {
+        type: "StripePermissionError",
+        code: "permission_error",
+      });
     });
     const stripe = { invoices: { listLineItems } } as unknown as Stripe;
 
-    await expect(listInvoiceLines(stripe, "in_1")).rejects.toThrow("stripe unavailable");
+    let thrown: Error | undefined;
+    try {
+      await listInvoiceLines(stripe, "in_1");
+    } catch (err) {
+      thrown = err as Error;
+    }
+    expect(thrown?.message).toMatch(/StripePermissionError\/permission_error/);
+    expect(thrown?.message).not.toMatch(/acct_secret123|required permissions/);
+    expect(thrown?.cause).toBeUndefined();
+    expect(inspect(thrown)).not.toContain("acct_secret123");
+    expect(inspect(thrown)).not.toContain("required permissions");
   });
 });
 

@@ -96,8 +96,13 @@ export async function disputeStateFor(
     if (emptyMeansUnknown && disputes.length === 0) return "unknown";
     return disputeStateOf(disputes);
   } catch (err) {
+    // Only the error's type and code are logged, never Stripe's own message:
+    // on a permission or authentication failure that names the masked key and
+    // the account, the same pattern retrieveSessionForEarning in
+    // checkoutSessionCompleted.ts uses.
+    const { type, code } = err as { type?: string; code?: string };
     console.warn(
-      `[worker] could not read the disputes on payment ${paymentIntentId}: ${(err as Error).message}. Its commission is held until they can be read; replacing the Stripe key in settings lets Supaffi read disputes.`
+      `[worker] could not read the disputes on payment ${paymentIntentId} (${type ?? "unknown"}/${code ?? "unknown"}). Its commission is held until they can be read; replacing the Stripe key in settings lets Supaffi read disputes.`
     );
     return "unknown";
   }

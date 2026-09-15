@@ -16,8 +16,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   row and create the new key from the button there. Check that Disputes and
   Checkout Sessions are set to Read. Supaffi uses Disputes to hold a commission
   while its sale is disputed, and Checkout Sessions to take the tax off a
-  one-time sale. Until you replace it, one-time sales earn nothing, and a
-  commission whose sale is disputed stays on hold until you cancel it.
+  one-time sale. Until you replace it, a disputed commission stays held, and a
+  one-time sale retries for about two days before it stops earning.
 
 ### Fixed
 

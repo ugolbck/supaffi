@@ -98,10 +98,25 @@ export async function listInvoiceLines(stripe: Stripe, invoiceId: string): Promi
   const lines: Stripe.InvoiceLineItem[] = [];
   let startingAfter: string | undefined;
   for (;;) {
-    const page = await stripe.invoices.listLineItems(
-      invoiceId,
-      startingAfter ? { limit: LINES_PAGE_SIZE, starting_after: startingAfter } : { limit: LINES_PAGE_SIZE }
-    );
+    let page: Stripe.ApiList<Stripe.InvoiceLineItem>;
+    try {
+      page = await stripe.invoices.listLineItems(
+        invoiceId,
+        startingAfter ? { limit: LINES_PAGE_SIZE, starting_after: startingAfter } : { limit: LINES_PAGE_SIZE }
+      );
+    } catch (err) {
+      // Only the error's type and code go into the thrown message, and the
+      // original error is not kept as `cause`: tick.ts logs the whole thrown
+      // error, and Node's default inspection of an Error prints its `cause`
+      // too, so keeping it there would still put Stripe's raw message (which,
+      // on a permission or authentication failure, names the masked key and
+      // the account) into the server log, the same pattern
+      // retrieveSessionForEarning in checkoutSessionCompleted.ts uses.
+      const { type, code } = err as { type?: string; code?: string };
+      throw new Error(
+        `could not list the lines of invoice ${invoiceId} (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`
+      );
+    }
     if (page.data.length === 0 && page.has_more) {
       throw new Error(`invoice ${invoiceId} returned an empty page of lines while still claiming more`);
     }

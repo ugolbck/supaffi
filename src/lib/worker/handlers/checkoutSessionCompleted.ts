@@ -321,7 +321,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
       // its unique payment reference so the log still names the commission.
       const commission = await db.commission.findFirst({ where: { stripePaymentRef }, select: { id: true } });
       console.warn(
-        `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event or the owner releases it.`
+        `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event arrives or the owner cancels it.`
       );
     }
   } catch (err) {

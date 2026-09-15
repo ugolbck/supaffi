@@ -109,13 +109,23 @@ export type ExclusionSources = {
 // merchant excluded is the loss this check exists to prevent, so the event
 // fails instead and the worker retries it; an outage delays the commission
 // rather than letting it through unchecked.
-async function readForExclusion<T>(what: string, id: string, read: () => Promise<T>): Promise<T> {
+// `named` is what the thrown message may print for this read: the invoice or
+// subscription's own id for those two, but never a customer id, so the caller
+// passes the sale's own reference instead when reading the customer.
+async function readForExclusion<T>(what: string, named: string, read: () => Promise<T>): Promise<T> {
   try {
     return await read();
   } catch (err) {
+    // Only the error's type and code go into the thrown message, never
+    // Stripe's own message and never the original error as `cause`: tick.ts
+    // logs the whole thrown error, and Node's default inspection of an Error
+    // prints its `cause` too, so keeping it there would still put Stripe's
+    // raw message (which, on a permission or authentication failure, names
+    // the masked key and the account) into the server log, the same pattern
+    // retrieveSessionForEarning uses in checkoutSessionCompleted.ts.
+    const { type, code } = err as { type?: string; code?: string };
     throw new Error(
-      `could not read ${what} ${id} to check whether its sale is excluded, so no commission was recorded and the event will be retried: ${(err as Error).message}`,
-      { cause: err }
+      `could not read ${what} ${named} (${type ?? "unknown"}/${code ?? "unknown"}) to check whether its sale is excluded, so no commission was recorded and the event will be retried`
     );
   }
 }
@@ -174,7 +184,9 @@ export async function isExcluded(stripe: Stripe, sources: ExclusionSources, sale
   if (customer) {
     const read =
       typeof customer === "string"
-        ? await readForExclusion("customer", customer, () => stripe.customers.retrieve(customer))
+        ? // Named by the sale, never by the customer id: the id being read is
+          // the very thing a failed read must not print.
+          await readForExclusion("customer", saleRef, () => stripe.customers.retrieve(customer))
         : customer;
     if (customerIsExcluded(read, saleRef)) return true;
   }

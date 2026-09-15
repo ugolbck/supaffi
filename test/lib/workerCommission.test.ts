@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { inspect } from "node:util";
 import type { Program } from "@prisma/client";
 import type Stripe from "stripe";
 import {
@@ -101,7 +102,13 @@ describe("isExcluded", () => {
       failing?: "invoice" | "subscription" | "customer";
     } = {}
   ) {
-    const unavailable = () => Object.assign(new Error("Stripe is unavailable"), { type: "StripeConnectionError" });
+    // A permission error's raw message names the masked key and the account;
+    // it must never reach the thrown message, `cause`, or the log.
+    const unavailable = () =>
+      Object.assign(new Error("The provided key does not have the required permissions on account acct_secret123"), {
+        type: "StripePermissionError",
+        code: "permission_error",
+      });
     const stub = {
       invoices: {
         retrieve: vi.fn(async (id: string): Promise<unknown> => {
@@ -193,6 +200,27 @@ describe("isExcluded", () => {
       await expect(
         isExcluded(stripe, { invoice: "in_1", subscription: "sub_1", customer: "cus_1" }, "in_1")
       ).rejects.toThrow(new RegExp(`${failing} .*will be retried`));
+    }
+  );
+
+  it.each(["invoice", "subscription", "customer"] as const)(
+    "carries only the Stripe error's type and code when the %s cannot be read, never the raw message, a cause, or a customer id",
+    async (failing) => {
+      const { stripe } = stripeStub({ failing });
+
+      let thrown: Error | undefined;
+      try {
+        await isExcluded(stripe, { invoice: "in_1", subscription: "sub_1", customer: "cus_customer_secret" }, "in_1");
+      } catch (err) {
+        thrown = err as Error;
+      }
+      expect(thrown?.message).toMatch(/StripePermissionError\/permission_error/);
+      expect(thrown?.message).not.toMatch(/acct_secret123|required permissions/);
+      expect(thrown?.message).not.toMatch(/cus_customer_secret/);
+      expect(thrown?.cause).toBeUndefined();
+      expect(inspect(thrown)).not.toContain("acct_secret123");
+      expect(inspect(thrown)).not.toContain("required permissions");
+      expect(inspect(thrown)).not.toContain("cus_customer_secret");
     }
   );
 });

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { MAX_SHOWN } from "@/lib/commission";
 
 /**
  * Every aggregate the dashboard cards read.
@@ -652,10 +653,20 @@ export type PayableGroup = {
  * are left out: a refund after payout is no longer recovered. Also excludes
  * anything at zero or below, so a stray negative row with a nulled adjustment
  * link can never sit in a group a payout button offers to pay.
+ *
+ * Each group is capped at `capPerGroup` rows (`markCommissionsPaid`'s own
+ * `MAX_SHOWN` by default, the most a payout can ever bind), oldest first by
+ * `payableAt` then `id` for a deterministic cut. Without a cap, an affiliate
+ * and currency with more payable rows than Mark paid can ever accept could
+ * never be paid from the bar at all ("The ledger refused that payout" on
+ * every press). A row past the cap is simply left for a later payout, once
+ * the ones ahead of it are marked paid; `total` and `commissionIds` always
+ * match the rows actually included, so Mark paid binds exactly what was shown.
  */
 export async function getPayableGroups(
   ownerId: string,
-  merchantId: string
+  merchantId: string,
+  capPerGroup: number = MAX_SHOWN
 ): Promise<PayableGroup[]> {
   await assertOwns(ownerId, merchantId);
 
@@ -675,14 +686,17 @@ export async function getPayableGroups(
       currency: true,
       affiliate: { select: { id: true, name: true, email: true } },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ payableAt: "asc" }, { id: "asc" }],
   });
 
   const groups = new Map<string, PayableGroup & { sum: Prisma.Decimal }>();
   for (const row of rows) {
     const key = `${row.affiliate.id}:${row.currency}`;
-    const shown = { id: row.id, amount: row.amount.toFixed(2) };
     const existing = groups.get(key);
+    // Past the cap for this affiliate and currency: left for a later payout,
+    // never added to the total or the ids Mark paid would bind.
+    if (existing && existing.commissionIds.length >= capPerGroup) continue;
+    const shown = { id: row.id, amount: row.amount.toFixed(2) };
     if (existing) {
       existing.sum = existing.sum.add(row.amount);
       existing.commissionIds.push(row.id);

@@ -2,6 +2,7 @@
 // Merchant / Owner. Runs against the scratch DATABASE_URL that test/setup.ts
 // enforces, never the dev one.
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import { inspect } from "node:util";
 import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 
@@ -851,13 +852,27 @@ describe("handleInvoicePaid", () => {
       expect(await db.commission.count()).toBe(0);
     });
 
-    it("throws so the event is retried when Stripe cannot list the lines", async () => {
-      const failure = new Error("StripeConnectionError");
+    it("throws so the event is retried when Stripe cannot list the lines, without Stripe's raw message", async () => {
       stripeStub.invoices.listLineItems.mockImplementation(async () => {
-        throw failure;
+        // A permission error's raw message names the masked key and the
+        // account; it must never reach tick.ts's logs or WebhookEvent.lastError.
+        throw Object.assign(
+          new Error("The provided key does not have the required permissions on account acct_secret123"),
+          { type: "StripePermissionError", code: "permission_error" }
+        );
       });
 
-      await expect(handleInvoicePaid(merchant, invoiceFixture())).rejects.toBe(failure);
+      let thrown: Error | undefined;
+      try {
+        await handleInvoicePaid(merchant, invoiceFixture());
+      } catch (err) {
+        thrown = err as Error;
+      }
+      expect(thrown?.message).toMatch(/StripePermissionError\/permission_error/);
+      expect(thrown?.message).not.toMatch(/acct_secret123|required permissions/);
+      expect(thrown?.cause).toBeUndefined();
+      expect(inspect(thrown)).not.toContain("acct_secret123");
+      expect(inspect(thrown)).not.toContain("required permissions");
       expect(await db.commission.count()).toBe(0);
     });
   });
@@ -896,14 +911,32 @@ describe("handleInvoicePaid", () => {
       expect(commission.amount.toString()).toBe("20");
     });
 
-    it("throws so the event is retried when Stripe cannot answer the out-of-band read", async () => {
+    it("throws so the event is retried when Stripe cannot answer the out-of-band read, without Stripe's raw message", async () => {
       const invoice = invoiceFixture();
-      const failure = new Error("StripeConnectionError");
       stripeStub.invoices.retrieve.mockImplementation(async () => {
-        throw failure;
+        // A permission error's raw message names the masked key and the
+        // account; it must never reach tick.ts's logs or WebhookEvent.lastError.
+        throw Object.assign(
+          new Error("The provided key does not have the required permissions on account acct_secret123"),
+          { type: "StripePermissionError", code: "permission_error" }
+        );
       });
 
-      await expect(handleInvoicePaid(merchant, invoice)).rejects.toBe(failure);
+      let thrown: Error | undefined;
+      try {
+        await handleInvoicePaid(merchant, invoice);
+      } catch (err) {
+        thrown = err as Error;
+      }
+      expect(thrown?.message).toMatch(/StripePermissionError\/permission_error/);
+      expect(thrown?.message).not.toMatch(/acct_secret123|required permissions/);
+      // No `cause` kept: tick.ts logs the whole thrown error, and Node's
+      // default inspection of an Error prints its `cause`, so the raw Stripe
+      // message would still reach the server log through it even with the
+      // message itself clean.
+      expect(thrown?.cause).toBeUndefined();
+      expect(inspect(thrown)).not.toContain("acct_secret123");
+      expect(inspect(thrown)).not.toContain("required permissions");
       expect(await db.commission.count()).toBe(0);
     });
 

@@ -408,6 +408,49 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(groups[0].commissionIds).toHaveLength(1);
   });
 
+  it("caps a group at the given number of rows, oldest first, so the total and ids always match what Mark paid would bind", async () => {
+    // Without a cap, an affiliate and currency with more payable rows than
+    // Mark paid can ever accept could never be paid from the bar at all.
+    const affiliate = await makeAffiliate("a");
+    const oldest = await db.commission.create({
+      data: {
+        affiliateId: affiliate.id,
+        clickId: (await makeClick(affiliate.id)).id,
+        amount: "10.00",
+        currency: "usd",
+        status: "PAYABLE",
+        payableAt: daysAgo(3),
+      },
+    });
+    const middle = await db.commission.create({
+      data: {
+        affiliateId: affiliate.id,
+        clickId: (await makeClick(affiliate.id)).id,
+        amount: "15.00",
+        currency: "usd",
+        status: "PAYABLE",
+        payableAt: daysAgo(2),
+      },
+    });
+    await db.commission.create({
+      data: {
+        affiliateId: affiliate.id,
+        clickId: (await makeClick(affiliate.id)).id,
+        amount: "20.00",
+        currency: "usd",
+        status: "PAYABLE",
+        payableAt: daysAgo(1),
+      },
+    });
+
+    const groups = await getPayableGroups(ownerId, merchantId, 2);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].total).toBe("25.00");
+    expect(groups[0].commissionIds.sort()).toEqual([oldest.id, middle.id].sort());
+    expect(groups[0].commissions.map((c) => c.amount).sort()).toEqual(["10.00", "15.00"]);
+  });
+
   it("splits payable groups by currency, never summing across them", async () => {
     const affiliate = await makeAffiliate("a");
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "10.00" });
