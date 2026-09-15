@@ -39,6 +39,8 @@ const stripeStub = vi.hoisted(() => ({
   // and customer expanded.
   invoices: {
     retrieve: vi.fn(async (id: string, _params?: unknown): Promise<unknown> => ({ id, metadata: {} })),
+    // A subscription's first invoice earns on its lines, like a renewal.
+    listLineItems: vi.fn(async (_id: string, _params?: unknown): Promise<unknown> => undefined),
   },
 }));
 vi.mock("@/lib/stripe", async () => {
@@ -64,6 +66,7 @@ import { REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { handleInvoicePaid } from "@/lib/worker/handlers/invoicePaid";
 import { handleSubscriptionDeleted } from "@/lib/worker/handlers/subscriptionDeleted";
 import { EARNING_INVOICE_EXPAND } from "@/lib/worker/referredRevenue";
+import { invoiceLine } from "./invoiceLines";
 
 const CUSTOMER_ID = "cus_test";
 
@@ -85,6 +88,8 @@ describe("handleCheckoutSessionCompleted", () => {
   // What Stripe answers when the handler reads a Session's invoice back with
   // its subscription and customer expanded, registered by sessionFixture.
   const invoiceReadsById = new Map<string, Record<string, unknown>>();
+  // The lines Stripe lists for each invoice, registered by sessionFixture.
+  const linesByInvoice = new Map<string, Stripe.InvoiceLineItem[]>();
 
   function sessionFixture(opts: {
     invoice?: string | null;
@@ -102,13 +107,38 @@ describe("handleCheckoutSessionCompleted", () => {
     invoiceMetadata?: Record<string, string>;
     subscriptionMetadata?: Record<string, string>;
     customerMetadata?: Record<string, string>;
+    /** What the first invoice says was paid. Defaults to its whole total. */
+    amountPaid?: number;
+    invoiceStatus?: string;
+    /** The first invoice's lines. Defaults to one subscription line making up the whole sale. */
+    lines?: Stripe.InvoiceLineItem[];
+    /** A one-time purchase's tax per rate on its Session read. Defaults to one exclusive rate carrying `tax`. */
+    breakdownTaxes?: Array<{ amount: number; rate: { inclusive: boolean } }>;
+    /** A Session read that comes back without a breakdown. */
+    breakdown?: null;
     /** Stripe's answer for a deleted customer: no metadata, just the id and the deleted flag. */
     customerDeleted?: boolean;
   }): Stripe.Checkout.Session {
+    const mode = opts.mode ?? "subscription";
+    const amountTotal = opts.amountTotal ?? 5000;
+    const tax = opts.tax ?? 0;
+    // A subscription Session always names its subscription. Cases that do not
+    // care which get their own, one per invoice.
+    const subscription =
+      opts.subscription !== undefined
+        ? opts.subscription
+        : mode === "subscription" && opts.invoice
+          ? `sub_${opts.invoice}`
+          : null;
     if (opts.invoice) {
-      const subscription = opts.subscription ?? null;
+      const shippingTotal = opts.shippingCost?.amount_total ?? 0;
+      const shippingTax = opts.shippingCost?.amount_tax ?? 0;
+      // The same sale as the Session, seen from its invoice read back with
+      // its expansions. With no balance applied both give the same base, which
+      // is why every older case keeps its figures.
       invoiceReadsById.set(opts.invoice, {
         id: opts.invoice,
+        status: opts.invoiceStatus ?? "paid",
         metadata: opts.invoiceMetadata ?? {},
         customer: opts.customerDeleted
           ? { id: CUSTOMER_ID, deleted: true }
@@ -119,27 +149,39 @@ describe("handleCheckoutSessionCompleted", () => {
               subscription_details: { subscription: { id: subscription, metadata: opts.subscriptionMetadata ?? {} }, metadata: {} },
             }
           : null,
+        total: amountTotal,
+        total_excluding_tax: opts.totalDetails === null ? null : amountTotal - tax,
+        total_taxes:
+          opts.totalDetails === null ? null : tax ? [{ amount: tax, tax_behavior: "inclusive", taxable_amount: amountTotal - tax }] : [],
+        amount_paid: opts.amountPaid ?? amountTotal,
+        amount_paid_off_stripe: 0,
+        shipping_cost: opts.shippingCost ? { amount_total: shippingTotal, amount_tax: shippingTax } : null,
       });
+      linesByInvoice.set(
+        opts.invoice,
+        opts.lines ?? [invoiceLine({ amount: amountTotal - shippingTotal, inclusiveTax: tax - shippingTax, subscription })]
+      );
     }
-    return {
+    const session = {
       id: `cs_${opts.invoice ?? opts.paymentIntent}`,
-      mode: opts.mode ?? "subscription",
+      mode,
       payment_status: opts.paymentStatus ?? "paid",
       created: Math.floor(Date.now() / 1000),
       metadata: { [REFERRAL_METADATA_KEY]: opts.metadataToken ?? clickInput.referralToken },
       customer: CUSTOMER_ID,
       customer_details: { email: "buyer@example.com" },
-      amount_total: opts.amountTotal ?? 5000,
+      amount_total: amountTotal,
       total_details:
         opts.totalDetails === null
           ? null
-          : { amount_discount: 0, amount_shipping: opts.shippingCost?.amount_subtotal ?? 0, amount_tax: opts.tax ?? 0 },
+          : { amount_discount: 0, amount_shipping: opts.shippingCost?.amount_subtotal ?? 0, amount_tax: tax },
       shipping_cost: opts.shippingCost ?? null,
       currency: opts.currency ?? "usd",
       invoice: opts.invoice ?? null,
       payment_intent: opts.paymentIntent ?? null,
-      subscription: opts.subscription ?? null,
+      subscription,
     } as unknown as Stripe.Checkout.Session;
+    return session;
   }
 
   beforeEach(async () => {
@@ -167,6 +209,12 @@ describe("handleCheckoutSessionCompleted", () => {
       }
       return read;
     });
+    linesByInvoice.clear();
+    stripeStub.invoices.listLineItems.mockReset();
+    stripeStub.invoices.listLineItems.mockImplementation(async (id: string) => ({
+      data: linesByInvoice.get(id) ?? [],
+      has_more: false,
+    }));
 
     const owner = await db.owner.create({
       data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
@@ -637,8 +685,11 @@ describe("handleCheckoutSessionCompleted", () => {
         warnings.mockRestore();
       }
 
+      // The subscription read failed, but the first invoice's own lines still
+      // name the product, the same recovery a renewal gets when it learns the
+      // products from an invoice it can already read.
       const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
-      expect(referred.stripeProductIds).toEqual([]);
+      expect(referred.stripeProductIds).toEqual(["prod_basic"]);
       expect(await db.commission.count({ where: { clickId: click.id } })).toBe(1);
     });
 
@@ -853,10 +904,9 @@ describe("handleCheckoutSessionCompleted", () => {
     });
 
     it("reads the subscription by id when Stripe did not expand it, and fails the event if that read fails", async () => {
-      stripeStub.invoices.retrieve.mockResolvedValueOnce({
-        id: "in_first",
-        metadata: {},
-        customer: { id: CUSTOMER_ID, metadata: {} },
+      const session = sessionFixture({ invoice: "in_first", subscription: "sub_1" });
+      invoiceReadsById.set("in_first", {
+        ...invoiceReadsById.get("in_first"),
         parent: { type: "subscription_details", subscription_details: { subscription: "sub_1", metadata: {} } },
       });
       // The products read comes first and answers; the exclusion read fails.
@@ -864,9 +914,7 @@ describe("handleCheckoutSessionCompleted", () => {
         .mockResolvedValueOnce({ id: "sub_1", items: { data: [{ id: "si_1", price: { product: "prod_basic" } }], has_more: false } })
         .mockRejectedValueOnce(Object.assign(new Error("Stripe is unavailable"), { type: "StripeConnectionError" }));
 
-      await expect(
-        handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }))
-      ).rejects.toThrow(/sub_1.*retried/);
+      await expect(handleCheckoutSessionCompleted(merchant, session)).rejects.toThrow(/sub_1.*retried/);
       expect(await db.commission.count()).toBe(0);
     });
 
@@ -940,7 +988,11 @@ describe("handleCheckoutSessionCompleted", () => {
       await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_b", subscription: "sub_b" }));
 
       expect(await db.commission.count()).toBe(1);
-      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+      // The subscription's first invoice is still read to judge whether money
+      // moved and claim the first payment, regardless of whether the click's
+      // duration allows it to earn; only the exclusion-specific reads below
+      // that check are skipped, since referralStillEarns stops before them.
+      expect(stripeStub.invoices.retrieve).toHaveBeenCalledTimes(1);
       expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
     });
 
@@ -1191,5 +1243,214 @@ describe("handleCheckoutSessionCompleted", () => {
     await handleCheckoutSessionCompleted(other, sessionFixture({ invoice: "in_other", subscription: "sub_1" }));
 
     expect(await db.referredSubscription.count()).toBe(0);
+  });
+
+  describe("a subscription's first payment", () => {
+    function chargeOnFirstInvoice(amount: number, refunded: number) {
+      stripeStub.invoicePayments.list.mockImplementation(async () => ({
+        data: [{ payment: { type: "payment_intent", payment_intent: "pi_first" } }],
+      }));
+      stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({
+        id: "pi_first",
+        latest_charge: { id: "ch_first", amount, amount_refunded: refunded, disputed: false },
+      }));
+    }
+
+    it("earns only on the part credit balance did not cover, and claims it as the first payment", async () => {
+      // 50.00 subscription, 40.00 of it from the customer's balance: 10.00
+      // paid, so 20% earns 2.00, as a renewal would.
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_partial", subscription: "sub_1", amountPaid: 1000 })
+      );
+
+      expect(stripeStub.invoices.retrieve).toHaveBeenCalledWith("in_partial", { expand: EARNING_INVOICE_EXPAND });
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.amount.toString()).toBe("2");
+      expect(commission.grossAmount?.toString()).toBe("2");
+      expect(commission.saleAmount?.toString()).toBe("10");
+      expect(commission.referredChargeMinor).toBe(1000n);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.firstPaymentRef).toBe("in_partial");
+    });
+
+    it("earns nothing and claims no first payment when credit balance covered all of it", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_covered", subscription: "sub_1", amountPaid: 0 })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.listLineItems).not.toHaveBeenCalled();
+      // Recorded, like a free trial, so the first invoice that charges money
+      // can earn and becomes the first payment.
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.clickId).toBe(click.id);
+      expect(referred.firstPaymentRef).toBeNull();
+      expect(referred.firstPaidAt).toBeNull();
+    });
+
+    it("lets the first paid renewal start a one-time referral whose first payment credit balance covered", async () => {
+      await db.program.updateMany({ where: { merchantId: merchant.id }, data: { commissionDurationType: "ONE_TIME" } });
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_covered", subscription: "sub_1", amountPaid: 0 })
+      );
+
+      const renewal = (id: string) =>
+        ({
+          id,
+          customer: CUSTOMER_ID,
+          billing_reason: "subscription_cycle",
+          created: Math.floor(Date.now() / 1000),
+          currency: "usd",
+          customer_email: "buyer@example.com",
+          metadata: {},
+          parent: { type: "subscription_details", subscription_details: { subscription: "sub_1", metadata: {} } },
+          total: 5000,
+          total_excluding_tax: 5000,
+          total_taxes: [],
+          amount_paid: 5000,
+          shipping_cost: null,
+        }) as unknown as Stripe.Invoice;
+      invoiceReadsById.set("in_renewal_1", {
+        id: "in_renewal_1",
+        total: 5000,
+        amount_paid: 5000,
+        amount_paid_off_stripe: 0,
+        metadata: {},
+        customer: { id: CUSTOMER_ID, metadata: {} },
+        parent: { type: "subscription_details", subscription_details: { subscription: { id: "sub_1", metadata: {} }, metadata: {} } },
+      });
+      linesByInvoice.set("in_renewal_1", [invoiceLine({ amount: 5000, subscription: "sub_1" })]);
+
+      await handleInvoicePaid(merchant, renewal("in_renewal_1"));
+      // The one-time commission is spent; this returns before any read.
+      await handleInvoicePaid(merchant, renewal("in_renewal_2"));
+
+      const rows = await db.commission.findMany({ where: { clickId: click.id } });
+      expect(rows.map((row) => row.stripePaymentRef)).toEqual(["in_renewal_1"]);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.firstPaymentRef).toBe("in_renewal_1");
+    });
+
+    it("earns nothing on a one-time price sold in the same Checkout", async () => {
+      // 50.00 plan plus a 20.00 setup fee on the first invoice.
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({
+          invoice: "in_with_fee",
+          subscription: "sub_1",
+          amountTotal: 7000,
+          lines: [invoiceLine({ amount: 5000, subscription: "sub_1" }), invoiceLine({ amount: 2000, source: "invoice_item" })],
+        })
+      );
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.saleAmount?.toString()).toBe("50");
+      expect(commission.amount.toString()).toBe("10");
+      expect(commission.referredChargeMinor).toBe(5000n);
+    });
+
+    it("claims the first payment but earns nothing on a first invoice that bills only a one-time price", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({
+          invoice: "in_setup",
+          subscription: "sub_1",
+          amountTotal: 2000,
+          lines: [invoiceLine({ amount: 2000, source: "invoice_item" })],
+        })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.firstPaymentRef).toBe("in_setup");
+    });
+
+    it("takes a refund of the first payment out of the referred share first", async () => {
+      // 50.00 plan and a 50.00 fee on one charge; 50.00 refunded before the
+      // event was processed takes all of the referred share.
+      chargeOnFirstInvoice(10000, 5000);
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({
+          invoice: "in_refunded",
+          subscription: "sub_1",
+          amountTotal: 10000,
+          lines: [invoiceLine({ amount: 5000, subscription: "sub_1" }), invoiceLine({ amount: 5000, source: "invoice_item" })],
+        })
+      );
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.status).toBe("VOIDED");
+      expect(commission.voidReason).toBe("refund");
+      expect(commission.referredChargeMinor).toBe(5000n);
+    });
+
+    it("stores the exact share, and earns, on a very large first payment", async () => {
+      // 250,000,000,000.00 VND (zero-decimal), well past the old INTEGER
+      // column's 2,147,483,647 limit, but far inside the BIGINT column and
+      // Number.MAX_SAFE_INTEGER, so it is stored exactly rather than dropped.
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_vnd_share", subscription: "sub_1", amountTotal: 250_000_000_000, currency: "vnd" })
+      );
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.referredChargeMinor).toBe(250_000_000_000n);
+      expect(commission.amount.toString()).toBe("50000000000");
+    });
+
+    it("writes nothing and fails the event so it retries when the invoice cannot be read", async () => {
+      stripeStub.invoices.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error("connection reset"), { type: "StripeConnectionError" })
+      );
+      const session = sessionFixture({ invoice: "in_retry", subscription: "sub_1" });
+
+      await expect(handleCheckoutSessionCompleted(merchant, session)).rejects.toThrow("in_retry");
+      expect(await db.commission.count()).toBe(0);
+      expect(await db.referredSubscription.count()).toBe(0);
+
+      // The retry, once Stripe answers.
+      await handleCheckoutSessionCompleted(merchant, session);
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.amount.toString()).toBe("10");
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.firstPaymentRef).toBe("in_retry");
+    });
+
+    it("writes nothing and fails the event so it retries while the invoice is not paid yet", async () => {
+      const session = sessionFixture({ invoice: "in_open", subscription: "sub_1", invoiceStatus: "open", amountPaid: 0 });
+
+      await expect(handleCheckoutSessionCompleted(merchant, session)).rejects.toThrow("in_open");
+      expect(await db.commission.count()).toBe(0);
+      expect(await db.referredSubscription.count()).toBe(0);
+    });
+
+    it("reads no invoice for a free trial", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_trial", paymentStatus: "no_payment_required", subscription: "sub_1" })
+      );
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_trial_zero", amountTotal: 0, subscription: "sub_2" }));
+
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("earns nothing, logs once, and claims nothing on a paid subscription Session that names no invoice", async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: null, subscription: "sub_no_invoice" }));
+        expect(errors).toHaveBeenCalledTimes(1);
+      } finally {
+        errors.mockRestore();
+      }
+
+      expect(await db.commission.count()).toBe(0);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_no_invoice" } });
+      expect(referred.firstPaymentRef).toBeNull();
+    });
   });
 });

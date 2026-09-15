@@ -1,4 +1,4 @@
-import type { Merchant } from "@prisma/client";
+import type { Merchant, ReferredSubscription } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
@@ -11,6 +11,7 @@ import {
 } from "../paymentState";
 import { checkoutSessionBaseMinor } from "../saleBase";
 import { exclusionSourcesOf, retrieveInvoiceForEarning } from "../referredRevenue";
+import { referredEarningOn, storableReferredShare } from "../referredEarning";
 import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
@@ -68,11 +69,27 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // back to this when a Charge has no traceable Invoice.
   const stripePaymentRef = invoiceId ?? paymentIntentId;
 
-  // A free trial, or a first month discounted to nothing, completes with no
-  // money on it. Stripe reports that either as no_payment_required or as paid
-  // with a zero total. Neither is the subscription's first payment; the first
-  // invoice that charges money is.
-  const moneyPaid = session.payment_status === "paid" && (session.amount_total ?? 0) > 0;
+  const stripe = stripeClientFor(merchant);
+
+  // A Session with no money on it (a free trial, a first month discounted to
+  // nothing, or a billing cycle anchor that bills later) reads nothing here.
+  const moneyOnSession = session.payment_status === "paid" && (session.amount_total ?? 0) > 0;
+
+  // A subscription's first payment is judged on its invoice, never on the
+  // Session's totals: credit balance can pay part or all of it, money can be
+  // recorded as paid outside Stripe, and a one-off item can ride on it, and
+  // the Session says none of that. Read with its subscription and customer
+  // expanded, before anything is written, so a failed read retries the event
+  // from a clean start.
+  const firstInvoice =
+    session.mode === "subscription" && invoiceId && moneyOnSession
+      ? await retrievePaidFirstInvoice(stripe, session.id, invoiceId)
+      : null;
+
+  // The first invoice that moved money is the subscription's first payment, as
+  // invoicePaid.ts already decides. One paid entirely from credit balance moved
+  // none, so it is not claimed and the next paid invoice starts the referral.
+  const moneyPaid = firstInvoice ? firstInvoice.amount_paid > 0 : session.mode !== "subscription" && moneyOnSession;
 
   // Renewals earn by matching the subscription this Checkout created, never
   // the customer: products sharing a Stripe account share customers, and a
@@ -81,6 +98,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // exclude the renewals after it, and recorded for a free trial too, so the
   // trial's first paid invoice can earn. The first payment is claimed even
   // when this sale earns nothing, because it is when money first moved.
+  let referred: ReferredSubscription | null = null;
   if (subscriptionId) {
     // Its renewals earn only on the products it bills, so they are read now,
     // before anything is written: a Stripe outage throws and the retried
@@ -96,7 +114,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
       existing && existing.stripeProductIds.length > 0
         ? existing.stripeProductIds
         : await subscriptionProductIds(stripeClientFor(merchant), subscriptionId);
-    const referred = await recordReferredSubscription(
+    referred = await recordReferredSubscription(
       merchant.id,
       click.id,
       subscriptionId,
@@ -114,6 +132,19 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     }
   }
 
+  // A paid subscription Session is documented to name its invoice once it
+  // completes. If one ever does not, nothing on it can be judged the way a
+  // renewal is, and the Session's own totals may include credit balance, so
+  // it earns nothing; its first paid renewal claims the first payment.
+  if (session.mode === "subscription" && moneyOnSession && (!firstInvoice || !subscriptionId || !referred)) {
+    console.error(
+      `[worker] session ${session.id} started a paid subscription without naming its invoice, so no commission was recorded for it`
+    );
+    return;
+  }
+  // Paid entirely from credit balance: nothing moved, so nothing earns.
+  if (firstInvoice && !moneyPaid) return;
+
   // Idempotency rides on Commission.stripePaymentRef being unique. A session
   // with neither an invoice nor a payment intent gives us no key, and a
   // redelivery would duplicate. Nothing was paid on such a session anyway.
@@ -124,12 +155,12 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // first payment still allows: nothing more on a one-time program, and only
   // inside the months counted from that first payment on a fixed-months one.
   // Checked after the subscription above claimed its first payment, so the
-  // click's very first sale is measured against itself, and before any Stripe
-  // call, so a sale that cannot earn costs none.
+  // click's very first sale is measured against itself, and before the line,
+  // tax and exclusion reads below, so a sale that cannot earn costs none of
+  // them. A subscription's first invoice is read above it, because whether
+  // money moved decides whether its first payment is claimed.
   const sale = { ref: stripePaymentRef, at: completedAt };
   if (!(await referralStillEarns(merchant.id, click.id, click.affiliate.program, sale))) return;
-
-  const stripe = stripeClientFor(merchant);
 
   // "no_payment_required" (a free trial) still recorded its subscription
   // above, so the first paid invoice earns through invoice.paid, but there is
@@ -137,15 +168,46 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   if (session.payment_status !== "paid") return;
   if (!session.currency) return;
 
-  // Earned on the sale before tax and shipping, see saleBase.ts. A Session
-  // that does not say how much tax it carried is logged and skipped rather
-  // than paid on a total that still has the tax in it; returning normally
-  // marks the event processed instead of retrying something that will never
-  // change.
-  const baseMinor = checkoutSessionBaseMinor(session);
-  if (baseMinor === null) {
-    console.error(`[worker] session ${session.id} carries no tax breakdown, so no commission was recorded for it`);
-    return;
+  // Earned on the sale before tax and shipping. A subscription's first payment
+  // follows the renewal rule exactly: only the subscription's own lines for
+  // the products its referral bought, before tax, scaled to what was paid
+  // through Stripe, see referredEarning.ts. A one-time price sold in the same
+  // Checkout lands on that first invoice as a one-off line, which Stripe's
+  // line shape does not tell apart from an item the merchant left pending on
+  // the customer, so it earns nothing, as on a renewal. A one-time purchase
+  // earns on the Session, see saleBase.ts. A payload that does not say how
+  // much tax it carried is logged and skipped rather than paid on a total that
+  // still has the tax in it; returning normally marks the event processed
+  // instead of retrying something that will never change.
+  let baseMinor: number;
+  let referredChargeMinor: number | null = null;
+  if (firstInvoice && subscriptionId && referred) {
+    // The first invoice came back with its subscription and customer
+    // expanded, so this check costs no call, and it runs before the lines are
+    // listed, which an excluded sale does not need. A subscription or customer
+    // Stripe left unexpanded is read, and a failed read throws, so the event
+    // is retried rather than earning on a sale the merchant may have excluded.
+    if (await isExcluded(stripe, exclusionSourcesOf(firstInvoice, subscriptionId, stripeCustomerId), stripePaymentRef)) return;
+    if (typeof firstInvoice.amount_paid_off_stripe !== "number") {
+      // Asked for and not answered, which this pinned API version is not
+      // documented to do. Scaling on amount_paid alone could pay on money
+      // moved outside Stripe.
+      console.error(
+        `[worker] invoice ${firstInvoice.id} did not answer amount_paid_off_stripe when read with expand, so no commission was recorded for it`
+      );
+      return;
+    }
+    const earned = await referredEarningOn(stripe, firstInvoice.id, firstInvoice, subscriptionId, referred);
+    if (!earned) return;
+    baseMinor = earned.baseMinor;
+    referredChargeMinor = earned.referredChargeMinor;
+  } else {
+    const sessionBase = checkoutSessionBaseMinor(session);
+    if (sessionBase === null) {
+      console.error(`[worker] session ${session.id} carries no tax breakdown, so no commission was recorded for it`);
+      return;
+    }
+    baseMinor = sessionBase;
   }
 
   const affiliate = click.affiliate;
@@ -156,23 +218,22 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // only add an empty row to both ledgers.
   if (amount.lte(0)) return;
 
-  // The flag can sit on the invoice, the subscription or the customer, and the
-  // Session's event is minimal and carries none of their metadata. Read only
-  // once the sale would earn, so a free trial or a sale that comes to nothing
-  // costs no call, and before the card and charge reads below, which an
-  // excluded sale does not need. The invoice is read with its subscription and
-  // customer expanded, so one call answers all three. A read that fails
-  // throws, so the event is retried rather than earning on a sale the merchant
-  // may have excluded.
-  const invoiceRead = invoiceId ? await retrieveInvoiceForEarning(stripe, invoiceId) : null;
-  const excluded = await isExcluded(
-    stripe,
-    invoiceRead
-      ? exclusionSourcesOf(invoiceRead, subscriptionId, stripeCustomerId)
-      : { subscription: subscriptionId, customer: stripeCustomerId },
-    stripePaymentRef
-  );
-  if (excluded) return;
+  if (!firstInvoice) {
+    // A one-time purchase. The flag can sit on its post-purchase invoice or
+    // its customer, and the Session's event carries neither's metadata. Read
+    // only once the sale would earn, and before the card and charge reads
+    // below. A read that fails throws, so the event is retried rather than
+    // earning on a sale the merchant may have excluded.
+    const invoiceRead = invoiceId ? await retrieveInvoiceForEarning(stripe, invoiceId) : null;
+    const excluded = await isExcluded(
+      stripe,
+      invoiceRead
+        ? exclusionSourcesOf(invoiceRead, subscriptionId, stripeCustomerId)
+        : { subscription: subscriptionId, customer: stripeCustomerId },
+      stripePaymentRef
+    );
+    if (excluded) return;
+  }
 
   let flagReason = checkSelfReferralEmail(affiliate, session.customer_details?.email ?? null);
   if (!flagReason) {
@@ -187,6 +248,10 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   const charge = chargeIntentId ? await latestChargeFor(stripe, chargeIntentId) : null;
   const dispute = await disputeStateAtCreation(stripe, chargeIntentId, charge);
 
+  // Never more than the charge itself, as on a renewal.
+  const cappedReferredChargeMinor =
+    referredChargeMinor !== null && charge ? Math.min(referredChargeMinor, charge.amount) : referredChargeMinor;
+
   try {
     // Checked against a self referral confirmed since the check above.
     const written = await createCommissionUnlessSelfReferral({
@@ -198,9 +263,13 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
         saleAmount: saleAmountFor(baseMinor, session.currency),
         payableAt: computePayableAt(program),
         flagReason,
+        // Stored through storableReferredShare exactly as invoicePaid.ts
+        // does, matching renewals: a bigint column, never a null/too-large
+        // fallback, since a documented Stripe amount cannot overflow it.
+        referredChargeMinor: cappedReferredChargeMinor !== null ? storableReferredShare(cappedReferredChargeMinor) : null,
         // amount, grossAmount (the figure a later refund prorates against),
         // status, voidedAt, voidReason and disputeOpenedAt.
-        ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute }),
+        ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute, referredChargeMinor: cappedReferredChargeMinor }),
       },
     });
     if (written && dispute === "unknown") {
@@ -218,4 +287,30 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     // one already created, not an error.
     if (!isUniqueConstraintError(err)) throw err;
   }
+}
+
+/**
+ * The first invoice of a paid subscription Checkout, read with the earning
+ * expansions, once Stripe says it is paid.
+ *
+ * Throws rather than returning a fallback. The only fallback left is the
+ * Session's total, which earns on credit balance the customer never paid, and
+ * an invoice that is not paid yet does not carry its final amount_paid. A
+ * thrown error sends the event back for a retry with backoff, and the error
+ * names the invoice for the operator.
+ */
+async function retrievePaidFirstInvoice(stripe: Stripe, sessionId: string, invoiceId: string): Promise<Stripe.Invoice> {
+  let invoice: Stripe.Invoice;
+  try {
+    invoice = await retrieveInvoiceForEarning(stripe, invoiceId);
+  } catch (err) {
+    throw new Error(
+      `[worker] could not read invoice ${invoiceId} for session ${sessionId}, so the event is retried: ${(err as Error).message}`,
+      { cause: err }
+    );
+  }
+  if (invoice.status !== "paid") {
+    throw new Error(`[worker] invoice ${invoiceId} for session ${sessionId} is ${invoice.status}, not paid yet, so the event is retried`);
+  }
+  return invoice;
 }
