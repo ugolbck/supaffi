@@ -23,6 +23,17 @@ export const KEY_PERMISSIONS = [
     row: "Charges",
     why: "checks whether a sale was refunded before its commission was recorded",
   },
+  // Checkout Sessions arrived in 0.2.7, to read the tax on a one-time sale. A
+  // key without it still works for subscriptions; its one-time sales log and
+  // earn nothing until the key is replaced. Stripe's permissions reference
+  // does not name this row's token, so it is not confirmed against Stripe's
+  // own docs; it follows the same rak_<object>_read shape as every row above.
+  {
+    token: "rak_checkout_session_read",
+    access: "Read",
+    row: "Checkout Sessions",
+    why: "reads the tax on a one-time sale, so no commission is earned on it",
+  },
   {
     token: "rak_customer_read",
     access: "Read",

@@ -16,7 +16,13 @@ import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerpr
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_METADATA_KEY } from "@/lib/referral";
-import { claimFirstPayment, idOf, recordReferredSubscription, subscriptionProductIds } from "../referredSubscription";
+import {
+  claimFirstPayment,
+  idOf,
+  recordReferredSubscription,
+  RETRYABLE_STRIPE_ERRORS,
+  subscriptionProductIds,
+} from "../referredSubscription";
 import { referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
@@ -138,7 +144,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // it earns nothing; its first paid renewal claims the first payment.
   if (session.mode === "subscription" && moneyOnSession && (!firstInvoice || !subscriptionId || !referred)) {
     console.error(
-      `[worker] session ${session.id} started a paid subscription without naming its invoice, so no commission was recorded for it`
+      `[worker] session ${session.id} started a paid subscription whose first payment could not be identified, so no commission was recorded for it`
     );
     return;
   }
@@ -181,6 +187,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // instead of retrying something that will never change.
   let baseMinor: number;
   let referredChargeMinor: number | null = null;
+  let sessionRead: Stripe.Checkout.Session | null = null;
   if (firstInvoice && subscriptionId && referred) {
     // The first invoice came back with its subscription and customer
     // expanded, so this check costs no call, and it runs before the lines are
@@ -201,13 +208,25 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     if (!earned) return;
     baseMinor = earned.baseMinor;
     referredChargeMinor = earned.referredChargeMinor;
-  } else {
-    const sessionBase = checkoutSessionBaseMinor(session);
+  } else if (session.mode === "payment") {
+    // A one-time purchase. The tax breakdown is only returned when asked for,
+    // so the Session is read back with it, and with the customer and invoice
+    // the exclusion check below needs.
+    sessionRead = await retrieveSessionForEarning(stripe, session.id);
+    if (!sessionRead) return;
+    const sessionBase = checkoutSessionBaseMinor(sessionRead);
     if (sessionBase === null) {
       console.error(`[worker] session ${session.id} carries no tax breakdown, so no commission was recorded for it`);
       return;
     }
     baseMinor = sessionBase;
+  } else {
+    // A subscription Session with nothing paid on it yet: session.mode ===
+    // "subscription" only reaches here when moneyOnSession is false (a free
+    // trial, or a billing cycle anchor that bills later), since any paid
+    // subscription Session either returned above or took the invoice branch.
+    // Nothing was charged, so there is nothing to read a breakdown for.
+    baseMinor = 0;
   }
 
   const affiliate = click.affiliate;
@@ -218,18 +237,16 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // only add an empty row to both ledgers.
   if (amount.lte(0)) return;
 
-  if (!firstInvoice) {
-    // A one-time purchase. The flag can sit on its post-purchase invoice or
-    // its customer, and the Session's event carries neither's metadata. Read
-    // only once the sale would earn, and before the card and charge reads
-    // below. A read that fails throws, so the event is retried rather than
-    // earning on a sale the merchant may have excluded.
-    const invoiceRead = invoiceId ? await retrieveInvoiceForEarning(stripe, invoiceId) : null;
+  if (sessionRead) {
+    // A one-time purchase. Its post-purchase invoice and its customer came
+    // back expanded on the Session read above, so this check costs no
+    // further call, and it runs before the card and charge reads below.
+    // Anything Stripe left as an id is read, and a read that fails throws, so
+    // the event is retried rather than earning on a sale the merchant may
+    // have excluded.
     const excluded = await isExcluded(
       stripe,
-      invoiceRead
-        ? exclusionSourcesOf(invoiceRead, subscriptionId, stripeCustomerId)
-        : { subscription: subscriptionId, customer: stripeCustomerId },
+      { invoice: sessionRead.invoice ?? invoiceId, customer: sessionRead.customer ?? stripeCustomerId },
       stripePaymentRef
     );
     if (excluded) return;
@@ -313,4 +330,32 @@ async function retrievePaidFirstInvoice(stripe: Stripe, sessionId: string, invoi
     throw new Error(`[worker] invoice ${invoiceId} for session ${sessionId} is ${invoice.status}, not paid yet, so the event is retried`);
   }
   return invoice;
+}
+
+/**
+ * A one-time purchase's Session with its tax breakdown, customer and invoice.
+ *
+ * `total_details.breakdown` is "expandable (can be expanded into an object
+ * with the expand request parameter)" (Stripe docs, Checkout Session object),
+ * so it never arrives on the webhook payload itself and has to be read back.
+ *
+ * Stripe unreachable, rate limiting or an API error throws, so the event is
+ * retried. Any other failure, most often a key made before 0.2.7 without
+ * Checkout Sessions read (Stripe answers that as an invalid request), logs
+ * once and returns null: a retry cannot fix a key, and without the breakdown
+ * nothing can be earned.
+ */
+async function retrieveSessionForEarning(stripe: Stripe, sessionId: string): Promise<Stripe.Checkout.Session | null> {
+  try {
+    return await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["total_details.breakdown", "customer", "invoice"],
+    });
+  } catch (err) {
+    const { type } = err as { type?: string };
+    if (type && RETRYABLE_STRIPE_ERRORS.has(type)) throw err;
+    console.error(
+      `[worker] session ${sessionId} could not be read for its tax breakdown (${(err as Error).message}), so no commission was recorded for it. Replacing the Stripe key in settings lets Supaffi read Checkout Sessions.`
+    );
+    return null;
+  }
 }

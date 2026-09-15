@@ -35,6 +35,13 @@ const stripeStub = vi.hoisted(() => ({
   disputes: {
     list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({ data: [] })),
   },
+  // A one-time purchase's Session, read back with its tax breakdown, customer
+  // and invoice expanded.
+  checkout: {
+    sessions: {
+      retrieve: vi.fn(async (_id: string, _params?: unknown): Promise<unknown> => undefined),
+    },
+  },
   // Read for the exclusion flag on a Session's invoice, with its subscription
   // and customer expanded.
   invoices: {
@@ -90,6 +97,8 @@ describe("handleCheckoutSessionCompleted", () => {
   const invoiceReadsById = new Map<string, Record<string, unknown>>();
   // The lines Stripe lists for each invoice, registered by sessionFixture.
   const linesByInvoice = new Map<string, Stripe.InvoiceLineItem[]>();
+  // What Stripe answers when the handler reads a Session back, registered by sessionFixture.
+  const sessionsById = new Map<string, Record<string, unknown>>();
 
   function sessionFixture(opts: {
     invoice?: string | null;
@@ -181,6 +190,21 @@ describe("handleCheckoutSessionCompleted", () => {
       payment_intent: opts.paymentIntent ?? null,
       subscription,
     } as unknown as Stripe.Checkout.Session;
+    sessionsById.set(session.id, {
+      ...session,
+      total_details:
+        opts.totalDetails === null
+          ? null
+          : {
+              ...(session.total_details as unknown as Record<string, unknown>),
+              breakdown:
+                opts.breakdown === null
+                  ? null
+                  : { discounts: [], taxes: opts.breakdownTaxes ?? (tax ? [{ amount: tax, rate: { inclusive: false } }] : []) },
+            },
+      customer: opts.customerDeleted ? { id: CUSTOMER_ID, deleted: true } : { id: CUSTOMER_ID, metadata: opts.customerMetadata ?? {} },
+      invoice: opts.invoice ? { id: opts.invoice, metadata: opts.invoiceMetadata ?? {} } : null,
+    });
     return session;
   }
 
@@ -206,6 +230,15 @@ describe("handleCheckoutSessionCompleted", () => {
       const read = invoiceReadsById.get(id);
       if (!read) {
         throw Object.assign(new Error(`No such invoice: ${id}`), { type: "StripeInvalidRequestError", code: "resource_missing" });
+      }
+      return read;
+    });
+    sessionsById.clear();
+    stripeStub.checkout.sessions.retrieve.mockReset();
+    stripeStub.checkout.sessions.retrieve.mockImplementation(async (id: string) => {
+      const read = sessionsById.get(id);
+      if (!read) {
+        throw Object.assign(new Error(`No such checkout.session: ${id}`), { type: "StripeInvalidRequestError", code: "resource_missing" });
       }
       return read;
     });
@@ -876,14 +909,14 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(await db.commission.count()).toBe(0);
     });
 
-    it("earns nothing on a one-time purchase whose post-purchase invoice is excluded, with one read", async () => {
+    it("earns nothing on a one-time purchase whose post-purchase invoice is excluded, read from the Session", async () => {
       await handleCheckoutSessionCompleted(
         merchant,
         sessionFixture({ mode: "payment", paymentIntent: "pi_once", invoice: "in_post", invoiceMetadata: FLAG })
       );
 
       expect(await db.commission.count()).toBe(0);
-      expect(stripeStub.invoices.retrieve).toHaveBeenCalledTimes(1);
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
       expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
     });
 
@@ -926,11 +959,12 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
     });
 
-    it("reads only the customer on a one-time purchase without an invoice", async () => {
+    it("reads only the Session on a one-time purchase without an invoice", async () => {
       await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_once", invoice: null }));
 
       expect(await db.commission.count()).toBe(1);
-      expect(stripeStub.customers.retrieve).toHaveBeenCalledTimes(1);
+      expect(stripeStub.checkout.sessions.retrieve).toHaveBeenCalledTimes(1);
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
       expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
     });
 
@@ -1451,6 +1485,87 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(await db.commission.count()).toBe(0);
       const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_no_invoice" } });
       expect(referred.firstPaymentRef).toBeNull();
+    });
+  });
+
+  describe("a one-time purchase's tax", () => {
+    it("reads the Session back with its tax breakdown, customer and invoice", async () => {
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_once" }));
+
+      expect(stripeStub.checkout.sessions.retrieve).toHaveBeenCalledWith("cs_pi_once", {
+        expand: ["total_details.breakdown", "customer", "invoice"],
+      });
+    });
+
+    it("earns on the price before tax when the tax inside it is only in the breakdown", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({
+          mode: "payment",
+          paymentIntent: "pi_inclusive",
+          amountTotal: 12000,
+          tax: 0,
+          currency: "eur",
+          breakdownTaxes: [{ amount: 2000, rate: { inclusive: true } }],
+        })
+      );
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.saleAmount?.toString()).toBe("100");
+      expect(commission.amount.toString()).toBe("20");
+      expect(commission.referredChargeMinor).toBeNull();
+    });
+
+    it("earns nothing, logs once, and does not fail the event when the key cannot read the Session", async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error("The provided key does not have the required permissions"), { type: "StripeInvalidRequestError" })
+      );
+      try {
+        await expect(
+          handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_old_key" }))
+        ).resolves.toBeUndefined();
+        expect(errors).toHaveBeenCalledTimes(1);
+        expect(errors.mock.calls[0][0]).toContain("cs_pi_old_key");
+      } finally {
+        errors.mockRestore();
+      }
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("fails the event so it retries when Stripe cannot be reached for the Session", async () => {
+      stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error("connection reset"), { type: "StripeConnectionError" })
+      );
+
+      await expect(
+        handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_outage" }))
+      ).rejects.toThrow("connection reset");
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("earns nothing, and logs once, when the Session comes back without a breakdown", async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await handleCheckoutSessionCompleted(
+          merchant,
+          sessionFixture({ mode: "payment", paymentIntent: "pi_no_breakdown", breakdown: null })
+        );
+        expect(errors).toHaveBeenCalledTimes(1);
+      } finally {
+        errors.mockRestore();
+      }
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("excludes on the customer carried by the Session read, without another call", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ mode: "payment", paymentIntent: "pi_excluded", customerMetadata: { supaffi: "false" } })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
     });
   });
 });

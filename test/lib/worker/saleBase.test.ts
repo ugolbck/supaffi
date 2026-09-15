@@ -2,8 +2,18 @@ import { describe, it, expect } from "vitest";
 import type Stripe from "stripe";
 import { checkoutSessionBaseMinor, invoiceBaseMinor, invoiceLinesBeforeTax, scaleToAmountPaid } from "@/lib/worker/saleBase";
 
+// A Session read back with its tax breakdown expanded. A case that gives
+// total_details without a breakdown gets an empty one, as a sale with no tax.
 function session(fields: Record<string, unknown>): Stripe.Checkout.Session {
-  return { amount_total: 5000, total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0 }, shipping_cost: null, ...fields } as unknown as Stripe.Checkout.Session;
+  const merged: Record<string, unknown> = {
+    amount_total: 5000,
+    total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0 },
+    shipping_cost: null,
+    ...fields,
+  };
+  const details = merged.total_details as Record<string, unknown> | null;
+  if (details && !("breakdown" in details)) merged.total_details = { ...details, breakdown: { discounts: [], taxes: [] } };
+  return merged as unknown as Stripe.Checkout.Session;
 }
 
 function invoice(fields: Record<string, unknown>): Stripe.Invoice {
@@ -57,6 +67,62 @@ describe("checkoutSessionBaseMinor", () => {
   it("refuses to guess when the tax breakdown is missing", () => {
     expect(checkoutSessionBaseMinor(session({ total_details: null }))).toBeNull();
     expect(checkoutSessionBaseMinor(session({ amount_total: null }))).toBeNull();
+  });
+
+  it("takes tax inside the price off even when amount_tax leaves it out", () => {
+    // 120.00 EUR with 20.00 VAT inside, reported only in the breakdown.
+    expect(
+      checkoutSessionBaseMinor(
+        session({
+          amount_total: 12000,
+          total_details: {
+            amount_discount: 0,
+            amount_shipping: 0,
+            amount_tax: 0,
+            breakdown: { discounts: [], taxes: [{ amount: 2000, rate: { inclusive: true } }] },
+          },
+        })
+      )
+    ).toBe(10000);
+  });
+
+  it("takes amount_tax off when the breakdown lists less", () => {
+    expect(
+      checkoutSessionBaseMinor(
+        session({
+          amount_total: 12000,
+          total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 2000, breakdown: { discounts: [], taxes: [] } },
+        })
+      )
+    ).toBe(10000);
+  });
+
+  it("refuses to guess when the Session was not read with its breakdown", () => {
+    expect(
+      checkoutSessionBaseMinor(
+        session({ total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0, breakdown: undefined } })
+      )
+    ).toBeNull();
+    expect(
+      checkoutSessionBaseMinor(session({ total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0, breakdown: null } }))
+    ).toBeNull();
+  });
+
+  it("never uses amount_subtotal, which holds tax inside an inclusive price", () => {
+    expect(
+      checkoutSessionBaseMinor(
+        session({
+          amount_subtotal: 12000,
+          amount_total: 12000,
+          total_details: {
+            amount_discount: 0,
+            amount_shipping: 0,
+            amount_tax: 2000,
+            breakdown: { discounts: [], taxes: [{ amount: 2000, rate: { inclusive: true } }] },
+          },
+        })
+      )
+    ).toBe(10000);
   });
 });
 

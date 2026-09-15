@@ -19,7 +19,11 @@ export type ReferredSubscriptionWithClick = Prisma.ReferredSubscriptionGetPayloa
 const LEGACY_INVOICES_CHECKED = 3;
 
 // Stripe could not answer right now, and asking again later can succeed.
-const RETRYABLE_STRIPE_ERRORS = new Set(["StripeConnectionError", "StripeRateLimitError", "StripeAPIError"]);
+export const RETRYABLE_STRIPE_ERRORS: ReadonlySet<string> = new Set([
+  "StripeConnectionError",
+  "StripeRateLimitError",
+  "StripeAPIError",
+]);
 
 // The Merchant's key cannot read invoices. Fixing the key fixes the answer, so
 // the check is left unrecorded for a later event to run again.

@@ -27,14 +27,28 @@ function shippingBeforeTax(shipping: ShippingCost): number {
   return Math.max(0, shipping.amount_total - shipping.amount_tax);
 }
 
+/**
+ * A one-time purchase's base, from a Checkout Session read back with
+ * `total_details.breakdown` expanded. A webhook payload never carries the
+ * breakdown, since Stripe sends expandable fields only when asked for them.
+ *
+ * Stripe describes `amount_tax` only as "the sum of all the tax amounts" and
+ * never says outright that tax inside an inclusive price is part of it. The
+ * breakdown lists each rate's tax, inclusive or not, and Stripe says it adds
+ * up to the totals. The larger of the two comes off, so if either figure
+ * leaves inclusive tax out, the other still removes it. With no breakdown
+ * there is no way to rule out tax left inside `amount_total`, so nothing is
+ * earned. `amount_subtotal` is never used: tax inside an inclusive price is
+ * part of a subtotal, and it is before discounts.
+ */
 export function checkoutSessionBaseMinor(
   session: Pick<Stripe.Checkout.Session, "amount_total" | "total_details" | "shipping_cost">
 ): number | null {
   if (session.amount_total == null || !session.total_details) return null;
-  // amount_tax sums inclusive and exclusive tax alike. amount_subtotal is not
-  // used: it is before discounts.
-  const base = session.amount_total - session.total_details.amount_tax - shippingBeforeTax(session.shipping_cost);
-  return Math.max(0, base);
+  const taxes = session.total_details.breakdown?.taxes;
+  if (!Array.isArray(taxes)) return null;
+  const tax = Math.max(session.total_details.amount_tax, sumAmounts(taxes));
+  return Math.max(0, session.amount_total - tax - shippingBeforeTax(session.shipping_cost));
 }
 
 // API versions before 2025-03-31 sent `total_tax_amounts` in place of
