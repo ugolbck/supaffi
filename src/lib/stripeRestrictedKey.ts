@@ -31,7 +31,9 @@ export const KEY_PERMISSIONS = [
   },
   // Checkout Sessions arrived in 0.2.7, to read the tax on a one-time sale. A
   // key without it still works for subscriptions; its one-time sales retry
-  // and earn nothing until the key is replaced. Stripe's Stripe Apps
+  // and earn nothing until the key is replaced. Retries last about two days,
+  // the worker's twenty attempts (claim.ts); after that the event is marked
+  // FAILED and the sale does not earn. Stripe's Stripe Apps
   // permissions reference does name the underlying permission: "Checkout
   // Sessions | Checkout Sessions | checkout_session_read,
   // checkout_session_write | ... Read access lets you retrieve session

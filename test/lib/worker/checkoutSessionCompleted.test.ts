@@ -926,13 +926,26 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
     });
 
-    it("records no commission and fails the event, so it is retried, when the invoice cannot be read", async () => {
+    it("records no commission and fails the event, so it is retried, when the invoice cannot be read, without Stripe's raw message", async () => {
       stripeStub.invoices.retrieve.mockRejectedValueOnce(
-        Object.assign(new Error("Stripe is unavailable"), { type: "StripeConnectionError" })
+        // A permission error's raw message names the masked key and the
+        // account; it must never reach tick.ts's logs or WebhookEvent.lastError.
+        Object.assign(new Error("The provided key does not have the required permissions on account acct_secret123"), {
+          type: "StripePermissionError",
+          code: "permission_error",
+        })
       );
       const session = sessionFixture({ invoice: "in_first", subscription: "sub_1" });
 
-      await expect(handleCheckoutSessionCompleted(merchant, session)).rejects.toThrow("Stripe is unavailable");
+      let thrown: Error | undefined;
+      try {
+        await handleCheckoutSessionCompleted(merchant, session);
+      } catch (err) {
+        thrown = err as Error;
+      }
+      expect(thrown?.message).toMatch(/StripePermissionError\/permission_error/);
+      expect(thrown?.message).not.toMatch(/acct_secret123|required permissions/);
+      expect(thrown?.cause).toBeDefined();
       expect(await db.commission.count()).toBe(0);
 
       // The retry, once Stripe answers, earns as usual and keeps the first payment.
@@ -1551,24 +1564,22 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(await db.commission.count()).toBe(0);
     });
 
-    it("earns nothing, and logs once, when the Session no longer exists on Stripe", async () => {
-      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    it("fails the event so it retries when the Session answers resource_missing, since Checkout Sessions cannot be deleted", async () => {
       stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(
         Object.assign(new Error("No such checkout.session: cs_pi_deleted"), {
           type: "StripeInvalidRequestError",
           code: "resource_missing",
         })
       );
-      try {
-        await expect(
-          handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_deleted" }))
-        ).resolves.toBeUndefined();
-        expect(errors).toHaveBeenCalledTimes(1);
-        expect(errors.mock.calls[0][0]).toContain("cs_pi_deleted");
-      } finally {
-        errors.mockRestore();
-      }
+
+      await expect(
+        handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_deleted" }))
+      ).rejects.toThrow(/resource_missing|another Stripe account/);
       expect(await db.commission.count()).toBe(0);
+
+      // The retry, once the right key or mode is in place, reads the Session and earns as usual.
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_deleted" }));
+      expect(await db.commission.count()).toBe(1);
     });
 
     it("earns nothing, and logs once, when the Session comes back without a breakdown", async () => {

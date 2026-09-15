@@ -71,7 +71,9 @@ export async function readReferralHistory(
    * that if this same sale's row is ever read back under its other reference,
    * it still counts as the payment's own rather than as another payment on the
    * referral. `paymentRef` alone already covers every ordinary case; this only
-   * matters for that one sale shape.
+   * matters for that one sale shape. Defensive: the checkout handler already
+   * returns earlier whenever a row exists under the sale's other reference, so
+   * in practice this never excludes anything by the time this runs.
    */
   ownOtherRefs: readonly string[] = []
 ): Promise<ReferralHistory> {

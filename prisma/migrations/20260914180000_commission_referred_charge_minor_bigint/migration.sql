@@ -11,8 +11,12 @@
 -- column's range, and the insert then failed. 999,999,999,999 still sits far
 -- below Number.MAX_SAFE_INTEGER (9,007,199,254,740,991), so BIGINT holds
 -- every documented Stripe amount with room to spare and converting it to a
--- plain number stays exact. Widening to BIGINT is a catalog change in
--- Postgres: no table rewrite, no index rebuild, a brief exclusive lock on
--- "Commission" only. Existing values are unchanged.
+-- plain number stays exact. Widening to BIGINT is not a catalog-only change:
+-- Postgres rewrites the whole "Commission" table and every one of its
+-- indexes to fit the wider column, holding an ACCESS EXCLUSIVE lock on the
+-- table for as long as that rewrite takes, which blocks every commission
+-- write and every dashboard read against it. Negligible for a small install
+-- with a small Commission table; on a large one this should run as a
+-- maintenance-window migration. Existing values are unchanged.
 ALTER TABLE "Commission"
   ALTER COLUMN "referredChargeMinor" TYPE BIGINT;

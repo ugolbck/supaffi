@@ -244,7 +244,6 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     // so the Session is read back with it, and with the customer and invoice
     // the exclusion check below needs.
     sessionRead = await retrieveSessionForEarning(stripe, session.id);
-    if (!sessionRead) return;
     const sessionBase = checkoutSessionBaseMinor(sessionRead);
     if (sessionBase === null) {
       console.error(`[worker] session ${session.id} carries no tax breakdown, so no commission was recorded for it`);
@@ -349,8 +348,15 @@ async function retrievePaidFirstInvoice(stripe: Stripe, sessionId: string, invoi
   try {
     invoice = await retrieveInvoiceForEarning(stripe, invoiceId);
   } catch (err) {
+    // Only the error's type and code go into the thrown message: tick.ts logs
+    // it and claim.ts stores it in WebhookEvent.lastError, and Stripe's raw
+    // message on a permission or authentication failure names the masked key
+    // and the account, which does not belong in server logs or the database.
+    // The original error is kept as cause for a developer attached to the
+    // process, the same pattern retrieveSessionForEarning uses below.
+    const { type, code } = err as { type?: string; code?: string };
     throw new Error(
-      `[worker] could not read invoice ${invoiceId} for session ${sessionId}, so the event is retried: ${(err as Error).message}`,
+      `[worker] could not read invoice ${invoiceId} for session ${sessionId} (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`,
       { cause: err }
     );
   }
@@ -382,19 +388,34 @@ async function retrievePaidFirstInvoice(stripe: Stripe, sessionId: string, invoi
  * last about two days, the worker's twenty attempts (claim.ts); after that the
  * event is marked FAILED and the sale never earns.
  *
- * Only Stripe answering `code: "resource_missing"` is logged and treated as
- * null: the Session itself no longer exists, so no key fix and no retry can
- * make it earn.
+ * `resource_missing` throws and retries too, the same as any other failure.
+ * Stripe's own docs describe no way for a Checkout Session to be deleted: a
+ * Session only reaches a `status` of "expired" after its `expires_at` (at
+ * most 24 hours after creation; "By default, a Checkout Session expires
+ * after 24 hours", Stripe docs, payments/checkout/how-checkout-works.md),
+ * which changes its status but does not remove the object, and this handler
+ * only ever runs on a Session Stripe has already reported complete. So in
+ * practice `resource_missing` here means the key belongs to a different
+ * Stripe account, or to test mode while the events being processed are live
+ * (or the reverse), not that the Session is gone. Retrying will not fix
+ * that either, but there is no way to tell the two failures apart from the
+ * error alone, and treating this one as final would silently drop a sale a
+ * key swap or mode fix could still recover.
  */
-async function retrieveSessionForEarning(stripe: Stripe, sessionId: string): Promise<Stripe.Checkout.Session | null> {
+async function retrieveSessionForEarning(stripe: Stripe, sessionId: string): Promise<Stripe.Checkout.Session> {
   try {
     return await stripe.checkout.sessions.retrieve(sessionId, {
       expand: ["total_details.breakdown", "customer", "invoice"],
     });
   } catch (err) {
-    const { type, code } = err as { type?: string; code?: string };
+    const { code } = err as { type?: string; code?: string };
     if (code !== "resource_missing") throw err;
-    console.error(`[worker] session ${sessionId} no longer exists on Stripe (${type ?? "unknown"}/${code}), so no commission was recorded for it`);
-    return null;
+    // Wrapped, unlike the errors above, because this one is raised here
+    // rather than passed through from Stripe: there is no raw message of
+    // Stripe's to preserve, only the explanation for why this event retries.
+    throw new Error(
+      `[worker] session ${sessionId} answered resource_missing, which in practice means the key belongs to another Stripe account or to test mode while events are live, since Checkout Sessions cannot be deleted; the event is retried`,
+      { cause: err }
+    );
   }
 }
