@@ -8,6 +8,52 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.2.7
+
+### Security
+
+- Replace your Stripe key once: open Settings, press Replace on the Stripe key
+  row and create the new key from the button there. Check that Disputes and
+  Checkout Sessions are set to Read. Supaffi uses Disputes to hold a commission
+  while its sale is disputed, and Checkout Sessions to take the tax off a
+  one-time sale. Until you replace it, one-time sales earn nothing, and a
+  commission whose sale is disputed stays on hold until you cancel it.
+
+### Fixed
+
+- A commission waits while its sale is disputed. It goes back to normal if you
+  win the dispute and is cancelled if you lose it before paying.
+- A dispute that reaches Supaffi before its sale is applied when the sale is
+  recorded.
+- You can confirm a self referral from any of its commissions, whatever its
+  status.
+- A renewal earns only on the subscription the affiliate referred and the
+  products bought through the referral. One-off charges, manual invoices, a
+  switch to another Stripe product and money you mark as paid outside Stripe
+  earn nothing.
+- Cancelling and subscribing again, or changing plan through a new checkout,
+  no longer starts the commission duration over. Each referral gets one.
+- Setting `supaffi` to `false` on the invoice, subscription or customer now
+  excludes a sale at checkout and on every renewal. Set it before the customer
+  pays. A sale Supaffi cannot check earns nothing and is noted in the server
+  log.
+- A subscription's first payment earns only on what the customer paid, like a
+  renewal. Before, credit balance on a first purchase still earned, which the
+  0.2.4 notes did not say.
+- A one-time sale earns on the price before tax, including tax inside the
+  price. If Stripe does not say how much tax it held, it earns nothing and is
+  noted in the server log.
+- A refund or lost chargeback on a one-time sale with a post-purchase invoice
+  now lowers or cancels its commission.
+
+### Changed
+
+- A paid commission is final. A refund or lost chargeback after you paid
+  changes nothing, and nothing is taken off the affiliate's next payout.
+- Mark paid records exactly the commissions and amounts you saw. Ones you
+  cancelled in the meantime are skipped, and the page says how many.
+- One-off items sold with a subscription, such as a setup fee, no longer earn.
+
 ## 0.2.6
 
 ### Fixed
