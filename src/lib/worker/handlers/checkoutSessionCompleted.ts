@@ -10,6 +10,7 @@ import {
   paymentIntentForInvoice,
 } from "../paymentState";
 import { checkoutSessionBaseMinor } from "../saleBase";
+import { exclusionSourcesOf, retrieveInvoiceForEarning } from "../referredRevenue";
 import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
@@ -130,17 +131,6 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
 
   const stripe = stripeClientFor(merchant);
 
-  // The Session carries none of the metadata the flag can sit on, so the
-  // invoice and the customer are read from Stripe here; Task 3 of F7 adds the
-  // subscription through the invoice's expansion. A read that fails throws, so
-  // the event is retried rather than earning on a sale the merchant may have
-  // excluded.
-  const excluded = await isExcluded(stripe, {
-    invoice: invoiceId,
-    customer: stripeCustomerId,
-  });
-  if (excluded) return;
-
   // "no_payment_required" (a free trial) still recorded its subscription
   // above, so the first paid invoice earns through invoice.paid, but there is
   // no money on this Session to take a commission from.
@@ -165,6 +155,24 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // A sale that came to nothing, or to less than a cent of commission, would
   // only add an empty row to both ledgers.
   if (amount.lte(0)) return;
+
+  // The flag can sit on the invoice, the subscription or the customer, and the
+  // Session's event is minimal and carries none of their metadata. Read only
+  // once the sale would earn, so a free trial or a sale that comes to nothing
+  // costs no call, and before the card and charge reads below, which an
+  // excluded sale does not need. The invoice is read with its subscription and
+  // customer expanded, so one call answers all three. A read that fails
+  // throws, so the event is retried rather than earning on a sale the merchant
+  // may have excluded.
+  const invoiceRead = invoiceId ? await retrieveInvoiceForEarning(stripe, invoiceId) : null;
+  const excluded = await isExcluded(
+    stripe,
+    invoiceRead
+      ? exclusionSourcesOf(invoiceRead, subscriptionId, stripeCustomerId)
+      : { subscription: subscriptionId, customer: stripeCustomerId },
+    stripePaymentRef
+  );
+  if (excluded) return;
 
   let flagReason = checkSelfReferralEmail(affiliate, session.customer_details?.email ?? null);
   if (!flagReason) {

@@ -129,11 +129,15 @@ describe("isExcluded", () => {
     const { stub, stripe } = stripeStub();
 
     await expect(
-      isExcluded(stripe, {
-        invoice: { id: "in_1", metadata: {} },
-        subscription: { id: "sub_1", metadata: FLAG },
-        customer: { id: "cus_1", metadata: {} } as unknown as Stripe.Customer,
-      })
+      isExcluded(
+        stripe,
+        {
+          invoice: { id: "in_1", metadata: {} },
+          subscription: { id: "sub_1", metadata: FLAG },
+          customer: { id: "cus_1", metadata: {} } as unknown as Stripe.Customer,
+        },
+        "in_1"
+      )
     ).resolves.toBe(true);
     expect(stub.invoices.retrieve).not.toHaveBeenCalled();
     expect(stub.subscriptions.retrieve).not.toHaveBeenCalled();
@@ -143,7 +147,9 @@ describe("isExcluded", () => {
   it("stops at the first flag it finds", async () => {
     const { stub, stripe } = stripeStub({ subscription: { metadata: FLAG } });
 
-    await expect(isExcluded(stripe, { invoice: { id: "in_1", metadata: FLAG }, subscription: "sub_1", customer: "cus_1" })).resolves.toBe(true);
+    await expect(
+      isExcluded(stripe, { invoice: { id: "in_1", metadata: FLAG }, subscription: "sub_1", customer: "cus_1" }, "in_1")
+    ).resolves.toBe(true);
     expect(stub.subscriptions.retrieve).not.toHaveBeenCalled();
     expect(stub.customers.retrieve).not.toHaveBeenCalled();
   });
@@ -155,15 +161,16 @@ describe("isExcluded", () => {
   ] as const)("reads the %s by id and excludes on its flag", async (_what, flagged) => {
     const { stripe } = stripeStub(flagged);
 
-    await expect(isExcluded(stripe, { invoice: "in_1", subscription: "sub_1", customer: "cus_1" })).resolves.toBe(true);
+    await expect(isExcluded(stripe, { invoice: "in_1", subscription: "sub_1", customer: "cus_1" }, "in_1")).resolves.toBe(true);
   });
 
-  it("excludes a sale whose customer was deleted, since the flag can no longer be read", async () => {
+  it("excludes a sale whose customer was deleted, since the flag can no longer be read, and names the sale, never the customer", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { stripe } = stripeStub({ customer: { deleted: true, metadata: undefined } });
 
-    await expect(isExcluded(stripe, { customer: "cus_1" })).resolves.toBe(true);
+    await expect(isExcluded(stripe, { customer: "cus_1" }, "in_1")).resolves.toBe(true);
     expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/in_1/);
     expect(warn.mock.calls[0][0]).not.toMatch(/cus_1/);
 
     warn.mockRestore();
@@ -172,7 +179,7 @@ describe("isExcluded", () => {
   it("does not exclude a sale nothing marks, and reads nothing it was not given", async () => {
     const { stub, stripe } = stripeStub();
 
-    await expect(isExcluded(stripe, { customer: "cus_1" })).resolves.toBe(false);
+    await expect(isExcluded(stripe, { customer: "cus_1" }, "in_1")).resolves.toBe(false);
     expect(stub.invoices.retrieve).not.toHaveBeenCalled();
     expect(stub.subscriptions.retrieve).not.toHaveBeenCalled();
     expect(stub.customers.retrieve).toHaveBeenCalledWith("cus_1");
@@ -183,9 +190,9 @@ describe("isExcluded", () => {
     async (failing) => {
       const { stripe } = stripeStub({ failing });
 
-      await expect(isExcluded(stripe, { invoice: "in_1", subscription: "sub_1", customer: "cus_1" })).rejects.toThrow(
-        new RegExp(`${failing} .*will be retried`)
-      );
+      await expect(
+        isExcluded(stripe, { invoice: "in_1", subscription: "sub_1", customer: "cus_1" }, "in_1")
+      ).rejects.toThrow(new RegExp(`${failing} .*will be retried`));
     }
   );
 });

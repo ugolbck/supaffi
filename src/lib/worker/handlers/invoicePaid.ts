@@ -138,7 +138,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // subscription or customer Stripe did not expand is read by id, and a read
   // that fails throws, so the event is retried rather than earning on a sale
   // the merchant may have excluded.
-  if (await isExcluded(stripe, exclusionSourcesOf(invoiceRead, subscriptionId, stripeCustomerId))) return;
+  if (await isExcluded(stripe, exclusionSourcesOf(invoiceRead, subscriptionId, stripeCustomerId), invoice.id)) return;
   if (typeof invoiceRead.amount_paid_off_stripe !== "number") {
     // Stripe answered without the field even when it was asked for, which
     // this pinned API version is not documented to do. Earning on an

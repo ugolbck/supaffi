@@ -452,7 +452,11 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoiceFixture({}, undefined, { customerDeleted: true }));
 
       expect(await db.commission.count()).toBe(0);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining("treated as excluded"));
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain("treated as excluded");
+      // Names the sale, never the customer that could not be read.
+      expect(warn.mock.calls[0][0]).toContain("in_renewal");
+      expect(warn.mock.calls[0][0]).not.toContain(CUSTOMER_ID);
 
       warn.mockRestore();
     });

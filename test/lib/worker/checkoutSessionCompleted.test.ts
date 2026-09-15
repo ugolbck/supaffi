@@ -7,13 +7,14 @@ import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
 
-// The handler resolves a Stripe client for the Merchant and asks it whether
-// the Customer carries the exclusion flag. Only that one call is reachable
-// here, so the stub answers it and nothing touches the network. The rest of
-// the module (minorUnitsToMajor, used by the commission maths) stays real.
-// The handler also looks up the charge behind the payment, to fold in a
-// refund made before the commission existed. By default the invoice has no
-// payment on record, so that lookup finds nothing and changes nothing.
+// The handler resolves a Stripe client for the Merchant and, once a sale would
+// earn, reads its invoice back with its subscription and customer expanded to
+// check the exclusion flag. Nothing here touches the network; the stub
+// answers every call the handler can reach. The rest of the module
+// (minorUnitsToMajor, used by the commission maths) stays real. The handler
+// also looks up the charge behind the payment, to fold in a refund made
+// before the commission existed. By default the invoice has no payment on
+// record, so that lookup finds nothing and changes nothing.
 const stripeStub = vi.hoisted(() => ({
   customers: {
     retrieve: vi.fn(async () => ({ id: "cus_test", metadata: {} })),
@@ -62,6 +63,7 @@ import { handleCheckoutSessionCompleted } from "@/lib/worker/handlers/checkoutSe
 import { REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { handleInvoicePaid } from "@/lib/worker/handlers/invoicePaid";
 import { handleSubscriptionDeleted } from "@/lib/worker/handlers/subscriptionDeleted";
+import { EARNING_INVOICE_EXPAND } from "@/lib/worker/referredRevenue";
 
 const CUSTOMER_ID = "cus_test";
 
@@ -80,6 +82,9 @@ describe("handleCheckoutSessionCompleted", () => {
   let merchant: Merchant;
   let click: { id: string };
   let clickInput: { affiliateId: string; referralToken: string; expiresAt: Date };
+  // What Stripe answers when the handler reads a Session's invoice back with
+  // its subscription and customer expanded, registered by sessionFixture.
+  const invoiceReadsById = new Map<string, Record<string, unknown>>();
 
   function sessionFixture(opts: {
     invoice?: string | null;
@@ -93,7 +98,29 @@ describe("handleCheckoutSessionCompleted", () => {
     mode?: Stripe.Checkout.Session.Mode;
     paymentIntent?: string | null;
     subscription?: string | null;
+    /** The exclusion flags as Stripe holds them now. */
+    invoiceMetadata?: Record<string, string>;
+    subscriptionMetadata?: Record<string, string>;
+    customerMetadata?: Record<string, string>;
+    /** Stripe's answer for a deleted customer: no metadata, just the id and the deleted flag. */
+    customerDeleted?: boolean;
   }): Stripe.Checkout.Session {
+    if (opts.invoice) {
+      const subscription = opts.subscription ?? null;
+      invoiceReadsById.set(opts.invoice, {
+        id: opts.invoice,
+        metadata: opts.invoiceMetadata ?? {},
+        customer: opts.customerDeleted
+          ? { id: CUSTOMER_ID, deleted: true }
+          : { id: CUSTOMER_ID, metadata: opts.customerMetadata ?? {} },
+        parent: subscription
+          ? {
+              type: "subscription_details",
+              subscription_details: { subscription: { id: subscription, metadata: opts.subscriptionMetadata ?? {} }, metadata: {} },
+            }
+          : null,
+      });
+    }
     return {
       id: `cs_${opts.invoice ?? opts.paymentIntent}`,
       mode: opts.mode ?? "subscription",
@@ -131,8 +158,15 @@ describe("handleCheckoutSessionCompleted", () => {
     stripeStub.paymentIntents.retrieve.mockImplementation(async () => ({ id: "pi_test", latest_charge: null }));
     stripeStub.disputes.list.mockReset();
     stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
+    invoiceReadsById.clear();
     stripeStub.invoices.retrieve.mockReset();
-    stripeStub.invoices.retrieve.mockImplementation(async (id: string) => ({ id, metadata: {} }));
+    stripeStub.invoices.retrieve.mockImplementation(async (id: string) => {
+      const read = invoiceReadsById.get(id);
+      if (!read) {
+        throw Object.assign(new Error(`No such invoice: ${id}`), { type: "StripeInvalidRequestError", code: "resource_missing" });
+      }
+      return read;
+    });
 
     const owner = await db.owner.create({
       data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
@@ -738,13 +772,147 @@ describe("handleCheckoutSessionCompleted", () => {
   });
 
   it("still records the subscription when this one purchase is excluded, so its renewals can earn", async () => {
-    stripeStub.customers.retrieve.mockResolvedValueOnce({ id: "cus_test", metadata: { supaffi: "false" } } as never);
-
-    await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
+    // The customer comes back expanded on the invoice the sale created.
+    await handleCheckoutSessionCompleted(
+      merchant,
+      sessionFixture({ invoice: "in_first", subscription: "sub_1", customerMetadata: { supaffi: "false" } })
+    );
 
     expect(await db.commission.count()).toBe(0);
     const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
     expect(referred.firstPaymentRef).toBe("in_first");
+  });
+
+  describe("exclusion", () => {
+    const FLAG = { supaffi: "false" };
+
+    it("earns nothing when the subscription the checkout started is excluded, and still claims its first payment", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_first", subscription: "sub_1", subscriptionMetadata: FLAG })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.retrieve).toHaveBeenCalledWith("in_first", { expand: EARNING_INVOICE_EXPAND });
+      // Only the products read; the flag came from the invoice's expansion.
+      expect(stripeStub.subscriptions.retrieve).toHaveBeenCalledTimes(1);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.firstPaymentRef).toBe("in_first");
+    });
+
+    it("earns nothing when a delayed payment on an excluded subscription settles", async () => {
+      const session = sessionFixture({
+        invoice: "in_first",
+        subscription: "sub_1",
+        paymentStatus: "unpaid",
+        subscriptionMetadata: FLAG,
+      });
+
+      // checkout.session.completed arrives unpaid, then
+      // checkout.session.async_payment_succeeded brings the same Session paid.
+      await handleCheckoutSessionCompleted(merchant, session);
+      await handleCheckoutSessionCompleted(merchant, { ...session, payment_status: "paid" });
+
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("earns nothing when the checkout's invoice is excluded", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_first", subscription: "sub_1", invoiceMetadata: FLAG })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("earns nothing on a one-time purchase whose post-purchase invoice is excluded, with one read", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ mode: "payment", paymentIntent: "pi_once", invoice: "in_post", invoiceMetadata: FLAG })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.retrieve).toHaveBeenCalledTimes(1);
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("records no commission and fails the event, so it is retried, when the invoice cannot be read", async () => {
+      stripeStub.invoices.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error("Stripe is unavailable"), { type: "StripeConnectionError" })
+      );
+      const session = sessionFixture({ invoice: "in_first", subscription: "sub_1" });
+
+      await expect(handleCheckoutSessionCompleted(merchant, session)).rejects.toThrow("Stripe is unavailable");
+      expect(await db.commission.count()).toBe(0);
+
+      // The retry, once Stripe answers, earns as usual and keeps the first payment.
+      await handleCheckoutSessionCompleted(merchant, session);
+      expect(await db.commission.count()).toBe(1);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.firstPaymentRef).toBe("in_first");
+    });
+
+    it("reads the subscription by id when Stripe did not expand it, and fails the event if that read fails", async () => {
+      stripeStub.invoices.retrieve.mockResolvedValueOnce({
+        id: "in_first",
+        metadata: {},
+        customer: { id: CUSTOMER_ID, metadata: {} },
+        parent: { type: "subscription_details", subscription_details: { subscription: "sub_1", metadata: {} } },
+      });
+      // The products read comes first and answers; the exclusion read fails.
+      stripeStub.subscriptions.retrieve
+        .mockResolvedValueOnce({ id: "sub_1", items: { data: [{ id: "si_1", price: { product: "prod_basic" } }], has_more: false } })
+        .mockRejectedValueOnce(Object.assign(new Error("Stripe is unavailable"), { type: "StripeConnectionError" }));
+
+      await expect(
+        handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }))
+      ).rejects.toThrow(/sub_1.*retried/);
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("checks a subscription checkout nothing excludes with one read", async () => {
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
+
+      expect(await db.commission.count()).toBe(1);
+      expect(stripeStub.invoices.retrieve).toHaveBeenCalledTimes(1);
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("reads only the customer on a one-time purchase without an invoice", async () => {
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_once", invoice: null }));
+
+      expect(await db.commission.count()).toBe(1);
+      expect(stripeStub.customers.retrieve).toHaveBeenCalledTimes(1);
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("reads nothing to check exclusion on a checkout that cannot earn", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_trial", paymentStatus: "no_payment_required", subscription: "sub_1" })
+      );
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_zero", amountTotal: 0, subscription: "sub_2" }));
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("earns nothing when the checkout's customer was deleted, logging the sale once with no customer id", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_first", subscription: "sub_1", customerDeleted: true })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain("in_first");
+      expect(warn.mock.calls[0][0]).not.toContain(CUSTOMER_ID);
+
+      warn.mockRestore();
+    });
   });
 
   it("creates nothing once a self referral was confirmed on the click, but still proves tracking works", async () => {

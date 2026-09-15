@@ -120,14 +120,16 @@ async function readForExclusion<T>(what: string, id: string, read: () => Promise
   }
 }
 
-function customerIsExcluded(customer: Stripe.Customer | Stripe.DeletedCustomer): boolean {
+function customerIsExcluded(customer: Stripe.Customer | Stripe.DeletedCustomer, saleRef: string): boolean {
   // A deleted customer comes back with no metadata left to carry the flag:
   // "If it's for a deleted Customer, a subset of the customer's information
   // is returned, including a deleted property that's set to true" (Stripe
   // docs, Retrieve a customer). When Supaffi cannot tell whether the flag was
-  // set, it earns nothing, so a deleted customer counts as excluded.
+  // set, it earns nothing, so a deleted customer counts as excluded. The sale
+  // is named by its own Stripe reference, never by anything about the
+  // customer, since the customer is the very thing that could not be read.
   if ("deleted" in customer && customer.deleted) {
-    console.warn("[worker] a sale's customer was deleted, so it was treated as excluded and earned nothing");
+    console.warn(`[worker] sale ${saleRef}'s customer was deleted, so it was treated as excluded and earned nothing`);
     return true;
   }
   return hasExclusionFlag((customer as Stripe.Customer).metadata);
@@ -145,7 +147,12 @@ function customerIsExcluded(customer: Stripe.Customer | Stripe.DeletedCustomer):
 // of the merchant's account, it is only a snapshot taken when the invoice was
 // finalized, and a Checkout Session carries none at all. Callers pass objects
 // Supaffi read back through its own pinned client, or ids to read here.
-export async function isExcluded(stripe: Stripe, sources: ExclusionSources): Promise<boolean> {
+//
+// saleRef names the sale itself (an invoice id, or a Checkout Session's
+// PaymentIntent reference) for the one log line a deleted customer produces,
+// so the line can be traced back to a sale without ever printing anything
+// about the customer.
+export async function isExcluded(stripe: Stripe, sources: ExclusionSources, saleRef: string): Promise<boolean> {
   const { invoice, subscription, customer } = sources;
 
   if (invoice) {
@@ -169,7 +176,7 @@ export async function isExcluded(stripe: Stripe, sources: ExclusionSources): Pro
       typeof customer === "string"
         ? await readForExclusion("customer", customer, () => stripe.customers.retrieve(customer))
         : customer;
-    if (customerIsExcluded(read)) return true;
+    if (customerIsExcluded(read, saleRef)) return true;
   }
 
   return false;
