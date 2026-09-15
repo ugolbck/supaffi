@@ -40,6 +40,17 @@ function shippingBeforeTax(shipping: ShippingCost): number {
  * there is no way to rule out tax left inside `amount_total`, so nothing is
  * earned. `amount_subtotal` is never used: tax inside an inclusive price is
  * part of a subtotal, and it is before discounts.
+ *
+ * Shipping comes off through the whole `shipping_cost.amount_total`, "Total
+ * shipping cost after discounts and taxes are applied" (Stripe docs, Checkout
+ * Session object), rather than that total less `shipping_cost.amount_tax`,
+ * "Total tax amount applied due to shipping costs" (same page). Whether
+ * shipping's own tax is already folded into `amount_tax` or the breakdown
+ * above is undocumented, so it may already be part of the tax figure this
+ * function just took off. Taking off the full shipping cost removes shipping
+ * tax even when Stripe counts it nowhere else, at the cost of a possible
+ * small affiliate underpay on a sale where it was already counted once,
+ * rather than ever risk leaving shipping tax inside the base.
  */
 export function checkoutSessionBaseMinor(
   session: Pick<Stripe.Checkout.Session, "amount_total" | "total_details" | "shipping_cost">
@@ -48,7 +59,8 @@ export function checkoutSessionBaseMinor(
   const taxes = session.total_details.breakdown?.taxes;
   if (!Array.isArray(taxes)) return null;
   const tax = Math.max(session.total_details.amount_tax, sumAmounts(taxes));
-  return Math.max(0, session.amount_total - tax - shippingBeforeTax(session.shipping_cost));
+  const shipping = session.shipping_cost?.amount_total ?? 0;
+  return Math.max(0, session.amount_total - tax - shipping);
 }
 
 // API versions before 2025-03-31 sent `total_tax_amounts` in place of

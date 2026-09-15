@@ -16,13 +16,7 @@ import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerpr
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_METADATA_KEY } from "@/lib/referral";
-import {
-  claimFirstPayment,
-  idOf,
-  recordReferredSubscription,
-  RETRYABLE_STRIPE_ERRORS,
-  subscriptionProductIds,
-} from "../referredSubscription";
+import { claimFirstPayment, idOf, recordReferredSubscription, subscriptionProductIds } from "../referredSubscription";
 import { referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
@@ -174,6 +168,15 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   if (session.payment_status !== "paid") return;
   if (!session.currency) return;
 
+  // A zero-rate affiliate earns nothing no matter what the sale comes to, so
+  // the rate is checked before the base is computed: a one-time purchase's
+  // base needs a Stripe read of its own (see below), and there is no reason
+  // to spend it on a sale that cannot pay anything.
+  const affiliate = click.affiliate;
+  const program = affiliate.program;
+  const rate = commissionRateFor(affiliate, program);
+  if (rate <= 0) return;
+
   // Earned on the sale before tax and shipping. A subscription's first payment
   // follows the renewal rule exactly: only the subscription's own lines for
   // the products its referral bought, before tax, scaled to what was paid
@@ -229,9 +232,6 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     baseMinor = 0;
   }
 
-  const affiliate = click.affiliate;
-  const program = affiliate.program;
-  const rate = commissionRateFor(affiliate, program);
   const amount = computeCommissionAmount(baseMinor, session.currency, rate);
   // A sale that came to nothing, or to less than a cent of commission, would
   // only add an empty row to both ledgers.
@@ -339,11 +339,22 @@ async function retrievePaidFirstInvoice(stripe: Stripe, sessionId: string, invoi
  * with the expand request parameter)" (Stripe docs, Checkout Session object),
  * so it never arrives on the webhook payload itself and has to be read back.
  *
- * Stripe unreachable, rate limiting or an API error throws, so the event is
- * retried. Any other failure, most often a key made before 0.2.7 without
- * Checkout Sessions read (Stripe answers that as an invalid request), logs
- * once and returns null: a retry cannot fix a key, and without the breakdown
- * nothing can be earned.
+ * Almost every failure throws, so the event retries: Stripe unreachable, rate
+ * limiting and an API error already did before, and now so does a missing
+ * permission, a bad key, or any other invalid request. "If a restricted API
+ * key doesn't have the correct permissions to complete an API request, Stripe
+ * returns an invalid request error" (Stripe docs, restricted-api-keys.md), and
+ * the Node error reference lists that alongside `StripePermissionError` ("The
+ * API key used for this request does not have the required permissions") and
+ * `StripeAuthenticationError` ("Stripe can't authenticate you with the
+ * information provided") (Stripe docs, error-handling.md). A key made before
+ * 0.2.7, without Checkout Sessions read, fails this way; throwing instead of
+ * logging once means its one-time sales retry and earn once the key is
+ * replaced, rather than being lost the moment the key first failed.
+ *
+ * Only Stripe answering `code: "resource_missing"` is logged and treated as
+ * null: the Session itself no longer exists, so no key fix and no retry can
+ * make it earn.
  */
 async function retrieveSessionForEarning(stripe: Stripe, sessionId: string): Promise<Stripe.Checkout.Session | null> {
   try {
@@ -351,11 +362,9 @@ async function retrieveSessionForEarning(stripe: Stripe, sessionId: string): Pro
       expand: ["total_details.breakdown", "customer", "invoice"],
     });
   } catch (err) {
-    const { type } = err as { type?: string };
-    if (type && RETRYABLE_STRIPE_ERRORS.has(type)) throw err;
-    console.error(
-      `[worker] session ${sessionId} could not be read for its tax breakdown (${(err as Error).message}), so no commission was recorded for it. Replacing the Stripe key in settings lets Supaffi read Checkout Sessions.`
-    );
+    const { type, code } = err as { type?: string; code?: string };
+    if (code !== "resource_missing") throw err;
+    console.error(`[worker] session ${sessionId} no longer exists on Stripe (${type ?? "unknown"}/${code}), so no commission was recorded for it`);
     return null;
   }
 }

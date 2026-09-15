@@ -43,8 +43,15 @@ describe("checkoutSessionBaseMinor", () => {
     expect(checkoutSessionBaseMinor(session({ amount_subtotal: 5000, amount_total: 4000, total_details: { amount_discount: 1000, amount_shipping: 0, amount_tax: 0 } }))).toBe(4000);
   });
 
-  it("takes shipping off the base, without taking its tax off twice", () => {
-    // 50.00 goods + 10.00 shipping, 6.00 tax across both (1.00 of it on shipping).
+  it("takes the full shipping cost off the base, even if that double-removes its tax", () => {
+    // 50.00 goods + 10.00 shipping, 6.00 tax across both (1.00 of it on
+    // shipping, already inside the 6.00 total_details.amount_tax). Whether
+    // shipping's own tax counts toward amount_tax or the breakdown is
+    // undocumented, so shipping_cost.amount_total (11.00, tax included) comes
+    // off in full rather than shipping_cost.amount_total less
+    // shipping_cost.amount_tax: the 1.00 shipping tax is removed twice here,
+    // at the cost of a small affiliate underpay, rather than risk ever
+    // leaving it in the base.
     expect(
       checkoutSessionBaseMinor(
         session({
@@ -53,7 +60,7 @@ describe("checkoutSessionBaseMinor", () => {
           shipping_cost: { amount_subtotal: 1000, amount_tax: 100, amount_total: 1100 },
         })
       )
-    ).toBe(5000);
+    ).toBe(4900);
   });
 
   it("comes to nothing when only shipping was paid", () => {

@@ -202,7 +202,13 @@ describe("handleCheckoutSessionCompleted", () => {
                   ? null
                   : { discounts: [], taxes: opts.breakdownTaxes ?? (tax ? [{ amount: tax, rate: { inclusive: false } }] : []) },
             },
-      customer: opts.customerDeleted ? { id: CUSTOMER_ID, deleted: true } : { id: CUSTOMER_ID, metadata: opts.customerMetadata ?? {} },
+      // The webhook Session's own `customer` field decides whether the read
+      // carries a customer at all; a Session with none reads back null too.
+      customer: session.customer
+        ? opts.customerDeleted
+          ? { id: CUSTOMER_ID, deleted: true }
+          : { id: CUSTOMER_ID, metadata: opts.customerMetadata ?? {} }
+        : null,
       invoice: opts.invoice ? { id: opts.invoice, metadata: opts.invoiceMetadata ?? {} } : null,
     });
     return session;
@@ -1516,21 +1522,22 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(commission.referredChargeMinor).toBeNull();
     });
 
-    it("earns nothing, logs once, and does not fail the event when the key cannot read the Session", async () => {
-      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    it("fails the event so it retries when the key cannot read the Session, and earns once it is replaced", async () => {
       stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(
-        Object.assign(new Error("The provided key does not have the required permissions"), { type: "StripeInvalidRequestError" })
+        Object.assign(new Error("The provided key does not have the required permissions"), {
+          type: "StripePermissionError",
+          statusCode: 403,
+        })
       );
-      try {
-        await expect(
-          handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_old_key" }))
-        ).resolves.toBeUndefined();
-        expect(errors).toHaveBeenCalledTimes(1);
-        expect(errors.mock.calls[0][0]).toContain("cs_pi_old_key");
-      } finally {
-        errors.mockRestore();
-      }
+
+      await expect(
+        handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_old_key" }))
+      ).rejects.toThrow(/required permissions/);
       expect(await db.commission.count()).toBe(0);
+
+      // The retry, once the key is replaced, reads the Session and earns as usual.
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_old_key" }));
+      expect(await db.commission.count()).toBe(1);
     });
 
     it("fails the event so it retries when Stripe cannot be reached for the Session", async () => {
@@ -1541,6 +1548,26 @@ describe("handleCheckoutSessionCompleted", () => {
       await expect(
         handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_outage" }))
       ).rejects.toThrow("connection reset");
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("earns nothing, and logs once, when the Session no longer exists on Stripe", async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error("No such checkout.session: cs_pi_deleted"), {
+          type: "StripeInvalidRequestError",
+          code: "resource_missing",
+        })
+      );
+      try {
+        await expect(
+          handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_deleted" }))
+        ).resolves.toBeUndefined();
+        expect(errors).toHaveBeenCalledTimes(1);
+        expect(errors.mock.calls[0][0]).toContain("cs_pi_deleted");
+      } finally {
+        errors.mockRestore();
+      }
       expect(await db.commission.count()).toBe(0);
     });
 
@@ -1566,6 +1593,37 @@ describe("handleCheckoutSessionCompleted", () => {
 
       expect(await db.commission.count()).toBe(0);
       expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("reads no Session for a zero-rate affiliate", async () => {
+      await db.program.updateMany({ where: { merchantId: merchant.id }, data: { defaultCommissionRate: 0 } });
+
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_zero_rate" }));
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.checkout.sessions.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("earns on the price before tax and shipping, taking the full shipping cost off even when that double-counts its tax", async () => {
+      // 101.00 goods with 20.00 exclusive tax on top, plus 10.00 shipping with
+      // 1.00 tax already inside it (11.00 shipping_cost.amount_total, 21.00
+      // total_details.amount_tax across both). The shipping tax is removed
+      // twice (once inside the 21.00 tax figure, once via the full shipping
+      // cost), leaving 100.00: 101.00 goods less the 1.00 shipping tax.
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({
+          mode: "payment",
+          paymentIntent: "pi_shipping",
+          amountTotal: 13200,
+          tax: 2100,
+          shippingCost: { amount_subtotal: 1000, amount_tax: 100, amount_total: 1100 },
+        })
+      );
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.saleAmount?.toString()).toBe("100");
+      expect(commission.amount.toString()).toBe("20");
     });
   });
 });

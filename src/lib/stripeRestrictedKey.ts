@@ -14,8 +14,12 @@ export type KeyPermission = {
 // that a token cannot be edited casually.
 // Charges arrived in 0.2.4. Keys made before then lack it, and the one call
 // that needs it treats any failure, whatever error Stripe returns for the
-// missing permission, as "unknown" and carries on, so an owner who has not
-// replaced their key loses nothing that worked before.
+// missing permission, as "unknown" and carries on: an owner who has not
+// replaced their key loses nothing that Charges already covered. Checkout
+// Sessions, below, behaves differently on purpose: a one-time sale cannot be
+// judged without it, so a key missing that permission makes every one-time
+// sale retry and earn nothing until the key is replaced, rather than
+// silently carrying on the way Charges does.
 export const KEY_PERMISSIONS = [
   {
     token: "rak_charge_read",
@@ -24,10 +28,17 @@ export const KEY_PERMISSIONS = [
     why: "checks whether a sale was refunded before its commission was recorded",
   },
   // Checkout Sessions arrived in 0.2.7, to read the tax on a one-time sale. A
-  // key without it still works for subscriptions; its one-time sales log and
-  // earn nothing until the key is replaced. Stripe's permissions reference
-  // does not name this row's token, so it is not confirmed against Stripe's
-  // own docs; it follows the same rak_<object>_read shape as every row above.
+  // key without it still works for subscriptions; its one-time sales retry
+  // and earn nothing until the key is replaced. Stripe's Stripe Apps
+  // permissions reference does name the underlying permission: "Checkout
+  // Sessions | Checkout Sessions | checkout_session_read,
+  // checkout_session_write | ... Read access lets you retrieve session
+  // details, line items, and related payment information" (Stripe docs,
+  // stripe-apps/reference/permissions.md). What is unconfirmed, as for every
+  // row in this table, is only the `rak_` link-form token below: Stripe's
+  // key-creation form ignores an identifier it does not recognise rather than
+  // rejecting it, so the owner still has to confirm the Checkout Sessions row
+  // is actually selected on the key form the link opens.
   {
     token: "rak_checkout_session_read",
     access: "Read",
