@@ -1,11 +1,18 @@
--- referredChargeMinor was an INTEGER, topping out at 2,147,483,647. A
--- wholly referred renewal in a zero-decimal currency (VND, IDR, ...) can
--- pass that on an ordinary sale, and the insert then failed. Widening to
--- BIGINT is a catalog change in Postgres: no table rewrite, no index
--- rebuild, a brief exclusive lock on "Commission" only. Existing values are
--- unchanged. Stripe's own amounts stay far below BIGINT's range and below
--- Number.MAX_SAFE_INTEGER too: "The amount value supports up to eight
--- digits (e.g., a value of 99999999 for a USD charge of $999,999.99)"
--- (Stripe docs, the PaymentIntent object, `amount`).
+-- referredChargeMinor was an INTEGER, topping out at 2,147,483,647. Stripe's
+-- own documented maximum payment amount reaches past that: "the amount value
+-- supports up to: 12 digits for most card payments, for a maximum of
+-- 999,999,999,999 in the smallest currency unit" and, for methods other than
+-- cards, "12 digits for IDR, for a payment of up to 9,999,999,999.99 IDR
+-- (999999999999)" (Stripe docs, currencies.md, "Maximum payment amounts";
+-- German original: "12 Ziffern für die meisten Kartenzahlungen, für ein
+-- Maximum von 999.999.999.999 in der kleinsten Währungseinheit" and "12
+-- Ziffern für IDR, für eine Zahlung in Höhe von maximal 9.999.999.999,99 IDR
+-- (`999999999999`)"). A wholly referred renewal at that scale passed the old
+-- column's range, and the insert then failed. 999,999,999,999 still sits far
+-- below Number.MAX_SAFE_INTEGER (9,007,199,254,740,991), so BIGINT holds
+-- every documented Stripe amount with room to spare and converting it to a
+-- plain number stays exact. Widening to BIGINT is a catalog change in
+-- Postgres: no table rewrite, no index rebuild, a brief exclusive lock on
+-- "Commission" only. Existing values are unchanged.
 ALTER TABLE "Commission"
   ALTER COLUMN "referredChargeMinor" TYPE BIGINT;

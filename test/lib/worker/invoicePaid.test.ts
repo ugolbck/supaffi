@@ -50,6 +50,7 @@ vi.mock("@/lib/stripe", async () => {
 });
 
 import { handleInvoicePaid } from "@/lib/worker/handlers/invoicePaid";
+import { handleChargeRefunded } from "@/lib/worker/handlers/chargeRefunded";
 import { confirmCommissionFraud } from "@/lib/commission";
 import {
   retrievedInvoice,
@@ -996,25 +997,59 @@ describe("handleInvoicePaid", () => {
       expect(commission.referredChargeMinor).toBe(50n);
     });
 
-    it("stores and prorates a VND renewal of 50,000,000 correctly", async () => {
-      // VND is zero-decimal, so 50,000,000 VND is 50,000,000 minor units, well
-      // past the old INTEGER column's range once combined with a taxed
-      // renewal elsewhere in the suite, and now held in a BIGINT column
-      // instead (migration 20260914180000_commission_referred_charge_minor_bigint).
+    it("stores a referred share of 3,000,000,000 minor units, past the old INTEGER column's 2,147,483,647 limit", async () => {
+      // 3,000,000,000 IDR minor units is 30,000,000.00 IDR (IDR is a
+      // two-decimal currency in Stripe: "12 digits for IDR, for a payment of
+      // up to 9,999,999,999.99 IDR", Stripe docs, currencies.md, "Maximum
+      // payment amounts"). Past INTEGER's 2,147,483,647 ceiling, so this
+      // would fail to insert if migration 20260914180000 were reverted.
       await handleInvoicePaid(
         merchant,
         invoiceFixture({
-          currency: "vnd",
-          total: 50_000_000,
-          total_excluding_tax: 50_000_000,
+          currency: "idr",
+          total: 3_000_000_000,
+          total_excluding_tax: 3_000_000_000,
           total_taxes: [],
-          amount_paid: 50_000_000,
+          amount_paid: 3_000_000_000,
         })
       );
 
       const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
-      expect(commission.referredChargeMinor).toBe(50_000_000n);
-      expect(commission.amount.toString()).toBe("10000000");
+      expect(commission.referredChargeMinor).toBe(3_000_000_000n);
+      expect(commission.amount.toString()).toBe("6000000");
+    });
+
+    it("prorates a stored referred share of 3,000,000,000 minor units correctly when the charge is later refunded in full", async () => {
+      // Proves the read path, not just the write path above: charge.refunded
+      // reads this commission's BIGINT column back and prorates against it,
+      // the same maths chargeRefunded.test.ts already covers at this scale.
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          currency: "idr",
+          total: 3_000_000_000,
+          total_excluding_tax: 3_000_000_000,
+          total_taxes: [],
+          amount_paid: 3_000_000_000,
+        })
+      );
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.referredChargeMinor).toBe(3_000_000_000n);
+
+      await handleChargeRefunded(merchant, {
+        id: "ch_idr_renewal",
+        // The legacy field some accounts' webhooks still carry, which
+        // resolvePaymentReferenceId checks first; set here so the refund
+        // resolves straight to this invoice without a further Stripe call.
+        invoice: "in_renewal",
+        amount: 3_000_000_000,
+        amount_refunded: 3_000_000_000,
+        payment_intent: "pi_idr_renewal",
+      } as unknown as Stripe.Charge);
+
+      const refunded = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      expect(refunded.status).toBe("VOIDED");
+      expect(refunded.voidReason).toBe("refund");
     });
   });
 
