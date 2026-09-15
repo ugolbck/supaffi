@@ -45,7 +45,7 @@ export function recurringTerm(terms: SignupTerms): { value: string; hint: string
     }
     return { value: "For a set period", hint: "of everything they pay" };
   }
-  return { value: "First payment", hint: "one commission per customer" };
+  return { value: "First payment", hint: "one commission per referral" };
 }
 
 function Tile({ label, value, hint }: { label: string; value: string; hint: string }) {

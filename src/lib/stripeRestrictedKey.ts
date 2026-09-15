@@ -54,7 +54,7 @@ export const KEY_PERMISSIONS = [
     token: "rak_customer_read",
     access: "Read",
     row: "Customers",
-    why: "matches a sale to the customer who made it",
+    why: "matches a sale to its customer and checks whether that customer is excluded",
   },
   {
     token: "rak_dispute_read",
@@ -66,7 +66,7 @@ export const KEY_PERMISSIONS = [
     token: "rak_invoice_read",
     access: "Read",
     row: "Invoices",
-    why: "finds the payment behind a refunded charge, to lower or cancel its commission",
+    why: "reads what an invoice charged and whether it is excluded, and finds the payment behind a refund",
   },
   {
     token: "rak_payment_intent_read",
@@ -84,7 +84,7 @@ export const KEY_PERMISSIONS = [
     token: "rak_subscription_read",
     access: "Read",
     row: "Subscriptions",
-    why: "tracks renewals for recurring commissions",
+    why: "reads the products a referred subscription bills and whether it is excluded",
   },
   // The only write in the list, and the reason the webhook step no longer
   // exists: with it Supaffi creates its own endpoint and reads back the

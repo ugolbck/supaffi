@@ -27,7 +27,7 @@ describe("recurringTerm", () => {
   it("reads as a single payment for ONE_TIME", () => {
     expect(
       recurringTerm({ rate: 20, durationType: "ONE_TIME", durationMonths: null })
-    ).toEqual({ value: "First payment", hint: "one commission per customer" });
+    ).toEqual({ value: "First payment", hint: "one commission per referral" });
   });
 });
 
