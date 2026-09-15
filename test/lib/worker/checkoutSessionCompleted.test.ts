@@ -2,6 +2,7 @@
 // Merchant / Owner. Runs against the scratch DATABASE_URL that test/setup.ts
 // enforces, never the dev one.
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import { inspect } from "node:util";
 import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 
@@ -945,7 +946,13 @@ describe("handleCheckoutSessionCompleted", () => {
       }
       expect(thrown?.message).toMatch(/StripePermissionError\/permission_error/);
       expect(thrown?.message).not.toMatch(/acct_secret123|required permissions/);
-      expect(thrown?.cause).toBeDefined();
+      // No `cause` kept: tick.ts logs the whole thrown error, and Node's
+      // default inspection of an Error prints its `cause`, so the raw Stripe
+      // message would still reach the server log through it even with the
+      // message itself clean.
+      expect(thrown?.cause).toBeUndefined();
+      expect(inspect(thrown)).not.toContain("acct_secret123");
+      expect(inspect(thrown)).not.toContain("required permissions");
       expect(await db.commission.count()).toBe(0);
 
       // The retry, once Stripe answers, earns as usual and keeps the first payment.
@@ -1554,7 +1561,10 @@ describe("handleCheckoutSessionCompleted", () => {
       }
       expect(thrown?.message).toMatch(/StripePermissionError\/permission_error/);
       expect(thrown?.message).not.toMatch(/acct_secret456|required permissions/);
-      expect(thrown?.cause).toBeDefined();
+      // No `cause` kept: see the same assertion on the invoice-read test above.
+      expect(thrown?.cause).toBeUndefined();
+      expect(inspect(thrown)).not.toContain("acct_secret456");
+      expect(inspect(thrown)).not.toContain("required permissions");
       expect(await db.commission.count()).toBe(0);
 
       // The retry, once the key is replaced, reads the Session and earns as usual.
@@ -1575,6 +1585,8 @@ describe("handleCheckoutSessionCompleted", () => {
       }
       expect(thrown?.message).toMatch(/StripeConnectionError/);
       expect(thrown?.message).not.toMatch(/connection reset/);
+      expect(thrown?.cause).toBeUndefined();
+      expect(inspect(thrown)).not.toContain("connection reset");
       expect(await db.commission.count()).toBe(0);
     });
 

@@ -348,16 +348,17 @@ async function retrievePaidFirstInvoice(stripe: Stripe, sessionId: string, invoi
   try {
     invoice = await retrieveInvoiceForEarning(stripe, invoiceId);
   } catch (err) {
-    // Only the error's type and code go into the thrown message: tick.ts logs
-    // it and claim.ts stores it in WebhookEvent.lastError, and Stripe's raw
-    // message on a permission or authentication failure names the masked key
-    // and the account, which does not belong in server logs or the database.
-    // The original error is kept as cause for a developer attached to the
-    // process, the same pattern retrieveSessionForEarning uses below.
+    // Only the error's type and code go into the thrown message, and the
+    // original error is not kept as `cause`: tick.ts logs the whole thrown
+    // error, and Node's default inspection of an Error prints its `cause`
+    // too, so keeping it there would still put Stripe's raw message (which,
+    // on a permission or authentication failure, names the masked key and the
+    // account) into the server log, defeating the point of dropping it from
+    // the message. claim.ts stores only the message in WebhookEvent.lastError,
+    // the same pattern retrieveSessionForEarning uses below.
     const { type, code } = err as { type?: string; code?: string };
     throw new Error(
-      `[worker] could not read invoice ${invoiceId} for session ${sessionId} (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`,
-      { cause: err }
+      `[worker] could not read invoice ${invoiceId} for session ${sessionId} (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`
     );
   }
   if (invoice.status !== "paid") {
@@ -404,11 +405,13 @@ async function retrievePaidFirstInvoice(stripe: Stripe, sessionId: string, invoi
  *
  * Every failure is wrapped in a new error carrying only the Stripe error's
  * `type` and `code`, the session id, and, for `resource_missing`, the
- * explanation above, never Stripe's own message. tick.ts logs the thrown
- * error and claim.ts stores its message in WebhookEvent.lastError, and a
- * permission or authentication error's raw message names the masked key and
- * the account, which belongs in neither place. The original error is kept as
- * `cause` for a developer attached to the process.
+ * explanation above, never Stripe's own message and never the original error
+ * as `cause`. tick.ts logs the whole thrown error, and Node's default
+ * inspection of an Error prints its `cause` too, so a permission or
+ * authentication error's raw message, which names the masked key and the
+ * account, would still reach the server log through `cause` even with the
+ * message itself clean. claim.ts stores only the message in
+ * WebhookEvent.lastError.
  */
 async function retrieveSessionForEarning(stripe: Stripe, sessionId: string): Promise<Stripe.Checkout.Session> {
   try {
@@ -422,8 +425,7 @@ async function retrieveSessionForEarning(stripe: Stripe, sessionId: string): Pro
         ? ", which in practice means the key belongs to another Stripe account or to test mode while events are live, since Checkout Sessions cannot be deleted"
         : "";
     throw new Error(
-      `[worker] could not read session ${sessionId} (${type ?? "unknown"}/${code ?? "unknown"})${explanation}, so the event is retried`,
-      { cause: err }
+      `[worker] could not read session ${sessionId} (${type ?? "unknown"}/${code ?? "unknown"})${explanation}, so the event is retried`
     );
   }
 }
