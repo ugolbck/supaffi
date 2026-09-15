@@ -12,7 +12,7 @@ import { db } from "@/lib/db";
 // PaymentIntent id is the commission's payment reference.
 const stripeStub = vi.hoisted(() => ({
   invoicePayments: {
-    list: vi.fn(async () => ({ data: [] })),
+    list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({ data: [] })),
   },
   disputes: {
     list: vi.fn(
@@ -179,7 +179,8 @@ describe("dispute handlers", () => {
 
   beforeEach(async () => {
     await clearAll();
-    stripeStub.invoicePayments.list.mockClear();
+    stripeStub.invoicePayments.list.mockReset();
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.disputes.list.mockReset();
     stripeStub.disputes.list.mockImplementation(async () => ({ data: [] }));
     stripeStub.charges.retrieve.mockReset();
@@ -498,5 +499,45 @@ describe("dispute handlers", () => {
     await handleChargeDisputeCreated(other, dispute("needs_response"));
 
     expect((await reload(commission)).disputeOpenedAt).toBeNull();
+  });
+
+  describe("a one-time sale with a post-purchase invoice Stripe links to the payment", () => {
+    function invoiceLinked(invoiceId: string) {
+      stripeStub.invoicePayments.list.mockImplementation(async () => ({
+        data: [{ invoice: invoiceId, payment: { type: "payment_intent", payment_intent: PAYMENT_INTENT_ID } }],
+      }));
+    }
+
+    it("holds a row stored under its PaymentIntent while the dispute is open", async () => {
+      invoiceLinked("in_post");
+      const commission = await givenCommission();
+      disputesOnCharge("needs_response");
+
+      await handleChargeDisputeCreated(merchant, dispute("needs_response"));
+
+      expect((await reload(commission)).disputeOpenedAt).not.toBeNull();
+    });
+
+    it("holds a row stored under its invoice before 0.2.7 while the dispute is open", async () => {
+      invoiceLinked("in_post");
+      const commission = await givenCommission({ stripePaymentRef: "in_post" });
+      disputesOnCharge("needs_response");
+
+      await handleChargeDisputeCreated(merchant, dispute("needs_response"));
+
+      expect((await reload(commission)).disputeOpenedAt).not.toBeNull();
+    });
+
+    it("voids a row stored under its PaymentIntent when the list already shows the dispute lost", async () => {
+      invoiceLinked("in_post");
+      const commission = await givenCommission();
+      disputesOnCharge("lost");
+
+      await handleChargeDisputeCreated(merchant, dispute("needs_response"));
+
+      const row = await reload(commission);
+      expect(row.status).toBe("VOIDED");
+      expect(row.voidReason).toBe("chargeback");
+    });
   });
 });

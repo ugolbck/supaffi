@@ -15,7 +15,7 @@ import { getAffiliateMetrics } from "@/lib/analytics";
 // PaymentIntent ID, which is what Commission.stripePaymentRef holds for them.
 const stripeStub = vi.hoisted(() => ({
   invoicePayments: {
-    list: vi.fn(async () => ({ data: [] })),
+    list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({ data: [] })),
   },
 }));
 vi.mock("@/lib/stripe", async () => {
@@ -130,14 +130,22 @@ describe("handleChargeRefunded", () => {
 
   // A seventy eight dollar sale earning a fifteen sixty commission, so the
   // fractions in these cases land on exact cents.
-  function chargeFixture(refunded: number): Stripe.Charge {
+  function chargeFixture(refunded: number, extra: Record<string, unknown> = {}): Stripe.Charge {
     return {
       id: "ch_refund_test",
       amount: 7800,
       amount_refunded: refunded,
       currency: "usd",
       payment_intent: PAYMENT_INTENT_ID,
+      ...extra,
     } as unknown as Stripe.Charge;
+  }
+
+  /** Stripe links this invoice to the test PaymentIntent. */
+  function invoiceLinked(invoiceId: string) {
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({
+      data: [{ invoice: invoiceId, payment: { type: "payment_intent", payment_intent: PAYMENT_INTENT_ID } }],
+    }));
   }
 
   async function givenCommission(overrides: Partial<Commission> = {}): Promise<Commission> {
@@ -166,7 +174,8 @@ describe("handleChargeRefunded", () => {
 
   beforeEach(async () => {
     await clearAll();
-    stripeStub.invoicePayments.list.mockClear();
+    stripeStub.invoicePayments.list.mockReset();
+    stripeStub.invoicePayments.list.mockImplementation(async () => ({ data: [] }));
 
     const owner = await db.owner.create({
       data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
@@ -435,5 +444,87 @@ describe("handleChargeRefunded", () => {
     expect(updated.amount.toString()).toBe("15.6");
     expect(updated.voidReason).toBeNull();
     expect(await adjustmentsOf(commission)).toHaveLength(0);
+  });
+
+  describe("a one-time sale with a post-purchase invoice", () => {
+    it("refunds a row stored under its PaymentIntent when Stripe links the invoice", async () => {
+      invoiceLinked("in_post");
+      const commission = await givenCommission();
+
+      await handleChargeRefunded(merchant, chargeFixture(7800));
+
+      expect(stripeStub.invoicePayments.list).toHaveBeenCalledWith({
+        payment: { type: "payment_intent", payment_intent: PAYMENT_INTENT_ID },
+        limit: 1,
+      });
+      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      expect(updated.status).toBe("VOIDED");
+      expect(updated.voidReason).toBe("refund");
+    });
+
+    it("refunds a row stored under its invoice before 0.2.7", async () => {
+      invoiceLinked("in_post");
+      const commission = await givenCommission({ stripePaymentRef: "in_post" });
+
+      await handleChargeRefunded(merchant, chargeFixture(3900));
+
+      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      expect(updated.amount.toString()).toBe("7.8");
+      expect(updated.voidReason).toBe("partial refund");
+    });
+
+    it("refunds a row stored under its PaymentIntent when an older API version puts the invoice on the charge", async () => {
+      const commission = await givenCommission();
+
+      await handleChargeRefunded(merchant, chargeFixture(3900, { invoice: "in_legacy_post" }));
+
+      expect(stripeStub.invoicePayments.list).not.toHaveBeenCalled();
+      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      expect(updated.amount.toString()).toBe("7.8");
+    });
+
+    it("prorates against the referred share of a row found by its second reference", async () => {
+      invoiceLinked("in_post");
+      // referredChargeMinor is a BIGINT column (see the large-value cases
+      // above), so the referred share is passed as a bigint here too.
+      const commission = await givenCommission({ referredChargeMinor: 3900n });
+
+      await handleChargeRefunded(merchant, chargeFixture(3900));
+
+      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      expect(updated.status).toBe("VOIDED");
+    });
+
+    it("voids a row stored under its PaymentIntent when the chargeback is lost and Stripe links the invoice", async () => {
+      invoiceLinked("in_post");
+      const commission = await givenCommission();
+
+      await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
+
+      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      expect(updated.status).toBe("VOIDED");
+      expect(updated.voidReason).toBe("chargeback");
+    });
+
+    it("voids a row stored under its invoice before 0.2.7 when the chargeback is lost", async () => {
+      invoiceLinked("in_post");
+      const commission = await givenCommission({ stripePaymentRef: "in_post" });
+
+      await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
+
+      const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+      expect(updated.status).toBe("VOIDED");
+      expect(updated.voidReason).toBe("chargeback");
+    });
+  });
+
+  it("still refunds a subscription payment stored under its invoice", async () => {
+    invoiceLinked("in_subscription");
+    const commission = await givenCommission({ stripePaymentRef: "in_subscription" });
+
+    await handleChargeRefunded(merchant, chargeFixture(7800));
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("VOIDED");
   });
 });

@@ -1626,4 +1626,77 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(commission.amount.toString()).toBe("20");
     });
   });
+
+  describe("the payment reference a sale is stored under", () => {
+    it("stores a one-time purchase with a post-purchase invoice under its PaymentIntent", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ mode: "payment", paymentIntent: "pi_post", invoice: "in_post" })
+      );
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.stripePaymentRef).toBe("pi_post");
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+      expect(stripeStub.invoicePayments.list).not.toHaveBeenCalled();
+    });
+
+    it("stores a one-time purchase without a post-purchase invoice under its PaymentIntent, as before", async () => {
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_plain" }));
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.stripePaymentRef).toBe("pi_plain");
+    });
+
+    it("keeps storing a subscription's first payment under its invoice", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_sub_first", paymentIntent: "pi_sub_first", subscription: "sub_1" })
+      );
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(commission.stripePaymentRef).toBe("in_sub_first");
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(referred.firstPaymentRef).toBe("in_sub_first");
+    });
+
+    it("writes one row when a delayed one-time payment completes and then settles", async () => {
+      const session = sessionFixture({ mode: "payment", paymentIntent: "pi_delayed", invoice: "in_delayed" });
+      await handleCheckoutSessionCompleted(merchant, { ...session, payment_status: "unpaid" });
+      await handleCheckoutSessionCompleted(merchant, session);
+      await handleCheckoutSessionCompleted(merchant, session);
+
+      const commissions = await db.commission.findMany({ where: { clickId: click.id } });
+      expect(commissions.map((c) => c.stripePaymentRef)).toEqual(["pi_delayed"]);
+    });
+
+    it("does not write a second row for a sale stored under its post-purchase invoice before 0.2.7", async () => {
+      // Written by the earlier key choice. A redelivered event, or a lease
+      // reclaimed after the upgrade, now computes the PaymentIntent instead.
+      await db.commission.create({
+        data: {
+          affiliateId: clickInput.affiliateId,
+          clickId: click.id,
+          stripePaymentRef: "in_before",
+          amount: 10,
+          grossAmount: 10,
+          currency: "usd",
+          saleAmount: 50,
+          status: "PENDING",
+          payableAt: new Date(),
+        },
+      });
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ mode: "payment", paymentIntent: "pi_before", invoice: "in_before" })
+      );
+
+      const commissions = await db.commission.findMany({ where: { clickId: click.id } });
+      expect(commissions.map((c) => c.stripePaymentRef)).toEqual(["in_before"]);
+      // Ends where a dedupe would, before any Stripe call.
+      expect(stripeStub.checkout.sessions.retrieve).not.toHaveBeenCalled();
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+      expect(stripeStub.paymentIntents.retrieve).not.toHaveBeenCalled();
+    });
+  });
 });

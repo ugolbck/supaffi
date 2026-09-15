@@ -63,11 +63,18 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   const subscriptionId = idOf(session.subscription);
   const invoiceId = idOf(session.invoice);
   const paymentIntentId = idOf(session.payment_intent);
-  // For subscription-mode sessions this is the invoice; for one-time
-  // "payment"-mode sessions there is no Invoice at all, so the
-  // PaymentIntent ID is stored instead. chargeRefunded.ts knows to fall
-  // back to this when a Charge has no traceable Invoice.
-  const stripePaymentRef = invoiceId ?? paymentIntentId;
+  // A subscription's first payment is stored under its invoice, like every
+  // renewal after it. A one-time purchase is stored under its PaymentIntent,
+  // even when Stripe also issues a post-purchase invoice for it: a refund or a
+  // dispute always carries the PaymentIntent, while Stripe does not document
+  // linking that invoice back to it. chargeRefunded.ts tries the invoice and
+  // then the PaymentIntent, so rows stored under either are found.
+  const stripePaymentRef =
+    session.mode === "payment" ? (paymentIntentId ?? invoiceId) : (invoiceId ?? paymentIntentId);
+  // Before 0.2.7 a one-time purchase with a post-purchase invoice was stored
+  // under that invoice. Remembered so a redelivered event for such a sale finds
+  // the row already there instead of writing a second one.
+  const earlierPaymentRef = invoiceId && invoiceId !== stripePaymentRef ? invoiceId : null;
 
   const stripe = stripeClientFor(merchant);
 
@@ -150,6 +157,18 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // redelivery would duplicate. Nothing was paid on such a session anyway.
   if (!stripePaymentRef) return;
 
+  // The unique key cannot catch this one: the row was written under the
+  // invoice and this event now computes the PaymentIntent. Checked the same way
+  // the unique constraint is, across every Merchant, and before the duration
+  // read and any Stripe call, which is where a dedupe would have ended too.
+  if (earlierPaymentRef) {
+    const earlier = await db.commission.findUnique({
+      where: { stripePaymentRef: earlierPaymentRef },
+      select: { id: true },
+    });
+    if (earlier) return;
+  }
+
   // One duration per referral. A new Checkout through the same click, to
   // subscribe again or to move to another plan, earns only what the click's
   // first payment still allows: nothing more on a one-time program, and only
@@ -160,7 +179,16 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // them. A subscription's first invoice is read above it, because whether
   // money moved decides whether its first payment is claimed.
   const sale = { ref: stripePaymentRef, at: completedAt };
-  if (!(await referralStillEarns(merchant.id, click.id, click.affiliate.program, sale))) return;
+  if (
+    !(await referralStillEarns(
+      merchant.id,
+      click.id,
+      click.affiliate.program,
+      sale,
+      earlierPaymentRef ? [earlierPaymentRef] : []
+    ))
+  )
+    return;
 
   // "no_payment_required" (a free trial) still recorded its subscription
   // above, so the first paid invoice earns through invoice.paid, but there is
@@ -350,7 +378,9 @@ async function retrievePaidFirstInvoice(stripe: Stripe, sessionId: string, invoi
  * information provided") (Stripe docs, error-handling.md). A key made before
  * 0.2.7, without Checkout Sessions read, fails this way; throwing instead of
  * logging once means its one-time sales retry and earn once the key is
- * replaced, rather than being lost the moment the key first failed.
+ * replaced, rather than being lost the moment the key first failed. Retries
+ * last about two days, the worker's twenty attempts (claim.ts); after that the
+ * event is marked FAILED and the sale never earns.
  *
  * Only Stripe answering `code: "resource_missing"` is logged and treated as
  * null: the Session itself no longer exists, so no key fix and no retry can

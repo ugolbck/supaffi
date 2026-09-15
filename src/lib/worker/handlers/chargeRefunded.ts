@@ -11,13 +11,13 @@ const UNPAID_STATUSES = ["PENDING", "PAYABLE", "FLAGGED"] as const;
 
 export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Charge): Promise<void> {
   const stripe = stripeClientFor(merchant);
-  const paymentRef = await resolvePaymentReferenceId(stripe, {
+  const paymentRefs = await resolvePaymentReferenceIds(stripe, {
     legacyInvoice: (charge as unknown as { invoice?: string | { id: string } | null }).invoice ?? null,
     paymentIntentId: idOf(charge.payment_intent),
   });
-  if (!paymentRef) return; // couldn't trace this charge to anything Supaffi tracks
+  if (paymentRefs.length === 0) return; // couldn't trace this charge to anything Supaffi tracks
 
-  await reverseCommission(merchant, paymentRef, "refund", (commission) =>
+  await reverseCommission(merchant, paymentRefs, "refund", (commission) =>
     prorateCommission({
       gross: commission.grossAmount ?? commission.amount,
       chargeTotal: charge.amount,
@@ -25,6 +25,31 @@ export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Ch
       referredChargeMinor: readStoredReferredShare(commission.referredChargeMinor),
     })
   );
+}
+
+/**
+ * The commission on a payment, trying each of its references in order.
+ *
+ * A one-time sale with a post-purchase invoice was stored under that invoice
+ * before 0.2.7 and under its PaymentIntent since, so a refund or dispute has to
+ * try both. The checkout handler never writes both for one sale, so the first
+ * match is the only one. The whole row is returned, so a refund still prorates
+ * against its referred share when it records one.
+ *
+ * Scoped to the Merchant whose webhook this is, so a payment reference that
+ * happens to match another Merchant's commission is ignored.
+ */
+export async function findCommissionForPayment(
+  merchant: Merchant,
+  paymentRefs: readonly string[]
+): Promise<Commission | null> {
+  for (const stripePaymentRef of paymentRefs) {
+    const commission = await db.commission.findUnique({
+      where: { stripePaymentRef, affiliate: { merchantId: merchant.id } },
+    });
+    if (commission) return commission;
+  }
+  return null;
 }
 
 /**
@@ -51,13 +76,11 @@ export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Ch
  */
 export async function reverseCommission(
   merchant: Merchant,
-  paymentRef: string,
+  paymentRefs: readonly string[],
   voidReason: string,
   outcomeFor: (commission: Commission) => ReversalOutcome
 ): Promise<void> {
-  const commission = await db.commission.findUnique({
-    where: { stripePaymentRef: paymentRef, affiliate: { merchantId: merchant.id } },
-  });
+  const commission = await findCommissionForPayment(merchant, paymentRefs);
   // Either this payment never earns a commission (excluded, unattributed), or
   // its sale event has not been processed yet. The second needs nothing kept
   // here: Stripe's refunded total on the charge is cumulative, and the
@@ -167,35 +190,35 @@ export function idOf(ref: string | { id: string } | null | undefined): string | 
   return typeof ref === "string" ? ref : ref.id;
 }
 
-// Traces a payment back to the Invoice (subscription payments) or, for a
-// one-time purchase with no Invoice at all, the PaymentIntent — either way
-// this is Commission.stripePaymentRef's matching key.
+// Every reference a payment's commission can be stored under, in the order to
+// try them: the Invoice first, then the PaymentIntent.
 //
-// In the Stripe API version this SDK is pinned to (2026-07-29.dahlia),
-// Charge no longer has a direct `invoice` field — it was removed upstream
-// in favor of Invoice.payments. Checked defensively anyway first: a
-// Merchant's own webhook endpoint may still be configured on an older API
-// version where the raw payload still carries it, even though this SDK's
-// types don't declare it.
-export async function resolvePaymentReferenceId(
+// A subscription payment is stored under its Invoice. A one-time purchase is
+// stored under its PaymentIntent, even when Stripe also issued a post-purchase
+// invoice for it, because Stripe does not document linking that invoice back to
+// the payment. Before 0.2.7 such a sale was stored under the invoice, so the
+// invoice is still tried first and those rows are still found.
+//
+// In the Stripe API version this SDK is pinned to (2026-07-29.dahlia), Charge
+// no longer has a direct `invoice` field; it was removed upstream in favor of
+// Invoice.payments. It is checked first anyway: a Merchant's account may still
+// send events on an older API version whose payload carries it, even though
+// this SDK's types don't declare it.
+export async function resolvePaymentReferenceIds(
   stripe: Stripe,
   payment: { legacyInvoice: string | { id: string } | null; paymentIntentId: string | null }
-): Promise<string | null> {
-  const legacyInvoiceId = idOf(payment.legacyInvoice);
-  if (legacyInvoiceId) return legacyInvoiceId;
-
+): Promise<string[]> {
   const { paymentIntentId } = payment;
-  if (!paymentIntentId) return null;
+  let invoiceId = idOf(payment.legacyInvoice);
 
-  const payments = await stripe.invoicePayments.list({
-    payment: { type: "payment_intent", payment_intent: paymentIntentId },
-    limit: 1,
-  });
-  const match = payments.data[0];
-  if (match) return typeof match.invoice === "string" ? match.invoice : match.invoice.id;
+  if (!invoiceId && paymentIntentId) {
+    const payments = await stripe.invoicePayments.list({
+      payment: { type: "payment_intent", payment_intent: paymentIntentId },
+      limit: 1,
+    });
+    const match = payments.data[0];
+    if (match) invoiceId = typeof match.invoice === "string" ? match.invoice : match.invoice.id;
+  }
 
-  // No Invoice at all — a one-time ("payment" mode) Checkout Session. That
-  // path stores the PaymentIntent ID itself as stripePaymentRef, so it's
-  // the correct fallback key here too.
-  return paymentIntentId;
+  return [invoiceId, paymentIntentId].filter((ref): ref is string => ref !== null);
 }

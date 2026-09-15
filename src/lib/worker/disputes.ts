@@ -2,7 +2,12 @@ import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
-import { idOf, resolvePaymentReferenceId, reverseCommission } from "./handlers/chargeRefunded";
+import {
+  findCommissionForPayment,
+  idOf,
+  resolvePaymentReferenceIds,
+  reverseCommission,
+} from "./handlers/chargeRefunded";
 
 /**
  * What Stripe says, right now, about the disputes on one payment.
@@ -99,14 +104,14 @@ export async function disputeStateFor(
 }
 
 /**
- * The commission's payment reference for a dispute, and the PaymentIntent the
- * disputes are listed by. Null when the dispute traces to nothing Supaffi
- * tracks.
+ * The references a disputed payment's commission can be stored under, in the
+ * order to try them, and the PaymentIntent the disputes are listed by. Null
+ * when the dispute traces to nothing Supaffi tracks.
  */
 export async function disputedPayment(
   stripe: Stripe,
   dispute: Stripe.Dispute
-): Promise<{ paymentRef: string; paymentIntentId: string | null } | null> {
+): Promise<{ paymentRefs: string[]; paymentIntentId: string | null } | null> {
   let paymentIntentId = idOf(dispute.payment_intent);
   let legacyInvoice: string | { id: string } | null = null;
   if (!paymentIntentId) {
@@ -118,8 +123,8 @@ export async function disputedPayment(
     legacyInvoice = (charge as unknown as { invoice?: string | { id: string } | null }).invoice ?? null;
   }
 
-  const paymentRef = await resolvePaymentReferenceId(stripe, { legacyInvoice, paymentIntentId });
-  return paymentRef ? { paymentRef, paymentIntentId } : null;
+  const paymentRefs = await resolvePaymentReferenceIds(stripe, { legacyInvoice, paymentIntentId });
+  return paymentRefs.length > 0 ? { paymentRefs, paymentIntentId } : null;
 }
 
 /**
@@ -179,10 +184,7 @@ export async function settleDisputeHold(merchant: Merchant, dispute: Stripe.Disp
   const payment = await disputedPayment(stripe, dispute);
   if (!payment) return;
 
-  const commission = await db.commission.findUnique({
-    where: { stripePaymentRef: payment.paymentRef, affiliate: { merchantId: merchant.id } },
-    select: { id: true, status: true },
-  });
+  const commission = await findCommissionForPayment(merchant, payment.paymentRefs);
   if (!commission) return;
   if (commission.status === "PAID" || commission.status === "VOIDED") return;
 
@@ -196,7 +198,7 @@ export async function settleDisputeHold(merchant: Merchant, dispute: Stripe.Disp
   }
 
   if (state === "lost") {
-    await reverseCommission(merchant, payment.paymentRef, "chargeback", () => ({ void: true }));
+    await reverseCommission(merchant, payment.paymentRefs, "chargeback", () => ({ void: true }));
     return;
   }
   if (state === "clear") {

@@ -27,5 +27,5 @@ export async function handleChargeDisputeClosed(merchant: Merchant, dispute: Str
   const payment = await disputedPayment(stripe, dispute);
   if (!payment) return;
 
-  await reverseCommission(merchant, payment.paymentRef, "chargeback", () => ({ void: true }));
+  await reverseCommission(merchant, payment.paymentRefs, "chargeback", () => ({ void: true }));
 }

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import type { Program } from "@prisma/client";
 import { db } from "@/lib/db";
 import { isPaymentWithinCommissionDuration, type PaymentRef } from "./commission";
@@ -63,8 +64,18 @@ type HistoryRow = { startRef: string | null; startAt: Date | null; earnedOnAnoth
 export async function readReferralHistory(
   merchantId: string,
   clickId: string,
-  paymentRef: string
+  paymentRef: string,
+  /**
+   * A one-time sale with a post-purchase invoice can be found under either its
+   * invoice id or its PaymentIntent id (see chargeRefunded.ts). Passed here so
+   * that if this same sale's row is ever read back under its other reference,
+   * it still counts as the payment's own rather than as another payment on the
+   * referral. `paymentRef` alone already covers every ordinary case; this only
+   * matters for that one sale shape.
+   */
+  ownOtherRefs: readonly string[] = []
 ): Promise<ReferralHistory> {
+  const ownRefs = [paymentRef, ...ownOtherRefs];
   const rows = await db.$queryRaw<HistoryRow[]>`
     WITH payments AS (
       SELECT "firstPaymentRef" AS ref, "firstPaidAt" AS at, 'subscription' AS source
@@ -85,7 +96,7 @@ export async function readReferralHistory(
       (SELECT ref FROM payments ORDER BY at ASC, ref ASC LIMIT 1) AS "startRef",
       (SELECT at FROM payments ORDER BY at ASC, ref ASC LIMIT 1) AS "startAt",
       EXISTS (
-        SELECT 1 FROM payments WHERE source = 'commission' AND ref <> ${paymentRef}
+        SELECT 1 FROM payments WHERE source = 'commission' AND ref NOT IN (${Prisma.join(ownRefs)})
       ) AS "earnedOnAnotherPayment"
   `;
   const row = rows[0];
@@ -109,9 +120,11 @@ export async function referralStillEarns(
   merchantId: string,
   clickId: string,
   program: Program,
-  payment: PaymentRef
+  payment: PaymentRef,
+  /** The sale's other reference, when it has one (see readReferralHistory). */
+  ownOtherRefs: readonly string[] = []
 ): Promise<boolean> {
   if (program.commissionDurationType === "FOREVER") return true;
-  const history = await readReferralHistory(merchantId, clickId, payment.ref);
+  const history = await readReferralHistory(merchantId, clickId, payment.ref, ownOtherRefs);
   return isWithinReferralDuration(program, history, payment);
 }

@@ -18,13 +18,6 @@ export type ReferredSubscriptionWithClick = Prisma.ReferredSubscriptionGetPayloa
 // invoice a referred checkout created is almost always among its first.
 const LEGACY_INVOICES_CHECKED = 3;
 
-// Stripe could not answer right now, and asking again later can succeed.
-export const RETRYABLE_STRIPE_ERRORS: ReadonlySet<string> = new Set([
-  "StripeConnectionError",
-  "StripeRateLimitError",
-  "StripeAPIError",
-]);
-
 // The Merchant's key cannot read invoices. Fixing the key fixes the answer, so
 // the check is left unrecorded for a later event to run again.
 const KEY_STRIPE_ERRORS = new Set(["StripePermissionError", "StripeAuthenticationError"]);

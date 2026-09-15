@@ -1039,7 +1039,7 @@ describe("handleInvoicePaid", () => {
       await handleChargeRefunded(merchant, {
         id: "ch_idr_renewal",
         // The legacy field some accounts' webhooks still carry, which
-        // resolvePaymentReferenceId checks first; set here so the refund
+        // resolvePaymentReferenceIds checks first; set here so the refund
         // resolves straight to this invoice without a further Stripe call.
         invoice: "in_renewal",
         amount: 3_000_000_000,

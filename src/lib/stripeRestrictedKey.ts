@@ -19,7 +19,9 @@ export type KeyPermission = {
 // Sessions, below, behaves differently on purpose: a one-time sale cannot be
 // judged without it, so a key missing that permission makes every one-time
 // sale retry and earn nothing until the key is replaced, rather than
-// silently carrying on the way Charges does.
+// silently carrying on the way Charges does. Retries last about two days,
+// the worker's twenty attempts (claim.ts); after that the event is marked
+// FAILED and the sale does not earn.
 export const KEY_PERMISSIONS = [
   {
     token: "rak_charge_read",
@@ -35,10 +37,11 @@ export const KEY_PERMISSIONS = [
   // checkout_session_write | ... Read access lets you retrieve session
   // details, line items, and related payment information" (Stripe docs,
   // stripe-apps/reference/permissions.md). What is unconfirmed, as for every
-  // row in this table, is only the `rak_` link-form token below: Stripe's
-  // key-creation form ignores an identifier it does not recognise rather than
-  // rejecting it, so the owner still has to confirm the Checkout Sessions row
-  // is actually selected on the key form the link opens.
+  // row in this table, is only the `rak_` link-form token below: whether an
+  // unrecognised one is silently ignored rather than rejected is not
+  // documented by Stripe, and is instead a known gap recorded in the project
+  // (docs/ROADMAP.md, "Known gaps"), so the owner still has to confirm the
+  // Checkout Sessions row is actually selected on the key form the link opens.
   {
     token: "rak_checkout_session_read",
     access: "Read",
