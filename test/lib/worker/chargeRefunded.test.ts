@@ -284,7 +284,7 @@ describe("handleChargeRefunded", () => {
     // The 78.00 charge here stands in for a 100.00 referred plan next to a
     // non-referred add-on; only 39.00 of it (half) is ever recorded as
     // referred, in the same units chargeFixture already uses.
-    const commission = await givenCommission({ referredChargeMinor: 3900 });
+    const commission = await givenCommission({ referredChargeMinor: 3900n });
     await handleChargeRefunded(merchant, chargeFixture(3900));
 
     const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
@@ -293,11 +293,45 @@ describe("handleChargeRefunded", () => {
   });
 
   it("keeps most of the commission when a refund smaller than the referred share lands", async () => {
-    const commission = await givenCommission({ referredChargeMinor: 3900 });
+    const commission = await givenCommission({ referredChargeMinor: 3900n });
     await handleChargeRefunded(merchant, chargeFixture(1950));
 
     const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
     expect(updated.amount.toString()).toBe("7.8");
+    expect(updated.status).toBe("PENDING");
+  });
+
+  // referredChargeMinor is a BIGINT column (migration
+  // 20260914180000_commission_referred_charge_minor_bigint), holding a share
+  // well past what the old INTEGER column could, as a wholly referred VND or
+  // IDR renewal can reach. These are the same full and partial refund rules
+  // above, at that scale, reading the stored bigint back into the plain-number
+  // maths prorateCommission has always used.
+  function largeChargeFixture(refunded: number): Stripe.Charge {
+    return {
+      id: "ch_refund_large",
+      amount: 50_000_000,
+      amount_refunded: refunded,
+      currency: "vnd",
+      payment_intent: PAYMENT_INTENT_ID,
+    } as unknown as Stripe.Charge;
+  }
+
+  it("voids a commission fully refunded on a referred share too large for the old INTEGER column", async () => {
+    const commission = await givenCommission({ referredChargeMinor: 50_000_000n, amount: new Prisma.Decimal(2_000_000), grossAmount: new Prisma.Decimal(2_000_000) });
+    await handleChargeRefunded(merchant, largeChargeFixture(50_000_000));
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.status).toBe("VOIDED");
+    expect(updated.voidReason).toBe("refund");
+  });
+
+  it("leaves the right half of a large referred share after a partial refund", async () => {
+    const commission = await givenCommission({ referredChargeMinor: 50_000_000n, amount: new Prisma.Decimal(2_000_000), grossAmount: new Prisma.Decimal(2_000_000) });
+    await handleChargeRefunded(merchant, largeChargeFixture(25_000_000));
+
+    const updated = await db.commission.findUniqueOrThrow({ where: { id: commission.id } });
+    expect(updated.amount.toString()).toBe("1000000");
     expect(updated.status).toBe("PENDING");
   });
 

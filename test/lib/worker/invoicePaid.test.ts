@@ -945,7 +945,7 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoiceFixture());
 
       const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
-      expect(commission.referredChargeMinor).toBe(12000);
+      expect(commission.referredChargeMinor).toBe(12000n);
     });
 
     it("never stores more than the charge itself, even when the computed share is larger", async () => {
@@ -956,7 +956,7 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoiceFixture());
 
       const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
-      expect(commission.referredChargeMinor).toBe(10000);
+      expect(commission.referredChargeMinor).toBe(10000n);
     });
 
     it("reads the share from each line's own tax, not spread evenly over an untaxed referred line next to a taxed add-on", async () => {
@@ -977,7 +977,7 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoice);
 
       const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
-      expect(commission.referredChargeMinor).toBe(10000);
+      expect(commission.referredChargeMinor).toBe(10000n);
     });
 
     it("rounds a fractional exact share down, never up", async () => {
@@ -993,7 +993,28 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoice);
 
       const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
-      expect(commission.referredChargeMinor).toBe(50);
+      expect(commission.referredChargeMinor).toBe(50n);
+    });
+
+    it("stores and prorates a VND renewal of 50,000,000 correctly", async () => {
+      // VND is zero-decimal, so 50,000,000 VND is 50,000,000 minor units, well
+      // past the old INTEGER column's range once combined with a taxed
+      // renewal elsewhere in the suite, and now held in a BIGINT column
+      // instead (migration 20260914180000_commission_referred_charge_minor_bigint).
+      await handleInvoicePaid(
+        merchant,
+        invoiceFixture({
+          currency: "vnd",
+          total: 50_000_000,
+          total_excluding_tax: 50_000_000,
+          total_taxes: [],
+          amount_paid: 50_000_000,
+        })
+      );
+
+      const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+      expect(commission.referredChargeMinor).toBe(50_000_000n);
+      expect(commission.amount.toString()).toBe("10000000");
     });
   });
 

@@ -3,6 +3,7 @@ import type { Merchant, Commission } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
+import { readStoredReferredShare } from "../referredEarning";
 
 export type ReversalOutcome = { void: true } | { void: false; amount: number };
 
@@ -21,7 +22,7 @@ export async function handleChargeRefunded(merchant: Merchant, charge: Stripe.Ch
       gross: commission.grossAmount ?? commission.amount,
       chargeTotal: charge.amount,
       refunded: charge.amount_refunded,
-      referredChargeMinor: commission.referredChargeMinor,
+      referredChargeMinor: readStoredReferredShare(commission.referredChargeMinor),
     })
   );
 }

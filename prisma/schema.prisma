@@ -284,7 +284,7 @@ model Commission {
   // item or another product on the same charge is never taken back out of
   // this commission first. Null for checkout rows and rows written before
   // this existed, which keep the whole-charge proration they always used.
-  referredChargeMinor Int?
+  referredChargeMinor BigInt?
 
   status     CommissionStatus @default(PENDING)
   payableAt  DateTime // createdAt + Program.holdingPeriodDays

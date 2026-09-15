@@ -898,6 +898,52 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
     });
 
+    it("reads nothing to check exclusion when the Session is not yet paid", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_delayed", subscription: "sub_delayed", paymentStatus: "unpaid" })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("reads nothing to check exclusion once a self referral was confirmed on the click", async () => {
+      await db.click.update({ where: { id: click.id }, data: { fraudConfirmedAt: new Date() } });
+
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("reads nothing to check exclusion on a Session with neither an invoice nor a payment intent to key on", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ mode: "payment", invoice: null, paymentIntent: null, subscription: null })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("reads nothing to check exclusion once a one-time program's duration is already used up", async () => {
+      await db.program.updateMany({ where: { merchantId: merchant.id }, data: { commissionDurationType: "ONE_TIME" } });
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_a", subscription: "sub_a" }));
+      expect(await db.commission.count()).toBe(1);
+
+      stripeStub.invoices.retrieve.mockClear();
+      stripeStub.customers.retrieve.mockClear();
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_b", subscription: "sub_b" }));
+
+      expect(await db.commission.count()).toBe(1);
+      expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
+      expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
+    });
+
     it("earns nothing when the checkout's customer was deleted, logging the sale once with no customer id", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 

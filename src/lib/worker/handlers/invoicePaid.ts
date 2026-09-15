@@ -16,22 +16,11 @@ import {
   latestChargeFor,
   paymentIntentForInvoice,
 } from "../paymentState";
-import {
-  exclusionSourcesOf,
-  listInvoiceLines,
-  referredInvoiceBase,
-  retrieveInvoiceForEarning,
-  type ReferredRevenue,
-} from "../referredRevenue";
+import { exclusionSourcesOf, retrieveInvoiceForEarning } from "../referredRevenue";
+import { referredEarningOn, storableReferredShare } from "../referredEarning";
 import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import {
-  claimFirstPayment,
-  fillStripeProductIds,
-  findReferredSubscription,
-  idOf,
-  subscriptionIdOf,
-} from "../referredSubscription";
+import { claimFirstPayment, findReferredSubscription, idOf, subscriptionIdOf } from "../referredSubscription";
 import { referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
@@ -42,30 +31,6 @@ import { createCommissionUnlessSelfReferral } from "../recordCommission";
 // subscription_threshold usage billing is left out by the owner's rule.
 // subscription_create belongs to checkout.session.completed.
 const EARNING_BILLING_REASONS: ReadonlySet<string> = new Set(["subscription_cycle", "subscription_update"]);
-
-type Earned = Extract<ReferredRevenue, { kind: "earned" }>;
-
-// Logs the one line a non-earning outcome gets and reports whether the caller
-// should stop. Shared by the first read and the recompute after a legacy row
-// learns its products, so a recompute that turns out unreadable or off Stripe
-// is never quietly replaced by the stale figure computed before the fill.
-function earnedOrLog(invoiceId: string, revenue: ReferredRevenue): Earned | null {
-  if (revenue.kind === "no_tax_breakdown") {
-    console.error(`[worker] invoice ${invoiceId} carries no tax breakdown, so no commission was recorded for it`);
-    return null;
-  }
-  if (revenue.kind === "unreadable") {
-    console.error(`[worker] invoice ${invoiceId} ${revenue.reason}, so no commission was recorded for it`);
-    return null;
-  }
-  if (revenue.kind === "off_stripe") {
-    // amount_paid already counts a payment made outside Stripe, so an invoice
-    // paid entirely that way has nothing left to scale a commission on.
-    console.warn(`[worker] invoice ${invoiceId} was paid outside Stripe, so no commission was recorded for it`);
-    return null;
-  }
-  return revenue;
-}
 
 export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invoice): Promise<void> {
   const stripeCustomerId = idOf(invoice.customer);
@@ -160,37 +125,10 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   };
 
   // Earned only on this subscription's own lines for the products its referral
-  // bought, before tax and scaled to what was paid in money, see
-  // referredRevenue.ts. An invoice whose tax or lines cannot be read is logged
-  // and earns nothing; returning normally stops a retry that could never
-  // succeed. A failed read of the lines throws, so the event is retried.
-  const lines = await listInvoiceLines(stripe, invoice.id);
-  const revenue = earnedOrLog(
-    invoice.id,
-    referredInvoiceBase(invoiceForBase, lines, subscriptionId, referred.stripeProductIds)
-  );
-  if (!revenue) return;
-
-  let earned = revenue;
-  if (referred.stripeProductIds.length === 0) {
-    // Recorded before products were stored, or when Stripe could not say. The
-    // products this renewal bills are kept from now on. If another event kept
-    // a different set a moment earlier, this invoice is measured against that.
-    const stored = await fillStripeProductIds(referred.id, revenue.productIds);
-    if (stored.join() !== revenue.productIds.join()) {
-      const again = earnedOrLog(invoice.id, referredInvoiceBase(invoiceForBase, lines, subscriptionId, stored));
-      // Never falls back to the figure computed against the stale, empty
-      // product list: if the recompute against what is now stored cannot
-      // earn, this invoice earns nothing, not the earlier guess.
-      if (!again) return;
-      earned = again;
-    }
-  }
-  if (earned.otherProductIds.length > 0) {
-    console.warn(
-      `[worker] invoice ${invoice.id} bills ${earned.otherProductIds.join(", ")} on subscription ${subscriptionId}, which its referral did not buy, so those lines earned nothing`
-    );
-  }
+  // bought, before tax and scaled to what was paid through Stripe, by the same
+  // rule as its first payment, see referredEarning.ts.
+  const earned = await referredEarningOn(stripe, invoice.id, invoiceForBase, subscriptionId, referred);
+  if (!earned) return;
   const baseMinor = earned.baseMinor;
 
   const affiliate = click.affiliate;
@@ -230,7 +168,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
         saleAmount: saleAmountFor(baseMinor, invoice.currency),
         payableAt: computePayableAt(program),
         flagReason,
-        referredChargeMinor: cappedReferredChargeMinor,
+        referredChargeMinor: storableReferredShare(cappedReferredChargeMinor),
         // amount, grossAmount (the figure a later refund prorates against),
         // status, voidedAt, voidReason and disputeOpenedAt.
         ...commissionFieldsAtCreation({ amount, flagReason, charge, dispute, referredChargeMinor: cappedReferredChargeMinor }),
