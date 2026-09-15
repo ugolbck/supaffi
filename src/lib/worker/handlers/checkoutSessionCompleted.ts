@@ -401,6 +401,14 @@ async function retrievePaidFirstInvoice(stripe: Stripe, sessionId: string, invoi
  * that either, but there is no way to tell the two failures apart from the
  * error alone, and treating this one as final would silently drop a sale a
  * key swap or mode fix could still recover.
+ *
+ * Every failure is wrapped in a new error carrying only the Stripe error's
+ * `type` and `code`, the session id, and, for `resource_missing`, the
+ * explanation above, never Stripe's own message. tick.ts logs the thrown
+ * error and claim.ts stores its message in WebhookEvent.lastError, and a
+ * permission or authentication error's raw message names the masked key and
+ * the account, which belongs in neither place. The original error is kept as
+ * `cause` for a developer attached to the process.
  */
 async function retrieveSessionForEarning(stripe: Stripe, sessionId: string): Promise<Stripe.Checkout.Session> {
   try {
@@ -408,13 +416,13 @@ async function retrieveSessionForEarning(stripe: Stripe, sessionId: string): Pro
       expand: ["total_details.breakdown", "customer", "invoice"],
     });
   } catch (err) {
-    const { code } = err as { type?: string; code?: string };
-    if (code !== "resource_missing") throw err;
-    // Wrapped, unlike the errors above, because this one is raised here
-    // rather than passed through from Stripe: there is no raw message of
-    // Stripe's to preserve, only the explanation for why this event retries.
+    const { type, code } = err as { type?: string; code?: string };
+    const explanation =
+      code === "resource_missing"
+        ? ", which in practice means the key belongs to another Stripe account or to test mode while events are live, since Checkout Sessions cannot be deleted"
+        : "";
     throw new Error(
-      `[worker] session ${sessionId} answered resource_missing, which in practice means the key belongs to another Stripe account or to test mode while events are live, since Checkout Sessions cannot be deleted; the event is retried`,
+      `[worker] could not read session ${sessionId} (${type ?? "unknown"}/${code ?? "unknown"})${explanation}, so the event is retried`,
       { cause: err }
     );
   }

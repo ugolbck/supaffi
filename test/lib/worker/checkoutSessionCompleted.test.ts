@@ -1535,32 +1535,46 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(commission.referredChargeMinor).toBeNull();
     });
 
-    it("fails the event so it retries when the key cannot read the Session, and earns once it is replaced", async () => {
+    it("fails the event so it retries when the key cannot read the Session, without Stripe's raw message, and earns once it is replaced", async () => {
       stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(
-        Object.assign(new Error("The provided key does not have the required permissions"), {
+        // A permission error's raw message names the masked key and the
+        // account; it must never reach tick.ts's logs or WebhookEvent.lastError.
+        Object.assign(new Error("The provided key does not have the required permissions on account acct_secret456"), {
           type: "StripePermissionError",
-          statusCode: 403,
+          code: "permission_error",
         })
       );
+      const session = sessionFixture({ mode: "payment", paymentIntent: "pi_old_key" });
 
-      await expect(
-        handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_old_key" }))
-      ).rejects.toThrow(/required permissions/);
+      let thrown: Error | undefined;
+      try {
+        await handleCheckoutSessionCompleted(merchant, session);
+      } catch (err) {
+        thrown = err as Error;
+      }
+      expect(thrown?.message).toMatch(/StripePermissionError\/permission_error/);
+      expect(thrown?.message).not.toMatch(/acct_secret456|required permissions/);
+      expect(thrown?.cause).toBeDefined();
       expect(await db.commission.count()).toBe(0);
 
       // The retry, once the key is replaced, reads the Session and earns as usual.
-      await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_old_key" }));
+      await handleCheckoutSessionCompleted(merchant, session);
       expect(await db.commission.count()).toBe(1);
     });
 
-    it("fails the event so it retries when Stripe cannot be reached for the Session", async () => {
+    it("fails the event so it retries when Stripe cannot be reached for the Session, without Stripe's raw message", async () => {
       stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(
         Object.assign(new Error("connection reset"), { type: "StripeConnectionError" })
       );
 
-      await expect(
-        handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_outage" }))
-      ).rejects.toThrow("connection reset");
+      let thrown: Error | undefined;
+      try {
+        await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_outage" }));
+      } catch (err) {
+        thrown = err as Error;
+      }
+      expect(thrown?.message).toMatch(/StripeConnectionError/);
+      expect(thrown?.message).not.toMatch(/connection reset/);
       expect(await db.commission.count()).toBe(0);
     });
 
