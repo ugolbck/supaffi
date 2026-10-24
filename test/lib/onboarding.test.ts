@@ -12,6 +12,7 @@ const setup = (over: Partial<ProductSetup> = {}): ProductSetup => ({
   stripeWebhookStored: false,
   integrationsConnected: false,
   firstProgramSlug: null,
+  openProgramCount: 0,
   trackingStatus: "not-started",
   affiliateCount: 0,
   doneCount: 0,

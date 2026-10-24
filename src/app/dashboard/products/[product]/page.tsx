@@ -15,7 +15,7 @@ import {
   resolveRange,
 } from "@/lib/analytics";
 import { shouldCelebrateTracking } from "@/lib/tracking";
-import { originFor } from "@/lib/url";
+import { signupLinkFor } from "@/lib/url";
 import { formatCount, formatMoney, money, moneyHint, prefer } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
@@ -84,7 +84,7 @@ export default async function ProductOverviewPage({
   const empty = metrics.clicks === 0 && metrics.signups === 0 && setup.affiliateCount === 0;
 
   const signupLink = setup.firstProgramSlug
-    ? `${originFor(merchant.domain)}/affiliates/signup/${setup.firstProgramSlug}`
+    ? signupLinkFor(merchant.domain, setup.firstProgramSlug, setup.openProgramCount)
     : null;
 
   // The banner onboarding hands over. It stays until somebody signs up or the

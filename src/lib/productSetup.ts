@@ -30,6 +30,8 @@ export type ProductSetup = {
   /** Everything the instance needs connected, which is Stripe. */
   integrationsConnected: boolean;
   firstProgramSlug: string | null;
+  /** Programs anyone can sign up to, which decides the link handed out. */
+  openProgramCount: number;
   trackingStatus: TrackingStatus;
   /** Not a setup step. Cards read it; `doneCount` does not. */
   affiliateCount: number;
@@ -76,6 +78,7 @@ export async function getProductSetup(
     integrationsConnected,
     // The link handed out, so the first program anyone can still sign up to.
     firstProgramSlug: programs.find((p) => p.signupOpen)?.slug ?? null,
+    openProgramCount: programs.filter((p) => p.signupOpen).length,
     trackingStatus,
     affiliateCount,
     doneCount,

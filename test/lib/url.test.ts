@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { isLocalDomain, originFor } from "@/lib/url";
+import { isLocalDomain, originFor, signupLinkFor } from "@/lib/url";
 
 // This decides whether a link Supaffi hands out is http or https. Getting it
 // wrong in one direction produces a dead localhost link, and in the other a
@@ -40,5 +40,19 @@ describe("originFor", () => {
     expect(originFor("affiliates.instantgradient.com")).toBe(
       "https://affiliates.instantgradient.com"
     );
+  });
+});
+
+describe("signupLinkFor", () => {
+  it("is the affiliate address when one program is open", () => {
+    expect(signupLinkFor("affiliates.acme.com", "acme", 1)).toBe("https://affiliates.acme.com");
+  });
+
+  it("is the program's signup page when several are open", () => {
+    expect(signupLinkFor("affiliates.acme.com", "agencies", 2)).toBe("https://affiliates.acme.com/affiliates/signup/agencies");
+  });
+
+  it("keeps the program's page on a local address, whose root is the dashboard", () => {
+    expect(signupLinkFor("localhost:3000", "acme", 1)).toBe("http://localhost:3000/affiliates/signup/acme");
   });
 });
