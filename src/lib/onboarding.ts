@@ -37,7 +37,7 @@ const LABELS: Record<StepId, string> = {
   product: "Product",
   subdomain: "Subdomain",
   "stripe-key": "Stripe key",
-  terms: "Terms",
+  terms: "Commission",
   tracking: "Tracking",
 };
 
