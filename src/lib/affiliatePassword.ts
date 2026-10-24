@@ -56,7 +56,7 @@ export async function checkAffiliatePassword(
  * the newest copy ever works. Scoped to the Owner's product: an id from
  * another product answers null.
  */
-export async function createAffiliatePasswordLink(
+export async function createAffiliateResetLink(
   ownerId: string,
   merchantId: string,
   affiliateId: string
@@ -83,7 +83,7 @@ export async function createAffiliatePasswordLink(
  * so the caller can log them in, or null for a link that is unknown, used,
  * expired or from another product.
  */
-export async function redeemAffiliatePasswordLink(
+export async function redeemAffiliateResetLink(
   rawToken: string,
   merchantId: string,
   password: string

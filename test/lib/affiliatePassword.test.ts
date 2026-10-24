@@ -6,8 +6,8 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import {
-  createAffiliatePasswordLink,
-  redeemAffiliatePasswordLink,
+  createAffiliateResetLink,
+  redeemAffiliateResetLink,
   checkAffiliatePassword,
   findAffiliateForLogin,
 } from "@/lib/affiliatePassword";
@@ -90,36 +90,36 @@ describe.skipIf(!hasDatabase)("affiliatePassword", () => {
     await db.$disconnect();
   });
 
-  describe("createAffiliatePasswordLink", () => {
+  describe("createAffiliateResetLink", () => {
     it("refuses an Affiliate that belongs to another Owner", async () => {
-      expect(await createAffiliatePasswordLink(mine.ownerId, other.merchantId, other.affiliateId)).toBeNull();
+      expect(await createAffiliateResetLink(mine.ownerId, other.merchantId, other.affiliateId)).toBeNull();
       expect(await db.affiliateLoginToken.count()).toBe(0);
     });
 
     it("refuses an Affiliate from another product of the same Owner", async () => {
-      expect(await createAffiliatePasswordLink(mine.ownerId, mine.merchantId, other.affiliateId)).toBeNull();
+      expect(await createAffiliateResetLink(mine.ownerId, mine.merchantId, other.affiliateId)).toBeNull();
       expect(await db.affiliateLoginToken.count()).toBe(0);
     });
 
     it("voids the earlier link, so only the newest copy works", async () => {
-      const first = await createAffiliatePasswordLink(mine.ownerId, mine.merchantId, mine.affiliateId);
-      const second = await createAffiliatePasswordLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      const first = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      const second = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
       expect(first).toBeTruthy();
       expect(second).toBeTruthy();
       expect(await db.affiliateLoginToken.count({ where: { affiliateId: mine.affiliateId } })).toBe(1);
 
-      expect(await redeemAffiliatePasswordLink(first!, mine.merchantId, PASSWORD)).toBeNull();
-      expect(await redeemAffiliatePasswordLink(second!, mine.merchantId, PASSWORD)).toEqual({
+      expect(await redeemAffiliateResetLink(first!, mine.merchantId, PASSWORD)).toBeNull();
+      expect(await redeemAffiliateResetLink(second!, mine.merchantId, PASSWORD)).toEqual({
         email: "sarah@example.com",
       });
     });
   });
 
-  describe("redeemAffiliatePasswordLink", () => {
+  describe("redeemAffiliateResetLink", () => {
     it("sets the password once and refuses the same link afterwards", async () => {
-      const link = await createAffiliatePasswordLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      const link = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
 
-      expect(await redeemAffiliatePasswordLink(link!, mine.merchantId, PASSWORD)).toEqual({
+      expect(await redeemAffiliateResetLink(link!, mine.merchantId, PASSWORD)).toEqual({
         email: "sarah@example.com",
       });
       const affiliate = await findAffiliateForLogin(mine.merchantId, "sarah@example.com");
@@ -128,36 +128,36 @@ describe.skipIf(!hasDatabase)("affiliatePassword", () => {
         email: "sarah@example.com",
       });
 
-      expect(await redeemAffiliatePasswordLink(link!, mine.merchantId, "another password here")).toBeNull();
+      expect(await redeemAffiliateResetLink(link!, mine.merchantId, "another password here")).toBeNull();
       const after = await findAffiliateForLogin(mine.merchantId, "sarah@example.com");
       expect(after?.passwordHash).toBe(affiliate?.passwordHash);
     });
 
     it("refuses an expired link", async () => {
-      const link = await createAffiliatePasswordLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      const link = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
       await db.affiliateLoginToken.updateMany({ data: { expiresAt: new Date(Date.now() - 1000) } });
 
-      expect(await redeemAffiliatePasswordLink(link!, mine.merchantId, PASSWORD)).toBeNull();
+      expect(await redeemAffiliateResetLink(link!, mine.merchantId, PASSWORD)).toBeNull();
       expect((await findAffiliateForLogin(mine.merchantId, "sarah@example.com"))?.passwordHash).toBeNull();
     });
 
     it("refuses a link opened on another product", async () => {
-      const link = await createAffiliatePasswordLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      const link = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
 
-      expect(await redeemAffiliatePasswordLink(link!, other.merchantId, PASSWORD)).toBeNull();
+      expect(await redeemAffiliateResetLink(link!, other.merchantId, PASSWORD)).toBeNull();
       expect((await findAffiliateForLogin(mine.merchantId, "sarah@example.com"))?.passwordHash).toBeNull();
     });
 
     it("refuses an unknown link", async () => {
-      expect(await redeemAffiliatePasswordLink("not-a-real-token", mine.merchantId, PASSWORD)).toBeNull();
+      expect(await redeemAffiliateResetLink("not-a-real-token", mine.merchantId, PASSWORD)).toBeNull();
     });
 
     it("lets only one of two concurrent submits of the same link through", async () => {
-      const link = await createAffiliatePasswordLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      const link = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
 
       const results = await Promise.all([
-        redeemAffiliatePasswordLink(link!, mine.merchantId, "first password here"),
-        redeemAffiliatePasswordLink(link!, mine.merchantId, "second password here"),
+        redeemAffiliateResetLink(link!, mine.merchantId, "first password here"),
+        redeemAffiliateResetLink(link!, mine.merchantId, "second password here"),
       ]);
       expect(results.filter((r) => r !== null)).toHaveLength(1);
     });

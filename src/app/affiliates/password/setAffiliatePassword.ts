@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
 import { getMerchantByDomain } from "@/lib/merchant";
-import { affiliatePasswordError, redeemAffiliatePasswordLink } from "@/lib/affiliatePassword";
+import { affiliatePasswordError, redeemAffiliateResetLink } from "@/lib/affiliatePassword";
 import { ConcurrencyLimitError } from "@/lib/password";
 
 const INVALID_LINK = "This link has expired or was already used. Ask for a new one.";
@@ -24,7 +24,7 @@ export async function setAffiliatePassword(
 
   let redeemed: { email: string } | null;
   try {
-    redeemed = await redeemAffiliatePasswordLink(token, merchant.id, password);
+    redeemed = await redeemAffiliateResetLink(token, merchant.id, password);
   } catch (err) {
     if (err instanceof ConcurrencyLimitError) return { error: "Busy right now. Try again in a moment." };
     throw err;

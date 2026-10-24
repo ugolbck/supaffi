@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { updateAffiliate } from "@/lib/affiliate";
-import { createAffiliatePasswordLink } from "@/lib/affiliatePassword";
+import { createAffiliateResetLink } from "@/lib/affiliatePassword";
 
 /**
  * The two writes the affiliate sheet makes: which program someone is in, and
@@ -66,6 +66,6 @@ export async function createPasswordLinkAction(
   affiliateId: string
 ): Promise<{ token: string } | { error: string }> {
   const ownerId = await owner();
-  const token = await createAffiliatePasswordLink(ownerId, product.id, affiliateId);
+  const token = await createAffiliateResetLink(ownerId, product.id, affiliateId);
   return token ? { token } : { error: "Affiliate not found" };
 }
