@@ -39,6 +39,11 @@ Stripe is the only payment provider and Resend the only email provider. Paddle
 and Polar are the obvious next payments; email needs at least a plain SMTP
 option so no one is forced into a single vendor.
 
+### Recovering late refunds
+A refund or chargeback that arrives after a commission was paid is the owner's
+loss today. An optional setting could take it off the affiliate's next payouts
+instead, for owners whose refund window is longer than their holding period.
+
 ## Known gaps
 
 - A session that outlives its owner account still passes the dashboard guard
