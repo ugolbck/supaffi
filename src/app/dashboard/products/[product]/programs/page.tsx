@@ -73,7 +73,7 @@ export default async function ProgramsPage({
 
   const base = `/dashboard/products/${merchant.slug}/programs`;
   const programs = await listProgramsForMerchant(ownerId, merchant.id);
-  const openPrograms = programs.filter((p) => p.signupOpen).length;
+  const defaultSlug = programs.find((p) => p.signupOpen)?.slug ?? null;
   const productRef = { id: merchant.id, slug: merchant.slug };
 
   // An id that names nothing opens nothing, rather than an empty form.
@@ -102,7 +102,7 @@ export default async function ProgramsPage({
             attributionDays={p.attributionWindowDays}
             holdingDays={p.holdingPeriodDays}
             affiliateCount={p.affiliateCount}
-            signupLink={p.signupOpen ? signupLinkFor(merchant.domain, p.slug, openPrograms) : null}
+            signupLink={p.signupOpen ? signupLinkFor(merchant.domain, p.slug, defaultSlug) : null}
             editHref={`${base}?edit=${p.id}`}
           />
         ))}

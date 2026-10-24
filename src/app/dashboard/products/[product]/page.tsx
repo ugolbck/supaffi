@@ -84,7 +84,7 @@ export default async function ProductOverviewPage({
   const empty = metrics.clicks === 0 && metrics.signups === 0 && setup.affiliateCount === 0;
 
   const signupLink = setup.firstProgramSlug
-    ? signupLinkFor(merchant.domain, setup.firstProgramSlug, setup.openProgramCount)
+    ? signupLinkFor(merchant.domain, setup.firstProgramSlug, setup.firstProgramSlug)
     : null;
 
   // The banner onboarding hands over. It stays until somebody signs up or the

@@ -20,12 +20,12 @@ export function originFor(domain: string): string {
 }
 
 /**
- * The signup link handed to a would-be affiliate. With one program open it is
- * the affiliate address itself, which opens that signup and still works if a
- * second program opens later. Otherwise it is the program's own signup page.
- * A local address keeps the long form: its root is the dashboard's.
+ * The signup link handed to a would-be affiliate. For the default program,
+ * the first one open, it is the affiliate address itself, which opens that
+ * signup. Any other program gets its own signup page. A local address keeps
+ * the long form: its root is the dashboard's.
  */
-export function signupLinkFor(domain: string, programSlug: string, openPrograms: number): string {
-  if (openPrograms === 1 && !isLocalDomain(domain)) return originFor(domain);
+export function signupLinkFor(domain: string, programSlug: string, defaultSlug: string | null): string {
+  if (programSlug === defaultSlug && !isLocalDomain(domain)) return originFor(domain);
   return `${originFor(domain)}/affiliates/signup/${programSlug}`;
 }

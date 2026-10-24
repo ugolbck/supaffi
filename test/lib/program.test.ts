@@ -11,7 +11,7 @@ import {
   updateProgram,
   getProgramForSignup,
   getClosedProgramName,
-  listOpenPrograms,
+  getDefaultProgramSlug,
 } from "@/lib/program";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
@@ -249,16 +249,16 @@ describe.skipIf(!hasDatabase)("program", () => {
     expect(await getClosedProgramName(merchantId, "missing")).toBeNull();
   });
 
-  it("listOpenPrograms lists this Merchant's open Programs, oldest first", async () => {
+  it("getDefaultProgramSlug is this Merchant's oldest open Program", async () => {
+    expect(await getDefaultProgramSlug(merchantId)).toBeNull();
+
+    const closed = await createProgram(ownerId, merchantId, { ...baseInput, name: "Creators", signupOpen: false });
     const first = await createProgram(ownerId, merchantId, { ...baseInput, name: "Partners" });
-    await createProgram(ownerId, merchantId, { ...baseInput, name: "Creators", signupOpen: false });
-    const second = await createProgram(ownerId, merchantId, { ...baseInput, name: "Agencies" });
+    await createProgram(ownerId, merchantId, { ...baseInput, name: "Agencies" });
     await createProgram(ownerId, merchantId2, { ...baseInput, name: "Elsewhere" });
 
-    expect(await listOpenPrograms(merchantId)).toEqual([
-      { slug: first.slug, name: "Partners" },
-      { slug: second.slug, name: "Agencies" },
-    ]);
+    expect(await getDefaultProgramSlug(merchantId)).toBe(first.slug);
+    expect(closed.slug).not.toBe(first.slug);
   });
 
   it("getProgramForSignup returns null when the Program belongs to a different Merchant", async () => {

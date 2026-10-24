@@ -86,7 +86,7 @@ export default async function AffiliatesPage({
   ]);
 
   const signupLink = firstProgram
-    ? signupLinkFor(merchant.domain, firstProgram.slug, programs.filter((p) => p.signupOpen).length)
+    ? signupLinkFor(merchant.domain, firstProgram.slug, firstProgram.slug)
     : null;
 
   const totalPages = Math.max(1, Math.ceil(total / AFFILIATES_PAGE_SIZE));

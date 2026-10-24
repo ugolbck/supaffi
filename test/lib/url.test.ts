@@ -44,15 +44,16 @@ describe("originFor", () => {
 });
 
 describe("signupLinkFor", () => {
-  it("is the affiliate address when one program is open", () => {
-    expect(signupLinkFor("affiliates.acme.com", "acme", 1)).toBe("https://affiliates.acme.com");
+  it("is the affiliate address for the default program", () => {
+    expect(signupLinkFor("affiliates.acme.com", "acme", "acme")).toBe("https://affiliates.acme.com");
   });
 
-  it("is the program's signup page when several are open", () => {
-    expect(signupLinkFor("affiliates.acme.com", "agencies", 2)).toBe("https://affiliates.acme.com/affiliates/signup/agencies");
+  it("is the program's own signup page for any other program", () => {
+    expect(signupLinkFor("affiliates.acme.com", "agencies", "acme")).toBe("https://affiliates.acme.com/affiliates/signup/agencies");
+    expect(signupLinkFor("affiliates.acme.com", "agencies", null)).toBe("https://affiliates.acme.com/affiliates/signup/agencies");
   });
 
   it("keeps the program's page on a local address, whose root is the dashboard", () => {
-    expect(signupLinkFor("localhost:3000", "acme", 1)).toBe("http://localhost:3000/affiliates/signup/acme");
+    expect(signupLinkFor("localhost:3000", "acme", "acme")).toBe("http://localhost:3000/affiliates/signup/acme");
   });
 });
