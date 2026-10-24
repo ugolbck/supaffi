@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TaskCard, TaskCardBody, TaskCardHeader } from "@/components/onboarding/TaskCard";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 import { slugify } from "@/lib/slugify";
 import { validateCode } from "./validation";
@@ -34,9 +34,11 @@ export function SignupForm({ action, linkHost }: Props) {
   const codeError = codeTouched && code ? validateCode(code).error : null;
 
   return (
-    <TaskCard>
-      <TaskCardHeader title="Sign up" />
-      <TaskCardBody>
+    <Card>
+      <CardHeader>
+        <CardTitle>Sign up</CardTitle>
+      </CardHeader>
+      <CardContent>
         <form action={formAction} className="flex flex-col gap-4">
           {state.error && (
             <p role="alert" className="text-[13px] text-status-danger">
@@ -81,7 +83,7 @@ export function SignupForm({ action, linkHost }: Props) {
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="code">Your referral link</Label>
             <div className="flex h-9 items-center gap-1 rounded-lg border border-input bg-elevated px-3 shadow-[inset_0_1px_2px_rgba(15,15,35,0.04)] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
-              <span className="max-w-[60%] shrink truncate font-mono text-sm text-muted-foreground">
+              <span className="shrink-0 font-mono text-sm whitespace-nowrap text-muted-foreground">
                 {linkHost}/?via=
               </span>
               <input
@@ -116,7 +118,7 @@ export function SignupForm({ action, linkHost }: Props) {
             </a>
           </p>
         </form>
-      </TaskCardBody>
-    </TaskCard>
+      </CardContent>
+    </Card>
   );
 }

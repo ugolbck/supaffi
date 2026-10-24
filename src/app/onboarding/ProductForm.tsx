@@ -2,42 +2,37 @@
 
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
-import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
+import { Input } from "@/components/ui/input";
+import { Field, FormCard } from "@/components/Field";
 import { createProductAction } from "./productAction";
-
-const FIELD =
-  "h-14 w-full min-w-0 bg-transparent px-4 text-[15px] outline-none placeholder:text-neutral-400";
 
 export function ProductForm() {
   const [state, action, pending] = useActionState(createProductAction, { error: "" });
   return (
     <form action={action} className="flex flex-col gap-6">
-      <TaskCard>
-        <TaskCardHeader title="Name" />
-        <TaskCardSection>
-          <input name="name" required autoFocus placeholder="Your product" className={FIELD} aria-label="Product name" />
-        </TaskCardSection>
-        <TaskCardHeader title="Website" />
-        <TaskCardSection>
-          <input
+      <FormCard>
+        <Field label="Name" htmlFor="product-name">
+          <Input id="product-name" name="name" required autoFocus placeholder="Your product" />
+        </Field>
+        <Field label="Website" htmlFor="product-website">
+          <Input
+            id="product-website"
             name="websiteUrl"
             inputMode="url"
             autoCapitalize="off"
             spellCheck={false}
             required
             placeholder="yoursite.com"
-            className={FIELD}
-            aria-label="Website"
           />
-        </TaskCardSection>
-      </TaskCard>
+        </Field>
+      </FormCard>
       {state.error && (
         <p role="alert" className="text-[13px] text-status-danger">
           {state.error}
         </p>
       )}
       <div>
-        <Button type="submit" size="lg" disabled={pending}>
+        <Button type="submit" size="lg" className="cursor-pointer" disabled={pending}>
           {pending ? "Creating" : "Continue"}
         </Button>
       </div>
