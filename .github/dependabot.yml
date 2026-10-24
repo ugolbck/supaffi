@@ -8,19 +8,39 @@ version: 2
 #
 # Docker is here for the same reason. The base images float on a minor tag, so
 # a rebuild picks up patches, but nothing triggers a rebuild between releases.
+# The cooldown holds a release back for a week after it is published. A
+# hijacked package is usually caught and pulled within days, so this keeps
+# Dependabot from being the thing that installs it. Security updates are not
+# held back.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    # One PR a week for every action bump. They are reviewed the same way.
+    groups:
+      actions:
+        patterns: ["*"]
 
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
+    # Minor and patch bumps together, so the week's routine updates are one
+    # PR and one CI run. A major version still gets a PR of its own, since
+    # that is the one that needs reading.
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
 
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
