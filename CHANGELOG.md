@@ -8,7 +8,7 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.3.0
+## 0.3.1
 
 ### Security
 
@@ -16,6 +16,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   known security flaws, some of them rated critical.
 - The image no longer ships the build and test tools or npm, which removes
   most of the other flaws scanners reported in it.
+
+## 0.3.0
 
 ### Changed
 
