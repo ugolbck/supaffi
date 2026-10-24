@@ -1,7 +1,7 @@
 import { Wallet } from "lucide-react";
 import type { AffiliatePaymentGroup } from "@/lib/affiliate";
 import type { CurrencyTotal } from "@/lib/analytics";
-import { money, moneyHint } from "@/lib/format";
+import { money, moneyHint, formatDate } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { EmptyState } from "@/components/dashboard/EmptyState";
@@ -17,15 +17,6 @@ import { PayoutDetailsForm } from "../PayoutDetailsForm";
  * screen can be rendered in the dev kit with fixtures.
  */
 
-const DATE = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-  timeZone: "UTC",
-});
 
 /**
  * One row per payout, at the moment it was made. Two payouts made the same
@@ -44,7 +35,7 @@ function PaymentRows({ payments }: { payments: AffiliatePaymentGroup[] }) {
             className="flex items-center gap-3 border-b border-neutral-200 py-3 last:border-0"
           >
             <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">
-              {DATE.format(payment.paidAt)}
+              {formatDate(payment.paidAt)}
             </span>
             {/* Dropped on a phone rather than truncated to nothing: it is the
                 least of the three things in the row. */}

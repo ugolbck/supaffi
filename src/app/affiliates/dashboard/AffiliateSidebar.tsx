@@ -6,6 +6,7 @@ import { signOutAffiliate } from "./signOutAffiliate";
 import { Building2, LinkIcon, LogOut, Receipt, Wallet, type LucideIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { initials } from "@/lib/format";
 import {
   Sidebar,
   SidebarContent,
@@ -53,7 +54,7 @@ const NAV: { key: string; href: string; label: string; icon: LucideIcon }[] = [
 function Mark({ name }: { name: string }) {
   return (
     <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent-700 text-[11px] font-semibold text-accent-100">
-      {name.slice(0, 2).toUpperCase()}
+      {initials(name)}
     </span>
   );
 }

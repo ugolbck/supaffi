@@ -12,7 +12,7 @@ import {
   STALE_PAGE,
 } from "@/lib/commission";
 import { getOwedTotals, getPayableGroups, type CurrencyTotal } from "@/lib/analytics";
-import { formatCount, formatMoney, money, moneyHint } from "@/lib/format";
+import { formatCount, formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
   Pagination,
@@ -40,12 +40,6 @@ import { PayBar } from "./PayBar";
  * from the new rows. Flagged is a tab, never a page of its own.
  */
 
-const DATE = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  timeZone: "UTC",
-});
 
 /**
  * The refusals the ledger can hand back, as sentences. The action puts a code
@@ -98,16 +92,16 @@ function stateLabel(row: CommissionRow): string {
   }
   switch (row.status) {
     case "PENDING":
-      return `Payable ${DATE.format(row.payableAt)}`;
+      return `Payable ${formatDate(row.payableAt)}`;
     case "PAYABLE":
       return "Ready to pay";
     case "FLAGGED":
       return flagReasonText(row.flagReason)?.title ?? "Flagged for review";
     case "PAID":
-      return row.paidAt ? `Paid ${DATE.format(row.paidAt)}` : "Paid";
+      return row.paidAt ? `Paid ${formatDate(row.paidAt)}` : "Paid";
     case "VOIDED": {
       const cause = voidReasonText(row.voidReason, "owner");
-      const when = row.voidedAt ? DATE.format(row.voidedAt) : null;
+      const when = row.voidedAt ? formatDate(row.voidedAt) : null;
       if (cause && when) return `${cause} · ${when}`;
       return cause ?? (when ? `Voided ${when}` : "Voided");
     }
@@ -215,7 +209,7 @@ export default async function CommissionsPage({
     affiliateName: row.affiliateName,
     affiliateEmail: row.affiliateEmail,
     isAdjustment: row.isAdjustment,
-    createdLabel: DATE.format(row.createdAt),
+    createdLabel: formatDate(row.createdAt),
     stateLabel: stateLabel(row),
     reference: row.stripePaymentRef,
     href: hrefWith({ commission: row.id }),
@@ -239,14 +233,14 @@ export default async function CommissionsPage({
             : null,
         affiliate: selected.affiliateName ?? selected.affiliateEmail,
         affiliateEmail: selected.affiliateEmail,
-        createdLabel: DATE.format(selected.createdAt),
-        payableLabel: DATE.format(selected.payableAt),
-        voidedLabel: selected.voidedAt ? DATE.format(selected.voidedAt) : null,
+        createdLabel: formatDate(selected.createdAt),
+        payableLabel: formatDate(selected.payableAt),
+        voidedLabel: selected.voidedAt ? formatDate(selected.voidedAt) : null,
         voidReason: selected.voidReason,
         flagReason: selected.flagReason,
         stateLabel: stateLabel(selected),
         reference: referenceFor(selected.stripePaymentRef),
-        clickLabel: DATE.format(selected.click.at),
+        clickLabel: formatDate(selected.click.at),
         linkLabel: selected.click.linkCode
           ? `${selected.click.linkCode} · ${selected.click.destinationPath ?? "/"}`
           : null,

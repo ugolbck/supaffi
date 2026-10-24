@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type Merchant = { id: string; slug: string; name: string; domain: string };
@@ -21,7 +22,7 @@ function Mark({ name, small = false }: { name: string; small?: boolean }) {
         small ? "size-6 rounded-[5px] text-[10px]" : "size-7 rounded-md text-[11px]"
       )}
     >
-      {name.slice(0, 2).toUpperCase()}
+      {initials(name)}
     </span>
   );
 }

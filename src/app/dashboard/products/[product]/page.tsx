@@ -124,7 +124,6 @@ export default async function ProductOverviewPage({
     <Page>
       <PageTitle
         title="Overview"
-        subtitle={range === "all" ? "Everything since the start" : `How things went, ${rangeLabel(range).toLowerCase()}`}
         actions={<RangePicker value={range} />}
       />
       {celebrate && <TrackingVerified merchantId={merchant.id} />}

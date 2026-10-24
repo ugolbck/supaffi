@@ -118,7 +118,6 @@ export function OverviewScreen({
     <Page>
       <PageTitle
         title="Overview"
-        subtitle={range === "all" ? "Everything since you joined" : `How things went, ${rangeLabel(range).toLowerCase()}`}
         actions={<RangePicker value={range} />}
       />
 

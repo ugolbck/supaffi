@@ -11,7 +11,7 @@ import {
   AFFILIATES_PAGE_SIZE,
 } from "@/lib/affiliate";
 import { getProductMetrics } from "@/lib/analytics";
-import { formatMoney, money, moneyHint } from "@/lib/format";
+import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { originFor } from "@/lib/url";
 import { linkUrl, listLinksWithStats } from "@/lib/affiliateLink";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { pageList } from "@/lib/pagination";
-import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
-import { StatTile } from "@/components/dashboard/StatTile";
+import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { AffiliateFilters } from "./AffiliateFilters";
 import { AffiliateTable, type AffiliateRowView } from "./AffiliateTable";
 import { AffiliateSheet, type SheetAffiliate } from "./AffiliateSheet";
@@ -42,18 +41,7 @@ import { AffiliateSheet, type SheetAffiliate } from "./AffiliateSheet";
  * affiliates is the overview's job and the list already sorts and filters.
  */
 
-const DATE = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  timeZone: "UTC",
-});
 
-const SHORT_DATE = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  timeZone: "UTC",
-});
 
 export default async function AffiliatesPage({
   params,
@@ -142,6 +130,9 @@ export default async function AffiliatesPage({
     programs.map((p) => [p.id, p.commissionDurationType !== "ONE_TIME"])
   );
 
+  // An affiliate who has earned nothing still gets a currency on their zero.
+  const fallbackCurrency = metrics.currencies[0] ?? null;
+
   const view: AffiliateRowView[] = rows.map((row) => {
     const counts = referralCountsById.get(row.id);
     const recurring = recurringByProgramId.get(row.programId) ?? false;
@@ -153,15 +144,15 @@ export default async function AffiliatesPage({
       programName: row.programName,
       clicks: row.clicks,
       conversions: row.conversions,
-      earned: money(row.earned),
+      earned: money(row.earned, fallbackCurrency),
       earnedHint: moneyHint(row.earned) ?? null,
       rate: `${row.commissionRate}%`,
       rateIsOverride: row.rateIsOverride,
       // Nothing when the program has no recurring commission to churn out of,
       // or when nobody has converted yet.
       retention:
-        recurring && counts && counts.total > 0 ? `${counts.active} of ${counts.total} still paying` : null,
-      joined: DATE.format(row.createdAt),
+        recurring && counts && counts.total > 0 ? `${counts.active}/${counts.total}` : null,
+      joined: formatDate(row.createdAt),
       href: hrefWith({ affiliate: row.id }),
     };
   });
@@ -181,7 +172,7 @@ export default async function AffiliatesPage({
       id: selected.id,
       name: selected.name,
       email: selected.email,
-      joinedAt: DATE.format(selected.createdAt),
+      joinedAt: formatDate(selected.createdAt),
       programId: selected.programId,
       programName: selected.programName,
       rate: selected.commissionRate,
@@ -194,7 +185,7 @@ export default async function AffiliatesPage({
       })),
       commissions: (detail?.commissions ?? []).map((c) => ({
         id: c.id,
-        date: SHORT_DATE.format(c.createdAt),
+        date: formatDate(c.createdAt),
         // Never summed across currencies, so each line carries its own.
         amount: formatMoney(c.amount, c.currency),
         status: c.status.toLowerCase(),
@@ -235,24 +226,6 @@ export default async function AffiliatesPage({
           </>
         }
       />
-
-      {/* Nothing to trend before anybody has joined, so the row is not drawn
-          rather than drawn as zeroes. */}
-      {signals.total > 0 && (
-        <Tiles columns={3}>
-          <StatTile
-            label="Clicks, 30 days"
-            value={String(metrics.clicks)}
-            series={metrics.series.map((d) => d.clicks)}
-          />
-          <StatTile
-            label="Conversion"
-            value={`${metrics.conversionRate}%`}
-            hint={`${metrics.conversions} of ${metrics.clicks}`}
-          />
-          <StatTile label="Owed" value={money(metrics.owed)} hint={moneyHint(metrics.owed)} />
-        </Tiles>
-      )}
 
       {/* Flush and clipped: the rows are the card, and the table scrolls
           inside it so the page never does. */}
