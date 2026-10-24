@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, LinkIcon, Receipt, Wallet, type LucideIcon } from "lucide-react";
+import { signOutAffiliate } from "./signOutAffiliate";
+import { Building2, LinkIcon, LogOut, Receipt, Wallet, type LucideIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
@@ -120,14 +122,19 @@ export function AffiliateSidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      {/* Who they are signed in as. Not a menu: an affiliate session has no
-          account screen and no sign out to put behind one. */}
+      {/* Who they are signed in as, and the way out. Not a menu: an
+          affiliate session has no account screen to put beside it. */}
       <SidebarFooter className="p-3">
         <div className="flex items-center gap-2.5 px-2">
           <Avatar className="size-8 shrink-0">
             <AvatarFallback>{email.charAt(0).toUpperCase() || "?"}</AvatarFallback>
           </Avatar>
           <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{email}</span>
+          <form action={signOutAffiliate}>
+            <Button type="submit" variant="ghost" size="icon-sm" className="cursor-pointer" aria-label="Log out" title="Log out">
+              <LogOut />
+            </Button>
+          </form>
         </div>
       </SidebarFooter>
     </Sidebar>
