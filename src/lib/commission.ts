@@ -256,6 +256,16 @@ const TWO_DECIMALS = /^\d+\.\d{2}$/;
 /** No page renders anywhere near this many rows in one payout. */
 export const MAX_SHOWN = 5000;
 
+/**
+ * How old a page may be when it records a payout. Long enough to send the
+ * money from a bank and come back. Past it, a refund that landed meanwhile
+ * would be written back as paid at its full amount, so the payout is refused
+ * and the page shown again with the refund.
+ */
+const MAX_PAGE_AGE_MS = 60 * 60 * 1000;
+export const STALE_PAGE =
+  "That payout was not recorded because the page was over an hour old. Check the amounts and pay again.";
+
 /** The voids a refund or a lost chargeback writes, as opposed to the Owner's own. */
 const REFUND_VOID_REASONS: readonly string[] = ["refund", "chargeback"];
 
@@ -397,6 +407,9 @@ export async function markCommissionsPaid(
   const loadedAt = typeof renderedAt === "string" ? new Date(renderedAt) : new Date(NaN);
   if (Number.isNaN(loadedAt.getTime()) || loadedAt.getTime() > Date.now()) {
     return { error: REFUSED };
+  }
+  if (Date.now() - loadedAt.getTime() > MAX_PAGE_AGE_MS) {
+    return { error: STALE_PAGE };
   }
 
   const ids = [...amounts.keys()];

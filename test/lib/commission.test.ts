@@ -10,6 +10,7 @@ import {
   getCommissionTotals,
   getCommissionFilterOptions,
   markCommissionsPaid,
+  STALE_PAGE,
   confirmCommissionFraud,
   dismissCommissionFlag,
   voidCommission,
@@ -846,6 +847,15 @@ describe.skipIf(!hasDatabase)("commission", () => {
     }
     expect((await db.commission.findUniqueOrThrow({ where: { id: only.id } })).status).toBe("PAYABLE");
     expect((await db.commission.findUniqueOrThrow({ where: { id: foreign.id } })).status).toBe("PAYABLE");
+  });
+
+  it("refuses a payout from a page over an hour old, so a later refund is not paid back", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const only = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const old = new Date(Date.now() - 61 * 60 * 1000).toISOString();
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(only), old)).toEqual({ error: STALE_PAGE });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: only.id } })).status).toBe("PAYABLE");
   });
 
   it("refuses a shown list larger than any page could render, before any write", async () => {

@@ -9,6 +9,7 @@ import {
   COMMISSIONS_PAGE_SIZE,
   type CommissionRow,
   type CommissionStatus,
+  STALE_PAGE,
 } from "@/lib/commission";
 import { getOwedTotals, getPayableGroups, type CurrencyTotal } from "@/lib/analytics";
 import { formatCount, formatMoney, money, moneyHint } from "@/lib/format";
@@ -54,6 +55,7 @@ const DATE = new Intl.DateTimeFormat("en-GB", {
 const REFUSALS: Record<string, string> = {
   empty: "Nothing was selected, so there was nothing to pay.",
   mixed: "A payout covers one affiliate and one currency at a time.",
+  stale: STALE_PAGE,
   refused: "The ledger refused that payout.",
 };
 

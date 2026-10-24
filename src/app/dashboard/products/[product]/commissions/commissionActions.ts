@@ -10,6 +10,7 @@ import {
   dismissCommissionFlag,
   voidCommission,
   type ShownCommission,
+  STALE_PAGE,
 } from "@/lib/commission";
 
 /**
@@ -39,6 +40,7 @@ async function owner(): Promise<string> {
 function refusalCode(error: string): string {
   if (error.includes("Nothing selected")) return "empty";
   if (error.includes("one currency")) return "mixed";
+  if (error === STALE_PAGE) return "stale";
   return "refused";
 }
 
