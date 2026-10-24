@@ -9,7 +9,7 @@ import { decrypt } from "@/lib/crypto";
 // it in the Stripe Dashboard, which Supaffi has no control over. Handlers
 // that read fields sensitive to this (e.g. Charge.invoice, removed in this
 // version) defensively check for older shapes too.
-const STRIPE_API_VERSION = "2026-07-29.dahlia" as const;
+const STRIPE_API_VERSION = "2026-09-30.endive" as const;
 
 // Stripe is connected in its own onboarding step, so a Merchant can exist
 // without a key. Nothing queues Stripe work for such a Merchant (no webhook

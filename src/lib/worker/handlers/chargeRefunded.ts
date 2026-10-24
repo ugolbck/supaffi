@@ -199,7 +199,7 @@ export function idOf(ref: string | { id: string } | null | undefined): string | 
 // the payment. Before 0.2.7 such a sale was stored under the invoice, so the
 // invoice is still tried first and those rows are still found.
 //
-// In the Stripe API version this SDK is pinned to (2026-07-29.dahlia), Charge
+// In the Stripe API version this SDK is pinned to (2026-09-30.endive), Charge
 // no longer has a direct `invoice` field; it was removed upstream in favor of
 // Invoice.payments. It is checked first anyway: a Merchant's account may still
 // send events on an older API version whose payload carries it, even though
