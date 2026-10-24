@@ -2,35 +2,22 @@
 
 What is still missing, roughly in the order it gets built. Deliberately coarse:
 this is the shape of the work, not a changelog. Shipped versions are in
-CHANGELOG.md.
+CHANGELOG.md. The UX review behind the current order is in
+docs/ux-review/README.md.
 
-## Now
+## Now: UX polish
 
-### Installing next to what you already run
-A server with nothing on it is handled. A server that already runs a reverse
-proxy is not, quite: Supaffi stays out of the way as it should, but the program
-hostnames still need a routing rule added by hand, and nothing in the product
-tells you that or checks whether it worked. Both cases should be equally
-automatic.
+### Flagged commissions
+Confirm and dismiss on the row, with the buyer and the affiliate side by side,
+instead of inside the commission's panel.
 
-### Onboarding
-The install is good and everything after it is not. Setup should be one path
-that holds you until it is finished, rather than a dashboard you can wander
-into half configured. That includes real guidance for the subdomain each
-program needs, making Stripe progress visible step by step,
-and rewriting the commission terms screen, which currently explains nothing.
+### The affiliate panel
+Totals at the top (earned, paid, owed) and a way to every commission of that
+affiliate. A program change that saves when picked.
 
-## Next
-
-### The affiliate side
-The affiliate dashboard needs rebuilding. It should be somewhere affiliates
-want to open, not only somewhere they go when chasing a payment. They also
-cannot manage their own links yet: one is generated at signup and that is all
-they get.
-
-### The owner's view of affiliates
-The affiliates section is not built. There is no list of who is promoting a
-product, what they have earned, or per-affiliate rates.
+### Small details
+Tracking code blocks that show in full, headings that wrap evenly, larger hit
+areas on small buttons, the product's name on the password page.
 
 ## Later
 

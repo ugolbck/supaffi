@@ -5,7 +5,8 @@ import { auth } from "@/lib/auth";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { countAffiliatesForMerchant } from "@/lib/affiliate";
 import { getProductMetrics } from "@/lib/analytics";
-import { money } from "@/lib/format";
+import { money, initials } from "@/lib/format";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 
@@ -41,7 +42,8 @@ export default async function ProductsPage() {
       return {
         ...m,
         affiliates,
-        owed: money(metrics.owed),
+        // A product that has never sold has no currency to print a zero in.
+        owed: metrics.owed.length > 0 || metrics.currencies.length > 0 ? `${money(metrics.owed, metrics.currencies[0])} owed` : "Nothing owed",
         live: m.onboardingCompletedAt !== null,
       };
     })
@@ -73,7 +75,7 @@ export default async function ProductsPage() {
                 className="flex cursor-pointer items-center gap-4 px-5 py-4 hover:bg-black/[0.02]"
               >
                 <span className="flex size-9 items-center justify-center rounded-lg bg-accent-700 text-xs font-semibold text-accent-100">
-                  {row.name.slice(0, 2).toUpperCase()}
+                  {initials(row.name)}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{row.name}</span>
@@ -82,15 +84,17 @@ export default async function ProductsPage() {
                 <span className="w-28 text-right text-sm tabular-nums">
                   {row.affiliates} affiliates
                 </span>
-                <span className="w-32 text-right text-sm tabular-nums">{row.owed} owed</span>
-                <span
-                  className={
-                    row.live
-                      ? "w-14 text-right text-xs text-status-success"
-                      : "w-14 text-right text-xs text-status-warning"
-                  }
-                >
-                  {row.live ? "live" : "setup"}
+                <span className="w-32 text-right text-sm tabular-nums">{row.owed}</span>
+                <span className="flex w-16 justify-end">
+                  <Badge
+                    className={
+                      row.live
+                        ? "bg-status-success-bg text-status-success"
+                        : "bg-status-warning-bg text-status-warning"
+                    }
+                  >
+                    {row.live ? "Live" : "Setup"}
+                  </Badge>
                 </span>
                 <ChevronRight className="size-4 text-muted-foreground" />
               </Link>

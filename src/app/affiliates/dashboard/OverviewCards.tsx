@@ -27,6 +27,8 @@ import { STATUS_LABELS, STATUS_STYLES, toLedgerRow } from "./commissions/Commiss
 export type OverviewView = {
   /** The signup link, already built into a shareable URL. */
   referralUrl: string | null;
+  /** What they earn under, as one line. See `termsLine`. */
+  terms: string;
   recent: AffiliateCommissionRow[];
   series: DayPoint[];
   bucket: Bucket;
@@ -90,6 +92,7 @@ function Referrals({ total, active }: { total: number; active: number }) {
 
 export function OverviewScreen({
   referralUrl,
+  terms,
   recent,
   series,
   bucket,
@@ -118,7 +121,6 @@ export function OverviewScreen({
     <Page>
       <PageTitle
         title="Overview"
-        subtitle={range === "all" ? "Everything since you joined" : `How things went, ${rangeLabel(range).toLowerCase()}`}
         actions={<RangePicker value={range} />}
       />
 
@@ -126,7 +128,10 @@ export function OverviewScreen({
           value in the product is copied from. Not a row in a table. */}
       {referralUrl && (
         <div className="flex shrink-0 flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-neutral-700">Your link</span>
+          <div className="flex items-baseline justify-between gap-4">
+            <span className="text-[13px] font-medium text-neutral-700">Your link</span>
+            <span className="text-[13px] text-muted-foreground tabular-nums">{terms}</span>
+          </div>
           <CopyField value={referralUrl} />
         </div>
       )}
@@ -239,7 +244,7 @@ export function OverviewScreen({
                     </div>
                     <span
                       className={cn(
-                        "ml-auto shrink-0 text-right font-mono text-[13px] font-semibold tabular-nums",
+                        "ml-auto shrink-0 text-right text-[13px] font-semibold tabular-nums",
                         row.isAdjustment ? "text-destructive" : "text-neutral-900",
                         row.status === "VOIDED" && "font-normal text-muted-foreground"
                       )}

@@ -4,7 +4,8 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
+import { Input } from "@/components/ui/input";
+import { Field, FormCard } from "@/components/Field";
 import { Term } from "@/components/Term";
 import type { ProgramFormValues } from "@/lib/programValidation";
 
@@ -23,19 +24,16 @@ export const TERMS_DEFAULTS: ProgramFormValues = {
 // than the raw enum name it submits.
 const DURATIONS: Record<string, string> = {
   FOREVER: "of every payment, forever",
-  FIXED_MONTHS: "of every payment, for a number of months",
+  FIXED_MONTHS: "of every payment, for some months",
   ONE_TIME: "of the first payment only",
 };
 
-const ROW = "h-14 w-full min-w-0 bg-transparent px-4 text-[15px] outline-none placeholder:text-neutral-400";
-const NUMBER =
-  "h-10 w-20 rounded-(--radius) border border-neutral-300 bg-white px-3 text-[15px] tabular-nums shadow-xs outline-none transition-colors duration-100 ease-(--ease-out) focus:border-accent-400";
+const NUMBER = "w-20 tabular-nums";
 
 /**
- * Built on the same banded card as the product step, so the two forms in the
- * flow are visibly the same kind of object. Each field gets a band naming it
- * and a row holding it, and only the two windows carry a qualifier, because
- * they are the only labels here that do not explain themselves.
+ * Labels above their fields on one card, the layout every form shares. Only
+ * the two windows carry a qualifier, because they are the only labels here
+ * that do not explain themselves.
  */
 export function TermsForm({
   action,
@@ -54,114 +52,114 @@ export function TermsForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
-      <TaskCard>
-        <TaskCardHeader title="Program name" />
-        <TaskCardSection>
-          <input name="name" defaultValue={initial.name} required className={ROW} aria-label="Program name" />
-        </TaskCardSection>
+      <FormCard>
+        <Field label="Program name" htmlFor="program-name">
+          <Input id="program-name" name="name" defaultValue={initial.name} required />
+        </Field>
 
-        <TaskCardHeader title="Commission" />
-        <TaskCardSection className="flex items-center gap-3 p-4">
-          <div className="relative shrink-0">
-            <input
-              name="defaultCommissionRate"
-              type="number"
-              min="1"
-              max="100"
-              step="1"
-              defaultValue={initial.defaultCommissionRate}
-              required
-              aria-label="Commission rate"
-              className={`${NUMBER} w-24 pr-7`}
-            />
-            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
-              %
-            </span>
+        <Field label="Commission" htmlFor="program-rate">
+          <div className="flex items-center gap-2">
+            <div className="relative shrink-0">
+              <Input
+                id="program-rate"
+                name="defaultCommissionRate"
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                defaultValue={initial.defaultCommissionRate}
+                required
+                className="w-24 pr-7 tabular-nums"
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+                %
+              </span>
+            </div>
+            <Select
+              name="commissionDurationType"
+              items={DURATIONS}
+              value={duration}
+              onValueChange={(value) => setDuration(String(value))}
+            >
+              <SelectTrigger className="h-9 min-w-0 flex-1 cursor-pointer" aria-label="How long commission is paid">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(DURATIONS).map(([value, label]) => (
+                  <SelectItem key={value} value={value} className="cursor-pointer">
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <Select
-            name="commissionDurationType"
-            items={DURATIONS}
-            value={duration}
-            onValueChange={(value) => setDuration(String(value))}
-          >
-            <SelectTrigger className="h-10 flex-1 cursor-pointer" aria-label="How long commission is paid">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(DURATIONS).map(([value, label]) => (
-                <SelectItem key={value} value={value} className="cursor-pointer">
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </TaskCardSection>
+        </Field>
 
         {duration === "FIXED_MONTHS" && (
-          <TaskCardSection className="flex items-center gap-2 p-4">
-            <input
+          <Field label="Months of renewals" htmlFor="program-months">
+            <Input
+              id="program-months"
               name="commissionDurationMonths"
               type="number"
               min="1"
               step="1"
               defaultValue={initial.commissionDurationMonths || "12"}
-              aria-label="Months of renewals"
               className={NUMBER}
             />
-            <span className="text-sm text-muted-foreground">months of renewals</span>
-          </TaskCardSection>
+          </Field>
         )}
 
         {/* The same words the affiliate sees on their signup page, not the
             model's. What the number means sits behind the underline. */}
-        <TaskCardHeader
-          title={<Term tip="A sale counts for the affiliate if it happens within this many days of their click.">Time to buy</Term>}
-        />
-        <TaskCardSection className="flex items-center gap-2 p-4">
-          <input
-            name="attributionWindowDays"
-            type="number"
-            min="1"
-            step="1"
-            defaultValue={initial.attributionWindowDays}
-            required
-            aria-label="Time to buy, in days"
-            className={NUMBER}
-          />
-          <span className="text-sm text-muted-foreground">days</span>
-        </TaskCardSection>
+        <div className="grid grid-cols-2 gap-5">
+          <Field
+            label={<Term tip="A sale counts for the affiliate if it happens within this many days of their click.">Time to buy</Term>}
+            htmlFor="program-window"
+          >
+            <div className="flex items-center gap-2">
+              <Input
+                id="program-window"
+                name="attributionWindowDays"
+                type="number"
+                min="1"
+                step="1"
+                defaultValue={initial.attributionWindowDays}
+                required
+                className={NUMBER}
+              />
+              <span className="text-sm text-muted-foreground">days</span>
+            </div>
+          </Field>
 
-        <TaskCardHeader
-          title={<Term tip="A commission waits this long before it is yours to pay, so a refund can still cancel it.">Hold before paying</Term>}
-        />
-        <TaskCardSection className="flex items-center gap-2 p-4">
-          <input
-            name="holdingPeriodDays"
-            type="number"
-            min="1"
-            step="1"
-            defaultValue={initial.holdingPeriodDays}
-            required
-            aria-label="Hold before paying, in days"
-            className={NUMBER}
-          />
-          <span className="text-sm text-muted-foreground">days</span>
-        </TaskCardSection>
+          <Field
+            label={<Term tip="A commission waits this long before it is yours to pay, so a refund can still cancel it.">Hold before paying</Term>}
+            htmlFor="program-hold"
+          >
+            <div className="flex items-center gap-2">
+              <Input
+                id="program-hold"
+                name="holdingPeriodDays"
+                type="number"
+                min="1"
+                step="1"
+                defaultValue={initial.holdingPeriodDays}
+                required
+                className={NUMBER}
+              />
+              <span className="text-sm text-muted-foreground">days</span>
+            </div>
+          </Field>
+        </div>
 
         {signupOpen !== undefined && (
-          <>
-            <TaskCardHeader
-              title={<Term tip="Anyone with the signup link can join. Turn it off for a tier you move affiliates into yourself.">Public signup</Term>}
-            />
-            <TaskCardSection className="p-4">
-              <label className="flex cursor-pointer items-center gap-2.5 text-sm">
-                <Checkbox name="signupOpen" defaultChecked={signupOpen} className="cursor-pointer" />
-                Open
-              </label>
-            </TaskCardSection>
-          </>
+          <label className="flex cursor-pointer items-center gap-2.5 text-sm">
+            <Checkbox name="signupOpen" defaultChecked={signupOpen} className="cursor-pointer" />
+            <Term tip="Anyone with the signup link can join. Turn it off for a tier you move affiliates into yourself.">
+              Public signup
+            </Term>
+          </label>
         )}
-      </TaskCard>
+      </FormCard>
 
       {state.error && (
         <p role="alert" className="text-[13px] text-status-danger">
@@ -169,7 +167,7 @@ export function TermsForm({
         </p>
       )}
       <div>
-        <Button type="submit" size="lg" disabled={pending}>
+        <Button type="submit" size="lg" className="cursor-pointer" disabled={pending}>
           {submitLabel}
         </Button>
       </div>

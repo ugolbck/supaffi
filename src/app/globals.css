@@ -75,8 +75,10 @@
      second shade of blue ever does. */
   --chart-line: var(--accent-600);
   --chart-line-soft: var(--accent-400);
-  --chart-bar: #f2604a;
-  --chart-bar-lit: #ff7d63;
+  /* Teal: apart from the indigo line, and from red, green and amber, which
+     mean danger, done and waiting everywhere else in the product. */
+  --chart-bar: #1f9e90;
+  --chart-bar-lit: #2bb8a8;
 
   --chart-1: var(--accent-600);
   --chart-2: var(--accent-300);

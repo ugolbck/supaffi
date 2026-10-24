@@ -10,6 +10,7 @@ import {
   getProgramForMerchant,
   updateProgram,
   getProgramForSignup,
+  getClosedProgramName,
 } from "@/lib/program";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
@@ -235,6 +236,16 @@ describe.skipIf(!hasDatabase)("program", () => {
 
     await updateProgram(ownerId, merchantId, id, { ...baseInput, signupOpen: true });
     expect((await getProgramForSignup(merchantId, slug))?.name).toBe("Standard");
+  });
+
+  it("getClosedProgramName names a closed Program on its own Merchant only", async () => {
+    const closed = await createProgram(ownerId, merchantId, { ...baseInput, name: "Creators", signupOpen: false });
+    const open = await createProgram(ownerId, merchantId, baseInput);
+
+    expect(await getClosedProgramName(merchantId, closed.slug)).toBe("Creators");
+    expect(await getClosedProgramName(merchantId, open.slug)).toBeNull();
+    expect(await getClosedProgramName(merchantId2, closed.slug)).toBeNull();
+    expect(await getClosedProgramName(merchantId, "missing")).toBeNull();
   });
 
   it("getProgramForSignup returns null when the Program belongs to a different Merchant", async () => {

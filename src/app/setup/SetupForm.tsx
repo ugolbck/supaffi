@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,14 +16,18 @@ import { completeSetup } from "./completeSetup";
 const initialState = { error: "" };
 
 export function SetupForm() {
-  const [state, formAction] = useActionState(completeSetup, initialState);
+  const [state, formAction, pending] = useActionState(completeSetup, initialState);
+  // Held here so a refused attempt keeps what was typed: React resets an
+  // uncontrolled form after every action.
+  const [setupToken, setSetupToken] = useState("");
+  const [email, setEmail] = useState("");
 
   return (
-    <Card className="w-full max-w-sm animate-in fade-in zoom-in-95 duration-300 ease-out">
+    <Card className="animate-in fade-in zoom-in-95 duration-300 ease-out">
       <CardHeader>
         <CardTitle className="text-xl">Set up Supaffi</CardTitle>
         <CardDescription>
-          Create the Owner account for this Instance. This can only be done once.
+          Create the owner account. This can only be done once.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -41,6 +45,8 @@ export function SetupForm() {
               autoComplete="off"
               spellCheck={false}
               required
+              value={setupToken}
+              onChange={(e) => setSetupToken(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
               Printed in this instance&apos;s logs at startup.
@@ -48,7 +54,15 @@ export function SetupForm() {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" name="email" autoComplete="email" required />
+            <Input
+              id="email"
+              type="email"
+              name="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="password">Password</Label>
@@ -72,7 +86,7 @@ export function SetupForm() {
               minLength={12}
             />
           </div>
-          <Button type="submit" className="mt-1">
+          <Button type="submit" className="mt-1 cursor-pointer" disabled={pending}>
             Create account
           </Button>
         </form>

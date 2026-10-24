@@ -182,3 +182,15 @@ export async function getProgramForSignup(
   if (!program) return null;
   return { ...program, defaultCommissionRate: Number(program.defaultCommissionRate) };
 }
+
+/**
+ * A program's name when it exists but has sign-ups closed, so its signup link
+ * can say "invite only" rather than "not found". Null otherwise.
+ */
+export async function getClosedProgramName(merchantId: string, programSlug: string): Promise<string | null> {
+  const program = await db.program.findFirst({
+    where: { slug: programSlug, merchantId, signupOpen: false },
+    select: { name: true },
+  });
+  return program?.name ?? null;
+}

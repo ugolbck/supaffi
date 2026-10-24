@@ -456,9 +456,10 @@ export async function listAffiliatesForMerchant(
           select: { id: true, name: true, slug: true, defaultCommissionRate: true },
         },
       },
-      // Newest first. Ranking by money is the Leaderboard's job, and doing it
-      // here would mean aggregating every affiliate before paging any of them.
-      orderBy: { createdAt: "desc" },
+      // Most sales first, so the people worth looking at lead the list. Money
+      // cannot be ranked across currencies and would mean aggregating every
+      // affiliate before paging any of them; a count is one indexed join.
+      orderBy: [{ commissions: { _count: "desc" } }, { createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),

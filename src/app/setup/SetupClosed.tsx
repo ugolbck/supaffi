@@ -8,7 +8,7 @@ import {
 
 export function SetupClosed() {
   return (
-    <Card className="w-full max-w-sm">
+    <Card>
       <CardHeader>
         <CardTitle className="text-xl">Setup is closed</CardTitle>
         <CardDescription>

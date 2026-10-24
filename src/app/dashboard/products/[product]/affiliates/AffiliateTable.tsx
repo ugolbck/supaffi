@@ -32,7 +32,7 @@ export type AffiliateRowView = {
   rate: string;
   rateIsOverride: boolean;
   /**
-   * "8 of 11 still paying", from referralCounts (Task A5) batched on the page
+   * "8/11": still paying of all referred, from referralCounts (Task A5) batched on the page
    * that builds this row. Null when the program has no recurring commission
    * to churn out of, or when nobody has converted yet.
    */
@@ -86,7 +86,7 @@ export function AffiliateTable({
           <TableHead className="text-right">Sales</TableHead>
           <TableHead className="text-right">Earned</TableHead>
           <TableHead className="text-right">Rate</TableHead>
-          <TableHead className="text-right">Retention</TableHead>
+          <TableHead className="text-right">Still paying</TableHead>
           <TableHead className="text-right">Joined</TableHead>
         </TableRow>
       </TableHeader>
@@ -119,15 +119,15 @@ export function AffiliateTable({
             <TableCell className="max-w-32">
               <span className="block truncate text-sm">{row.programName}</span>
             </TableCell>
-            <TableCell className="text-right font-mono tabular-nums">{row.clicks}</TableCell>
-            <TableCell className="text-right font-mono tabular-nums">{row.conversions}</TableCell>
-            <TableCell className="text-right font-mono whitespace-nowrap tabular-nums">
+            <TableCell className="text-right tabular-nums">{row.clicks}</TableCell>
+            <TableCell className="text-right tabular-nums">{row.conversions}</TableCell>
+            <TableCell className="text-right whitespace-nowrap tabular-nums">
               <span className="block">{row.earned}</span>
               {row.earnedHint && (
                 <span className="block text-[11px] text-muted-foreground">{row.earnedHint}</span>
               )}
             </TableCell>
-            <TableCell className="text-right font-mono whitespace-nowrap tabular-nums">
+            <TableCell className="text-right whitespace-nowrap tabular-nums">
               <span className="inline-flex items-center justify-end gap-1">
                 {row.rate}
                 {row.rateIsOverride && (

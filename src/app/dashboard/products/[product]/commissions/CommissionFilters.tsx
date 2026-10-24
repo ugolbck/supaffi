@@ -143,7 +143,7 @@ export function CommissionFilters({
           name="q"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Affiliate or payment reference"
+          placeholder="Affiliate or Stripe ID"
           className="h-8 pl-8 text-sm"
         />
       </form>

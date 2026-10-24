@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { setAffiliatePassword } from "./setAffiliatePassword";
+import { CenteredShell } from "@/components/CenteredShell";
 import { SetPasswordForm } from "./SetPasswordForm";
 
 /**
@@ -16,8 +17,8 @@ export default async function AffiliatePasswordPage({
   if (typeof token !== "string" || !token) redirect("/affiliates/login");
 
   return (
-    <main className="mx-auto flex max-w-md flex-col justify-center px-4 py-16">
+    <CenteredShell>
       <SetPasswordForm action={setAffiliatePassword.bind(null, token)} />
-    </main>
+    </CenteredShell>
   );
 }

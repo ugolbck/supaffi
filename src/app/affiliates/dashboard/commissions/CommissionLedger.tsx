@@ -1,4 +1,4 @@
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatDate } from "@/lib/format";
 import { Coins } from "lucide-react";
 import type { AffiliateCommissionRow, AffiliateCommissionStatus } from "@/lib/affiliate";
 import { voidReasonText } from "@/lib/commissionReason";
@@ -29,12 +29,6 @@ import {
  * table.
  */
 
-const DATE = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  timeZone: "UTC",
-});
 
 // FLAGGED never reaches an affiliate: toDisplayStatus folds it into PENDING
 // before a row gets here, so there are four states, not five. Locked to the
@@ -89,12 +83,12 @@ export function commissionStateLabel(row: AffiliateCommissionRow): string {
       // September); this is honest for a row waiting on the next sweep and for
       // a concealed flagged one alike.
       if (row.payableAt.getTime() <= Date.now()) return "Clearing shortly";
-      return `Clears ${DATE.format(row.payableAt)}`;
+      return `Clears ${formatDate(row.payableAt)}`;
     }
     case "PAYABLE":
       return "Ready to pay";
     case "PAID":
-      return row.paidAt ? `Paid ${DATE.format(row.paidAt)}` : "Paid";
+      return row.paidAt ? `Paid ${formatDate(row.paidAt)}` : "Paid";
     case "VOIDED":
       // The cause is the detail column's whole job here, so the state label
       // stands in only for a row whose reason was never recorded.
@@ -106,7 +100,7 @@ export function commissionStateLabel(row: AffiliateCommissionRow): string {
 export function toLedgerRow(row: AffiliateCommissionRow): LedgerRow {
   return {
     id: row.id,
-    dateLabel: DATE.format(row.createdAt),
+    dateLabel: formatDate(row.createdAt),
     amount: formatMoney(row.amount, row.currency),
     grossAmount: row.grossAmount ? formatMoney(row.grossAmount, row.currency) : null,
     status: row.status,
@@ -114,7 +108,7 @@ export function toLedgerRow(row: AffiliateCommissionRow): LedgerRow {
     isAdjustment: row.isAdjustment,
     stateLabel: commissionStateLabel(row),
     voidReason: row.voidReason,
-    voidedLabel: row.voidedAt ? DATE.format(row.voidedAt) : null,
+    voidedLabel: row.voidedAt ? formatDate(row.voidedAt) : null,
   };
 }
 
@@ -176,7 +170,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                 <span className="flex shrink-0 flex-col items-end">
                   <span
                     className={cn(
-                      "font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums",
+                      "text-[15px] font-semibold whitespace-nowrap tabular-nums",
                       row.isAdjustment && "text-destructive",
                       !row.isAdjustment && !voided && "text-neutral-900"
                     )}
@@ -184,7 +178,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                     {row.amount}
                   </span>
                   {reduced && row.grossAmount && (
-                    <span className="font-mono text-[11px] text-neutral-500 line-through tabular-nums">
+                    <span className="text-[11px] text-neutral-500 line-through tabular-nums">
                       {row.grossAmount}
                     </span>
                   )}
@@ -252,7 +246,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                     itself. */}
                 <span
                   className={cn(
-                    "block font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums",
+                    "block text-[15px] font-semibold whitespace-nowrap tabular-nums",
                     row.isAdjustment && "text-destructive",
                     !row.isAdjustment && !voided && "text-neutral-900"
                   )}
@@ -263,7 +257,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                     is now: a reduced row has to show both figures or the
                     affiliate is left doing the subtraction. */}
                 {reduced && row.grossAmount && (
-                  <span className="block font-mono text-[11px] text-neutral-500 line-through tabular-nums">
+                  <span className="block text-[11px] text-neutral-500 line-through tabular-nums">
                     {row.grossAmount}
                   </span>
                 )}

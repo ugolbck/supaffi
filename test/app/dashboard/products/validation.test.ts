@@ -3,6 +3,7 @@ import {
   validateProductInput,
   validateStripeCredentials,
   normalizeDomain,
+  normalizeWebsiteUrl,
 } from "@/lib/productValidation";
 
 const validInput = {
@@ -121,5 +122,20 @@ describe("normalizeDomain", () => {
     expect(normalizeDomain(" Affiliates.InstantGradient.com ")).toBe(
       "affiliates.instantgradient.com"
     );
+  });
+});
+
+describe("normalizeWebsiteUrl", () => {
+  it("adds https to a bare domain", () => {
+    expect(normalizeWebsiteUrl(" pagecast.app ")).toBe("https://pagecast.app");
+  });
+
+  it("keeps an address that already has a scheme", () => {
+    expect(normalizeWebsiteUrl("http://localhost:3000")).toBe("http://localhost:3000");
+    expect(normalizeWebsiteUrl("https://pagecast.app/pricing")).toBe("https://pagecast.app/pricing");
+  });
+
+  it("leaves an empty value empty, for the required check", () => {
+    expect(normalizeWebsiteUrl("  ")).toBe("");
   });
 });

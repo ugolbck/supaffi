@@ -1,7 +1,9 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getMerchantByDomain } from "@/lib/merchant";
-import { getProgramForSignup } from "@/lib/program";
+import { getClosedProgramName, getProgramForSignup } from "@/lib/program";
+import { CenteredShell } from "@/components/CenteredShell";
+import { InviteOnly } from "./InviteOnly";
 import { createAffiliateSignup } from "./createAffiliateSignup";
 import { SignupScreen } from "./SignupScreen";
 
@@ -16,7 +18,15 @@ export default async function AffiliateSignupPage({
   if (!merchant) notFound();
 
   const program = await getProgramForSignup(merchant.id, programSlug);
-  if (!program) notFound();
+  if (!program) {
+    const closed = await getClosedProgramName(merchant.id, programSlug);
+    if (!closed) notFound();
+    return (
+      <CenteredShell>
+        <InviteOnly merchantName={merchant.name} programName={closed} />
+      </CenteredShell>
+    );
+  }
 
   const action = createAffiliateSignup.bind(null, programSlug);
   // What the affiliate's link is a link on, not where the signup page itself

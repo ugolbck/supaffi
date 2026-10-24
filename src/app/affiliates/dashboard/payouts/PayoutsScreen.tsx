@@ -1,7 +1,7 @@
 import { Wallet } from "lucide-react";
 import type { AffiliatePaymentGroup } from "@/lib/affiliate";
 import type { CurrencyTotal } from "@/lib/analytics";
-import { money, moneyHint } from "@/lib/format";
+import { money, moneyHint, formatDate } from "@/lib/format";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { EmptyState } from "@/components/dashboard/EmptyState";
@@ -17,15 +17,6 @@ import { PayoutDetailsForm } from "../PayoutDetailsForm";
  * screen can be rendered in the dev kit with fixtures.
  */
 
-const DATE = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-  timeZone: "UTC",
-});
 
 /**
  * One row per payout, at the moment it was made. Two payouts made the same
@@ -44,7 +35,7 @@ function PaymentRows({ payments }: { payments: AffiliatePaymentGroup[] }) {
             className="flex items-center gap-3 border-b border-neutral-200 py-3 last:border-0"
           >
             <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">
-              {DATE.format(payment.paidAt)}
+              {formatDate(payment.paidAt)}
             </span>
             {/* Dropped on a phone rather than truncated to nothing: it is the
                 least of the three things in the row. */}
@@ -53,11 +44,11 @@ function PaymentRows({ payments }: { payments: AffiliatePaymentGroup[] }) {
             </span>
             <span className="flex-1 sm:hidden" />
             <span className="flex shrink-0 flex-col items-end">
-              <span className="font-mono text-[15px] font-semibold text-neutral-900 tabular-nums">
+              <span className="text-[15px] font-semibold text-neutral-900 tabular-nums">
                 {money(payment.totals)}
               </span>
               {hint && (
-                <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                <span className="text-[11px] text-muted-foreground tabular-nums">
                   {hint}
                 </span>
               )}
@@ -111,7 +102,7 @@ export function PayoutsScreen({
       {/* Content sized, not stretched to the viewport: two cards holding a
           textarea and a handful of dates have nothing to fill 500px with, and
           air under a page reads better than air inside a card. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
         <PayoutDetailsForm initial={payoutDetails ?? ""} />
 
         <Section

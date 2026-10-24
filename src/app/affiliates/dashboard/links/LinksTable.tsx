@@ -115,7 +115,7 @@ export function LinksTable({
                 <span className="min-w-0 truncate text-[13px] text-muted-foreground tabular-nums">
                   {link.clicks} clicks · {link.conversions} sales
                 </span>
-                <span className="shrink-0 font-mono text-[13px] font-semibold text-neutral-900 tabular-nums">
+                <span className="shrink-0 text-[13px] font-semibold text-neutral-900 tabular-nums">
                   {money(link.earned)}
                 </span>
               </div>
@@ -174,11 +174,11 @@ export function LinksTable({
                   {link.conversions}
                 </TableCell>
                 <TableCell className="px-4 py-3 text-right">
-                  <span className="block font-mono text-[15px] font-semibold whitespace-nowrap text-neutral-900 tabular-nums">
+                  <span className="block text-[15px] font-semibold whitespace-nowrap text-neutral-900 tabular-nums">
                     {money(link.earned)}
                   </span>
                   {hint && (
-                    <span className="block font-mono text-[11px] text-muted-foreground tabular-nums">
+                    <span className="block text-[11px] text-muted-foreground tabular-nums">
                       {hint}
                     </span>
                   )}

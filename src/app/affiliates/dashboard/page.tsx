@@ -3,6 +3,7 @@ import { requireAffiliate } from "@/lib/affiliateAuth";
 import { getAffiliateMetrics, pickCurrency, rangeFromQuery, type CurrencyTotal } from "@/lib/analytics";
 import { listAffiliateCommissions, referralCounts } from "@/lib/affiliate";
 import { listLinksWithStats, linkUrl } from "@/lib/affiliateLink";
+import { termsLine } from "@/lib/format";
 import { OverviewScreen } from "./OverviewCards";
 
 /**
@@ -48,11 +49,22 @@ export default async function AffiliateOverviewPage({
     listLinksWithStats(affiliateId),
     listAffiliateCommissions(affiliateId, { page: 1, pageSize: RECENT_COMMISSIONS }),
     referralCounts(affiliateId),
-    // Only for the retention card: on a one-time program nobody is "still
-    // paying", so the card is not shown.
+    // The terms line, and the retention card: on a one-time program nobody
+    // is "still paying", so that card is not shown.
     db.affiliate.findUnique({
       where: { id: affiliateId },
-      select: { program: { select: { commissionDurationType: true } } },
+      select: {
+        customCommissionRate: true,
+        program: {
+          select: {
+            defaultCommissionRate: true,
+            commissionDurationType: true,
+            commissionDurationMonths: true,
+            attributionWindowDays: true,
+            holdingPeriodDays: true,
+          },
+        },
+      },
     }),
   ]);
 
@@ -63,6 +75,17 @@ export default async function AffiliateOverviewPage({
   return (
     <OverviewScreen
       referralUrl={primary ? linkUrl(merchant.websiteUrl, primary) : null}
+      terms={
+        program
+          ? termsLine({
+              rate: Number(program.customCommissionRate ?? program.program.defaultCommissionRate),
+              durationType: program.program.commissionDurationType,
+              durationMonths: program.program.commissionDurationMonths,
+              attributionWindowDays: program.program.attributionWindowDays,
+              holdingPeriodDays: program.program.holdingPeriodDays,
+            })
+          : ""
+      }
       recent={commissions.rows}
       series={metrics.series}
       bucket={metrics.bucket}

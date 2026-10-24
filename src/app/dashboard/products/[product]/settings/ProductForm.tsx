@@ -18,9 +18,11 @@ import { updateProductAction } from "./settingsActions";
  */
 
 function Row({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
+  // Aligned to the top, with the label nudged onto the input's centre line, so
+  // a field with something under it keeps its label beside the field.
   return (
-    <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[7rem_1fr] sm:items-center sm:gap-4">
-      <Label htmlFor={htmlFor} className="text-muted-foreground">
+    <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[7rem_1fr] sm:items-start sm:gap-4">
+      <Label htmlFor={htmlFor} className="text-muted-foreground sm:h-9">
         {label}
       </Label>
       {children}
@@ -41,17 +43,18 @@ export function ProductForm({
   const [state, action, pending] = useActionState(updateProductAction.bind(null, product), {
     error: "",
   });
+  const values = state.values ?? initial;
   return (
     <form action={action} className="flex flex-col gap-4">
       <Row label="Name" htmlFor="name">
-        <Input id="name" name="name" defaultValue={initial.name} required />
+        <Input id="name" name="name" defaultValue={values.name} required />
       </Row>
       <Row label="Website" htmlFor="websiteUrl">
         <Input
           id="websiteUrl"
           name="websiteUrl"
-          defaultValue={initial.websiteUrl}
-          placeholder="https://example.com"
+          defaultValue={values.websiteUrl}
+          placeholder="example.com"
           required
         />
       </Row>
@@ -60,7 +63,7 @@ export function ProductForm({
           <Input
             id="domain"
             name="domain"
-            defaultValue={initial.domain}
+            defaultValue={values.domain}
             className="font-mono lg:max-w-80"
             required
           />

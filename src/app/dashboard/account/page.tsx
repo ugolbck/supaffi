@@ -50,8 +50,7 @@ export default async function AccountPage() {
           <div className="flex justify-between">
             <span>Update check</span>
             <span className="text-muted-foreground">
-              {updateCheckEnabled() ? "on" : "off"}. Set SUPAFFI_UPDATE_CHECK=off on the server to
-              turn it off.
+              {updateCheckEnabled() ? "on. Set SUPAFFI_UPDATE_CHECK=off on the server to turn it off." : "off"}
             </span>
           </div>
         </div>

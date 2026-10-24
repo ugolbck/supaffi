@@ -1,11 +1,22 @@
 "use client";
 
-import { useActionState, useId } from "react";
+import { useActionState, useId, useState } from "react";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Section } from "@/components/dashboard/Page";
+import {
+  PAYOUT_METHODS,
+  composePayoutDetails,
+  parsePayoutDetails,
+  type PayoutMethod,
+} from "@/lib/payoutMethod";
 import { updatePayoutDetailsAction } from "./updatePayoutDetails";
+
+const METHOD_LABELS = Object.fromEntries(
+  Object.entries(PAYOUT_METHODS).map(([method, { label }]) => [method, label])
+) as Record<PayoutMethod, string>;
 
 type FormState = { error?: string; saved?: boolean };
 
@@ -17,15 +28,13 @@ async function submit(_prevState: FormState, formData: FormData): Promise<FormSt
 }
 
 /**
- * Whatever the merchant pays against, in the affiliate's own words: a PayPal
- * address, an IBAN, a wallet. Freeform because no two merchants pay the same
- * way and Supaffi moves no money itself.
+ * Where the merchant sends the money: a method from a short list and the one
+ * value it needs, stored as a single line the owner copies ("PayPal: a@b.com").
+ * "Other" keeps the free text for anything the list does not name.
  *
- * The field is the onboarding field treatment (a white hairline surface, mono,
- * the accent focus ring) and the save action sits in the card's band, the way
- * every task card in the flow carries the one action it owns. The button
- * reaches the form by `form=` rather than by nesting, since the band and the
- * body are siblings.
+ * The save action sits in the card's band, the way every task card in the
+ * flow carries the one action it owns. The button reaches the form by
+ * `form=` rather than by nesting, since the band and the body are siblings.
  */
 export function PayoutDetailsForm({
   initial,
@@ -36,6 +45,8 @@ export function PayoutDetailsForm({
 }) {
   const [state, formAction, pending] = useActionState(submit, {});
   const formId = useId();
+  const [method, setMethod] = useState<PayoutMethod>(() => parsePayoutDetails(initial).method);
+  const [value, setValue] = useState(() => parsePayoutDetails(initial).value);
 
   // From the prop alone: the action revalidates the layout, so `initial`
   // arrives filled in after a save and the notice goes with it. Saving an
@@ -45,9 +56,6 @@ export function PayoutDetailsForm({
   return (
     <Section
       title="Payout details"
-      // The field takes the height of the card, so it matches the card beside
-      // it and gives someone pasting an IBAN and a note room to see both.
-      fill
       className={className}
       actions={
         <div className="flex items-center gap-2.5">
@@ -57,13 +65,13 @@ export function PayoutDetailsForm({
               Saved
             </span>
           )}
-          <Button type="submit" form={formId} size="sm" disabled={pending}>
+          <Button type="submit" form={formId} size="sm" className="cursor-pointer" disabled={pending}>
             {pending ? "Saving" : "Save"}
           </Button>
         </div>
       }
     >
-      <form id={formId} action={formAction} className="flex min-h-0 flex-1 flex-col gap-2.5">
+      <form id={formId} action={formAction} className="flex flex-col gap-2.5">
         {/* The one consequence this screen has that nothing on it shows: an
             empty field means the merchant has nowhere to send the money. Said
             here, where it is fixed, and nowhere else. */}
@@ -72,13 +80,28 @@ export function PayoutDetailsForm({
             Until this is filled in, your merchant has nowhere to send your money.
           </p>
         )}
-        <Textarea
-          name="payoutDetails"
-          defaultValue={initial}
-          aria-label="Payout details"
-          placeholder={"PayPal: you@example.com\nor an IBAN, or whatever your merchant pays with"}
-          className="min-h-40 flex-1 resize-none border-neutral-300 bg-white font-mono text-[13px] shadow-xs focus-visible:border-accent-400"
-        />
+        <input type="hidden" name="payoutDetails" value={composePayoutDetails(method, value)} />
+        <div className="flex gap-2">
+          <Select items={METHOD_LABELS} value={method} onValueChange={(next) => setMethod(next as PayoutMethod)}>
+            <SelectTrigger className="h-9 w-40 shrink-0 cursor-pointer" aria-label="Payout method">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(METHOD_LABELS).map(([key, label]) => (
+                <SelectItem key={key} value={key} className="cursor-pointer">
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            aria-label={METHOD_LABELS[method]}
+            placeholder={PAYOUT_METHODS[method].placeholder}
+            spellCheck={false}
+          />
+        </div>
         {state.error && (
           <p role="alert" className="shrink-0 text-[13px] text-status-danger">
             {state.error}

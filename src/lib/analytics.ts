@@ -637,6 +637,8 @@ export type PayableGroup = {
   affiliateId: string;
   affiliateName: string | null;
   affiliateEmail: string;
+  /** Where the affiliate wants to be paid, as they wrote it. */
+  payoutDetails: string | null;
   currency: string;
   total: string;
   commissionIds: string[];
@@ -684,7 +686,7 @@ export async function getPayableGroups(
       id: true,
       amount: true,
       currency: true,
-      affiliate: { select: { id: true, name: true, email: true } },
+      affiliate: { select: { id: true, name: true, email: true, payoutDetails: true } },
     },
     orderBy: [{ payableAt: "asc" }, { id: "asc" }],
   });
@@ -706,6 +708,7 @@ export async function getPayableGroups(
         affiliateId: row.affiliate.id,
         affiliateName: row.affiliate.name,
         affiliateEmail: row.affiliate.email,
+        payoutDetails: row.affiliate.payoutDetails,
         currency: row.currency,
         total: "0.00",
         commissionIds: [row.id],
@@ -718,6 +721,72 @@ export async function getPayableGroups(
   return [...groups.values()]
     .map(({ sum, ...group }) => ({ ...group, total: sum.toFixed(2) }))
     .sort((a, b) => Number(b.total) - Number(a.total));
+}
+
+/** How many payouts are ready: one per affiliate and currency. For the sidebar badge. */
+export async function countPayouts(merchantId: string): Promise<number> {
+  const groups = await db.commission.groupBy({
+    by: ["affiliateId", "currency"],
+    where: {
+      status: "PAYABLE",
+      adjustsCommissionId: null,
+      amount: { gt: 0 },
+      disputeOpenedAt: null,
+      affiliate: { merchantId },
+    },
+  });
+  return groups.length;
+}
+
+export type PayoutRow = {
+  affiliateId: string;
+  affiliateName: string | null;
+  affiliateEmail: string;
+  currency: string;
+  paidAt: Date;
+  total: string;
+  count: number;
+};
+
+/**
+ * Payouts already made, newest first. A payout is what one Mark paid wrote:
+ * one affiliate, one currency, one `paidAt`, which the ledger stamps once for
+ * every commission it covers.
+ */
+export async function listPayouts(
+  ownerId: string,
+  merchantId: string,
+  { page, pageSize }: { page: number; pageSize: number }
+): Promise<{ rows: PayoutRow[]; total: number }> {
+  await assertOwns(ownerId, merchantId);
+
+  const groups = await db.commission.groupBy({
+    by: ["affiliateId", "currency", "paidAt"],
+    where: { status: "PAID", paidAt: { not: null }, adjustsCommissionId: null, affiliate: { merchantId } },
+    _sum: { amount: true },
+    _count: { _all: true },
+    orderBy: [{ paidAt: "desc" }, { affiliateId: "asc" }, { currency: "asc" }],
+  });
+
+  const pageGroups = groups.slice((page - 1) * pageSize, page * pageSize);
+  const affiliates = await db.affiliate.findMany({
+    where: { id: { in: [...new Set(pageGroups.map((g) => g.affiliateId))] } },
+    select: { id: true, name: true, email: true },
+  });
+  const byId = new Map(affiliates.map((a) => [a.id, a]));
+
+  return {
+    total: groups.length,
+    rows: pageGroups.map((g) => ({
+      affiliateId: g.affiliateId,
+      affiliateName: byId.get(g.affiliateId)?.name ?? null,
+      affiliateEmail: byId.get(g.affiliateId)?.email ?? "",
+      currency: g.currency,
+      paidAt: g.paidAt!,
+      total: (g._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+      count: g._count._all,
+    })),
+  };
 }
 
 /**

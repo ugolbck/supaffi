@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { currencySymbol, formatCount, formatMoney } from "@/lib/format";
-import { money, moneyHint } from "@/lib/format";
+import { formatDate, initials, money, moneyHint, termsLine } from "@/lib/format";
 
 describe("money", () => {
-  it("returns a zeroed placeholder for an empty total", () => {
-    expect(money([])).toBe("0.00");
+  it("prints an empty total as a bare 0, or as a zero in the fallback currency", () => {
+    expect(money([])).toBe("0");
+    expect(money([], "usd")).toBe("$0.00");
+    expect(money([{ currency: "eur", total: "5.00" }], "usd")).toBe("€5.00");
   });
 
   it("formats a single currency total", () => {
@@ -58,5 +60,36 @@ describe("formatMoney", () => {
   });
   it("groups counts", () => {
     expect(formatCount(31143)).toBe("31,143");
+  });
+});
+
+describe("formatDate", () => {
+  const now = new Date("2026-10-24T12:00:00Z");
+
+  it("drops the year for this year and keeps it for any other", () => {
+    expect(formatDate(new Date("2026-03-01T00:00:00Z"), now)).toBe("1 Mar");
+    expect(formatDate(new Date("2025-12-31T00:00:00Z"), now)).toBe("31 Dec 2025");
+  });
+});
+
+describe("initials", () => {
+  it("takes the first letter of the first two words, or two letters of one", () => {
+    expect(initials("Instant Gradient")).toBe("IG");
+    expect(initials("Mockit")).toBe("MO");
+    expect(initials("  ")).toBe("?");
+  });
+});
+
+describe("termsLine", () => {
+  const base = { durationMonths: null, attributionWindowDays: 60, holdingPeriodDays: 30 };
+
+  it("states rate and duration, cookie window and hold", () => {
+    expect(termsLine({ ...base, rate: 30, durationType: "FIXED_MONTHS", durationMonths: 12 })).toBe(
+      "30% for 12 months · 60-day cookie · 30-day hold"
+    );
+    expect(termsLine({ ...base, rate: 12.5, durationType: "FOREVER" })).toBe("12.5% forever · 60-day cookie · 30-day hold");
+    expect(termsLine({ ...base, rate: 25, durationType: "ONE_TIME" })).toBe(
+      "25% of the first payment · 60-day cookie · 30-day hold"
+    );
   });
 });

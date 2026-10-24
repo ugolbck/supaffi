@@ -7,9 +7,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Coins } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/EmptyState";
+import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { cn } from "@/lib/utils";
 import type { CommissionStatus } from "@/lib/commission";
 
@@ -35,31 +35,12 @@ export type LedgerRow = {
   /** Formatted on the server, so the row and the sheet read the same date. */
   createdLabel: string;
   stateLabel: string;
-  reference: string | null;
+  /** What the customer paid, with its currency. The Stripe reference is in the sheet. */
+  sale: string | null;
   /** The list URL with this commission selected. */
   href: string;
 };
 
-// Locked 1:1 to Commission.status in the design system: a scan of the color
-// alone has to say the state before the label is read. PAYABLE reads accent,
-// PAID reads success green, and VOIDED stays muted with the badge struck
-// through rather than alarming red, since it means "does not count" rather
-// than "something went wrong."
-const STATUS_STYLES: Record<CommissionStatus, string> = {
-  PENDING: "bg-muted text-muted-foreground",
-  PAYABLE: "bg-accent-50 text-accent-700",
-  FLAGGED: "bg-status-warning-bg text-status-warning",
-  PAID: "bg-status-success-bg text-status-success",
-  VOIDED: "bg-muted text-muted-foreground line-through",
-};
-
-const STATUS_LABELS: Record<CommissionStatus, string> = {
-  PENDING: "Pending",
-  PAYABLE: "Payable",
-  FLAGGED: "Flagged",
-  PAID: "Paid",
-  VOIDED: "Voided",
-};
 
 export function CommissionTable({
   rows,
@@ -142,7 +123,7 @@ export function CommissionTable({
                     itself, never repeated per line. */}
                 <span
                   className={cn(
-                    "font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums",
+                    "text-[15px] font-semibold whitespace-nowrap tabular-nums",
                     row.isAdjustment && "text-destructive",
                     !row.isAdjustment && !voided && "text-neutral-900"
                   )}
@@ -151,15 +132,13 @@ export function CommissionTable({
                 </span>
               </TableCell>
               <TableCell className="px-4 py-3">
-                <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>
+                <StatusBadge status={row.status} />
               </TableCell>
               <TableCell className="max-w-56 px-4 py-3">
                 <span className="block truncate text-sm text-muted-foreground">{row.stateLabel}</span>
               </TableCell>
-              <TableCell className="max-w-32 px-4 py-3 text-right">
-                <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {row.reference ?? ""}
-                </span>
+              <TableCell className="px-4 py-3 text-right whitespace-nowrap text-muted-foreground tabular-nums">
+                {row.sale ?? ""}
               </TableCell>
             </TableRow>
           );

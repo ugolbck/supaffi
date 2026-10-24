@@ -27,6 +27,9 @@ import { currencySymbol, formatMoney } from "@/lib/format";
  * a curve that dips below zero between two quiet days is drawing traffic
  * that did not happen.
  *
+ * A legend above the plot names both series, and each axis's numbers take
+ * the colour of the series they measure, so the two scales read apart.
+ *
  * Hover is a column, not a point. Anywhere in a bucket's width lights that
  * bucket, glows its bar, and opens the tooltip at once. There is no delay
  * to wait through and no animation to sit out: the reader is scanning, and
@@ -254,220 +257,240 @@ export function ActivityChart({
   const tooltipX = hovered === null ? 0 : Math.min(Math.max(xAt(hovered), 120), Math.max(120, width - 120));
 
   return (
-    <div ref={box} data-slot="activity-chart" className={cn("relative min-h-0 flex-1 select-none", className)}>
-      {width > 0 && height > 0 && (
-        <svg width={width} height={height} className="block overflow-visible" aria-hidden>
-          <defs>
-            <linearGradient id="clicks-area" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--chart-line-soft)" stopOpacity="0.30" />
-              <stop offset="55%" stopColor="var(--chart-line-soft)" stopOpacity="0.10" />
-              <stop offset="100%" stopColor="var(--chart-line-soft)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
+    <div data-slot="activity-chart" className={cn("flex min-h-0 flex-1 flex-col gap-3", className)}>
+      <ul className="flex shrink-0 items-center gap-4 text-[12px] text-muted-foreground">
+        <li className="flex items-center gap-1.5">
+          <span className="h-0.5 w-3 rounded-full bg-(--chart-line)" />
+          Clicks
+        </li>
+        {currency && (
+          <li className="flex items-center gap-1.5">
+            <span className="size-2 rounded-[2px] bg-(--chart-bar)" />
+            {barLabel}
+          </li>
+        )}
+        {currency && splitLabel && (
+          <li className="flex items-center gap-1.5">
+            <span className="size-2 rounded-[2px] border border-dashed border-(--chart-bar) bg-(--chart-bar)/20" />
+            {splitLabel}
+          </li>
+        )}
+      </ul>
+      <div ref={box} className="relative min-h-0 flex-1 select-none">
+        {width > 0 && height > 0 && (
+          <svg width={width} height={height} className="block overflow-visible" aria-hidden>
+            <defs>
+              <linearGradient id="clicks-area" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--chart-line-soft)" stopOpacity="0.30" />
+                <stop offset="55%" stopColor="var(--chart-line-soft)" stopOpacity="0.10" />
+                <stop offset="100%" stopColor="var(--chart-line-soft)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
 
-          {/* Grid and the two axes' numbers. Dashed and faint: a rule, not a bar. */}
-          {ticks.map((t) => {
-            const y = PAD.top + plotH - t * plotH;
-            return (
-              <g key={t}>
-                <line
-                  x1={PAD.left}
-                  x2={PAD.left + plotW}
-                  y1={y}
-                  y2={y}
-                  stroke="var(--neutral-200)"
-                  strokeDasharray={t === 0 ? undefined : "3 4"}
-                />
-                <text
-                  x={PAD.left - 8}
-                  y={y + 3.5}
-                  textAnchor="end"
-                  className="fill-neutral-400 text-[10px] tabular-nums"
-                >
-                  {Math.round(t * clickMax)}
-                </text>
-                <text
-                  x={PAD.left + plotW + 8}
-                  y={y + 3.5}
-                  textAnchor="start"
-                  className="fill-neutral-400 text-[10px] tabular-nums"
-                >
-                  {currency ? `${currencySymbol(currency)}${compactMoney(t * barMax)}` : compactMoney(t * barMax)}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* The area first: it is translucent, and anything behind it is
-              tinted by it. Then the bars, then the line on top of both. */}
-          <g key={`area-${signature}`} className="supaffi-area">
-            <path d={areaPath} fill="url(#clicks-area)" />
-          </g>
-
-          <g key={`bars-${signature}`}>
-          {points.map((p, i) => {
-            const gross = grossAt(p);
-            if (gross <= 0) return null;
-            const full = Math.max(4, baseline - yBars(gross));
-            // What the Owner keeps: the sale minus what he owes on it. The
-            // commission is the ghosted slice above it, so one bar carries
-            // both what came in and what it cost.
-            const cost = splitLabel ? commissionAt(p) : 0;
-            const kept = Math.max(0, full - (cost / Math.max(gross, 0.01)) * full);
-            const lit = hovered === i;
-            const x = xAt(i) - barW / 2;
-            const glow = lit
-              ? "drop-shadow(0 0 9px color-mix(in oklch, var(--chart-bar) 38%, transparent))"
-              : "drop-shadow(0 0 0 color-mix(in oklch, var(--chart-bar) 0%, transparent))";
-            return (
-              <g
-                key={p.date}
-                className="supaffi-bar transition-[filter] duration-500 ease-(--ease-out) motion-reduce:transition-none"
-                style={{ filter: glow, animationDelay: `${Math.min(i * 20, 500)}ms` }}
-              >
-                {cost > 0 && (
-                  <path
-                    // Only the slice above what he keeps. Drawn as the whole
-                    // bar, its dashed outline ran down both sides of the
-                    // solid part as well, which read as a box around the bar
-                    // rather than a slice off the top of it.
-                    d={barPath(x, baseline - full, barW, full - kept, 5)}
-                    className="transition-[fill] duration-500 ease-(--ease-out)"
-                    style={{
-                      fill: "color-mix(in oklch, var(--chart-bar) 20%, white)",
-                      stroke: "color-mix(in oklch, var(--chart-bar) 55%, white)",
-                      strokeWidth: 1,
-                      strokeDasharray: "3 2.5",
-                    }}
+            {/* Grid and the two axes' numbers. Dashed and faint: a rule, not a bar. */}
+            {ticks.map((t) => {
+              const y = PAD.top + plotH - t * plotH;
+              return (
+                <g key={t}>
+                  <line
+                    x1={PAD.left}
+                    x2={PAD.left + plotW}
+                    y1={y}
+                    y2={y}
+                    stroke="var(--neutral-200)"
+                    strokeDasharray={t === 0 ? undefined : "3 4"}
                   />
-                )}
-                <path
-                  // Square topped while a ghost sits on it, rounded when it
-                  // is the whole bar: a rounded top under the ghost reads as
-                  // two bars rather than one divided.
-                  d={barPath(x, baseline - kept, barW, kept, cost > 0 ? 0 : 5)}
-                  className="transition-[fill] duration-500 ease-(--ease-out) motion-reduce:transition-none"
-                  style={{ fill: lit ? "var(--chart-bar-lit)" : "var(--chart-bar)" }}
-                />
-              </g>
-            );
-          })}
-          </g>
+                  <text
+                    x={PAD.left - 8}
+                    y={y + 3.5}
+                    textAnchor="end"
+                    className="fill-(--chart-line-soft) text-[10px] tabular-nums"
+                  >
+                    {Math.round(t * clickMax)}
+                  </text>
+                  <text
+                    x={PAD.left + plotW + 8}
+                    y={y + 3.5}
+                    textAnchor="start"
+                    className="fill-(--chart-bar) text-[10px] tabular-nums opacity-70"
+                  >
+                    {currency ? `${currencySymbol(currency)}${compactMoney(t * barMax)}` : compactMoney(t * barMax)}
+                  </text>
+                </g>
+              );
+            })}
 
-          <g key={`line-${signature}`}>
-            <path
-              d={linePath}
-              pathLength={1}
-              className="supaffi-line"
-              fill="none"
-              stroke="var(--chart-line)"
-              strokeWidth="2.25"
-              strokeLinejoin="round"
-              strokeLinecap="round"
-            />
-          </g>
+            {/* The area first: it is translucent, and anything behind it is
+                tinted by it. Then the bars, then the line on top of both. */}
+            <g key={`area-${signature}`} className="supaffi-area">
+              <path d={areaPath} fill="url(#clicks-area)" />
+            </g>
 
-          {/* The hovered column: a hairline and a dot on the line. */}
-          {active && hovered !== null && (
-            <g>
-              <line
-                x1={xAt(hovered)}
-                x2={xAt(hovered)}
-                y1={PAD.top}
-                y2={baseline}
-                stroke="var(--neutral-300)"
-                strokeDasharray="2 3"
-              />
-              <circle
-                cx={xAt(hovered)}
-                cy={yClicks(active.clicks)}
-                r="4"
-                fill="white"
+            <g key={`bars-${signature}`}>
+            {points.map((p, i) => {
+              const gross = grossAt(p);
+              if (gross <= 0) return null;
+              const full = Math.max(4, baseline - yBars(gross));
+              // What the Owner keeps: the sale minus what he owes on it. The
+              // commission is the ghosted slice above it, so one bar carries
+              // both what came in and what it cost.
+              const cost = splitLabel ? commissionAt(p) : 0;
+              const kept = Math.max(0, full - (cost / Math.max(gross, 0.01)) * full);
+              const lit = hovered === i;
+              const x = xAt(i) - barW / 2;
+              const glow = lit
+                ? "drop-shadow(0 0 9px color-mix(in oklch, var(--chart-bar) 38%, transparent))"
+                : "drop-shadow(0 0 0 color-mix(in oklch, var(--chart-bar) 0%, transparent))";
+              return (
+                <g
+                  key={p.date}
+                  className="supaffi-bar transition-[filter] duration-500 ease-(--ease-out) motion-reduce:transition-none"
+                  style={{ filter: glow, animationDelay: `${Math.min(i * 20, 500)}ms` }}
+                >
+                  {cost > 0 && (
+                    <path
+                      // Only the slice above what he keeps. Drawn as the whole
+                      // bar, its dashed outline ran down both sides of the
+                      // solid part as well, which read as a box around the bar
+                      // rather than a slice off the top of it.
+                      d={barPath(x, baseline - full, barW, full - kept, 5)}
+                      className="transition-[fill] duration-500 ease-(--ease-out)"
+                      style={{
+                        fill: "color-mix(in oklch, var(--chart-bar) 20%, white)",
+                        stroke: "color-mix(in oklch, var(--chart-bar) 55%, white)",
+                        strokeWidth: 1,
+                        strokeDasharray: "3 2.5",
+                      }}
+                    />
+                  )}
+                  <path
+                    // Square topped while a ghost sits on it, rounded when it
+                    // is the whole bar: a rounded top under the ghost reads as
+                    // two bars rather than one divided.
+                    d={barPath(x, baseline - kept, barW, kept, cost > 0 ? 0 : 5)}
+                    className="transition-[fill] duration-500 ease-(--ease-out) motion-reduce:transition-none"
+                    style={{ fill: lit ? "var(--chart-bar-lit)" : "var(--chart-bar)" }}
+                  />
+                </g>
+              );
+            })}
+            </g>
+
+            <g key={`line-${signature}`}>
+              <path
+                d={linePath}
+                pathLength={1}
+                className="supaffi-line"
+                fill="none"
                 stroke="var(--chart-line)"
                 strokeWidth="2.25"
+                strokeLinejoin="round"
+                strokeLinecap="round"
               />
             </g>
-          )}
 
-          {/* Axis labels. */}
-          {points.map((p, i) =>
-            labelled.has(i) ? (
-              <text
-                key={p.date}
-                x={xAt(i)}
-                y={height - 8}
-                textAnchor="middle"
-                className="fill-neutral-500 text-[10.5px] tabular-nums"
-              >
-                {axisLabel(p, bucket)}
-              </text>
-            ) : null
-          )}
+            {/* The hovered column: a hairline and a dot on the line. */}
+            {active && hovered !== null && (
+              <g>
+                <line
+                  x1={xAt(hovered)}
+                  x2={xAt(hovered)}
+                  y1={PAD.top}
+                  y2={baseline}
+                  stroke="var(--neutral-300)"
+                  strokeDasharray="2 3"
+                />
+                <circle
+                  cx={xAt(hovered)}
+                  cy={yClicks(active.clicks)}
+                  r="4"
+                  fill="white"
+                  stroke="var(--chart-line)"
+                  strokeWidth="2.25"
+                />
+              </g>
+            )}
 
-          {/* Hit areas, one per bucket, on top of everything. */}
-          {points.map((p, i) => (
-            <rect
-              key={`hit-${p.date}`}
-              x={PAD.left + slot * i}
-              y={PAD.top}
-              width={slot}
-              height={plotH}
-              fill="transparent"
-              onMouseEnter={() => setHovered(i)}
-              onMouseLeave={() => setHovered(null)}
-            />
-          ))}
-        </svg>
-      )}
+            {/* Axis labels. */}
+            {points.map((p, i) =>
+              labelled.has(i) ? (
+                <text
+                  key={p.date}
+                  x={xAt(i)}
+                  y={height - 8}
+                  textAnchor="middle"
+                  className="fill-neutral-500 text-[10.5px] tabular-nums"
+                >
+                  {axisLabel(p, bucket)}
+                </text>
+              ) : null
+            )}
 
-      {active && (
-        <div
-          role="tooltip"
-          className="pointer-events-none absolute top-1 z-10 w-[220px] -translate-x-1/2 rounded-(--radius) border border-(--card-hairline) bg-white px-3 py-2.5 text-[12px] shadow-(--shadow-md)"
-          style={{ left: tooltipX }}
-        >
-          <p className="mb-1.5 font-medium text-neutral-900">{periodLabel(active, bucket)}</p>
-          <dl className="flex flex-col gap-1">
-            <div className="flex items-center justify-between gap-3">
-              <dt className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="h-0.5 w-3 rounded-full bg-(--chart-line)" />
-                Clicks
-              </dt>
-              <dd className="font-medium tabular-nums">{active.clicks}</dd>
-            </div>
-            <div className="flex items-start justify-between gap-3">
-              <dt className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="mt-[5px] size-2 shrink-0 self-start rounded-[2px] bg-(--chart-bar)" />
-                {barLabel}
-              </dt>
-              <dd className="flex flex-col items-end font-medium text-neutral-900 tabular-nums">
-                {grossLines.length > 0 ? (
-                  grossLines.map((line) => <span key={line}>{line}</span>)
-                ) : (
-                  <span className="text-muted-foreground">None</span>
-                )}
-              </dd>
-            </div>
-            {costLines.length > 0 && (
+            {/* Hit areas, one per bucket, on top of everything. */}
+            {points.map((p, i) => (
+              <rect
+                key={`hit-${p.date}`}
+                x={PAD.left + slot * i}
+                y={PAD.top}
+                width={slot}
+                height={plotH}
+                fill="transparent"
+                onMouseEnter={() => setHovered(i)}
+                onMouseLeave={() => setHovered(null)}
+              />
+            ))}
+          </svg>
+        )}
+
+        {active && (
+          <div
+            role="tooltip"
+            className="pointer-events-none absolute top-1 z-10 w-[220px] -translate-x-1/2 rounded-(--radius) border border-(--card-hairline) bg-white px-3 py-2.5 text-[12px] shadow-(--shadow-md)"
+            style={{ left: tooltipX }}
+          >
+            <p className="mb-1.5 font-medium text-neutral-900">{periodLabel(active, bucket)}</p>
+            <dl className="flex flex-col gap-1">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="flex items-center gap-1.5 text-muted-foreground">
+                  <span className="h-0.5 w-3 rounded-full bg-(--chart-line)" />
+                  Clicks
+                </dt>
+                <dd className="font-medium tabular-nums">{active.clicks}</dd>
+              </div>
               <div className="flex items-start justify-between gap-3">
                 <dt className="flex items-center gap-1.5 text-muted-foreground">
-                  <span className="mt-[5px] size-2 shrink-0 self-start rounded-[2px] border border-dashed border-(--chart-bar) bg-(--chart-bar)/20" />
-                  {splitLabel}
+                  <span className="mt-[5px] size-2 shrink-0 self-start rounded-[2px] bg-(--chart-bar)" />
+                  {barLabel}
                 </dt>
                 <dd className="flex flex-col items-end font-medium text-neutral-900 tabular-nums">
-                  {costLines.map((line) => (
-                    <span key={line}>{line}</span>
-                  ))}
+                  {grossLines.length > 0 ? (
+                    grossLines.map((line) => <span key={line}>{line}</span>)
+                  ) : (
+                    <span className="text-muted-foreground">None</span>
+                  )}
                 </dd>
               </div>
-            )}
-            <div className="flex items-center justify-between gap-3">
-              <dt className="pl-[14px] text-muted-foreground">{countLabel}</dt>
-              <dd className="font-medium tabular-nums">{active.conversions}</dd>
-            </div>
-          </dl>
-        </div>
-      )}
+              {costLines.length > 0 && (
+                <div className="flex items-start justify-between gap-3">
+                  <dt className="flex items-center gap-1.5 text-muted-foreground">
+                    <span className="mt-[5px] size-2 shrink-0 self-start rounded-[2px] border border-dashed border-(--chart-bar) bg-(--chart-bar)/20" />
+                    {splitLabel}
+                  </dt>
+                  <dd className="flex flex-col items-end font-medium text-neutral-900 tabular-nums">
+                    {costLines.map((line) => (
+                      <span key={line}>{line}</span>
+                    ))}
+                  </dd>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <dt className="pl-[14px] text-muted-foreground">{countLabel}</dt>
+                <dd className="font-medium tabular-nums">{active.conversions}</dd>
+              </div>
+            </dl>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -10,8 +10,7 @@ import { REFERRAL_COOKIE, REFERRAL_METADATA_KEY } from "@/lib/referral";
  */
 
 /** Wherever the Checkout Session is created, server side. */
-export const CHECKOUT_SNIPPET = `// Wherever you create the Checkout Session, server side.
-const referralToken = cookies.get("${REFERRAL_COOKIE}");
+export const CHECKOUT_SNIPPET = `const referralToken = cookies.get("${REFERRAL_COOKIE}");
 
 await stripe.checkout.sessions.create({
   // ...your existing options
