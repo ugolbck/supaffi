@@ -1,0 +1,170 @@
+name: Install
+
+# Runs install.sh the way an operator does, as root on a clean Linux box, and
+# checks the instance that comes out the other end. Two paths, because they
+# break in different ways:
+#
+#   fresh    this commit installed onto nothing
+#   upgrade  the latest release installed by its own installer, then moved to
+#            this commit by this commit's installer, with data in between
+#
+# The upgrade is the one that matters most. Every existing install takes it,
+# nobody watches it happen, and a migration that fails on real data leaves an
+# app container that will not start.
+#
+# This commit is offered to the installer as release 999.0.0: a local tag, and
+# the checkout itself as the remote it clones or fetches from. The image is
+# built from source, since there is no published image for an unreleased
+# commit. The published-image path is still covered by the first half of the
+# upgrade job.
+#
+# Actions are pinned to a commit, not a tag, for the reason spelled out in
+# release.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CANDIDATE: 999.0.0
+  DIR: /opt/supaffi
+
+jobs:
+  fresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # root clones from a checkout the runner user owns, which git refuses by
+      # default. Throwaway machine, so trust it outright.
+      - name: Offer this commit as a release
+        run: |
+          set -euo pipefail
+          sudo git config --system --add safe.directory '*'
+          git tag "v$CANDIDATE"
+
+      - name: Install
+        run: |
+          set -euo pipefail
+          sudo env \
+            SUPAFFI_REPO="file://$GITHUB_WORKSPACE" \
+            SUPAFFI_VERSION="$CANDIDATE" \
+            SUPAFFI_BUILD_FROM_SOURCE=yes \
+            SUPAFFI_HOST_IP=127.0.0.1 \
+            SUPAFFI_UPDATE_CHECK=off \
+            bash install.sh | tee "$RUNNER_TEMP/install.log"
+
+      - name: Check the instance
+        run: |
+          set -euo pipefail
+          cd "$DIR"
+
+          grep -q "paste this token" "$RUNNER_TEMP/install.log" \
+            || { echo "The installer printed no setup token." >&2; exit 1; }
+
+          running="$(sudo docker compose exec -T app printenv SUPAFFI_VERSION)"
+          [ "$running" = "$CANDIDATE" ] \
+            || { echo "Running $running, expected $CANDIDATE." >&2; exit 1; }
+
+          # Through the dashboard proxy, the address the installer tells the
+          # operator to open. Its certificate is self-signed, hence -k.
+          for _ in $(seq 1 30); do
+            code="$(curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:3443/" || true)"
+            case "$code" in 2??|3??) echo "Dashboard answered $code."; exit 0 ;; esac
+            sleep 2
+          done
+          echo "Dashboard never answered. Last status: ${code:-none}." >&2
+          exit 1
+
+      - name: Logs
+        if: failure()
+        run: cd "$DIR" && sudo docker compose ps -a && sudo docker compose logs --no-color --tail 200
+
+  upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Its own installer, at its own tag, which is what is sitting on every
+      # server that installed it. Named explicitly rather than left to the
+      # installer's lookup, which is unauthenticated and shares this runner's
+      # rate limit with every other job on its address.
+      - name: Install the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="$(gh api "repos/$REPO/releases/latest" --jq .tag_name)"
+          echo "Starting from $tag."
+          curl -fsSL "https://raw.githubusercontent.com/$REPO/$tag/install.sh" -o "$RUNNER_TEMP/release-install.sh"
+          sudo env \
+            SUPAFFI_VERSION="${tag#v}" \
+            SUPAFFI_HOST_IP=127.0.0.1 \
+            SUPAFFI_UPDATE_CHECK=off \
+            bash "$RUNNER_TEMP/release-install.sh"
+
+      # Something the upgrade must not lose. A table of its own, so it holds
+      # whatever the schema looks like on either side.
+      - name: Write data
+        run: |
+          set -euo pipefail
+          cd "$DIR"
+          sudo docker compose exec -T db psql -U supaffi -d supaffi -v ON_ERROR_STOP=1 \
+            -c "CREATE TABLE ci_marker (v text); INSERT INTO ci_marker VALUES ('kept');" < /dev/null
+
+      - name: Offer this commit as a release
+        run: |
+          set -euo pipefail
+          sudo git config --system --add safe.directory '*'
+          git tag "v$CANDIDATE"
+          sudo git -C "$DIR" remote set-url origin "file://$GITHUB_WORKSPACE"
+
+      - name: Upgrade
+        run: |
+          set -euo pipefail
+          sudo env \
+            SUPAFFI_VERSION="$CANDIDATE" \
+            SUPAFFI_BUILD_FROM_SOURCE=yes \
+            bash install.sh
+
+      - name: Check the instance
+        run: |
+          set -euo pipefail
+          cd "$DIR"
+
+          ls backups/supaffi-*.sql.gz >/dev/null 2>&1 \
+            || { echo "The upgrade took no backup." >&2; exit 1; }
+
+          kept="$(sudo docker compose exec -T db psql -U supaffi -d supaffi -tA -c "SELECT v FROM ci_marker" < /dev/null)"
+          [ "$kept" = "kept" ] \
+            || { echo "Data written before the upgrade is gone." >&2; exit 1; }
+
+          running="$(sudo docker compose exec -T app printenv SUPAFFI_VERSION)"
+          [ "$running" = "$CANDIDATE" ] \
+            || { echo "Running $running, expected $CANDIDATE." >&2; exit 1; }
+
+          for _ in $(seq 1 30); do
+            code="$(curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:3443/" || true)"
+            case "$code" in 2??|3??) echo "Dashboard answered $code."; exit 0 ;; esac
+            sleep 2
+          done
+          echo "Dashboard never answered. Last status: ${code:-none}." >&2
+          exit 1
+
+      - name: Logs
+        if: failure()
+        run: cd "$DIR" && sudo docker compose ps -a && sudo docker compose logs --no-color --tail 200
