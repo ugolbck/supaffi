@@ -58,7 +58,7 @@ A SaaS founder or small team that:
 
 ### Affiliates
 
-- Sign up on a public page, log in with an emailed link, no password.
+- Sign up on a public page with an email and password. A forgotten password is reset with a link you copy from their panel and send them. Supaffi sends no email.
 - See clicks, sales, earnings, what is pending, payable and paid, and their payout history.
 - Create extra links pointing at any page of your site, and add their payout details.
 

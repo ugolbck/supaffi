@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://supaffi:${POSTGRES_PASSWORD}@db:5432/supaffi
-      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY} # decrypts Merchant Stripe/email keys at rest (ADR 0003), generated once at install, never stored in the DB
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY} # decrypts Merchant Stripe keys at rest (ADR 0003), generated once at install, never stored in the DB
       AUTH_SECRET: ${AUTH_SECRET} # signs Owner session JWTs (Auth.js)
       AUTH_TRUST_HOST: "true" # Instance is served on many Merchant domains (ADR 0006), so there is no single AUTH_URL to pin; Caddy's on_demand_tls ask endpoint already gates which domains reach the app
       SUPAFFI_DOMAIN: ${SUPAFFI_DOMAIN} # the domain this Instance's own dashboard is served on; a Merchant may not claim it (src/lib/instance.ts)
