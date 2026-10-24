@@ -146,7 +146,9 @@ jobs:
           set -euo pipefail
           cd "$DIR"
 
-          ls backups/supaffi-*.sql.gz >/dev/null 2>&1 \
+          # The backups directory is root's alone, so the glob has to expand
+          # as root too.
+          sudo sh -c 'ls backups/supaffi-*.sql.gz' >/dev/null 2>&1 \
             || { echo "The upgrade took no backup." >&2; exit 1; }
 
           kept="$(sudo docker compose exec -T db psql -U supaffi -d supaffi -tA -c "SELECT v FROM ci_marker" < /dev/null)"
