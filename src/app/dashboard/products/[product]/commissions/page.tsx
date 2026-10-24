@@ -9,10 +9,10 @@ import {
   COMMISSIONS_PAGE_SIZE,
   type CommissionRow,
   type CommissionStatus,
-  STALE_PAGE,
 } from "@/lib/commission";
-import { getOwedTotals, getPayableGroups, type CurrencyTotal } from "@/lib/analytics";
-import { formatCount, formatMoney, money, moneyHint, formatDate } from "@/lib/format";
+import { getOwedTotals, type CurrencyTotal } from "@/lib/analytics";
+import { refusalText, skippedNote } from "@/lib/payoutNotices";
+import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
   Pagination,
@@ -29,7 +29,6 @@ import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { CommissionFilters } from "./CommissionFilters";
 import { CommissionTable, type LedgerRow } from "./CommissionTable";
 import { CommissionSheet, type SheetCommission } from "./CommissionSheet";
-import { PayBar } from "./PayBar";
 
 /**
  * Every referred sale and what it is waiting on.
@@ -40,28 +39,6 @@ import { PayBar } from "./PayBar";
  * from the new rows. Flagged is a tab, never a page of its own.
  */
 
-
-/**
- * The refusals the ledger can hand back, as sentences. The action puts a code
- * in the URL rather than its own text, so the only thing a form can do is pick
- * one of these; a code that is not here is ignored rather than shown.
- */
-const REFUSALS: Record<string, string> = {
-  empty: "Nothing was selected, so there was nothing to pay.",
-  mixed: "A payout covers one affiliate and one currency at a time.",
-  stale: STALE_PAGE,
-  refused: "The ledger refused that payout.",
-};
-
-// Said after a payout that left some shown rows unpaid, for example one the
-// Owner voided in another tab between loading and clicking.
-function skippedNote(raw: string | undefined): string | null {
-  const skipped = Math.floor(Number(raw));
-  if (!Number.isFinite(skipped) || skipped < 1) return null;
-  return skipped === 1
-    ? "1 commission was not marked paid because it is no longer payable."
-    : `${formatCount(skipped)} commissions were not marked paid because they are no longer payable.`;
-}
 
 const TABS: { label: string; status: CommissionStatus | null }[] = [
   { label: "All", status: null },
@@ -249,11 +226,6 @@ export default async function CommissionsPage({
       }
     : null;
 
-  // Only the payable tab can pay, and only in the groups a payout is allowed
-  // to cover, so the groups are read only when that tab is on.
-  const payableGroups =
-    filters.status === "PAYABLE" ? await getPayableGroups(ownerId, merchant.id) : [];
-
   const firstShown = total === 0 ? 0 : (page - 1) * COMMISSIONS_PAGE_SIZE + 1;
   const lastShown = Math.min(page * COMMISSIONS_PAGE_SIZE, total);
 
@@ -261,7 +233,7 @@ export default async function CommissionsPage({
   const unselected = hrefWith({});
   const listHref = `${base}/commissions${unselected === "?" ? "" : unselected}`;
 
-  const refusal = query.error ? REFUSALS[query.error] ?? null : null;
+  const refusal = refusalText(query.error);
   const skipped = skippedNote(query.skipped);
 
   return (
@@ -317,13 +289,6 @@ export default async function CommissionsPage({
           filtered={anyFilterActive}
         />
       </Section>
-
-      <PayBar
-        product={{ id: merchant.id, slug: merchant.slug }}
-        groups={payableGroups}
-        listHref={listHref}
-        renderedAt={renderedAt}
-      />
 
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
         {total > 0 && (

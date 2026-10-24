@@ -106,7 +106,7 @@ export default async function ProductOverviewPage({
       icon: Wallet,
       title: payableTotal === 1 ? "1 commission is payable" : `${formatCount(payableTotal)} commissions are payable`,
       detail: "Pay them and mark them paid",
-      href: `/dashboard/products/${merchant.slug}/commissions?status=PAYABLE`,
+      href: `/dashboard/products/${merchant.slug}/payouts`,
     },
     metrics.flagged > 0 && {
       icon: ShieldAlert,
@@ -158,7 +158,7 @@ export default async function ProductOverviewPage({
               ? `${formatCount(payableTotal)} payable now`
               : (moneyHint(prefer(metrics.owed, currency)) ?? "Nothing waiting")
           }
-          href={`/dashboard/products/${merchant.slug}/commissions?status=PAYABLE`}
+          href={`/dashboard/products/${merchant.slug}/payouts`}
         />
       </Tiles>
 

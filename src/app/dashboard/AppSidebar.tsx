@@ -10,8 +10,7 @@ import {
   Receipt,
   Settings,
   Users,
-  type LucideIcon,
-} from "lucide-react";
+  type LucideIcon, Wallet } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -45,7 +44,10 @@ type Merchant = { id: string; slug: string; name: string; domain: string };
 export type Counts = {
   affiliates: number;
   programs: number;
-  payable: number;
+  /** Commissions held for review: the only ledger rows that need a decision. */
+  flagged: number;
+  /** Payouts ready: one per affiliate and currency. */
+  payouts: number;
   tracking: "not-started" | "awaiting-sale" | "verified";
 };
 
@@ -101,7 +103,13 @@ export function AppSidebar({
             href: `${base}/commissions`,
             icon: Receipt,
             label: "Commissions",
-            badge: activeCounts.payable || null,
+            badge: activeCounts.flagged || null,
+          },
+          {
+            href: `${base}/payouts`,
+            icon: Wallet,
+            label: "Payouts",
+            badge: activeCounts.payouts || null,
           },
           {
             href: `${base}/tracking`,

@@ -13,7 +13,7 @@ export function EmptyState({
 }: {
   icon?: ReactNode;
   title: string;
-  body: string;
+  body?: string;
   action?: ReactNode;
 }) {
   return (
@@ -25,7 +25,7 @@ export function EmptyState({
       )}
       <div className="flex flex-col gap-1">
         <p className="text-[15px] font-semibold tracking-tight">{title}</p>
-        <p className="max-w-[36ch] text-sm text-muted-foreground text-pretty">{body}</p>
+        {body && <p className="max-w-[36ch] text-sm text-muted-foreground text-pretty">{body}</p>}
       </div>
       {action && <div className="mt-1">{action}</div>}
     </div>

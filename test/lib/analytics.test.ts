@@ -7,6 +7,8 @@ import {
   getTopAffiliates,
   getPayableGroups,
   getOwedTotals,
+  countPayouts,
+  listPayouts,
   toWeeks,
   change,
   earnedTrend,
@@ -265,6 +267,60 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     await expect(getPayableGroups(otherOwnerId, merchantId)).rejects.toThrow();
     await expect(getTopAffiliates(otherOwnerId, merchantId)).rejects.toThrow();
     await expect(getOwedTotals(otherOwnerId, merchantId)).rejects.toThrow();
+    await expect(listPayouts(otherOwnerId, merchantId, { page: 1, pageSize: 10 })).rejects.toThrow();
+  });
+
+  it("carries the affiliate's payout details on each payable group", async () => {
+    const affiliate = await makeAffiliate("details");
+    await db.affiliate.update({ where: { id: affiliate.id }, data: { payoutDetails: "PayPal: a@example.com" } });
+    await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id);
+
+    const [group] = await getPayableGroups(ownerId, merchantId);
+    expect(group.payoutDetails).toBe("PayPal: a@example.com");
+  });
+
+  it("counts one payout per affiliate and currency", async () => {
+    const a = await makeAffiliate("count-a");
+    const b = await makeAffiliate("count-b");
+    await makeCommission(a.id, (await makeClick(a.id)).id);
+    await makeCommission(a.id, (await makeClick(a.id)).id);
+    await makeCommission(a.id, (await makeClick(a.id)).id, { currency: "eur" });
+    await makeCommission(b.id, (await makeClick(b.id)).id);
+    await makeCommission(b.id, (await makeClick(b.id)).id, { status: "PENDING" });
+
+    expect(await countPayouts(merchantId)).toBe(3);
+    expect(await countPayouts(emptyMerchantId)).toBe(0);
+  });
+
+  it("lists past payouts by affiliate, currency and payment date, newest first", async () => {
+    const a = await makeAffiliate("paid-a");
+    const b = await makeAffiliate("paid-b");
+    const september = new Date("2026-09-01T09:00:00Z");
+    const october = new Date("2026-10-01T09:00:00Z");
+    for (const [affiliateId, paidAt, amount] of [
+      [a.id, september, "10.00"],
+      [a.id, october, "12.50"],
+      [a.id, october, "7.50"],
+      [b.id, october, "5.00"],
+    ] as const) {
+      const commission = await makeCommission(affiliateId, (await makeClick(affiliateId)).id, { amount, status: "PAID" });
+      await db.commission.update({ where: { id: commission.id }, data: { paidAt } });
+    }
+    await makeCommission(a.id, (await makeClick(a.id)).id);
+
+    const { rows, total } = await listPayouts(ownerId, merchantId, { page: 1, pageSize: 10 });
+    expect(total).toBe(3);
+    expect(rows.map((r) => [r.affiliateEmail, r.paidAt.toISOString(), r.total, r.count])).toEqual(
+      expect.arrayContaining([
+        ["aff-paid-a@example.com", october.toISOString(), "20.00", 2],
+        ["aff-paid-b@example.com", october.toISOString(), "5.00", 1],
+      ])
+    );
+    expect(rows[2]).toMatchObject({ affiliateEmail: "aff-paid-a@example.com", total: "10.00", count: 1 });
+
+    const second = await listPayouts(ownerId, merchantId, { page: 2, pageSize: 2 });
+    expect(second.rows).toHaveLength(1);
+    expect(second.total).toBe(3);
   });
 
   it("ranks top affiliates by money earned, not by clicks", async () => {

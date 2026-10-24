@@ -5,6 +5,7 @@ import { countAffiliatesForMerchant } from "@/lib/affiliate";
 import { listProgramsForMerchant } from "@/lib/program";
 import { getCommissionTotals } from "@/lib/commission";
 import { getTrackingStatus } from "@/lib/tracking";
+import { countPayouts } from "@/lib/analytics";
 import { availableUpdate, installedVersion } from "@/lib/version";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar, type Counts } from "./AppSidebar";
@@ -32,18 +33,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // revalidatePath("/dashboard", "layout"), which refreshes these.
   const counted = await Promise.all(
     merchants.map(async (m): Promise<[string, Counts]> => {
-      const [affiliates, programs, totals, tracking] = await Promise.all([
+      const [affiliates, programs, totals, tracking, payouts] = await Promise.all([
         countAffiliatesForMerchant(m.id),
         listProgramsForMerchant(ownerId, m.id),
         getCommissionTotals(ownerId, m.id),
         getTrackingStatus(m.id),
+        countPayouts(m.id),
       ]);
       return [
         m.slug,
         {
           affiliates,
           programs: programs.length,
-          payable: totals.find((t) => t.status === "PAYABLE")?.count ?? 0,
+          flagged: totals.find((t) => t.status === "FLAGGED")?.count ?? 0,
+          payouts,
           tracking,
         },
       ];
