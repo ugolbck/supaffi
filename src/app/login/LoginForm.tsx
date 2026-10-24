@@ -22,7 +22,7 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
 
   return (
-    <Card className="w-full max-w-sm animate-in fade-in zoom-in-95 duration-300 ease-out">
+    <Card className="animate-in fade-in zoom-in-95 duration-300 ease-out">
       <CardHeader>
         <CardTitle className="text-xl">Welcome back</CardTitle>
         <CardDescription>Log in to Supaffi.</CardDescription>

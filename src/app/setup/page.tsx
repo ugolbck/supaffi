@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { ownerExists } from "@/lib/owner";
 import { setupTokenExists } from "@/lib/setupToken";
+import { CenteredShell } from "@/components/CenteredShell";
 import { SetupForm } from "./SetupForm";
 import { SetupClosed } from "./SetupClosed";
 
@@ -17,15 +18,6 @@ export default async function SetupPage() {
   }
 
   return (
-    <main className="relative flex min-h-svh items-center justify-center overflow-hidden px-4 py-16">
-      <div
-        className="pointer-events-none absolute inset-0 -z-10"
-        style={{
-          background:
-            "radial-gradient(60% 50% at 50% 0%, var(--accent-100) 0%, transparent 70%)",
-        }}
-      />
-      {setupTokenExists() ? <SetupForm /> : <SetupClosed />}
-    </main>
+    <CenteredShell>{setupTokenExists() ? <SetupForm /> : <SetupClosed />}</CenteredShell>
   );
 }

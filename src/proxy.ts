@@ -28,7 +28,9 @@ export default auth(async (req) => {
     if ("redirect" in productRoute) {
       return NextResponse.redirect(new URL(productRoute.redirect, req.nextUrl.origin));
     }
-    return new NextResponse(null, { status: 404 });
+    // A path no route matches, so the app's own not-found page answers, with
+    // its 404 status, instead of an empty body.
+    return NextResponse.rewrite(new URL("/_supaffi/not-found", req.nextUrl.origin));
   }
 
   const redirectPath = resolveLoginRedirect(req.nextUrl.pathname, req.auth?.user?.role ?? null);

@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { getMerchantByDomain } from "@/lib/merchant";
+import { CenteredShell } from "@/components/CenteredShell";
 import { LoginForm } from "./LoginForm";
 
 export default async function AffiliateLoginPage() {
@@ -7,8 +8,8 @@ export default async function AffiliateLoginPage() {
   const merchant = host ? await getMerchantByDomain(host) : null;
 
   return (
-    <main className="mx-auto flex max-w-md flex-col justify-center px-4 py-16">
+    <CenteredShell>
       <LoginForm merchantName={merchant?.name ?? null} />
-    </main>
+    </CenteredShell>
   );
 }
