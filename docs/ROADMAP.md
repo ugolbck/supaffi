@@ -2,35 +2,39 @@
 
 What is still missing, roughly in the order it gets built. Deliberately coarse:
 this is the shape of the work, not a changelog. Shipped versions are in
-CHANGELOG.md.
+CHANGELOG.md. The reasoning behind the current order is in
+docs/ux-review/README.md.
 
-## Now
+## Now: UX
 
-### Installing next to what you already run
-A server with nothing on it is handled. A server that already runs a reverse
-proxy is not, quite: Supaffi stays out of the way as it should, but the program
-hostnames still need a routing rule added by hand, and nothing in the product
-tells you that or checks whether it worked. Both cases should be equally
-automatic.
+### Paying affiliates
+The monthly payout is the job every owner repeats, and it is spread across a
+tab, a list and a side panel. It gets a page of its own: one row per affiliate
+with the amount, their payout method ready to copy, and Mark paid. Past
+payouts are listed by payout, not by single commission.
 
-### Onboarding
-The install is good and everything after it is not. Setup should be one path
-that holds you until it is finished, rather than a dashboard you can wander
-into half configured. That includes real guidance for the subdomain each
-program needs, making Stripe progress visible step by step,
-and rewriting the commission terms screen, which currently explains nothing.
+### Phones
+Onboarding and every table need a layout that fits a phone. Steps go above
+the form, tables become lists, and the header says which product you are on.
+
+### Dark mode
+Follow the system setting on both the owner and affiliate sides.
+
+### Charts
+One series at a time with a hover value, colours that do not read as errors,
+calmer lines on small numbers.
+
+### Consistency
+One form style, forms that keep what you typed after an error, money in the
+interface font, one status badge, and branded pages for not found and
+invite-only programs.
 
 ## Next
 
-### The affiliate side
-The affiliate dashboard needs rebuilding. It should be somewhere affiliates
-want to open, not only somewhere they go when chasing a payment. They also
-cannot manage their own links yet: one is generated at signup and that is all
-they get.
-
-### The owner's view of affiliates
-The affiliates section is not built. There is no list of who is promoting a
-product, what they have earned, or per-affiliate rates.
+### What affiliates see
+Their terms (rate, duration, cookie window, hold) on their dashboard and the
+signup page, and a payout method picked from a short list instead of a free
+text box.
 
 ## Later
 
