@@ -10,6 +10,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.3.0
 
+### Security
+
+- Update soon. This release moves Next.js and several other packages past
+  known security flaws, some of them rated critical.
+- The image no longer ships the build and test tools or npm, which removes
+  most of the other flaws scanners reported in it.
+
 ### Changed
 
 - Supaffi no longer sends email, and setup no longer asks for a Resend key or
