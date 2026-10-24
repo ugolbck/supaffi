@@ -17,6 +17,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The image no longer ships the build and test tools or npm, which removes
   most of the other flaws scanners reported in it.
 
+### Changed
+
+- A new Payouts page lists what you owe, one row per affiliate and currency,
+  with their payout details ready to copy and a Mark paid button. Past payouts
+  are grouped by payment. The Commissions page no longer holds this list.
+- Affiliates pick a payout method from a list and enter one value. Details
+  saved before this release keep working.
+- A program with Public signup turned off shows an invite only page instead
+  of the signup form.
+- Forms keep what you typed when a submit is refused. The website field
+  accepts a bare domain.
+- The tracking check counts a click from the past week as proof the script
+  is installed.
+
 ## 0.3.0
 
 ### Changed
