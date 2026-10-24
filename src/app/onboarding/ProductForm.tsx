@@ -21,10 +21,12 @@ export function ProductForm() {
         <TaskCardSection>
           <input
             name="websiteUrl"
-            type="url"
+            inputMode="url"
+            autoCapitalize="off"
+            spellCheck={false}
             required
-            placeholder="https://yoursite.com"
-            className={`${FIELD} font-mono`}
+            placeholder="yoursite.com"
+            className={FIELD}
             aria-label="Website"
           />
         </TaskCardSection>

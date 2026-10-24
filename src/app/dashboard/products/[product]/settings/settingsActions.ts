@@ -10,7 +10,7 @@ import {
   getMerchantForOwner,
   type ProductRef,
 } from "@/lib/merchant";
-import { validateProductInput, normalizeDomain } from "@/lib/productValidation";
+import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
@@ -42,23 +42,27 @@ async function owner(): Promise<string> {
 const settings = (slug: string, fresh?: "dns" | "stripe") =>
   `/dashboard/products/${slug}/settings${fresh ? `?fresh=${fresh}` : ""}`;
 
+type ProductFormState = { error: string; values?: { name: string; domain: string; websiteUrl: string } };
+
 export async function updateProductAction(
   product: ProductRef,
-  _prev: { error: string },
+  _prev: ProductFormState,
   formData: FormData
-): Promise<{ error: string }> {
+): Promise<ProductFormState> {
   const ownerId = await owner();
   const input = {
     name: String(formData.get("name") ?? "").trim(),
     domain: normalizeDomain(String(formData.get("domain") ?? "")),
-    websiteUrl: String(formData.get("websiteUrl") ?? "").trim(),
+    websiteUrl: normalizeWebsiteUrl(String(formData.get("websiteUrl") ?? "")),
   };
+  // A refusal hands back what was typed, so the form shows it again instead
+  // of resetting to the saved values.
   const error = validateProductInput(input, instanceDomain());
-  if (error) return { error };
+  if (error) return { error, values: input };
   try {
     await updateMerchant(ownerId, product.id, input);
   } catch (err) {
-    if (isUniqueConstraintError(err)) return { error: "Another product already uses that subdomain" };
+    if (isUniqueConstraintError(err)) return { error: "Another product already uses that subdomain", values: input };
     throw err;
   }
   // The sidebar and the product switcher are rendered by the dashboard layout,

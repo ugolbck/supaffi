@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { createMerchant } from "@/lib/merchant";
-import { validateProductInput, normalizeDomain } from "@/lib/productValidation";
+import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { suggestSubdomain, stepPath } from "@/lib/onboarding";
@@ -16,7 +16,7 @@ export async function createProductAction(
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
 
   const name = String(formData.get("name") ?? "").trim();
-  const websiteUrl = String(formData.get("websiteUrl") ?? "").trim();
+  const websiteUrl = normalizeWebsiteUrl(String(formData.get("websiteUrl") ?? ""));
   const domain = suggestSubdomain(websiteUrl);
   // Nothing readable came out of the address, so there is no subdomain to
   // validate. Say what is actually wrong instead of complaining about a

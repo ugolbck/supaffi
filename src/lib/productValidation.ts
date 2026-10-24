@@ -13,6 +13,17 @@ export function normalizeDomain(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
+/**
+ * What an Owner types as their site, made into a full address. A bare
+ * `pagecast.app` is what people write, so it gets `https://` rather than an
+ * error; anything that already names a scheme is left for the check below.
+ */
+export function normalizeWebsiteUrl(raw: string): string {
+  const value = raw.trim();
+  if (!value || /^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value;
+  return `https://${value}`;
+}
+
 function isValidWebsiteUrl(raw: string): boolean {
   try {
     const url = new URL(raw);

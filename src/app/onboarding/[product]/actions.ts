@@ -10,7 +10,7 @@ import {
   connectStripe,
   markOnboardingComplete,
 } from "@/lib/merchant";
-import { validateProductInput, normalizeDomain } from "@/lib/productValidation";
+import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stepPath, nextStep, splitSubdomain, rehomeSubdomain, type StepId } from "@/lib/onboarding";
@@ -105,7 +105,7 @@ export async function updateProductWebsiteAction(
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
 
-  const websiteUrl = String(formData.get("value") ?? "").trim();
+  const websiteUrl = normalizeWebsiteUrl(String(formData.get("value") ?? ""));
   const domain = normalizeDomain(rehomeSubdomain(merchant.domain, merchant.websiteUrl, websiteUrl));
   const error = validateProductInput({ name: merchant.name, domain, websiteUrl }, instanceDomain());
   if (error) return { error };
