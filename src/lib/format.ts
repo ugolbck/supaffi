@@ -105,3 +105,24 @@ export function initials(name: string): string {
   const letters = words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? "").slice(0, 2);
   return letters.toUpperCase() || "?";
 }
+
+/**
+ * A program's terms as one short line, for the affiliate who earns under them:
+ * "30% for 12 months · 60-day cookie · 30-day hold".
+ */
+export function termsLine(terms: {
+  rate: number;
+  durationType: "ONE_TIME" | "FIXED_MONTHS" | "FOREVER";
+  durationMonths: number | null;
+  attributionWindowDays: number;
+  holdingPeriodDays: number;
+}): string {
+  const rate = `${Number(terms.rate.toFixed(2))}%`;
+  const earning =
+    terms.durationType === "ONE_TIME"
+      ? `${rate} of the first payment`
+      : terms.durationType === "FIXED_MONTHS"
+        ? `${rate} for ${terms.durationMonths ?? 0} months`
+        : `${rate} forever`;
+  return [earning, `${terms.attributionWindowDays}-day cookie`, `${terms.holdingPeriodDays}-day hold`].join(" · ");
+}

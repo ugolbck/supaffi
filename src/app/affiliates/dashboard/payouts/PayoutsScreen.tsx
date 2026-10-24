@@ -102,7 +102,7 @@ export function PayoutsScreen({
       {/* Content sized, not stretched to the viewport: two cards holding a
           textarea and a handful of dates have nothing to fill 500px with, and
           air under a page reads better than air inside a card. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
         <PayoutDetailsForm initial={payoutDetails ?? ""} />
 
         <Section

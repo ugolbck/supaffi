@@ -1009,6 +1009,7 @@ function EOverview({ recurring = true }: { recurring?: boolean }) {
   return (
     <OverviewScreen
       referralUrl="https://instantgradient.com/?via=sarah"
+      terms="30% for 12 months · 60-day cookie · 30-day hold"
       recent={E_RECENT}
       series={E_SERIES}
       bucket="day"
