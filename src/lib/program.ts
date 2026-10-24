@@ -194,3 +194,13 @@ export async function getClosedProgramName(merchantId: string, programSlug: stri
   });
   return program?.name ?? null;
 }
+
+// Public, like getProgramForSignup: the programs a stranger can join on this
+// product, oldest first so the first program stays first.
+export async function listOpenPrograms(merchantId: string): Promise<{ slug: string; name: string }[]> {
+  return db.program.findMany({
+    where: { merchantId, signupOpen: true },
+    orderBy: { createdAt: "asc" },
+    select: { slug: true, name: true },
+  });
+}
