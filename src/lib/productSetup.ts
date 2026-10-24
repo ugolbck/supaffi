@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { getIntegrationStatus } from "@/lib/merchant";
 import { getTrackingStatus, type TrackingStatus } from "@/lib/tracking";
-import { deliveryMode } from "@/lib/email/transport";
 
 /**
  * Setup state for one product.
@@ -28,16 +27,7 @@ export type ProductSetup = {
   stripeKeyStored: boolean;
   /** The Stripe webhook signing secret is on file, whether or not the key is. */
   stripeWebhookStored: boolean;
-  /** A real email provider is on file. False in console mode, where none is needed. */
-  emailConnected: boolean;
-  /**
-   * Whether an email provider has to be connected at all. False when the
-   * instance prints emails to the terminal, which is the only way to run
-   * locally: mail is sent from the Merchant's own domain, and nobody can
-   * verify `localhost:3600` as a sender.
-   */
-  emailRequired: boolean;
-  /** Everything the instance actually needs. Email drops out in console mode. */
+  /** Everything the instance needs connected, which is Stripe. */
   integrationsConnected: boolean;
   firstProgramSlug: string | null;
   trackingStatus: TrackingStatus;
@@ -67,15 +57,7 @@ export async function getProductSetup(
     db.affiliate.count({ where: { merchantId } }),
   ]);
 
-  // Both integrations, not either. Ticking this off on Stripe alone would
-  // leave the Owner one silent failure away from affiliates being unable to
-  // log in at all.
-  //
-  // Unless the instance prints emails instead of sending them, in which case
-  // there is nothing to connect and blocking on it would make local setup
-  // impossible to finish.
-  const emailRequired = deliveryMode() === "send";
-  const integrationsConnected = integrations.stripe && (integrations.email || !emailRequired);
+  const integrationsConnected = integrations.stripe;
 
   // Tracking counts as done once anything has been recorded, not once a sale
   // has proven the checkout half. Waiting on a stranger to buy something is not
@@ -91,8 +73,6 @@ export async function getProductSetup(
     stripeConnected: integrations.stripe,
     stripeKeyStored: integrations.stripeKey,
     stripeWebhookStored: integrations.stripeWebhook,
-    emailConnected: integrations.email,
-    emailRequired,
     integrationsConnected,
     // The link handed out, so the first program anyone can still sign up to.
     firstProgramSlug: programs.find((p) => p.signupOpen)?.slug ?? null,

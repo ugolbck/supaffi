@@ -23,12 +23,13 @@ vi.mock("next/headers", () => ({
   headers: () => headersMock(),
 }));
 
-// The email send is already covered by test/lib/email/affiliateMagicLink.test.ts;
-// stubbing it here keeps this test focused on the create/retry logic and
-// avoids needing a real MASTER_ENCRYPTION_KEY-encrypted credential blob.
-const sendAffiliateMagicLinkEmailMock = vi.fn().mockResolvedValue(undefined);
-vi.mock("@/lib/email/affiliateMagicLink", () => ({
-  sendAffiliateMagicLinkEmail: (...args: unknown[]) => sendAffiliateMagicLinkEmailMock(...args),
+// A successful signup logs the Affiliate straight in through Auth.js, which
+// needs a real request context to set its cookie. Stubbed here so the test
+// stays on the create/retry logic and can still see whether a login was
+// attempted, and with what.
+const signInMock = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/auth", () => ({
+  signIn: (...args: unknown[]) => signInMock(...args),
 }));
 
 // generateLinkCode does its own read-before-write collision check, which
@@ -51,7 +52,8 @@ vi.mock("@/lib/referralCode", () => ({
 }));
 
 import { createAffiliateSignup } from "@/app/affiliates/signup/[program]/createAffiliateSignup";
-import { resetAffiliateEmailThrottle } from "@/lib/affiliateEmailThrottle";
+import { resetAffiliateSignupThrottle } from "@/lib/affiliateSignupThrottle";
+import { verifyPassword } from "@/lib/password";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -70,10 +72,13 @@ if (!hasDatabase) {
   );
 }
 
-function formDataFor(name: string, email: string): FormData {
+const PASSWORD = "correct horse battery";
+
+function formDataFor(name: string, email: string, password: string = PASSWORD): FormData {
   const fd = new FormData();
   fd.set("name", name);
   fd.set("email", email);
+  fd.set("password", password);
   return fd;
 }
 
@@ -99,7 +104,8 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
 
-    sendAffiliateMagicLinkEmailMock.mockClear();
+    signInMock.mockClear();
+    resetAffiliateSignupThrottle();
     referralCodeQueue.length = 0;
 
     const owner = await db.owner.create({
@@ -114,7 +120,6 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
         websiteUrl: "https://signup-action-test.example.com",
         stripeSecretKeyEnc: "x",
         stripeWebhookSecretEnc: "x",
-        emailProviderConfigEnc: "x",
       },
     });
     merchantId = merchant.id;
@@ -149,10 +154,10 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     referralCodeQueue.push("sarah");
     const first = await createAffiliateSignup(
       programSlug,
-      { status: "form", error: "" },
+      { error: "" },
       formDataFor("Sarah", "sarah1@example.com")
     );
-    expect(first.status).toBe("sent");
+    expect(first.error).toBe("");
 
     // A second, different "Sarah" signs up. Her first attempt is scripted to
     // reuse "sarah" too (simulating the race generateReferralCode is
@@ -163,10 +168,9 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     referralCodeQueue.push("sarah", "sarah2");
     const second = await createAffiliateSignup(
       programSlug,
-      { status: "form", error: "" },
+      { error: "" },
       formDataFor("Sarah", "sarah2@example.com")
     );
-    expect(second.status).toBe("sent");
     expect(second.error).toBe("");
 
     const affiliates = await db.affiliate.findMany({
@@ -178,62 +182,84 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
       { email: "sarah1@example.com", referralCode: "sarah" },
       { email: "sarah2@example.com", referralCode: "sarah2" },
     ]);
-    expect(sendAffiliateMagicLinkEmailMock).toHaveBeenCalledTimes(2);
+    expect(signInMock).toHaveBeenCalledTimes(2);
   });
 
-  it("still treats a genuine duplicate signup (same email) as an existing-login request, not a referralCode retry", async () => {
+  it("refuses a second signup with an email already registered, without logging anyone in", async () => {
     referralCodeQueue.push("sarah");
-    await createAffiliateSignup(
-      programSlug,
-      { status: "form", error: "" },
-      formDataFor("Sarah", "sarah@example.com")
-    );
+    await createAffiliateSignup(programSlug, { error: "" }, formDataFor("Sarah", "sarah@example.com"));
+    signInMock.mockClear();
 
     // Same email again, with a different name/slug so this exercises the
-    // email-collision branch specifically, not the referralCode one. The
-    // email throttle is reset first: a second send within the minute is
-    // refused by design, and that is covered in its own suite.
-    resetAffiliateEmailThrottle();
+    // email-collision branch specifically, not the referralCode one. Whoever
+    // submits it has not proved they own the account, so it is never a login.
     referralCodeQueue.push("sarah-again");
     const repeat = await createAffiliateSignup(
       programSlug,
-      { status: "form", error: "" },
-      formDataFor("Sarah Again", "sarah@example.com")
+      { error: "" },
+      formDataFor("Sarah Again", "sarah@example.com", "someone elses password")
     );
 
-    expect(repeat.status).toBe("sent");
-    const affiliates = await db.affiliate.findMany({ where: { merchantId } });
-    expect(affiliates).toHaveLength(1); // no new row — treated as a login for the existing one
-    expect(sendAffiliateMagicLinkEmailMock).toHaveBeenCalledTimes(2);
+    expect(repeat.error).toBe("You already have an account here. Log in instead.");
+    expect(await db.affiliate.count({ where: { merchantId } })).toBe(1);
+    expect(signInMock).not.toHaveBeenCalled();
+  });
+
+  it("creates the Affiliate with a hash of their password and logs them in", async () => {
+    referralCodeQueue.push("sarah");
+    const result = await createAffiliateSignup(programSlug, { error: "" }, formDataFor("Sarah", "sarah@example.com"));
+
+    expect(result.error).toBe("");
+    const affiliate = await db.affiliate.findFirstOrThrow({ where: { merchantId }, select: { passwordHash: true } });
+    expect(affiliate.passwordHash).toBeTruthy();
+    expect(affiliate.passwordHash).not.toBe(PASSWORD);
+    expect(await verifyPassword(PASSWORD, affiliate.passwordHash!)).toBe(true);
+    expect(signInMock).toHaveBeenCalledTimes(1);
+    expect(signInMock).toHaveBeenCalledWith("affiliate-password", {
+      email: "sarah@example.com",
+      password: PASSWORD,
+      redirectTo: "/affiliates/dashboard",
+    });
+  });
+
+  it("refuses a password that is too short before touching the database", async () => {
+    const result = await createAffiliateSignup(
+      programSlug,
+      { error: "" },
+      formDataFor("Sarah", "sarah@example.com", "short")
+    );
+
+    expect(result.error).toMatch(/^Use at least \d+ characters$/);
+    expect(await db.affiliate.count({ where: { merchantId } })).toBe(0);
+    expect(signInMock).not.toHaveBeenCalled();
   });
 
   it("keeps creating Affiliates behind a proxy that does not forward the visitor address", async () => {
     // Every request looks like the proxy here. Counting that as one visitor
-    // used to stop the whole instance at twenty signups an hour, with the
-    // rest told to check an email that never came.
+    // would stop the whole instance at twenty signups an hour.
     headersMock.mockResolvedValue(
       new Headers({ host: "signup-action-test.example.com", "x-forwarded-for": "172.18.0.3" })
     );
     for (let i = 0; i < 25; i += 1) {
       const result = await createAffiliateSignup(
         programSlug,
-        { status: "form", error: "" },
+        { error: "" },
         formDataWithChosenCode(`Person ${i}`, `person-${i}@example.com`, `person-${i}`)
       );
-      expect(result.status).toBe("sent");
+      expect(result.error).toBe("");
     }
     expect(await db.affiliate.count({ where: { merchantId } })).toBe(25);
-    expect(sendAffiliateMagicLinkEmailMock).toHaveBeenCalledTimes(25);
+    expect(signInMock).toHaveBeenCalledTimes(25);
   });
 
   it("creates the Affiliate with the exact code they chose, not a name-derived one", async () => {
     const result = await createAffiliateSignup(
       programSlug,
-      { status: "form", error: "" },
+      { error: "" },
       formDataWithChosenCode("Sarah", "sarah@example.com", "my-own-code")
     );
 
-    expect(result.status).toBe("sent");
+    expect(result.error).toBe("");
     const affiliate = await db.affiliate.findFirst({
       where: { merchantId },
       select: { links: { where: { isPrimary: true }, select: { code: true } } },
@@ -247,34 +273,32 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
     referralCodeQueue.push("taken-code");
     await createAffiliateSignup(
       programSlug,
-      { status: "form", error: "" },
+      { error: "" },
       formDataFor("First", "first@example.com")
     );
 
     const result = await createAffiliateSignup(
       programSlug,
-      { status: "form", error: "" },
+      { error: "" },
       formDataWithChosenCode("Second", "second@example.com", "taken-code")
     );
 
-    expect(result.status).toBe("form");
     expect(result.error).toBe("That code is already taken. Try another.");
 
-    // No Affiliate was created for the rejected attempt, and no magic link
-    // email went out for it — only the one from the first, successful signup.
+    // No Affiliate was created for the rejected attempt, and nobody was
+    // logged in for it: only the first, successful signup was.
     const affiliates = await db.affiliate.findMany({ where: { merchantId } });
     expect(affiliates).toHaveLength(1);
-    expect(sendAffiliateMagicLinkEmailMock).toHaveBeenCalledTimes(1);
+    expect(signInMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a chosen code that fails the format rule before ever touching the database", async () => {
     const result = await createAffiliateSignup(
       programSlug,
-      { status: "form", error: "" },
+      { error: "" },
       formDataWithChosenCode("Sarah", "sarah@example.com", "Not A Valid Code!")
     );
 
-    expect(result.status).toBe("form");
     expect(result.error).toBe(
       "Use lowercase letters, numbers and hyphens, with no hyphen at either end."
     );

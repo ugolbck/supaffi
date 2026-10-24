@@ -5,12 +5,11 @@ import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug, getStripeKeyKind } from "@/lib/merchant";
 import { getProductSetup } from "@/lib/productSetup";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
-import { resendDomainsUrl } from "@/lib/checks/email";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
 import { Button } from "@/components/ui/button";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { CheckList } from "@/components/onboarding/CheckList";
-import { checkState, dnsCheckRows, emailDomainPending, type CheckRow } from "@/components/onboarding/checkRows";
+import { dnsCheckRows, type CheckRow } from "@/components/onboarding/checkRows";
 import { isDevInstance } from "@/lib/instanceMode";
 import { isLocalDomain } from "@/lib/url";
 import { ProductForm } from "./ProductForm";
@@ -19,7 +18,6 @@ import { DeleteProduct } from "./DeleteProduct";
 import {
   replaceStripeKeyAction,
   replaceWebhookSecretAction,
-  replaceEmailKeyAction,
 } from "./settingsActions";
 
 /**
@@ -29,7 +27,7 @@ import {
  * The lights are live rather than a stored flag, so a key revoked in Stripe
  * this morning says so here this afternoon. `runProductChecks` serves a
  * section it ran less than a minute ago from its cache, which is what keeps
- * this page off Stripe and Resend on every visit. `?fresh=<section>` is how a
+ * this page off Stripe on every visit. `?fresh=<section>` is how a
  * write says its section is worth re-running: without it the light for the
  * thing just replaced would keep reading from a result taken before the fix.
  *
@@ -38,7 +36,7 @@ import {
  * ended up.
  */
 
-const SECTIONS: CheckSection[] = ["dns", "stripe", "email", "tracking"];
+const SECTIONS: CheckSection[] = ["dns", "stripe", "tracking"];
 
 /** A section name in the URL, or nothing when it names none. */
 function freshSection(raw: string | undefined): CheckSection | null {
@@ -104,32 +102,6 @@ export default async function SettingsPage({
       action: replaceLink("stripe-webhook"),
     },
   ];
-  const emailRows: CheckRow[] = [
-    {
-      id: "email-key",
-      state: !setup.emailConnected ? "pending" : checks.email.key.ok ? "ok" : "failed",
-      pending: "No Resend key yet",
-      passed: "Connected to Resend",
-      failed: "Resend rejected the key",
-      hint: "Replace it with a new one.",
-      action: replaceLink("email-key"),
-    },
-    {
-      id: "email-domain",
-      state: !setup.emailConnected
-        ? "pending"
-        : checkState(checks.email.domain, emailDomainPending),
-      pending: setup.emailConnected ? `Waiting for Resend to verify ${merchant.domain}` : "No sending domain yet",
-      passed: `Sending from ${merchant.domain}`,
-      failed: checks.email.domain.detail,
-      hint: "Open Resend and check the record it asked for.",
-      action: (
-        <Button variant="secondary" size="sm" render={<a href={resendDomainsUrl()} target="_blank" rel="noreferrer" />}>
-          Open Resend
-        </Button>
-      ),
-    },
-  ];
   const dnsRows: CheckRow[] = local ? [] : dnsCheckRows(checks.dns);
 
   const sheets = {
@@ -150,15 +122,6 @@ export default async function SettingsPage({
       fieldLabel: "Paste the signing secret",
       placeholder: "whsec_...",
       action: replaceWebhookSecretAction.bind(null, productRef),
-    },
-    "email-key": {
-      title: "Replace the Resend key",
-      lede: "Affiliates log in with a link sent to their inbox.",
-      createLabel: "Create key in Resend",
-      createUrl: "https://resend.com/api-keys",
-      fieldLabel: "Paste the new key",
-      placeholder: "re_...",
-      action: replaceEmailKeyAction.bind(null, productRef),
     },
   } as const;
 
@@ -202,15 +165,6 @@ export default async function SettingsPage({
               </a>
             </p>
           )}
-          <div className="grid grid-cols-[7rem_1fr] gap-4 px-5 py-4">
-            <div className="flex flex-col gap-0.5 pt-3">
-              <span className="text-sm">Email</span>
-              <span className="text-xs text-muted-foreground">Resend</span>
-            </div>
-            <div className="rounded-(--radius) border border-neutral-200 bg-neutral-50">
-              <CheckList rows={emailRows} />
-            </div>
-          </div>
         </div>
       </Section>
 

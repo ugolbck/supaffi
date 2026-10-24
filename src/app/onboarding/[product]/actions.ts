@@ -8,28 +8,20 @@ import {
   getStripeWebhookEndpointId,
   updateMerchant,
   connectStripe,
-  connectEmailProvider,
   markOnboardingComplete,
 } from "@/lib/merchant";
 import { validateProductInput, normalizeDomain } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stepPath, nextStep, splitSubdomain, rehomeSubdomain, type StepId } from "@/lib/onboarding";
-import { deliveryMode } from "@/lib/email/transport";
 import { createProgram, updateProgram, listProgramsForMerchant } from "@/lib/program";
 import { validateProgramInput } from "@/lib/programValidation";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
 import { createWebhookEndpoint } from "@/lib/stripeWebhookEndpoint";
 import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
 import { isLocalDomain } from "@/lib/url";
-import { resendKeyWorks } from "@/lib/checks/email";
 import { runProductChecks } from "@/lib/checks/product";
 import { checkSectionFor } from "@/lib/onboarding";
-
-/** Whether this instance has the two email steps at all. */
-function setupEmailRequired(): boolean {
-  return deliveryMode() === "send";
-}
 
 async function owner(): Promise<string> {
   const session = await auth();
@@ -182,7 +174,7 @@ export async function saveStripeKeyAction(
       webhookEndpointId: created.id,
     });
   }
-  redirect(stepPath(product.slug, nextStep("stripe-key", setupEmailRequired())!));
+  redirect(stepPath(product.slug, nextStep("stripe-key")!));
 }
 
 export async function saveWebhookSecretAction(
@@ -198,24 +190,6 @@ export async function saveWebhookSecretAction(
   // the owner made themselves.
   await connectStripe(ownerId, product.id, { webhookSecret: secret, webhookEndpointId: null });
   revalidatePath(stepPath(product.slug, "stripe-key"));
-  return { error: "" };
-}
-
-export async function saveEmailKeyAction(
-  product: { id: string; slug: string },
-  _prev: { error: string },
-  formData: FormData
-): Promise<{ error: string }> {
-  const ownerId = await owner();
-  const key = String(formData.get("value") ?? "").trim();
-  const check = await resendKeyWorks(key);
-  if (!check.ok) return { error: check.detail };
-  await connectEmailProvider(ownerId, product.id, key);
-  // Stays on the step rather than moving on. The key is what makes the
-  // domain checkable at all, so the screen the Owner is standing on is the
-  // one that has something new to show: two rows that were not there a
-  // moment ago. Continue is theirs to press.
-  revalidatePath(stepPath(product.slug, "email"));
   return { error: "" };
 }
 

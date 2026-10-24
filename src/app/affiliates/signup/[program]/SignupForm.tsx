@@ -1,15 +1,15 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { MailCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TaskCard, TaskCardBody, TaskCardHeader } from "@/components/onboarding/TaskCard";
+import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 import { slugify } from "@/lib/slugify";
 import { validateCode } from "./validation";
 
-type FormState = { status: "form" | "sent"; error: string };
+type FormState = { error: string };
 
 export type SignupFormAction = (prevState: FormState, formData: FormData) => Promise<FormState>;
 
@@ -20,11 +20,11 @@ type Props = {
 };
 
 export function SignupForm({ action, linkHost }: Props) {
-  const [state, formAction] = useActionState<FormState, FormData>(action, {
-    status: "form",
-    error: "",
-  });
+  const [state, formAction, pending] = useActionState<FormState, FormData>(action, { error: "" });
   const [name, setName] = useState("");
+  // Controlled like the name, so a refused signup keeps it: React resets an
+  // uncontrolled form after every action.
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [codeTouched, setCodeTouched] = useState(false);
 
@@ -32,24 +32,6 @@ export function SignupForm({ action, linkHost }: Props) {
   // the moment they touch it, it's theirs to shape, not the name's.
   const displayCode = codeTouched ? code : slugify(name);
   const codeError = codeTouched && code ? validateCode(code).error : null;
-
-  if (state.status === "sent") {
-    return (
-      <TaskCard>
-        <TaskCardBody className="flex items-start gap-3">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-50 text-accent-700">
-            <MailCheck className="size-4" aria-hidden />
-          </span>
-          <div className="flex flex-col gap-0.5">
-            <p className="text-[13px] leading-5 font-semibold text-neutral-900">Check your email</p>
-            <p className="text-[13px] leading-5 text-muted-foreground text-pretty">
-              Open the link we just sent to finish signing up. It expires in 15 minutes.
-            </p>
-          </div>
-        </TaskCardBody>
-      </TaskCard>
-    );
-  }
 
   return (
     <TaskCard>
@@ -75,7 +57,26 @@ export function SignupForm({ action, linkHost }: Props) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" name="email" autoComplete="email" required />
+            <Input
+              id="email"
+              type="email"
+              name="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              name="password"
+              autoComplete="new-password"
+              minLength={MIN_PASSWORD_LENGTH}
+              required
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="code">Your referral link</Label>
@@ -105,9 +106,15 @@ export function SignupForm({ action, linkHost }: Props) {
                 earns the second line. */}
             {codeError && <p className="text-xs text-status-danger">{codeError}</p>}
           </div>
-          <Button type="submit" size="lg" className="mt-1">
+          <Button type="submit" size="lg" className="mt-1 cursor-pointer" disabled={pending}>
             Get my link
           </Button>
+          <p className="text-center text-[13px] text-muted-foreground">
+            Already signed up?{" "}
+            <a href="/affiliates/login" className="cursor-pointer font-medium text-foreground underline underline-offset-2">
+              Log in
+            </a>
+          </p>
         </form>
       </TaskCardBody>
     </TaskCard>

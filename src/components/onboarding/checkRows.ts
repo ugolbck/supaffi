@@ -67,23 +67,6 @@ export const certificatePending = (detail: string) =>
   detail.startsWith("Being set up") || detail.startsWith("Waiting") || detail === "Nothing answered";
 
 /**
- * `sendingDomainVerified`: not added in Resend yet, added and still being
- * verified there, or Resend not answering. Every one of them is a wait: the
- * answer can only come from Resend, and it comes when it comes.
- */
-export const emailDomainPending = (detail: string) =>
-  detail.startsWith("Add ") ||
-  detail.startsWith("Added, ") ||
-  detail === "Could not reach Resend";
-
-/**
- * `resendKeyWorks`: no key stored, or Resend never answered. Both mean we do
- * not know yet. A key Resend actively rejected is an answer, and a failure.
- */
-export const emailKeyPending = (detail: string) =>
-  detail === "Not connected yet" || detail === "Could not reach Resend";
-
-/**
  * `stripeKeyWorks`: nothing stored, or Stripe never answered. A key Stripe
  * actively rejected is an answer, and a failure.
  */

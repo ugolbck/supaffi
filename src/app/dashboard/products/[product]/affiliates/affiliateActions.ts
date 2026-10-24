@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { updateAffiliate } from "@/lib/affiliate";
+import { createAffiliateResetLink } from "@/lib/affiliatePassword";
 
 /**
  * The two writes the affiliate sheet makes: which program someone is in, and
@@ -53,4 +54,18 @@ export async function setCustomRateAction(
   if (!Number.isFinite(rate) || rate <= 0 || rate > 100) return;
   await updateAffiliate(ownerId, product.id, affiliateId, { customCommissionRate: rate });
   revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
+}
+
+/**
+ * A one-time link for this affiliate to set a password, for the Owner to send
+ * them. Answers the token only; the sheet builds the URL on the product's
+ * affiliate domain, where the link has to be opened.
+ */
+export async function createPasswordLinkAction(
+  product: { id: string },
+  affiliateId: string
+): Promise<{ token: string } | { error: string }> {
+  const ownerId = await owner();
+  const token = await createAffiliateResetLink(ownerId, product.id, affiliateId);
+  return token ? { token } : { error: "Affiliate not found" };
 }

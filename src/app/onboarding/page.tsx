@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { listMerchantsForOwner } from "@/lib/merchant";
-import { deliveryMode } from "@/lib/email/transport";
 import { backToDashboardHref, displayStep, stepIds, stepLabel } from "@/lib/onboarding";
 import { StepShell } from "@/components/onboarding/StepShell";
 import { Rail } from "./Rail";
@@ -11,8 +10,7 @@ export default async function OnboardingStart() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   const existing = await listMerchantsForOwner(session.user.id);
-  const emailRequired = deliveryMode() === "send";
-  const ids = stepIds(emailRequired);
+  const ids = stepIds();
 
   const steps = ids.map((id, i) => ({
     id,
@@ -25,7 +23,7 @@ export default async function OnboardingStart() {
     <>
       <Rail steps={steps} productSlug={null} backHref={backToDashboardHref(existing)} />
       <StepShell
-        step={displayStep("product", emailRequired)}
+        step={displayStep("product")}
         title="What are you promoting?"
       >
         <ProductForm />

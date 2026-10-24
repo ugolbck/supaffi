@@ -27,8 +27,7 @@ export const loadStepContext = cache(async (slug: string) => {
     merchant,
     setup,
     onboardingCompletedAt: state.onboardingCompletedAt,
-    emailRequired: setup.emailRequired,
-    total: stepIds(setup.emailRequired).length,
+    total: stepIds().length,
   };
 });
 

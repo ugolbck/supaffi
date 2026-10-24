@@ -17,7 +17,7 @@ automatic.
 The install is good and everything after it is not. Setup should be one path
 that holds you until it is finished, rather than a dashboard you can wander
 into half configured. That includes real guidance for the subdomain each
-program needs, splitting the payment and email steps so progress is visible,
+program needs, making Stripe progress visible step by step,
 and rewriting the commission terms screen, which currently explains nothing.
 
 ## Next
@@ -35,9 +35,8 @@ product, what they have earned, or per-affiliate rates.
 ## Later
 
 ### More providers
-Stripe is the only payment provider and Resend the only email provider. Paddle
-and Polar are the obvious next payments; email needs at least a plain SMTP
-option so no one is forced into a single vendor.
+Stripe is the only payment provider. Paddle and Polar are the obvious next
+ones.
 
 ### Recovering late refunds
 A refund or chargeback that arrives after a commission was paid is the owner's

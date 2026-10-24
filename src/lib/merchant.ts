@@ -2,8 +2,8 @@ import { db } from "@/lib/db";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { uniqueSlug } from "@/lib/slug";
 
-// Creating a Merchant no longer takes any credentials. Connecting Stripe
-// and email delivery are separate steps, done against a Merchant that
+// Creating a Merchant no longer takes any credentials. Connecting Stripe is
+// a separate step, done against a Merchant that
 // already exists, so the Owner is never asked for a Stripe secret before
 // they have been told what Supaffi does with it.
 type MerchantDetailsInput = {
@@ -73,18 +73,6 @@ export async function connectStripe(
   });
 }
 
-export async function connectEmailProvider(
-  ownerId: string,
-  merchantId: string,
-  apiKey: string
-): Promise<void> {
-  await assertOwns(ownerId, merchantId);
-  await db.merchant.update({
-    where: { id: merchantId },
-    data: { emailProviderConfigEnc: encrypt(apiKey) },
-  });
-}
-
 // Which integrations are live, without ever handing the ciphertext to a
 // caller that only needs to render a checkmark.
 //
@@ -95,10 +83,10 @@ export async function connectEmailProvider(
 export async function getIntegrationStatus(
   ownerId: string,
   merchantId: string
-): Promise<{ stripe: boolean; stripeKey: boolean; stripeWebhook: boolean; email: boolean }> {
+): Promise<{ stripe: boolean; stripeKey: boolean; stripeWebhook: boolean }> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
-    select: { stripeSecretKeyEnc: true, stripeWebhookSecretEnc: true, emailProviderConfigEnc: true },
+    select: { stripeSecretKeyEnc: true, stripeWebhookSecretEnc: true },
   });
   const stripeKey = Boolean(merchant?.stripeSecretKeyEnc);
   const stripeWebhook = Boolean(merchant?.stripeWebhookSecretEnc);
@@ -106,7 +94,6 @@ export async function getIntegrationStatus(
     stripe: stripeKey && stripeWebhook,
     stripeKey,
     stripeWebhook,
-    email: Boolean(merchant?.emailProviderConfigEnc),
   };
 }
 
@@ -304,15 +291,3 @@ export async function dismissWelcome(ownerId: string, merchantId: string): Promi
   });
 }
 
-// Internal only — the one function that returns the encrypted email
-// credential. Never call this from a page or anything whose result reaches
-// a response; only the Affiliate magic-link send path (src/lib/email/
-// affiliateMagicLink.ts) needs it.
-export async function getMerchantEmailCredentials(
-  merchantId: string
-): Promise<{ name: string; domain: string; emailProviderConfigEnc: string | null } | null> {
-  return db.merchant.findUnique({
-    where: { id: merchantId },
-    select: { name: true, domain: true, emailProviderConfigEnc: true },
-  });
-}

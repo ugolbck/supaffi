@@ -7,7 +7,6 @@ import {
   updateMerchant,
   deleteMerchant,
   connectStripe,
-  connectEmailProvider,
   getMerchantForOwner,
   type ProductRef,
 } from "@/lib/merchant";
@@ -15,7 +14,6 @@ import { validateProductInput, normalizeDomain } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
-import { resendKeyWorks } from "@/lib/checks/email";
 import { upgradeMerchantWebhookEvents } from "@/lib/worker/webhookEvents";
 
 /**
@@ -41,7 +39,7 @@ async function owner(): Promise<string> {
 }
 
 /** The settings URL, optionally asking for one section of checks to be re-run. */
-const settings = (slug: string, fresh?: "dns" | "stripe" | "email") =>
+const settings = (slug: string, fresh?: "dns" | "stripe") =>
   `/dashboard/products/${slug}/settings${fresh ? `?fresh=${fresh}` : ""}`;
 
 export async function updateProductAction(
@@ -98,19 +96,6 @@ export async function replaceWebhookSecretAction(
   // Same reason as the key: a recreated endpoint is the fix for a missing one.
   await upgradeMerchantWebhookEvents(product.id);
   redirect(settings(product.slug, "stripe"));
-}
-
-export async function replaceEmailKeyAction(
-  product: ProductRef,
-  _prev: { error: string },
-  formData: FormData
-): Promise<{ error: string }> {
-  const ownerId = await owner();
-  const key = String(formData.get("value") ?? "").trim();
-  const check = await resendKeyWorks(key);
-  if (!check.ok) return { error: check.detail };
-  await connectEmailProvider(ownerId, product.id, key);
-  redirect(settings(product.slug, "email"));
 }
 
 export async function deleteProductAction(product: ProductRef, formData: FormData): Promise<void> {

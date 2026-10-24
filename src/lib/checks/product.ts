@@ -2,10 +2,6 @@ import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { resolvesTo as resolvesToImpl, httpsReachable as httpsReachableImpl, type CheckResult } from "@/lib/checks/dns";
 import { stripeKeyWorks as stripeKeyWorksImpl, webhookEventReceived as webhookEventReceivedImpl } from "@/lib/checks/stripe";
-import {
-  resendKeyWorks as resendKeyWorksImpl,
-  sendingDomainVerified as sendingDomainVerifiedImpl,
-} from "@/lib/checks/email";
 import { scriptFound as scriptFoundImpl } from "@/lib/checks/script";
 
 export type CheckDeps = {
@@ -13,8 +9,6 @@ export type CheckDeps = {
   httpsReachable: (hostname: string) => Promise<{ reachable: CheckResult; certificate: CheckResult }>;
   stripeKeyWorks: (key: string) => Promise<CheckResult>;
   webhookEventReceived: (ownerId: string, merchantId: string) => Promise<CheckResult>;
-  resendKeyWorks: (key: string) => Promise<CheckResult>;
-  sendingDomainVerified: (key: string, domain: string) => Promise<CheckResult>;
   scriptFound: (websiteUrl: string, domain: string) => Promise<CheckResult>;
 };
 
@@ -23,15 +17,12 @@ const defaults: CheckDeps = {
   httpsReachable: httpsReachableImpl,
   stripeKeyWorks: stripeKeyWorksImpl,
   webhookEventReceived: webhookEventReceivedImpl,
-  resendKeyWorks: resendKeyWorksImpl,
-  sendingDomainVerified: sendingDomainVerifiedImpl,
   scriptFound: scriptFoundImpl,
 };
 
 export type ProductChecks = {
   dns: { resolves: CheckResult; https: CheckResult; certificate: CheckResult };
   stripe: { key: CheckResult; webhook: CheckResult };
-  email: { key: CheckResult; domain: CheckResult };
   tracking: { script: CheckResult };
 };
 
@@ -47,7 +38,7 @@ const FAILED: CheckResult = { ok: false, detail: "Could not check" };
 
 /**
  * Runs one check and turns a rejection into its own failed CheckResult
- * instead of letting it take the other six lights down with it (a Promise.all
+ * instead of letting it take the other lights down with it (a Promise.all
  * of unguarded checks rejects as a whole on the first rejection). Each check
  * is caught at its own call site, not centrally, so a slow or flaky check
  * (webhookEventReceived hitting the database, for instance) degrades to
@@ -74,7 +65,6 @@ type Timed<T> = { value: T; at: number };
 type SectionCache = {
   dns?: Timed<ProductChecks["dns"]>;
   stripe?: Timed<ProductChecks["stripe"]>;
-  email?: Timed<ProductChecks["email"]>;
   tracking?: Timed<ProductChecks["tracking"]>;
 };
 
@@ -88,7 +78,7 @@ export type RunOptions = {
    * Answer from what is already known and run the rest behind the request.
    *
    * This is what a step screen uses. These checks are DNS lookups, a TLS
-   * handshake, a Stripe call, a Resend call and a fetch of the Owner's own
+   * handshake, a Stripe call and a fetch of the Owner's own
    * website, and awaiting them put two or three seconds between pressing a
    * button and seeing the next screen, with nothing on the screen to say
    * why. The screen now arrives at once with its lights grey and they turn
@@ -109,8 +99,8 @@ export type RunOptions = {
  * this function. A decrypt failure reads as not connected, which is what the
  * settings page should say when the master key has been lost.
  *
- * The onboarding steps poll every 15 seconds. Running all seven checks each
- * time meant a Stripe, a Resend and two outbound HTTP requests per tick for
+ * The onboarding steps poll every 15 seconds. Running every check each
+ * time meant a Stripe call and two outbound HTTP requests per tick for
  * lights nobody was looking at, which is how an instance gets rate limited
  * during the one hour it matters. So a section that was run less than a
  * minute ago is served from the last result unless the caller names it in
@@ -121,7 +111,6 @@ function lastKnown(cached: SectionCache): ProductChecks {
   return {
     dns: cached.dns?.value ?? { resolves: CHECKING, https: CHECKING, certificate: CHECKING },
     stripe: cached.stripe?.value ?? { key: CHECKING, webhook: CHECKING },
-    email: cached.email?.value ?? { key: CHECKING, domain: CHECKING },
     tracking: cached.tracking?.value ?? { script: CHECKING },
   };
 }
@@ -152,13 +141,12 @@ function refresh(
     const started = now();
     const merchant = await db.merchant.findFirst({
       where: { id: merchantId, ownerId },
-      select: { domain: true, websiteUrl: true, stripeSecretKeyEnc: true, emailProviderConfigEnc: true },
+      select: { domain: true, websiteUrl: true, stripeSecretKeyEnc: true },
     });
     if (!merchant) throw new Error("Merchant not found");
 
     const hostIp = process.env.SUPAFFI_HOST_IP?.trim() ?? "";
     const stripeKey = safeDecrypt(merchant.stripeSecretKeyEnc);
-    const resendKey = safeDecrypt(merchant.emailProviderConfigEnc);
     const wanted = new Set(sections);
     const result: Partial<ProductChecks> = {};
 
@@ -179,17 +167,6 @@ function refresh(
               settle(deps.webhookEventReceived(ownerId, merchantId), FAILED),
             ]);
             result.stripe = { key, webhook };
-          })()
-        : null,
-      wanted.has("email")
-        ? (async () => {
-            const [key, domain] = await Promise.all([
-              resendKey ? settle(deps.resendKeyWorks(resendKey), FAILED) : Promise.resolve(NOT_CONNECTED),
-              resendKey
-                ? settle(deps.sendingDomainVerified(resendKey, merchant.domain), FAILED)
-                : Promise.resolve(NOT_CONNECTED),
-            ]);
-            result.email = { key, domain };
           })()
         : null,
       wanted.has("tracking")
@@ -228,8 +205,8 @@ function refresh(
  * this function. A decrypt failure reads as not connected, which is what the
  * settings page should say when the master key has been lost.
  *
- * The onboarding steps poll every few seconds. Running all seven checks each
- * time meant a Stripe, a Resend and two outbound HTTP requests per tick for
+ * The onboarding steps poll every few seconds. Running every check each
+ * time meant a Stripe call and two outbound HTTP requests per tick for
  * lights nobody was looking at, which is how an instance gets rate limited
  * during the one hour it matters. So a section that was run less than a
  * minute ago is served from the last result unless the caller names it in
@@ -251,14 +228,13 @@ export async function runProductChecks(
   const warm = {
     dns: usable(cached.dns, "dns"),
     stripe: usable(cached.stripe, "stripe"),
-    email: usable(cached.email, "email"),
     tracking: usable(cached.tracking, "tracking"),
   };
-  const stale = (["dns", "stripe", "email", "tracking"] as const).filter((s) => !warm[s]);
+  const stale = (["dns", "stripe", "tracking"] as const).filter((s) => !warm[s]);
 
   // Nothing to run: no database round trip either, which is the point.
   if (stale.length === 0) {
-    return { dns: warm.dns!, stripe: warm.stripe!, email: warm.email!, tracking: warm.tracking! };
+    return { dns: warm.dns!, stripe: warm.stripe!, tracking: warm.tracking! };
   }
 
   if (options.background) {
@@ -269,7 +245,6 @@ export async function runProductChecks(
     return {
       dns: warm.dns ?? known.dns,
       stripe: warm.stripe ?? known.stripe,
-      email: warm.email ?? known.email,
       tracking: warm.tracking ?? known.tracking,
     };
   }
@@ -279,7 +254,6 @@ export async function runProductChecks(
   return {
     dns: warm.dns ?? ran.dns ?? known.dns,
     stripe: warm.stripe ?? ran.stripe ?? known.stripe,
-    email: warm.email ?? ran.email ?? known.email,
     tracking: warm.tracking ?? ran.tracking ?? known.tracking,
   };
 }

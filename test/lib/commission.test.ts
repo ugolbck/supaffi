@@ -53,7 +53,6 @@ async function makeMerchant(ownerId: string, suffix: string) {
       websiteUrl: `https://commission-test-${suffix}.example.com`,
       stripeSecretKeyEnc: "x",
       stripeWebhookSecretEnc: "x",
-      emailProviderConfigEnc: "x",
     },
   });
 }

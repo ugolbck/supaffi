@@ -57,8 +57,8 @@ const perEmail = windowLimit({
   name: "owner-login-email",
   windowMs: WINDOW_MS,
   max: 100,
-  // One Owner per instance. A handful covers email changes within a window.
-  maxTracked: 50,
+  // The Owner and every product's affiliates, keyed by product and email.
+  maxTracked: 5000,
 });
 
 // Matches verifyOwnerCredentials, or `Bob@x.com` and `bob@x.com` would be two

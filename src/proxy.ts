@@ -1,7 +1,9 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig } from "@/lib/auth.config";
-import { resolveLoginRedirect } from "@/lib/middlewareLogic";
+import { db } from "@/lib/db";
+import { resolveLoginRedirect, resolveProductDomainRoute } from "@/lib/middlewareLogic";
+import { isLocalDomain } from "@/lib/url";
 
 // Uses the edge-safe authConfig directly (not the full config exported from
 // @/lib/auth) so this proxy never pulls either Credentials provider —
@@ -11,7 +13,24 @@ import { resolveLoginRedirect } from "@/lib/middlewareLogic";
 // authConfig.
 const { auth } = NextAuth(authConfig);
 
-export default auth((req) => {
+// Whether this request arrived on a product's affiliate domain. Only asked for
+// the paths resolveProductDomainRoute cares about. A local host is never one:
+// in development the dashboard and a product share localhost.
+async function isProductDomain(host: string | null): Promise<boolean> {
+  if (!host || isLocalDomain(host)) return false;
+  const merchant = await db.merchant.findUnique({ where: { domain: host.toLowerCase() }, select: { id: true } });
+  return merchant !== null;
+}
+
+export default auth(async (req) => {
+  const productRoute = resolveProductDomainRoute(req.nextUrl.pathname);
+  if (productRoute && (await isProductDomain(req.headers.get("host")))) {
+    if ("redirect" in productRoute) {
+      return NextResponse.redirect(new URL(productRoute.redirect, req.nextUrl.origin));
+    }
+    return new NextResponse(null, { status: 404 });
+  }
+
   const redirectPath = resolveLoginRedirect(req.nextUrl.pathname, req.auth?.user?.role ?? null);
   if (redirectPath) {
     return NextResponse.redirect(new URL(redirectPath, req.nextUrl.origin));
@@ -21,5 +40,12 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/onboarding/:path*", "/affiliates/dashboard/:path*"],
+  matcher: [
+    "/",
+    "/login/:path*",
+    "/setup/:path*",
+    "/dashboard/:path*",
+    "/onboarding/:path*",
+    "/affiliates/dashboard/:path*",
+  ],
 };

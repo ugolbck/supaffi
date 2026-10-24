@@ -39,7 +39,7 @@ await stripe.checkout.sessions.create({
 
   return (
     <StepShell
-      step={displayStep("tracking", ctx.emailRequired)}
+      step={displayStep("tracking")}
       title="Put the tracking script on your site"
       lede="Paste this in the head of every page an affiliate link can land on."
       action={

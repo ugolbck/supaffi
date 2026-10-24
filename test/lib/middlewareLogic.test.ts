@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveLoginRedirect } from "@/lib/middlewareLogic";
+import { resolveLoginRedirect, resolveProductDomainRoute } from "@/lib/middlewareLogic";
 
 describe("resolveLoginRedirect", () => {
   it("redirects an unauthenticated request to the Owner dashboard", () => {
@@ -37,5 +37,23 @@ describe("resolveLoginRedirect", () => {
     expect(resolveLoginRedirect("/onboarding", null)).toBe("/login");
     expect(resolveLoginRedirect("/onboarding/instantgradient/terms", "affiliate")).toBe("/login");
     expect(resolveLoginRedirect("/onboarding", "owner")).toBeNull();
+  });
+});
+
+describe("resolveProductDomainRoute", () => {
+  it("answers not found for the Owner's pages", () => {
+    for (const path of ["/login", "/dashboard", "/dashboard/products/acme", "/onboarding/acme/stripe", "/setup"]) {
+      expect(resolveProductDomainRoute(path), path).toEqual({ notFound: true });
+    }
+  });
+
+  it("sends the root to the affiliate login", () => {
+    expect(resolveProductDomainRoute("/")).toEqual({ redirect: "/affiliates/login" });
+  });
+
+  it("leaves affiliate pages and look-alike paths alone", () => {
+    for (const path of ["/affiliates/login", "/affiliates/dashboard", "/affiliates/signup/standard", "/loginx", "/dashboards"]) {
+      expect(resolveProductDomainRoute(path), path).toBeNull();
+    }
   });
 });

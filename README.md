@@ -1,64 +1,38 @@
 # Supaffi
 
-Simple, self-hostable affiliate program software for SaaS founders. Stripe-native, one-command install.
+Self-hosted affiliate programs for SaaS that sell through Stripe Checkout. Affiliates share a link, Supaffi tracks the sale and every renewal from Stripe's webhooks, and you pay them yourself from a ledger of what each one is owed.
 
-## Self-hosting
+What it handles and what it doesn't: [docs/what-supaffi-handles.md](docs/what-supaffi-handles.md).
 
-You need a server. Nothing else. Docker gets installed if it is missing.
+## Install
+
+On a fresh server (Docker is installed if missing):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ugolbck/supaffi/main/install.sh | sudo bash
 ```
 
-It asks nothing and prints an address and a token:
+It prints an address and a token. Open the address, accept the self-signed certificate warning, paste the token, create your login.
 
-```
-Open https://203.0.113.45:3443/setup and paste this token:
+If the address doesn't load, open the port in your hosting provider's firewall.
 
-    7Kq2xN...
-```
+## Add a product
 
-Open it, continue past the browser warning, paste the token, and pick an email
-and password. You are in.
+1. Point an A record for `affiliates.yourproduct.com` at the server. On Cloudflare, proxy off (grey cloud).
+2. Add the product in the dashboard with that hostname, your site's address and a Stripe key.
+3. Paste the tracking snippet into your site, and pass the referral into your Checkout Session.
 
-The warning is expected. The certificate was signed by your own server rather
-than by an authority your browser knows, so it cannot vouch for who you are
-talking to, which at your own server's address you already know. The connection
-is encrypted regardless. Portainer and Proxmox do the same thing.
+The hostname hosts the affiliate signup and their dashboard, so it must be on the product's own domain. One per product. Supaffi sends no email: affiliates sign up with a password, and if one forgets it you copy them a password link from their panel.
 
-If the address does not load at all, your hosting provider is blocking the
-port. Allow it in their firewall, not on the server.
+## Behind an existing reverse proxy
 
-### Adding your first program
-
-Each affiliate program needs one hostname on that product's own domain. This is
-the only DNS you ever do.
-
-1. Add an A record for `affiliates.yourproduct.com` pointing at your server.
-2. Add the product in the dashboard: that hostname, your site's address, your
-   Stripe keys.
-3. Paste the tracking snippet into your site.
-
-That hostname is where your affiliates sign up, where their dashboard lives, and
-the domain their emails come from, so it has to be yours and it has to match the
-product. A second program gets its own, on its own domain.
-
-On Cloudflare, leave the proxy off (grey cloud) for that record.
-
-### If you already run a reverse proxy
-
-Nothing changes about the install. Supaffi leaves ports 80 and 443 alone when
-something else already has them, and the dashboard keeps its own port either
-way.
-
-That choice is made once, on the first install, and remembered. If you later
-want to hand the ports over, or take them back, say so:
+If ports 80 and 443 are taken, Supaffi leaves them alone. To switch modes later:
 
 ```sh
 cd /opt/supaffi && sudo SUPAFFI_PROXY_MODE=external bash install.sh
 ```
 
-For each program hostname, add a block pointing at the app:
+Route each product hostname to the app and keep the `Host` header, which selects the product:
 
 ```nginx
 location / {
@@ -68,11 +42,7 @@ location / {
 }
 ```
 
-`Host` matters. Supaffi decides which product a visitor came for from the
-hostname they arrived on, so a proxy that rewrites it serves the wrong one.
-
-If your proxy is itself a container it cannot reach the host's loopback. Put
-both on one network:
+A proxy running in a container can't reach the host's loopback. Share a network and forward to `http://supaffi-app-1:3000`:
 
 ```yaml
 # docker-compose.override.yml
@@ -85,121 +55,65 @@ networks:
     name: your-proxy-network
 ```
 
-Your proxy then forwards to `http://supaffi-app-1:3000`.
+## Options
 
-### A domain for the dashboard
+| Variable | Effect |
+| --- | --- |
+| `SUPAFFI_DOMAIN=supaffi.example.com` | Serves the owner dashboard on a domain. Optional, the address keeps working. |
+| `SUPAFFI_UPDATE_CHECK=off` | Stops the dashboard checking GitHub for new releases. |
+| `SUPAFFI_BUILD_FROM_SOURCE=yes` | Builds the image on the server instead of pulling it. Needs about 2 GB of RAM. |
+| `SUPAFFI_VERSION=x.y.z` | Installs that exact version. |
 
-Optional, and never asked for. Point one at your server and install with it
-set:
+Pass them to the install command, e.g. `sudo SUPAFFI_DOMAIN=supaffi.example.com bash`.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/ugolbck/supaffi/main/install.sh \
-  | sudo SUPAFFI_DOMAIN=supaffi.example.com bash
-```
-
-The address above keeps working either way. Your affiliate programs do not use
-this domain, so most people never need one.
-
-### Updating
+## Update
 
 ```sh
 cd /opt/supaffi && curl -fsSL https://raw.githubusercontent.com/ugolbck/supaffi/main/install.sh | sudo bash
 ```
 
-Your secrets and settings are kept. It backs up the database first and stops if
-that fails. Migrations run on start, and a migration that fails stops the app
-rather than serving against a schema it does not match.
+Settings and secrets are kept. The database is backed up to `/opt/supaffi/backups` first, and the update stops if that fails. Migrations run on start. The dashboard tells you when a release is out but never updates itself.
 
-An install pins an exact version, never a branch, so updating is a deliberate
-move from one release to the next and it tells you which.
-
-The dashboard tells you when a newer release exists. It will not update itself,
-and no self-hosted tool should: doing that means giving the web app control of
-Docker on your server, which is root on the whole machine. To turn the check
-off, install with `SUPAFFI_UPDATE_CHECK=off`. It sends no data about your
-instance, though GitHub sees your server's IP address as it would for any
-outbound request.
-
-### Going back
-
-Not symmetrical with going forward, and worth understanding before you need it.
-The code goes back; the database does not. Migrations only run in one
-direction, so an older release starts against the newer schema.
-
-The installer refuses a downgrade for that reason, and refuses outright if
-nothing asked for one. When you do mean it:
+**Downgrading** moves the code back, not the database. The installer refuses unless you ask:
 
 ```sh
 cd /opt/supaffi && sudo SUPAFFI_VERSION=0.1.0 SUPAFFI_ALLOW_DOWNGRADE=yes bash install.sh
 ```
 
-If the version you are leaving changed the schema, restore the dump the update
-took on the way up, from `/opt/supaffi/backups`.
+If the release you're leaving changed the schema, restore the dump from `/opt/supaffi/backups`.
 
-### Checking what you installed
-
-Every release is built by a public workflow and signed, so you can confirm the
-image on your server came from this repository rather than from someone who got
-hold of a registry token:
+**Verify an image** was built by this repository's release workflow:
 
 ```sh
-gh attestation verify oci://ghcr.io/ugolbck/supaffi:0.1.0 --repo ugolbck/supaffi
+gh attestation verify oci://ghcr.io/ugolbck/supaffi:0.2.7 --repo ugolbck/supaffi
 ```
 
-### Building it yourself
+## Backups
 
-The app ships as a published image, so nothing is compiled on your server. If
-you would rather compile it, install with `SUPAFFI_BUILD_FROM_SOURCE=yes`. That
-needs roughly 2 GB of memory and a few minutes on every update.
+The pre-update dump doesn't survive a dead disk. Keep, off the server:
 
-### Backups
-
-Updating dumps the database to `/opt/supaffi/backups` first and stops if that
-fails. That covers a bad update, not a dead disk, so you still want these two:
-
-- **The database.** `docker compose exec -T db pg_dump -U supaffi supaffi | gzip > supaffi.sql.gz`, on a cron job, stored off the server.
-- **`MASTER_ENCRYPTION_KEY` from `.env`.** It decrypts every product's Stripe
-  and email credentials. Keep it somewhere other than next to the database
-  backup, or one stolen backup gives up both.
-
-## Stack
-
-Next.js, Prisma, PostgreSQL. No Redis, no ClickHouse.
+- the database, on a cron: `docker compose exec -T db pg_dump -U supaffi supaffi | gzip > supaffi.sql.gz`
+- `MASTER_ENCRYPTION_KEY` from `.env`, stored apart from the dump. It decrypts every Stripe key, so one stolen backup holding both gives up everything.
 
 ## Development
 
+Next.js, Prisma, PostgreSQL. No Redis.
+
 ```sh
-cp .env.example .env   # then fill in the two generated secrets
+cp .env.example .env   # fill in the two generated secrets
+cp docker-compose.override.yml.example docker-compose.override.yml
+docker compose up -d db   # Postgres on 127.0.0.1:5432
+npm install && npx prisma migrate deploy
+npm run dev
 ```
 
-### Email
-
-Affiliates log in by magic link, sent from `affiliates@<your-domain>`. Locally that domain is `localhost`, which no email provider will let you send from. `.env.example` ships with `EMAIL_DELIVERY=console`, which prints the email to your terminal instead:
-
-```
-────────────────────────────────────────────────────────────────────────
-  EMAIL NOT SENT (EMAIL_DELIVERY=console)
-  merchant: Instantgradient (localhost:3000)
-  to:       sarah@example.com
-  subject:  Log in to Instantgradient's affiliate program
-  links:
-    http://localhost:3000/affiliates/verify?token=...
-────────────────────────────────────────────────────────────────────────
-```
-
-Paste the link into your browser to finish logging in. No Resend key needed.
-
-Drop the line to send for real. Unset means send, so production needs no email config beyond the key each merchant connects in the UI.
-
-Never set `console` in production. Those printed links are live single-use login tokens, so anyone who can read the logs can take over any affiliate account.
-
-### Stripe webhooks
-
-Stripe will not accept a `localhost` endpoint. Forward events with its CLI instead, and paste the `whsec_` it prints into the connect form:
+Stripe won't call `localhost`. Forward webhooks with its CLI and paste the `whsec_` it prints into the connect form:
 
 ```sh
 stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
+
+Tests run against `supaffi_test` and refuse any database whose name doesn't end in `_test`. Create it once with `createdb supaffi_test`, then migrate it with `DATABASE_URL` pointing at it.
 
 ## License
 

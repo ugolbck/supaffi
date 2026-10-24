@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   validateProductInput,
   validateStripeCredentials,
-  validateEmailProviderKey,
   normalizeDomain,
 } from "@/lib/productValidation";
 
@@ -114,20 +113,6 @@ describe("validateStripeCredentials", () => {
     expect(validateStripeCredentials({ secretKey: "nope", webhookSecret: "" }, true)).toBe(
       "Stripe key must start with rk_ or sk_"
     );
-  });
-});
-
-describe("validateEmailProviderKey", () => {
-  it("requires a key on a first connect", () => {
-    expect(validateEmailProviderKey("  ")).toBe("Resend API key is required");
-  });
-
-  it("accepts a blank key when reconnecting", () => {
-    expect(validateEmailProviderKey("", true)).toBeNull();
-  });
-
-  it("accepts a provided key", () => {
-    expect(validateEmailProviderKey("re_abc123")).toBeNull();
   });
 });
 

@@ -12,10 +12,8 @@ import {
   getMerchantForOwner,
   updateMerchant,
   connectStripe,
-  connectEmailProvider,
   getIntegrationStatus,
   getMerchantByDomain,
-  getMerchantEmailCredentials,
   getStripeKeyKind,
   deleteMerchant,
   markOnboardingComplete,
@@ -94,8 +92,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     const raw = await db.merchant.findUniqueOrThrow({ where: { id } });
     expect(raw.stripeSecretKeyEnc).toBeNull();
     expect(raw.stripeWebhookSecretEnc).toBeNull();
-    expect(raw.emailProviderConfigEnc).toBeNull();
-    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, stripeKey: false, stripeWebhook: false, email: false });
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, stripeKey: false, stripeWebhook: false });
   });
 
   it("connectStripe encrypts both Stripe secrets at rest", async () => {
@@ -114,7 +111,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     expect(raw.stripeSecretKeyEnc).not.toBe("sk_test_abc123");
     expect(raw.stripeSecretKeyEnc).toContain(":"); // iv:authTag:ciphertext format
     expect(raw.stripeWebhookSecretEnc).not.toBe("whsec_abc123");
-    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: true, stripeKey: true, stripeWebhook: true, email: false });
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: true, stripeKey: true, stripeWebhook: true });
   });
 
   it("reports the two Stripe halves separately when only the key is on file", async () => {
@@ -130,23 +127,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       stripe: false,
       stripeKey: true,
       stripeWebhook: false,
-      email: false,
     });
-  });
-
-  it("connectEmailProvider encrypts the key and is independent of Stripe", async () => {
-    const { id } = await createMerchant(ownerId, {
-      name: "InstantGradient",
-      domain: "connect-email.example.com",
-      websiteUrl: "https://example.com",
-    });
-
-    await connectEmailProvider(ownerId, id, "resend_api_key_abc");
-
-    const raw = await db.merchant.findUniqueOrThrow({ where: { id } });
-    expect(raw.emailProviderConfigEnc).not.toBe("resend_api_key_abc");
-    expect(raw.stripeSecretKeyEnc).toBeNull();
-    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, stripeKey: false, stripeWebhook: false, email: true });
   });
 
   it("connectStripe throws when the Merchant belongs to a different Owner", async () => {
@@ -199,7 +180,6 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       secretKey: "sk_test_original",
       webhookSecret: "whsec_original",
     });
-    await connectEmailProvider(ownerId, id, "cfg_original");
     const before = await db.merchant.findUniqueOrThrow({ where: { id } });
 
     await updateMerchant(ownerId, id, {
@@ -212,7 +192,6 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     expect(after.name).toBe("Renamed");
     expect(after.stripeSecretKeyEnc).toBe(before.stripeSecretKeyEnc);
     expect(after.stripeWebhookSecretEnc).toBe(before.stripeWebhookSecretEnc);
-    expect(after.emailProviderConfigEnc).toBe(before.emailProviderConfigEnc);
   });
 
   it("connectStripe rotates one secret without clearing the other", async () => {
@@ -272,21 +251,6 @@ describe.skipIf(!hasDatabase)("merchant", () => {
   it("getMerchantByDomain returns null for an unknown domain", async () => {
     const result = await getMerchantByDomain("nope.example.com");
     expect(result).toBeNull();
-  });
-
-  it("getMerchantEmailCredentials returns the encrypted config, unlike every other read path", async () => {
-    const { id } = await createMerchant(ownerId, {
-      name: "InstantGradient",
-      domain: "emailcreds-test.example.com",
-      websiteUrl: "https://instantgradient.com",
-    });
-    await connectEmailProvider(ownerId, id, "resend_api_key_abc");
-
-    const result = await getMerchantEmailCredentials(id);
-    expect(result?.name).toBe("InstantGradient");
-    expect(result?.domain).toBe("emailcreds-test.example.com");
-    expect(result?.emailProviderConfigEnc).not.toBe("resend_api_key_abc");
-    expect(result?.emailProviderConfigEnc).toContain(":"); // iv:authTag:ciphertext format
   });
 
   it("getStripeKeyKind tells a restricted key from a full secret key", async () => {

@@ -30,3 +30,26 @@ export function resolveLoginRedirect(pathname: string, role: SessionRole): strin
   }
   return null;
 }
+
+// The Owner's pages, which belong on the dashboard address only. A product's
+// affiliate domain serves its affiliates, so these answer not found there:
+// otherwise an affiliate could land on the Owner's login under the product's
+// name.
+const OWNER_PREFIXES = ["/login", "/dashboard", "/onboarding", "/setup"];
+
+function isOwnerPath(pathname: string): boolean {
+  return OWNER_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+/**
+ * What a request on a product's affiliate domain gets instead of the page it
+ * asked for, or null when the page is fine there. The root goes to the
+ * affiliate login, since an affiliate is the only visitor who belongs there.
+ */
+export function resolveProductDomainRoute(
+  pathname: string
+): { redirect: string } | { notFound: true } | null {
+  if (pathname === "/") return { redirect: "/affiliates/login" };
+  if (isOwnerPath(pathname)) return { notFound: true };
+  return null;
+}

@@ -9,7 +9,7 @@ import { PasteField } from "@/components/PasteField";
  * Replacing one credential, in the panel the URL opens.
  *
  * Same two halves as the onboarding step it stands in for: the button that
- * creates the thing in Stripe or Resend with the right permissions already
+ * creates the thing in Stripe with the right permissions already
  * set, and the field that takes what comes back. The action checks it before
  * it is stored and lands back here, so a working key is the only way the
  * sheet closes.

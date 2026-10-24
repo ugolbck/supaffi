@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { listMerchantsForOwner } from "@/lib/merchant";
-import { backToDashboardHref, isStepId, stepIds, stepPath, stepStates, type StepId } from "@/lib/onboarding";
+import { backToDashboardHref, isStepId, stepPath, stepStates, type StepId } from "@/lib/onboarding";
 import { isDevInstance } from "@/lib/instanceMode";
 import { isLocalDomain } from "@/lib/url";
 import { Rail } from "../../Rail";
@@ -8,17 +8,15 @@ import { loadChecks, loadStepContext, type Ctx } from "../checks";
 import { Product } from "../steps/Product";
 import { Subdomain } from "../steps/Subdomain";
 import { StripeKey } from "../steps/StripeKey";
-import { Email } from "../steps/Email";
 import { Terms } from "../steps/Terms";
 import { Tracking } from "../steps/Tracking";
 
 export default async function StepPage({ params }: { params: Promise<{ product: string; step: string }> }) {
   const { product, step } = await params;
+  // The email step is gone. A bookmark to it lands on the step that followed.
+  if (step === "email") redirect(stepPath(product, "terms"));
   if (!isStepId(step)) notFound();
   const context = await loadStepContext(product);
-  // A step the instance does not have — the email pair in console mode —
-  // is not a 404, it is a URL that stopped existing. Land on the one after it.
-  if (!stepIds(context.emailRequired).includes(step)) redirect(stepPath(product, "terms"));
 
   // Only this step's own section is re-run; the rest of the rail is whatever
   // the last run found, which is what makes a 15 second poll cheap.
@@ -56,8 +54,6 @@ function stepBody(step: StepId, ctx: Ctx) {
       return <Subdomain ctx={ctx} />;
     case "stripe-key":
       return <StripeKey ctx={ctx} />;
-    case "email":
-      return <Email ctx={ctx} />;
     case "terms":
       return <Terms ctx={ctx} />;
     case "tracking":

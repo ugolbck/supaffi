@@ -83,9 +83,3 @@ export function validateStripeCredentials(
   }
   return null;
 }
-
-export function validateEmailProviderKey(key: string, allowBlank = false): string | null {
-  if (allowBlank && !key.trim()) return null;
-  if (!key.trim()) return "Resend API key is required";
-  return null;
-}

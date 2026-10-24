@@ -19,7 +19,7 @@ import type { Ctx } from "../checks";
 export async function Subdomain({ ctx }: { ctx: Ctx }) {
   const { merchant, checks } = ctx;
   const product = { id: merchant.id, slug: merchant.slug };
-  const next = nextStep("subdomain", ctx.emailRequired)!;
+  const next = nextStep("subdomain")!;
   const split = splitSubdomain(merchant.domain, merchant.websiteUrl);
   // Nothing outside can reach a machine on someone's desk, so neither the
   // record nor the checks can ever come good there. That is true whether the
@@ -40,7 +40,7 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
   if (local) {
     return (
       <StepShell
-        step={displayStep("subdomain", ctx.emailRequired)}
+        step={displayStep("subdomain")}
         title="Point a subdomain here"
         lede="Your affiliate program lives on its own address, on your domain."
         action={
@@ -63,7 +63,7 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
 
   return (
     <StepShell
-      step={displayStep("subdomain", ctx.emailRequired)}
+      step={displayStep("subdomain")}
       title="Point a subdomain here"
       lede="Your affiliate program lives on its own address, on your domain."
       action={
