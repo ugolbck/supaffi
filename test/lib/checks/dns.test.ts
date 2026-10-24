@@ -259,7 +259,7 @@ describe("detectDnsProvider", () => {
 });
 
 describe("cloudflareDnsRecordsUrl", () => {
-  it("is the deep link Cloudflare documents", () => {
-    expect(cloudflareDnsRecordsUrl()).toBe("https://dash.cloudflare.com/?to=/:account/:zone/dns/records");
+  it("opens the named zone's records, leaving the account to Cloudflare", () => {
+    expect(cloudflareDnsRecordsUrl("mokkit.co")).toBe("https://dash.cloudflare.com/?to=/:account/mokkit.co/dns/records");
   });
 });

@@ -222,6 +222,14 @@ export function splitSubdomain(domain: string, websiteUrl: string): { prefix: st
 // the go.example.co.uk case out of registrableCandidates' two-label guess.
 const COMMON_SECOND_LEVEL_SUFFIXES = new Set(["co", "com", "org", "net", "ac", "gov", "edu"]);
 
+/** The DNS zone a domain's records live in: mokkit.co for affiliates.dev.mokkit.co. */
+export function dnsZone(domain: string): string {
+  const [twoLabel, threeLabel] = registrableCandidates(domain);
+  const [first, second] = twoLabel.split(".");
+  const looksLikeCoUk = Boolean(second) && COMMON_SECOND_LEVEL_SUFFIXES.has(first) && /^[a-z]{2}$/i.test(second);
+  return looksLikeCoUk ? threeLabel : twoLabel;
+}
+
 /**
  * The record name Cloudflare wants, relative to the zone it will host the
  * record in. The subdomain step only shows the editable prefix, which is the
@@ -230,10 +238,7 @@ const COMMON_SECOND_LEVEL_SUFFIXES = new Set(["co", "com", "org", "net", "ac", "
  * for affiliates.dev.mokkit.co is affiliates.dev, not affiliates.
  */
 export function dnsRecordName(domain: string): string {
-  const [twoLabel, threeLabel] = registrableCandidates(domain);
-  const [first, second] = twoLabel.split(".");
-  const looksLikeCoUk = Boolean(second) && COMMON_SECOND_LEVEL_SUFFIXES.has(first) && /^[a-z]{2}$/i.test(second);
-  const zone = looksLikeCoUk ? threeLabel : twoLabel;
+  const zone = dnsZone(domain);
   if (domain === zone || !domain.endsWith(`.${zone}`)) return domain;
   return domain.slice(0, -(zone.length + 1));
 }
