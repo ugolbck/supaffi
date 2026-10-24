@@ -21,6 +21,18 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
+# The Prisma CLI on its own, for the entrypoint's `migrate deploy`. Installed
+# against the project's lockfile, so every package in its tree is the version
+# CI tested, but with nothing else in package.json: the build tools, the test
+# runner and the rest of the dev dependencies never reach the runtime image.
+# Scripts stay on because @prisma/engines downloads the migration engine for
+# this platform in its postinstall.
+FROM node:24-alpine AS migrator
+WORKDIR /migrator
+COPY package-lock.json ./
+RUN node -e 'const v = require("./package-lock.json").packages["node_modules/prisma"].version; require("fs").writeFileSync("package.json", JSON.stringify({ private: true, dependencies: { prisma: v } }))' \
+  && npm install --no-audit --no-fund
+
 FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
@@ -35,14 +47,13 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
-# The entrypoint runs `prisma migrate deploy` at container start, which
-# needs the Prisma CLI's full dependency tree, not just its own package —
-# copying select node_modules subdirectories by hand (tried first) breaks
-# on transitive dependencies (e.g. @prisma/config needing the `effect`
-# package) that aren't obvious until the CLI actually runs. The Next.js
-# standalone output already excludes unused deps from its own bundle, so
-# this is the CLI's cost alone, not a general bloat of the image.
-COPY --from=builder /app/node_modules ./node_modules
+# Only what the server traced plus the migration CLI, kept apart under /opt
+# so the two dependency trees cannot overwrite each other.
+COPY --from=migrator /migrator/node_modules /opt/prisma/node_modules
+# Nothing runs npm in here, and every package it bundles is one more set of
+# advisories to answer for.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+  /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 COPY docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
