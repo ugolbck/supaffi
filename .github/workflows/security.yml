@@ -22,8 +22,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The application code and the workflows themselves. build-mode none reads
-  # the source without running the build, so no dependency code runs here.
+  # The application code. The workflows are zizmor's, below. build-mode none
+  # reads the source without running the build, so no dependency code runs
+  # here.
   codeql:
     runs-on: ubuntu-24.04
     permissions:
@@ -32,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript, actions]
+        language: [javascript-typescript]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,13 +86,15 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      # Same cache scope as CI's image job, which builds the same thing.
+      # The only image build on a pull request outside the install jobs, so it
+      # keeps the layer cache warm. Release builds never read it.
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           load: true
           tags: supaffi:scan
           cache-from: type=gha,scope=ci
+          cache-to: type=gha,mode=max,scope=ci
 
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

@@ -46,12 +46,28 @@ jobs:
           persist-credentials: false
 
       # root clones from a checkout the runner user owns, which git refuses by
-      # default. Throwaway machine, so trust it outright.
+      # default. Only the checkout is trusted, never the install directory:
+      # the installer has to cope with ownership on its own.
       - name: Offer this commit as a release
         run: |
           set -euo pipefail
-          sudo git config --system --add safe.directory '*'
+          sudo git config --system --add safe.directory "$GITHUB_WORKSPACE"
           git tag "v$CANDIDATE"
+
+      # What an install made by hand looks like to the installer: files, no
+      # checkout. It has to stop and say how to adopt it, not try to clone.
+      - name: Refuse a folder that is not a checkout
+        run: |
+          set -euo pipefail
+          sudo mkdir -p "$DIR" && sudo touch "$DIR/.env"
+          if sudo env SUPAFFI_VERSION="$CANDIDATE" SUPAFFI_HOST_IP=127.0.0.1 \
+            bash install.sh > "$RUNNER_TEMP/refused.log" 2>&1; then
+            echo "The installer went ahead in a folder with no checkout." >&2
+            exit 1
+          fi
+          grep -q "is not a git checkout" "$RUNNER_TEMP/refused.log" \
+            || { cat "$RUNNER_TEMP/refused.log" >&2; exit 1; }
+          sudo rm -rf "$DIR"
 
       - name: Install
         run: |
@@ -129,9 +145,12 @@ jobs:
       - name: Offer this commit as a release
         run: |
           set -euo pipefail
-          sudo git config --system --add safe.directory '*'
+          sudo git config --system --add safe.directory "$GITHUB_WORKSPACE"
           git tag "v$CANDIDATE"
           sudo git -C "$DIR" remote set-url origin "file://$GITHUB_WORKSPACE"
+          # An install made by hand is often owned by the operator's account
+          # while the installer runs as root, which git refuses by default.
+          sudo chown "$(id -u):$(id -g)" "$DIR"
 
       - name: Upgrade
         run: |
