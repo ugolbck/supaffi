@@ -102,3 +102,10 @@ export async function markTrackingCelebrationSeen(merchantId: string): Promise<v
     data: { trackingVerifiedSeenAt: new Date() },
   });
 }
+
+const RECENT_CLICK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Whether the last click is from the past week. */
+export function clickedRecently(lastClickAt: Date | null, now: number = Date.now()): boolean {
+  return lastClickAt !== null && now - lastClickAt.getTime() < RECENT_CLICK_MS;
+}

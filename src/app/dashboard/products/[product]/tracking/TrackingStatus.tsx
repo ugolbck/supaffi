@@ -5,6 +5,7 @@ import type { CheckResult } from "@/lib/checks/dns";
 import { siteHost } from "@/lib/onboarding";
 import type { DayPoint } from "@/lib/analytics";
 import { CodeBlock } from "@/components/onboarding/CodeBlock";
+import { formatDate } from "@/lib/format";
 
 /**
  * Tracking, as a status page: is the script on the site, is anything arriving,
@@ -15,7 +16,6 @@ import { CodeBlock } from "@/components/onboarding/CodeBlock";
  * and clicks only prove it after somebody visits.
  */
 
-const DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
 export function TrackingStatus({
   merchant,
@@ -23,6 +23,7 @@ export function TrackingStatus({
   clicks,
   series,
   lastClickAt,
+  clickedRecently,
   verifiedAt,
   scriptTag,
   checkoutSnippet,
@@ -35,6 +36,12 @@ export function TrackingStatus({
   clicks: number;
   series: DayPoint[];
   lastClickAt: Date | null;
+  /**
+   * A click arrived this week. Clicks only come through the script, so this
+   * proves it is on the site even when the homepage fetch misses it (a script
+   * on landing pages only, or a site that blocks the fetch).
+   */
+  clickedRecently: boolean;
   verifiedAt: Date | null;
   scriptTag: string;
   checkoutSnippet: string;
@@ -43,6 +50,7 @@ export function TrackingStatus({
   checkoutPromptText: string;
   checkAgain: () => Promise<void>;
 }) {
+  const live = script.ok || clickedRecently;
   return (
     <Page>
       <PageTitle title="Tracking" subtitle={merchant.domain} />
@@ -50,17 +58,17 @@ export function TrackingStatus({
       <Tiles>
         <StatTile
           label="Script"
-          value={script.ok ? "Live" : "Not found"}
-          hint={script.ok ? `on ${siteHost(merchant.websiteUrl)}` : `Looking on ${siteHost(merchant.websiteUrl)}`}
-          tone={script.ok ? "success" : "warning"}
+          value={live ? "Live" : "Not found"}
+          hint={live ? `on ${siteHost(merchant.websiteUrl)}` : `Looking on ${siteHost(merchant.websiteUrl)}`}
+          tone={live ? "success" : "warning"}
         />
         <StatTile
           label="Clicks, 30 days"
           value={String(clicks)}
           series={series.map((d) => d.clicks)}
         />
-        <StatTile label="Last click" value={lastClickAt ? DATE.format(lastClickAt) : "None yet"} />
-        <StatTile label="First sale" value={verifiedAt ? DATE.format(verifiedAt) : "Not yet"} />
+        <StatTile label="Last click" value={lastClickAt ? formatDate(lastClickAt) : "None yet"} />
+        <StatTile label="First sale" value={verifiedAt ? formatDate(verifiedAt) : "Not yet"} />
       </Tiles>
 
       <Section title="Script tag">

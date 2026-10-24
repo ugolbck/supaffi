@@ -9,6 +9,7 @@ import {
   shouldCelebrateTracking,
   markTrackingCelebrationSeen,
   getTrackingTimestamps,
+  clickedRecently,
 } from "@/lib/tracking";
 
 // Real database, same as the other lib suites. Runs against the scratch
@@ -218,5 +219,19 @@ describe("tracking timestamps", () => {
       lastClickAt: null,
       verifiedAt: null,
     });
+  });
+});
+
+describe("clickedRecently", () => {
+  const now = Date.UTC(2026, 9, 24);
+  const day = 24 * 60 * 60 * 1000;
+
+  it("is true for a click within the past week", () => {
+    expect(clickedRecently(new Date(now - 6 * day), now)).toBe(true);
+  });
+
+  it("is false for an older click, or none", () => {
+    expect(clickedRecently(new Date(now - 8 * day), now)).toBe(false);
+    expect(clickedRecently(null, now)).toBe(false);
   });
 });

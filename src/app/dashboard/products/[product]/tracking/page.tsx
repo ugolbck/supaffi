@@ -2,7 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
-import { getTrackingTimestamps } from "@/lib/tracking";
+import { clickedRecently, getTrackingTimestamps } from "@/lib/tracking";
 import { getProductMetrics } from "@/lib/analytics";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { trackingScriptPrompt, checkoutPrompt } from "@/lib/integrationPrompt";
@@ -73,6 +73,7 @@ export default async function TrackingPage({
       clicks={metrics.clicks}
       series={metrics.series}
       lastClickAt={timestamps.lastClickAt}
+      clickedRecently={clickedRecently(timestamps.lastClickAt)}
       verifiedAt={timestamps.verifiedAt}
       scriptTag={scriptTag}
       checkoutSnippet={CHECKOUT_SNIPPET}
