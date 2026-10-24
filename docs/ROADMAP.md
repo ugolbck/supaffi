@@ -2,39 +2,22 @@
 
 What is still missing, roughly in the order it gets built. Deliberately coarse:
 this is the shape of the work, not a changelog. Shipped versions are in
-CHANGELOG.md. The reasoning behind the current order is in
+CHANGELOG.md. The UX review behind the current order is in
 docs/ux-review/README.md.
 
-## Now: UX
+## Now: UX polish
 
-### Paying affiliates
-The monthly payout is the job every owner repeats, and it is spread across a
-tab, a list and a side panel. It gets a page of its own: one row per affiliate
-with the amount, their payout method ready to copy, and Mark paid. Past
-payouts are listed by payout, not by single commission.
+### Flagged commissions
+Confirm and dismiss on the row, with the buyer and the affiliate side by side,
+instead of inside the commission's panel.
 
-### Phones
-Onboarding and every table need a layout that fits a phone. Steps go above
-the form, tables become lists, and the header says which product you are on.
+### The affiliate panel
+Totals at the top (earned, paid, owed) and a way to every commission of that
+affiliate. A program change that saves when picked.
 
-### Dark mode
-Follow the system setting on both the owner and affiliate sides.
-
-### Charts
-One series at a time with a hover value, colours that do not read as errors,
-calmer lines on small numbers.
-
-### Consistency
-One form style, forms that keep what you typed after an error, money in the
-interface font, one status badge, and branded pages for not found and
-invite-only programs.
-
-## Next
-
-### What affiliates see
-Their terms (rate, duration, cookie window, hold) on their dashboard and the
-signup page, and a payout method picked from a short list instead of a free
-text box.
+### Small details
+Tracking code blocks that show in full, headings that wrap evenly, larger hit
+areas on small buttons, the product's name on the password page.
 
 ## Later
 

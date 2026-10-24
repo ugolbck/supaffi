@@ -4,6 +4,14 @@
 
 Benchmarks: Dub Partners and Rewardful for the affiliate category; Plausible, Umami, Cal.com and Coolify for self-hosted polish; Stripe and Linear for dashboards.
 
+## Status after the fixes on feat/ux-review
+
+Done: 1 (payouts page), 4 (forms keep input, bare domains), 5 (teal bars, legend, tinted axes), 6 (sale amounts instead of Stripe IDs), 7 (terms beside the link, payout method from a list), 8 (branded not-found, invite-only page, real 404 on product domains), 9 (recent clicks count as a live script), 10 (one field layout), and the copy and formatting rows in the tables below.
+
+Dropped by decision: 2 (phones) and 3 (dark mode).
+
+Wrong in this review: the struck-through sale price on the affiliate side (`68`) is the app's display for a commission cut by a partial refund; the test data marked every row that way. Buttons already shrink on press. The chart line was already drawn without overshoot; the spikes are real daily counts. The signup page leaves out the cookie window on purpose, so affiliates see it on their dashboard instead.
+
 Not real problems: the red "points at another server" and "Stripe rejected the key" on Settings come from the fake domains and keys. "Script not found" on Tracking is partly the same, see point 9.
 
 ## Fix first
