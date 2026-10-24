@@ -18,8 +18,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   while its sale is disputed, and Checkout Sessions to take the tax off a
   one-time sale. Until you replace it, a disputed commission stays held, and a
   one-time sale retries for about two days before it stops earning.
+- Each program now has a Public signup switch. Turn it off for a tier you move
+  affiliates into yourself. Before, anyone who guessed a program's signup
+  address could join it.
 
 ### Fixed
+
+- Two customers on the same office or mobile network each get their own
+  referral. Before, they could share one, and the second sale could earn the
+  affiliate nothing.
+- A Stripe outage while a sale is recorded retries the sale instead of
+  skipping its refund, dispute and card checks. A dispute holds its commission
+  while it retries.
+- No Stripe error text reaches the server log or a failed event's stored
+  error, only its type and code.
 
 - A commission waits while its sale is disputed. It goes back to normal if you
   win the dispute and is cancelled if you lose it before paying.
@@ -51,7 +63,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A paid commission is final. A refund or lost chargeback after you paid
   changes nothing, and nothing is taken off the affiliate's next payout.
 - Mark paid records exactly the commissions and amounts you saw. Ones you
-  cancelled in the meantime are skipped, and the page says how many.
+  cancelled in the meantime are skipped, and the page says how many. A page
+  open for more than an hour has to be shown again first, so a refund that
+  landed meanwhile is not recorded as paid.
 - One-off items sold with a subscription, such as a setup fee, no longer earn.
 
 ## 0.2.6
