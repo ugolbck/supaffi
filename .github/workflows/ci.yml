@@ -53,6 +53,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -68,6 +70,12 @@ jobs:
 
       - name: Apply migrations
         run: npx prisma migrate deploy
+
+      # The database the migrations just built has to match the schema. If it
+      # does not, a schema change shipped without its migration, and every
+      # install would start on code that expects columns it does not have.
+      - name: Check for a missing migration
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
 
       - name: Typecheck
         run: npx tsc --noEmit
@@ -91,6 +99,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
