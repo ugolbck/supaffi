@@ -8,6 +8,7 @@ version: 2
 #
 # Docker is here for the same reason. The base images float on a minor tag, so
 # a rebuild picks up patches, but nothing triggers a rebuild between releases.
+#
 # The cooldown holds a release back for a week after it is published. A
 # hijacked package is usually caught and pulled within days, so this keeps
 # Dependabot from being the thing that installs it. Security updates are not
@@ -37,6 +38,11 @@ updates:
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
+    # The types describe the Node the image runs, so they move when the
+    # Dockerfile does, not on their own.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: docker
     directory: /
@@ -44,3 +50,8 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # A new Node major is a deliberate move onto the next LTS line, never an
+    # odd-numbered release that loses support within months.
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]

@@ -42,6 +42,11 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: none
+          # Tests build hostile URLs and hostnames on purpose, and every
+          # finding there was a fixture doing its job. They never ship.
+          config: |
+            paths-ignore:
+              - test
 
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
