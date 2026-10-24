@@ -9,6 +9,8 @@ export type ProgramInput = {
   commissionDurationMonths: number | null;
   attributionWindowDays: number;
   holdingPeriodDays: number;
+  /** Left out by onboarding, which keeps the stored value (open by default). */
+  signupOpen?: boolean;
 };
 
 async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
@@ -56,6 +58,7 @@ export async function listProgramsForMerchant(
     commissionDurationMonths: number | null;
     attributionWindowDays: number;
     holdingPeriodDays: number;
+    signupOpen: boolean;
     affiliateCount: number;
   }[]
 > {
@@ -72,6 +75,7 @@ export async function listProgramsForMerchant(
       commissionDurationMonths: true,
       attributionWindowDays: true,
       holdingPeriodDays: true,
+      signupOpen: true,
       _count: { select: { affiliates: true } },
     },
     orderBy: { createdAt: "asc" },
@@ -165,7 +169,7 @@ export async function getProgramForSignup(
   programSlug: string
 ): Promise<ProgramForSignup | null> {
   const program = await db.program.findFirst({
-    where: { slug: programSlug, merchantId },
+    where: { slug: programSlug, merchantId, signupOpen: true },
     select: {
       id: true,
       name: true,

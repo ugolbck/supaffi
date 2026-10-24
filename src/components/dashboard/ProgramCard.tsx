@@ -29,7 +29,8 @@ export function ProgramCard({
   attributionDays: number;
   holdingDays: number;
   affiliateCount: number;
-  signupLink: string;
+  /** Null when the program's signup is closed. */
+  signupLink: string | null;
   editHref: string;
 }) {
   return (
@@ -56,7 +57,11 @@ export function ProgramCard({
           <span className="tabular-nums">{affiliateCount === 1 ? "1 affiliate" : `${affiliateCount} affiliates`}</span>
         </span>
         <div className="flex items-center gap-1.5">
-          <CopyLinkButton link={signupLink} size="sm" label="Copy signup link" />
+          {signupLink ? (
+            <CopyLinkButton link={signupLink} size="sm" label="Copy signup link" />
+          ) : (
+            <span className="px-2 text-sm text-muted-foreground">Invite only</span>
+          )}
           <Button variant="ghost" size="sm" render={<Link href={editHref} />}>
             <Pencil />
             Edit

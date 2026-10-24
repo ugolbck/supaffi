@@ -13,7 +13,7 @@ import { validateProgramInput } from "@/lib/programValidation";
  */
 
 function read(formData: FormData) {
-  return validateProgramInput({
+  const result = validateProgramInput({
     name: String(formData.get("name") ?? ""),
     defaultCommissionRate: String(formData.get("defaultCommissionRate") ?? ""),
     commissionDurationType: String(formData.get("commissionDurationType") ?? ""),
@@ -21,6 +21,8 @@ function read(formData: FormData) {
     attributionWindowDays: String(formData.get("attributionWindowDays") ?? ""),
     holdingPeriodDays: String(formData.get("holdingPeriodDays") ?? ""),
   });
+  if (result.error !== null) return result;
+  return { error: null, parsed: { ...result.parsed, signupOpen: formData.get("signupOpen") === "on" } };
 }
 
 async function owner(): Promise<string> {

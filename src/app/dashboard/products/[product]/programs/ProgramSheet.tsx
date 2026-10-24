@@ -17,11 +17,13 @@ export function ProgramSheet({
   title,
   action,
   initial,
+  signupOpen,
   listHref,
 }: {
   title: string;
   action: Action;
   initial?: ProgramFormValues;
+  signupOpen: boolean;
   listHref: string;
 }) {
   const router = useRouter();
@@ -38,7 +40,7 @@ export function ProgramSheet({
           <SheetTitle className="truncate">{title}</SheetTitle>
         </SheetHeader>
         <div className="px-4 pb-6">
-          <TermsForm action={action} initial={initial} submitLabel={initial ? "Save" : "Create program"} />
+          <TermsForm action={action} initial={initial} signupOpen={signupOpen} submitLabel={initial ? "Save" : "Create program"} />
         </div>
       </SheetContent>
     </Sheet>

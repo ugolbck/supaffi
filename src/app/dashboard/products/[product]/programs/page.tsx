@@ -37,6 +37,7 @@ type Program = {
   commissionDurationMonths: number | null;
   attributionWindowDays: number;
   holdingPeriodDays: number;
+  signupOpen: boolean;
   affiliateCount: number;
 };
 
@@ -138,7 +139,7 @@ export default async function ProgramsPage({
             attributionDays={p.attributionWindowDays}
             holdingDays={p.holdingPeriodDays}
             affiliateCount={p.affiliateCount}
-            signupLink={`${originFor(merchant.domain)}/affiliates/signup/${p.slug}`}
+            signupLink={p.signupOpen ? `${originFor(merchant.domain)}/affiliates/signup/${p.slug}` : null}
             editHref={`${base}?edit=${p.id}`}
           />
         ))}
@@ -148,6 +149,7 @@ export default async function ProgramsPage({
         <ProgramSheet
           title="New program"
           action={createProgramAction.bind(null, productRef)}
+          signupOpen
           listHref={base}
         />
       )}
@@ -156,6 +158,7 @@ export default async function ProgramsPage({
           title={`Edit ${editing.name}`}
           action={updateProgramAction.bind(null, productRef, editing.id)}
           initial={toFormValues(editing)}
+          signupOpen={editing.signupOpen}
           listHref={base}
         />
       )}

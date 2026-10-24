@@ -33,7 +33,9 @@ await stripe.checkout.sessions.create({
   const found = checks.tracking.script.ok;
   // Finishing happens on this screen, so the reward does too. The step stays
   // rendered behind the glass rather than being replaced by a new page.
-  const [program] = ctx.onboardingCompletedAt ? await listProgramsForMerchant(ctx.ownerId, merchant.id) : [];
+  const program = ctx.onboardingCompletedAt
+    ? (await listProgramsForMerchant(ctx.ownerId, merchant.id)).find((p) => p.signupOpen)
+    : undefined;
 
   return (
     <StepShell

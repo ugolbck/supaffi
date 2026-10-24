@@ -75,7 +75,8 @@ export default async function AffiliatesPage({
   const page = Math.max(1, Math.floor(Number(query.page)) || 1);
 
   const programs = await listProgramsForMerchant(ownerId, merchant.id);
-  const firstProgram = programs[0] ?? null;
+  // The program the copy buttons link to: the first one still open to signup.
+  const firstProgram = programs.find((p) => p.signupOpen) ?? null;
 
   // The URL carries a program slug like every other route here, so the filter
   // is resolved to an id rather than a cuid ever reaching the address bar.

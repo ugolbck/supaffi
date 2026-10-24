@@ -56,12 +56,12 @@ export async function getProductSetup(
   ownerId: string,
   merchantId: string
 ): Promise<ProductSetup> {
-  const [integrations, program, trackingStatus, affiliateCount] = await Promise.all([
+  const [integrations, programs, trackingStatus, affiliateCount] = await Promise.all([
     getIntegrationStatus(ownerId, merchantId),
-    db.program.findFirst({
+    db.program.findMany({
       where: { merchantId },
       orderBy: { createdAt: "asc" },
-      select: { slug: true },
+      select: { slug: true, signupOpen: true },
     }),
     getTrackingStatus(merchantId),
     db.affiliate.count({ where: { merchantId } }),
@@ -83,7 +83,7 @@ export async function getProductSetup(
   // unfinished through no fault of their own.
   const doneCount = [
     integrationsConnected,
-    program !== null,
+    programs.length > 0,
     trackingStatus !== "not-started",
   ].filter(Boolean).length;
 
@@ -94,7 +94,8 @@ export async function getProductSetup(
     emailConnected: integrations.email,
     emailRequired,
     integrationsConnected,
-    firstProgramSlug: program?.slug ?? null,
+    // The link handed out, so the first program anyone can still sign up to.
+    firstProgramSlug: programs.find((p) => p.signupOpen)?.slug ?? null,
     trackingStatus,
     affiliateCount,
     doneCount,

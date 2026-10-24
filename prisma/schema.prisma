@@ -83,6 +83,9 @@ model Program {
   commissionDurationMonths Int? // only set when commissionDurationType = FIXED_MONTHS
   attributionWindowDays    Int                    @default(60)
   holdingPeriodDays        Int                    @default(30)
+  // False keeps the public signup page closed, so a higher-paying tier is not
+  // open to whoever guesses its slug. The Owner moves Affiliates in instead.
+  signupOpen               Boolean                @default(true)
 
   affiliates Affiliate[]
   createdAt  DateTime    @default(now())

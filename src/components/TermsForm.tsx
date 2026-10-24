@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { Term } from "@/components/Term";
@@ -39,10 +40,13 @@ const NUMBER =
 export function TermsForm({
   action,
   initial = TERMS_DEFAULTS,
+  signupOpen,
   submitLabel,
 }: {
   action: Action;
   initial?: ProgramFormValues;
+  /** Shown only where it is set: onboarding's first program is always open. */
+  signupOpen?: boolean;
   submitLabel: string;
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
@@ -143,6 +147,20 @@ export function TermsForm({
           />
           <span className="text-sm text-muted-foreground">days</span>
         </TaskCardSection>
+
+        {signupOpen !== undefined && (
+          <>
+            <TaskCardHeader
+              title={<Term tip="Anyone with the signup link can join. Turn it off for a tier you move affiliates into yourself.">Public signup</Term>}
+            />
+            <TaskCardSection className="p-4">
+              <label className="flex cursor-pointer items-center gap-2.5 text-sm">
+                <Checkbox name="signupOpen" defaultChecked={signupOpen} className="cursor-pointer" />
+                Open
+              </label>
+            </TaskCardSection>
+          </>
+        )}
       </TaskCard>
 
       {state.error && (

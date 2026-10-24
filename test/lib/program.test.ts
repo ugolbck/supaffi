@@ -228,6 +228,18 @@ describe.skipIf(!hasDatabase)("program", () => {
     expect(result?.name).toBe("Standard");
   });
 
+  it("getProgramForSignup returns null for a Program whose signup is closed, and an update without the flag keeps it closed", async () => {
+    const { id, slug } = await createProgram(ownerId, merchantId, { ...baseInput, signupOpen: false });
+    expect(await getProgramForSignup(merchantId, slug)).toBeNull();
+
+    // Onboarding saves the terms without the flag.
+    await updateProgram(ownerId, merchantId, id, { ...baseInput, name: "Standard" });
+    expect(await getProgramForSignup(merchantId, slug)).toBeNull();
+
+    await updateProgram(ownerId, merchantId, id, { ...baseInput, signupOpen: true });
+    expect((await getProgramForSignup(merchantId, slug))?.name).toBe("Standard");
+  });
+
   it("getProgramForSignup returns null when the Program belongs to a different Merchant", async () => {
     const { slug } = await createProgram(ownerId, merchantId, baseInput);
 
