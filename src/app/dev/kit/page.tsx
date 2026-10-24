@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { CheckList, type CheckRow } from "@/components/onboarding/CheckList";
 import { CodeBlock, CopyField } from "@/components/onboarding/CodeBlock";
@@ -122,10 +122,10 @@ function useMockSave(initial: string) {
 export default function Kit() {
   // ?only=<frame> renders a single frame. Read after mount: reading it during
   // render would not match the server's render.
-  const [only, setOnly] = useState<string | null>(null);
-  useEffect(
-    () => setOnly(new URLSearchParams(window.location.search).get("only")),
-    [],
+  const only = useSyncExternalStore(
+    () => () => {},
+    () => new URLSearchParams(window.location.search).get("only"),
+    () => null,
   );
   const show = (key: string) => only === null || only === key;
 

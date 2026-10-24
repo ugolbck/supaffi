@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { HelpCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,22 +20,20 @@ export type { CheckRow, CheckState } from "./checkRows";
  * notification into decoration.
  */
 function useJustPassed(rows: CheckRow[]): Set<string> {
-  const previous = useRef<Map<string, CheckState> | null>(null);
+  const [previous, setPrevious] = useState(rows);
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    const now = new Map(rows.map((r) => [r.id, r.state]));
-    if (previous.current === null) {
-      previous.current = now;
-      return;
-    }
+  // Adjusted during render rather than in an effect, so the animation starts
+  // on the same paint as the row change instead of one render later.
+  if (rows !== previous) {
+    const before = new Map<string, CheckState>(previous.map((r) => [r.id, r.state]));
     const changed = new Set<string>();
     for (const row of rows) {
-      if (row.state === "ok" && previous.current.get(row.id) === "pending") changed.add(row.id);
+      if (row.state === "ok" && before.get(row.id) === "pending") changed.add(row.id);
     }
-    previous.current = now;
+    setPrevious(rows);
     if (changed.size > 0) setFlipped(changed);
-  }, [rows]);
+  }
 
   return flipped;
 }
@@ -113,23 +111,26 @@ export function CheckList({ rows, onRecheck }: { rows: CheckRow[]; onRecheck?: (
  */
 function Recheck({ signature }: { signature: string }) {
   const { pending } = useFormStatus();
-  const before = useRef<string | null>(null);
+  const [wasPending, setWasPending] = useState(pending);
+  const [before, setBefore] = useState<string | null>(null);
   const [unchanged, setUnchanged] = useState(false);
 
-  useEffect(() => {
+  if (pending !== wasPending) {
+    setWasPending(pending);
     if (pending) {
-      before.current = signature;
+      setBefore(signature);
       setUnchanged(false);
-      return;
+    } else if (before !== null) {
+      setUnchanged(before === signature);
+      setBefore(null);
     }
-    if (before.current === null) return;
-    const same = before.current === signature;
-    before.current = null;
-    if (!same) return;
-    setUnchanged(true);
+  }
+
+  useEffect(() => {
+    if (!unchanged) return;
     const timer = setTimeout(() => setUnchanged(false), 6000);
     return () => clearTimeout(timer);
-  }, [pending, signature]);
+  }, [unchanged]);
 
   return (
     <>
