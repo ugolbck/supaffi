@@ -1,5 +1,5 @@
 // Invoice lines shaped the way invoices.listLineItems returns them on the
-// pinned API version (2026-07-29.dahlia). Only the fields referredRevenue.ts
+// pinned API version (2026-09-30.endive). Only the fields referredRevenue.ts
 // reads are filled in. No database import, so unit suites can use it.
 import type Stripe from "stripe";
 
