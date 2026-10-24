@@ -3,6 +3,7 @@ import type { CommissionStatus } from "@prisma/client";
 import type Stripe from "stripe";
 import { prorateCommission } from "./handlers/chargeRefunded";
 import { disputeStateFor, type DisputeState } from "./disputes";
+import { isTransientStripeError, stripeErrorLabel } from "@/lib/stripeErrors";
 
 export type ChargeSnapshot = { amount: number; amountRefunded: number; disputed: boolean };
 
@@ -11,9 +12,10 @@ export type ChargeSnapshot = { amount: number; amountRefunded: number; disputed:
  * an invoice split across several payments is a known gap (finding I-3), left
  * for a later release.
  *
- * Never throws. The answer only decides whether an earlier refund is folded
- * into a new commission, and losing the commission over a failed lookup would
- * be worse than missing that refund.
+ * Throws only on an outage, so the event is retried. A key that cannot read
+ * the payment answers null: the answer only decides whether an earlier refund
+ * is folded into a new commission, and losing the commission over a lookup
+ * that will never succeed would be worse than missing that refund.
  */
 export async function paymentIntentForInvoice(stripe: Stripe, invoiceId: string): Promise<string | null> {
   try {
@@ -21,8 +23,9 @@ export async function paymentIntentForInvoice(stripe: Stripe, invoiceId: string)
     const intent = payments.data[0]?.payment.payment_intent;
     return typeof intent === "string" ? intent : (intent?.id ?? null);
   } catch (err) {
+    if (isTransientStripeError(err)) throw new Error(`[worker] could not reach Stripe for invoice ${invoiceId} (${stripeErrorLabel(err)}), so the event is retried`);
     console.warn(
-      `[worker] could not check invoice ${invoiceId} for an earlier refund: ${(err as Error).message}. The refund check was skipped; replacing the Stripe key in settings lets Supaffi read charges.`
+      `[worker] could not check invoice ${invoiceId} for an earlier refund (${stripeErrorLabel(err)}). The refund check was skipped; replacing the Stripe key in settings lets Supaffi read charges.`
     );
     return null;
   }
@@ -34,9 +37,9 @@ export async function paymentIntentForInvoice(stripe: Stripe, invoiceId: string)
  *
  * Expanding the charge needs Charges read, which keys made before 0.2.4 do
  * not have. Stripe does not promise one error type for that: it can come back
- * as a permission error or as an invalid request. So every failure, of any
- * type, answers null: the commission is then created exactly as it was
- * before this lookup existed.
+ * as a permission error or as an invalid request. So every failure other
+ * than an outage answers null: the commission is then created exactly as it
+ * was before this lookup existed. An outage throws, so the event is retried.
  */
 export async function latestChargeFor(stripe: Stripe, paymentIntentId: string): Promise<ChargeSnapshot | null> {
   try {
@@ -45,8 +48,9 @@ export async function latestChargeFor(stripe: Stripe, paymentIntentId: string): 
     if (!charge || typeof charge === "string") return null;
     return { amount: charge.amount, amountRefunded: charge.amount_refunded, disputed: charge.disputed === true };
   } catch (err) {
+    if (isTransientStripeError(err)) throw new Error(`[worker] could not reach Stripe for payment ${paymentIntentId} (${stripeErrorLabel(err)}), so the event is retried`);
     console.warn(
-      `[worker] could not read the charge behind payment ${paymentIntentId}: ${(err as Error).message}. The refund check was skipped; replacing the Stripe key in settings lets Supaffi read charges.`
+      `[worker] could not read the charge behind payment ${paymentIntentId} (${stripeErrorLabel(err)}). The refund check was skipped; replacing the Stripe key in settings lets Supaffi read charges.`
     );
     return null;
   }

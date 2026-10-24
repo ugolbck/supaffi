@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import type { Affiliate } from "@prisma/client";
+import { isTransientStripeError, stripeErrorLabel } from "@/lib/stripeErrors";
 
 function normalize(email: string): string {
   return email.trim().toLowerCase();
@@ -17,9 +18,9 @@ export function checkSelfReferralEmail(affiliate: Affiliate, buyerEmail: string 
 // Resolves the buyer's card fingerprint for a just-completed Checkout
 // Session. One-time ("payment" mode) sessions carry payment_intent
 // directly; subscription-mode sessions require walking through the
-// subscription's latest invoice to find the payment. Best-effort: any
-// failure here just means the fingerprint check gets skipped, it never
-// blocks or fails Commission creation.
+// subscription's latest invoice to find the payment. Best-effort: a key that
+// cannot read the payment skips the check and never blocks Commission
+// creation. An outage throws, so the event is retried rather than skipping it.
 export async function resolveBuyerFingerprint(
   stripe: Stripe,
   session: Stripe.Checkout.Session
@@ -48,7 +49,8 @@ export async function resolveBuyerFingerprint(
       return typeof pm === "string" || !pm ? null : (pm.card?.fingerprint ?? null);
     }
   } catch (err) {
-    console.error("[worker] failed to resolve buyer fingerprint", err);
+    if (isTransientStripeError(err)) throw new Error(`[worker] could not reach Stripe for the card on session ${session.id} (${stripeErrorLabel(err)}), so the event is retried`);
+    console.warn(`[worker] card check skipped for session ${session.id} (${stripeErrorLabel(err)})`);
   }
   return null;
 }
@@ -57,7 +59,7 @@ export async function resolveBuyerFingerprint(
 // checkout check: a customer can switch to the affiliate's own card at any
 // renewal, so every renewal is checked, not only the first purchase. Found
 // through the invoice's payment, then its PaymentIntent. Best-effort in the
-// same way: any failure skips the check and never blocks the commission.
+// same way: a key that cannot read it skips the check, an outage retries.
 export async function resolveInvoiceFingerprint(stripe: Stripe, invoiceId: string): Promise<string | null> {
   try {
     const payments = await stripe.invoicePayments.list({ invoice: invoiceId, status: "paid", limit: 1 });
@@ -68,8 +70,8 @@ export async function resolveInvoiceFingerprint(stripe: Stripe, invoiceId: strin
     const pm = pi.payment_method;
     return typeof pm === "string" || !pm ? null : (pm.card?.fingerprint ?? null);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[worker] card check skipped for invoice ${invoiceId}: ${message}`);
+    if (isTransientStripeError(err)) throw new Error(`[worker] could not reach Stripe for the card on invoice ${invoiceId} (${stripeErrorLabel(err)}), so the event is retried`);
+    console.warn(`[worker] card check skipped for invoice ${invoiceId} (${stripeErrorLabel(err)})`);
   }
   return null;
 }
@@ -96,7 +98,8 @@ export async function checkPaymentMethodOverlap(
       }
     }
   } catch (err) {
-    console.error(`[worker] payment-method overlap check failed for affiliate ${affiliate.id}`, err);
+    if (isTransientStripeError(err)) throw new Error(`[worker] could not reach Stripe for affiliate ${affiliate.id}'s cards (${stripeErrorLabel(err)}), so the event is retried`);
+    console.warn(`[worker] payment-method overlap check failed for affiliate ${affiliate.id} (${stripeErrorLabel(err)})`);
   }
   return null;
 }

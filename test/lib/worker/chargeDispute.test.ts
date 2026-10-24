@@ -473,6 +473,19 @@ describe("dispute handlers", () => {
     expect(row.disputeOpenedAt).not.toBeNull();
   });
 
+  it("holds the commission before retrying when Stripe cannot be reached for the disputes", async () => {
+    stripeStub.disputes.list.mockImplementation(async () => {
+      throw Object.assign(new Error("connection reset"), { type: "StripeConnectionError" });
+    });
+    const commission = await givenCommission({ payableAt: new Date(Date.now() - DAY) });
+
+    await expect(handleChargeDisputeCreated(merchant, dispute("needs_response"))).rejects.toThrow(/retried/);
+
+    const row = await reload(commission);
+    expect(row.status).toBe("PENDING");
+    expect(row.disputeOpenedAt).not.toBeNull();
+  });
+
   it("holds a commission when the opening event's own dispute is missing from Stripe's list", async () => {
     // The list can briefly lag behind the event that reports the dispute.
     // Reading "clear" from an empty list would let the row be swept

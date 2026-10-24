@@ -100,10 +100,10 @@ describe("checkPaymentMethodOverlap", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null and does not throw when the Stripe call fails", async () => {
+  it("returns null and does not throw when the key cannot read the affiliate's cards", async () => {
     const affiliate = affiliateFixture();
     const stripe = {
-      customers: { list: vi.fn(async () => { throw new Error("network"); }) },
+      customers: { list: vi.fn(async () => { throw Object.assign(new Error("no access"), { type: "StripePermissionError", statusCode: 403 }); }) },
       paymentMethods: { list: vi.fn() },
     };
     const result = await checkPaymentMethodOverlap(stripe as never, affiliate, "fp_shared", "cus_buyer");
@@ -131,10 +131,10 @@ describe("resolveInvoiceFingerprint", () => {
     expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled();
   });
 
-  it("returns null and does not throw when Stripe fails", async () => {
+  it("returns null and does not throw when the key cannot read the payment", async () => {
     const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
     const stripe = {
-      invoicePayments: { list: vi.fn(async () => { throw new Error("network"); }) },
+      invoicePayments: { list: vi.fn(async () => { throw Object.assign(new Error("no access"), { type: "StripePermissionError", statusCode: 403 }); }) },
       paymentIntents: { retrieve: vi.fn() },
     };
     try {

@@ -2,6 +2,7 @@ import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
+import { isTransientStripeError, stripeErrorLabel } from "@/lib/stripeErrors";
 import {
   findCommissionForPayment,
   idOf,
@@ -78,8 +79,9 @@ export function disputeStateOf(disputes: DisputeLike[]): "clear" | "open" | "los
  * dropped, with nothing later to add the hold. Reading that as "unknown"
  * holds the new row instead of creating it unheld.
  *
- * Never throws. A key without Disputes read, or a Stripe outage, answers
- * "unknown", which holds the commission; the log line says how to fix it.
+ * A key without Disputes read answers "unknown", which holds the commission;
+ * the log line says how to fix it. An outage throws, so the event is retried
+ * instead of leaving a won dispute's commission held with nothing to release it.
  */
 export async function disputeStateFor(
   stripe: Stripe,
@@ -96,13 +98,9 @@ export async function disputeStateFor(
     if (emptyMeansUnknown && disputes.length === 0) return "unknown";
     return disputeStateOf(disputes);
   } catch (err) {
-    // Only the error's type and code are logged, never Stripe's own message:
-    // on a permission or authentication failure that names the masked key and
-    // the account, the same pattern retrieveSessionForEarning in
-    // checkoutSessionCompleted.ts uses.
-    const { type, code } = err as { type?: string; code?: string };
+    if (isTransientStripeError(err)) throw new Error(`[worker] could not reach Stripe for the disputes on payment ${paymentIntentId} (${stripeErrorLabel(err)}), so the event is retried`);
     console.warn(
-      `[worker] could not read the disputes on payment ${paymentIntentId} (${type ?? "unknown"}/${code ?? "unknown"}). Its commission is held until they can be read; replacing the Stripe key in settings lets Supaffi read disputes.`
+      `[worker] could not read the disputes on payment ${paymentIntentId} (${stripeErrorLabel(err)}). Its commission is held until they can be read; replacing the Stripe key in settings lets Supaffi read disputes.`
     );
     return "unknown";
   }
@@ -195,7 +193,14 @@ export async function settleDisputeHold(merchant: Merchant, dispute: Stripe.Disp
 
   let state: DisputeState = "unknown";
   if (payment.paymentIntentId) {
-    state = await disputeStateFor(stripe, payment.paymentIntentId, dispute);
+    try {
+      state = await disputeStateFor(stripe, payment.paymentIntentId, dispute);
+    } catch (err) {
+      // An outage retries the event. The row is held first, so it cannot be
+      // paid while the dispute is open and the retries are still waiting.
+      await holdForDispute(commission.id);
+      throw err;
+    }
   } else {
     console.warn(
       `[worker] dispute ${dispute.id} has no payment to list disputes by, so commission ${commission.id} is held.`
