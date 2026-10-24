@@ -468,6 +468,13 @@ if [ -d "$DIR/.git" ]; then
     say "Updating $DIR to $version"
   fi
   cd "$DIR"
+  # Named outright rather than discovered. Git refuses a repository whose
+  # directory belongs to another user, and an install made by hand is often
+  # owned by the operator's own account while this runs as root, so every git
+  # call below would fail with a message about ownership. An explicit GIT_DIR
+  # is not subject to that check. Trusting $DIR costs nothing new: this script
+  # is about to run whatever compose file sits in it, as root.
+  export GIT_DIR="$DIR/.git" GIT_WORK_TREE="$DIR"
   refuse_local_edits
   backup_database
   # The tag, not a branch. An install that was made before versions existed is
@@ -476,6 +483,20 @@ if [ -d "$DIR/.git" ]; then
     || die "No release tagged v$version. See https://github.com/ugolbck/supaffi/releases"
   git reset --hard "v$version"
 else
+  # A folder with files in it and no checkout is an install made by hand or by
+  # a version of this script from before it kept one. Cloning into it fails,
+  # and git's own error would be followed by the wrong explanation below.
+  if [ -d "$DIR" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
+    {
+      echo "$DIR already holds files but is not a git checkout, so it cannot be"
+      echo "updated in place. To adopt it, keeping .env and your data:"
+      echo
+      echo "  cd $DIR && sudo git init -q && sudo git remote add origin $REPO"
+      echo
+      echo "Then run this again."
+    } >&2
+    exit 1
+  fi
   say "Cloning $version into $DIR"
   git clone --depth 1 --branch "v$version" "$REPO" "$DIR" \
     || die "No release tagged v$version. See https://github.com/ugolbck/supaffi/releases"
