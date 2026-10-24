@@ -10,7 +10,8 @@ set -e
 # Docker's COPY dereferences npm's .bin symlink into a flattened regular
 # file, which breaks the CLI's __dirname-relative lookup of its own sibling
 # files (e.g. prisma_schema_build_bg.wasm), since those only exist next to
-# the real node_modules/prisma/build/index.js, not in .bin/.
-node node_modules/prisma/build/index.js migrate deploy
+# the real node_modules/prisma/build/index.js, not in .bin/. It lives under
+# /opt/prisma, apart from the server's own traced node_modules (Dockerfile).
+node /opt/prisma/node_modules/prisma/build/index.js migrate deploy
 
 exec node server.js
