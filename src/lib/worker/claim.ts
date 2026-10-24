@@ -1,3 +1,4 @@
+import { loggableError } from "@/lib/stripeErrors";
 import { Prisma } from "@prisma/client";
 import type { WebhookEvent } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -78,7 +79,7 @@ export async function markProcessed(id: string): Promise<void> {
 // stops a genuinely broken event (a real handler bug, a malformed payload)
 // from retrying forever: that one needs a human to look at lastError.
 export async function markFailed(id: string, attempts: number, error: unknown): Promise<void> {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = loggableError(error);
   const terminal = attempts >= MAX_ATTEMPTS;
   await db.webhookEvent.update({
     where: { id },

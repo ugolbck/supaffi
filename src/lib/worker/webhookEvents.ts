@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { db } from "@/lib/db";
+import { loggableError } from "@/lib/stripeErrors";
 import { decrypt } from "@/lib/crypto";
 import { isLocalDomain } from "@/lib/url";
 import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
@@ -74,7 +75,7 @@ export async function upgradeMerchantWebhookEvents(
       console.error(`[webhook-events] could not check the Stripe endpoint for merchant ${merchantId}: ${result.detail}`);
     }
   } catch (err) {
-    console.error(`[webhook-events] could not check the Stripe endpoint for merchant ${merchantId}`, err);
+    console.error(`[webhook-events] could not check the Stripe endpoint for merchant ${merchantId}: ${loggableError(err)}`);
   }
 }
 

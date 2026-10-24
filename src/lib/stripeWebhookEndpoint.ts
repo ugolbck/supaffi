@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/stripeWebhookEvents";
+import { stripeErrorLabel } from "@/lib/stripeErrors";
 
 export type EndpointResult =
   | { ok: true; id: string; secret: string }
@@ -44,9 +45,9 @@ export async function createWebhookEndpoint(input: {
       return { ok: false, reason: "permission", detail: "That key cannot create webhook endpoints." };
     }
     if (error?.type === "StripeInvalidRequestError") {
-      return { ok: false, reason: "unreachable", detail: error.message ?? "Stripe rejected that address." };
+      return { ok: false, reason: "unreachable", detail: "Stripe rejected that address." };
     }
-    return { ok: false, reason: "error", detail: error?.message ?? "Stripe could not be reached." };
+    return { ok: false, reason: "error", detail: `Stripe could not be reached (${stripeErrorLabel(err)}).` };
   }
 }
 
@@ -129,10 +130,7 @@ export async function ensureRequiredWebhookEvents(
     if (isPermission(err)) {
       return { status: "permission", detail: "The key cannot change webhook endpoints." };
     }
-    return {
-      status: "error",
-      detail: (err as Stripe.errors.StripeError)?.message ?? "Stripe could not be reached.",
-    };
+    return { status: "error", detail: `Stripe error ${stripeErrorLabel(err)}` };
   }
 }
 

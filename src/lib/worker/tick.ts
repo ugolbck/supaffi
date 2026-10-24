@@ -1,3 +1,4 @@
+import { isStripeError, loggableError } from "@/lib/stripeErrors";
 import { claimBatch, markProcessed, markFailed } from "./claim";
 import { sweepPayableCommissions } from "./sweep";
 import { processWebhookEvent } from "./dispatch";
@@ -24,7 +25,14 @@ export async function runTick(): Promise<void> {
         await processWebhookEvent(event);
         await markProcessed(event.id);
       } catch (err) {
-        console.error(`[worker] event ${event.id} (${event.stripeEventId}) failed`, err);
+        // A Stripe error is logged by type and code only, since its message
+        // names the masked key and the account. Anything else is a bug here
+        // and keeps its stack.
+        if (isStripeError(err)) {
+          console.error(`[worker] event ${event.id} (${event.stripeEventId}) failed: ${loggableError(err)}`);
+        } else {
+          console.error(`[worker] event ${event.id} (${event.stripeEventId}) failed`, err);
+        }
         await markFailed(event.id, event.attempts, err);
       }
     }
