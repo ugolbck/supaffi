@@ -35,7 +35,8 @@ export type LedgerRow = {
   /** Formatted on the server, so the row and the sheet read the same date. */
   createdLabel: string;
   stateLabel: string;
-  reference: string | null;
+  /** What the customer paid, with its currency. The Stripe reference is in the sheet. */
+  sale: string | null;
   /** The list URL with this commission selected. */
   href: string;
 };
@@ -156,10 +157,8 @@ export function CommissionTable({
               <TableCell className="max-w-56 px-4 py-3">
                 <span className="block truncate text-sm text-muted-foreground">{row.stateLabel}</span>
               </TableCell>
-              <TableCell className="max-w-32 px-4 py-3 text-right">
-                <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {row.reference ?? ""}
-                </span>
+              <TableCell className="px-4 py-3 text-right whitespace-nowrap text-muted-foreground tabular-nums">
+                {row.sale ?? ""}
               </TableCell>
             </TableRow>
           );

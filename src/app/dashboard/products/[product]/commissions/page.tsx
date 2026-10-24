@@ -188,7 +188,7 @@ export default async function CommissionsPage({
     isAdjustment: row.isAdjustment,
     createdLabel: formatDate(row.createdAt),
     stateLabel: stateLabel(row),
-    reference: row.stripePaymentRef,
+    sale: row.saleAmount ? formatMoney(row.saleAmount, row.currency) : null,
     href: hrefWith({ commission: row.id }),
   }));
 

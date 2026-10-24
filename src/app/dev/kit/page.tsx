@@ -554,7 +554,7 @@ const D_LEDGER: LedgerRow[] = [
     isAdjustment: false,
     createdLabel: "10 Sept 2026",
     stateLabel: "Ready to pay",
-    reference: "pi_3QxLmN2eZvKYlo2C",
+    sale: "€4,960.00",
     href: "#",
   },
   {
@@ -566,7 +566,7 @@ const D_LEDGER: LedgerRow[] = [
     isAdjustment: false,
     createdLabel: "9 Sept 2026",
     stateLabel: "Payable 9 Oct 2026",
-    reference: "in_1PqRsT4uVwXyZa",
+    sale: "$338.00",
     href: "#",
   },
   {
@@ -578,7 +578,7 @@ const D_LEDGER: LedgerRow[] = [
     isAdjustment: false,
     createdLabel: "8 Sept 2026",
     stateLabel: "Reduced, part of the sale was refunded",
-    reference: "pi_3QwKlM1dYuJXkn1B",
+    sale: "€384.00",
     href: "#",
   },
   {
@@ -590,7 +590,7 @@ const D_LEDGER: LedgerRow[] = [
     isAdjustment: false,
     createdLabel: "7 Sept 2026",
     stateLabel: "The buyer used the affiliate's own email address",
-    reference: "pi_3QvJkL0cXtIWjm0A",
+    sale: "£1,240.00",
     href: "#",
   },
   {
@@ -602,7 +602,7 @@ const D_LEDGER: LedgerRow[] = [
     isAdjustment: false,
     createdLabel: "2 Sept 2026",
     stateLabel: "Paid 5 Sept 2026",
-    reference: "in_1PoNmL3sTuVwXy",
+    sale: "$248.00",
     href: "#",
   },
   {
@@ -614,7 +614,7 @@ const D_LEDGER: LedgerRow[] = [
     isAdjustment: false,
     createdLabel: "28 Aug 2026",
     stateLabel: "Refunded in Stripe · 1 Sept 2026",
-    reference: "pi_3QtHiJ9bWsHVil9Z",
+    sale: "€592.00",
     href: "#",
   },
 ];
