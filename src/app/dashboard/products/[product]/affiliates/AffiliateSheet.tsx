@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/select";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { originFor } from "@/lib/url";
+import { StatusBadge } from "@/components/dashboard/StatusBadge";
+import type { CommissionStatus } from "@/lib/commission";
 import { changeProgramAction, createPasswordLinkAction, setCustomRateAction } from "./affiliateActions";
 
 /**
@@ -44,7 +46,7 @@ export type SheetAffiliate = {
   payoutDetails: string | null;
   hasPassword: boolean;
   links: { url: string; clicks: number }[];
-  commissions: { id: string; date: string; amount: string; status: string }[];
+  commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
 };
 
 export function AffiliateSheet({
@@ -174,10 +176,12 @@ export function AffiliateSheet({
                 <li className="text-muted-foreground">None yet</li>
               )}
               {affiliate.commissions.map((c) => (
-                <li key={c.id} className="flex justify-between gap-3">
-                  <span className="text-muted-foreground">{c.date}</span>
-                  <span className="tabular-nums">{c.amount}</span>
-                  <span className="w-16 text-right text-muted-foreground">{c.status}</span>
+                <li key={c.id} className="flex items-center gap-3">
+                  <span className="w-16 text-muted-foreground tabular-nums">{c.date}</span>
+                  <span className="flex-1 text-right tabular-nums">{c.amount}</span>
+                  <span className="flex w-20 justify-end">
+                    <StatusBadge status={c.status} />
+                  </span>
                 </li>
               ))}
             </ul>

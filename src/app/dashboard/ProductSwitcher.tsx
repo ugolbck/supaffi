@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, ChevronsUpDown, Plus } from "lucide-react";
+import { Check, ChevronsUpDown, LayoutGrid, Plus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,19 +42,34 @@ export function ProductSwitcher({
   merchants: Merchant[];
   active: Merchant | null;
 }) {
-  // The layout redirects to onboarding when an owner has no products, so
-  // there is always at least one to fall back to.
-  const shown = active ?? merchants[0];
-  if (!shown) return null;
+  // Off a product's pages (the product list, the account) no product is
+  // open, so the card says so rather than naming one at random.
+  if (merchants.length === 0) return null;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex h-12 w-full cursor-pointer items-center gap-3 rounded-(--radius-md) border border-(--shell-border) bg-white px-2.5 text-left shadow-(--nav-active-shadow) transition-[background-color] duration-150 hover:bg-neutral-50 data-popup-open:bg-neutral-50">
-        <Mark name={shown.name} />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{shown.name}</span>
-          <span className="block truncate text-[11px] text-muted-foreground">{shown.domain}</span>
-        </span>
+        {active ? (
+          <>
+            <Mark name={active.name} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">{active.name}</span>
+              <span className="block truncate text-[11px] text-muted-foreground">{active.domain}</span>
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-neutral-100 text-neutral-600">
+              <LayoutGrid className="size-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">All products</span>
+              <span className="block truncate text-[11px] text-muted-foreground">
+                {merchants.length === 1 ? "1 product" : `${merchants.length} products`}
+              </span>
+            </span>
+          </>
+        )}
         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={6}>
@@ -66,7 +81,7 @@ export function ProductSwitcher({
           >
             <Mark name={m.name} small />
             <span className="min-w-0 flex-1 truncate">{m.name}</span>
-            {m.id === shown.id && <Check className="size-4 text-foreground" />}
+            {m.id === active?.id && <Check className="size-4 text-foreground" />}
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />

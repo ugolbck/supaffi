@@ -130,7 +130,7 @@ export default async function PayoutsPage({
                     </TableCell>
                     <TableCell className="w-px px-4 py-2.5 text-right">
                       <form action={markPayoutPaidAction.bind(null, productRef, group.commissions, renderedAt)}>
-                        <Button type="submit" size="sm" variant="secondary" className="cursor-pointer active:scale-[0.96]">
+                        <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
                           Mark paid
                         </Button>
                       </form>

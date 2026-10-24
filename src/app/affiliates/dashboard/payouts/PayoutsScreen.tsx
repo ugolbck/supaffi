@@ -44,11 +44,11 @@ function PaymentRows({ payments }: { payments: AffiliatePaymentGroup[] }) {
             </span>
             <span className="flex-1 sm:hidden" />
             <span className="flex shrink-0 flex-col items-end">
-              <span className="font-mono text-[15px] font-semibold text-neutral-900 tabular-nums">
+              <span className="text-[15px] font-semibold text-neutral-900 tabular-nums">
                 {money(payment.totals)}
               </span>
               {hint && (
-                <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                <span className="text-[11px] text-muted-foreground tabular-nums">
                   {hint}
                 </span>
               )}

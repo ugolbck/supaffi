@@ -244,7 +244,7 @@ export function OverviewScreen({
                     </div>
                     <span
                       className={cn(
-                        "ml-auto shrink-0 text-right font-mono text-[13px] font-semibold tabular-nums",
+                        "ml-auto shrink-0 text-right text-[13px] font-semibold tabular-nums",
                         row.isAdjustment ? "text-destructive" : "text-neutral-900",
                         row.status === "VOIDED" && "font-normal text-muted-foreground"
                       )}

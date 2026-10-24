@@ -188,7 +188,7 @@ export default async function AffiliatesPage({
         date: formatDate(c.createdAt),
         // Never summed across currencies, so each line carries its own.
         amount: formatMoney(c.amount, c.currency),
-        status: c.status.toLowerCase(),
+        status: c.status,
       })),
     };
   }

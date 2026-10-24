@@ -170,7 +170,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                 <span className="flex shrink-0 flex-col items-end">
                   <span
                     className={cn(
-                      "font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums",
+                      "text-[15px] font-semibold whitespace-nowrap tabular-nums",
                       row.isAdjustment && "text-destructive",
                       !row.isAdjustment && !voided && "text-neutral-900"
                     )}
@@ -178,7 +178,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                     {row.amount}
                   </span>
                   {reduced && row.grossAmount && (
-                    <span className="font-mono text-[11px] text-neutral-500 line-through tabular-nums">
+                    <span className="text-[11px] text-neutral-500 line-through tabular-nums">
                       {row.grossAmount}
                     </span>
                   )}
@@ -246,7 +246,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                     itself. */}
                 <span
                   className={cn(
-                    "block font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums",
+                    "block text-[15px] font-semibold whitespace-nowrap tabular-nums",
                     row.isAdjustment && "text-destructive",
                     !row.isAdjustment && !voided && "text-neutral-900"
                   )}
@@ -257,7 +257,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                     is now: a reduced row has to show both figures or the
                     affiliate is left doing the subtraction. */}
                 {reduced && row.grossAmount && (
-                  <span className="block font-mono text-[11px] text-neutral-500 line-through tabular-nums">
+                  <span className="block text-[11px] text-neutral-500 line-through tabular-nums">
                     {row.grossAmount}
                   </span>
                 )}

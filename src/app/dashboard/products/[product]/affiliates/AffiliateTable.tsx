@@ -119,15 +119,15 @@ export function AffiliateTable({
             <TableCell className="max-w-32">
               <span className="block truncate text-sm">{row.programName}</span>
             </TableCell>
-            <TableCell className="text-right font-mono tabular-nums">{row.clicks}</TableCell>
-            <TableCell className="text-right font-mono tabular-nums">{row.conversions}</TableCell>
-            <TableCell className="text-right font-mono whitespace-nowrap tabular-nums">
+            <TableCell className="text-right tabular-nums">{row.clicks}</TableCell>
+            <TableCell className="text-right tabular-nums">{row.conversions}</TableCell>
+            <TableCell className="text-right whitespace-nowrap tabular-nums">
               <span className="block">{row.earned}</span>
               {row.earnedHint && (
                 <span className="block text-[11px] text-muted-foreground">{row.earnedHint}</span>
               )}
             </TableCell>
-            <TableCell className="text-right font-mono whitespace-nowrap tabular-nums">
+            <TableCell className="text-right whitespace-nowrap tabular-nums">
               <span className="inline-flex items-center justify-end gap-1">
                 {row.rate}
                 {row.rateIsOverride && (
