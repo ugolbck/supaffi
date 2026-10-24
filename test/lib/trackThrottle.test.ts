@@ -1,10 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  decideClick,
-  rememberClick,
-  forgetClick,
-  resetTrackThrottle,
-} from "@/lib/trackThrottle";
+import { isClickLimited, rememberClick, resetTrackThrottle } from "@/lib/trackThrottle";
 import { isPrivateAddress } from "@/lib/clientAddress";
 
 const T0 = 1_700_000_000_000;
@@ -16,44 +11,16 @@ beforeEach(() => {
   resetTrackThrottle();
 });
 
-describe("decideClick", () => {
+describe("isClickLimited", () => {
   it("lets a first click through", () => {
-    expect(decideClick(VISITOR, "sarah", T0)).toEqual({ kind: "new" });
+    expect(isClickLimited(VISITOR, T0)).toBe(false);
   });
 
-  it("hands a repeat of the same code the token it already got", () => {
-    rememberClick(VISITOR, "sarah", "token-1", T0);
-    expect(decideClick(VISITOR, "sarah", T0 + 1000)).toEqual({
-      kind: "reuse",
-      referralToken: "token-1",
-    });
-  });
-
-  it("gives a different address or code its own click", () => {
-    rememberClick(VISITOR, "sarah", "token-1", T0);
-    expect(decideClick("198.51.100.4", "sarah", T0)).toEqual({ kind: "new" });
-    expect(decideClick(VISITOR, "bob", T0)).toEqual({ kind: "new" });
-  });
-
-  it("records a new click once the dedupe window has passed", () => {
-    rememberClick(VISITOR, "sarah", "token-1", T0);
-    expect(decideClick(VISITOR, "sarah", T0 + TEN_MINUTES)).toEqual({ kind: "new" });
-  });
-
-  it("stops one address cycling through codes", () => {
-    for (let i = 0; i < MAX_NEW_CLICKS_PER_ADDRESS; i++) {
-      rememberClick(VISITOR, `code-${i}`, `token-${i}`, T0);
-    }
-    expect(decideClick(VISITOR, "one-more", T0)).toEqual({ kind: "limited" });
-    // A code it already has still gets its token back rather than an error.
-    expect(decideClick(VISITOR, "code-0", T0)).toEqual({ kind: "reuse", referralToken: "token-0" });
-    expect(decideClick(VISITOR, "one-more", T0 + TEN_MINUTES)).toEqual({ kind: "new" });
-  });
-
-  it("forgets a click whose row was never written", () => {
-    rememberClick(VISITOR, "sarah", "token-1", T0);
-    forgetClick(VISITOR, "sarah", "token-1");
-    expect(decideClick(VISITOR, "sarah", T0)).toEqual({ kind: "new" });
+  it("stops one address after too many new clicks, until the window passes", () => {
+    for (let i = 0; i < MAX_NEW_CLICKS_PER_ADDRESS; i++) rememberClick(VISITOR, T0);
+    expect(isClickLimited(VISITOR, T0)).toBe(true);
+    expect(isClickLimited("198.51.100.4", T0)).toBe(false);
+    expect(isClickLimited(VISITOR, T0 + TEN_MINUTES)).toBe(false);
   });
 });
 

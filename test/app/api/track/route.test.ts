@@ -126,15 +126,70 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
     expect(clicks[0].linkId).toBe(a.link.id);
   });
 
-  it("hands a repeat visit from the same address its existing token instead of a second click", async () => {
+  it("gives two visitors behind one address their own clicks", async () => {
     const a = await seedMerchantWithAffiliate("a");
-    const visitor = { "x-forwarded-for": "198.51.100.1, 203.0.113.7" };
+    const office = { "x-forwarded-for": "198.51.100.1, 203.0.113.7" };
 
-    const first = await (await GET(requestFor(a.merchant.domain, a.link.code, visitor))).json();
-    const second = await (await GET(requestFor(a.merchant.domain, a.link.code, visitor))).json();
+    const first = await (await GET(requestFor(a.merchant.domain, a.link.code, office))).json();
+    const second = await (await GET(requestFor(a.merchant.domain, a.link.code, office))).json();
 
-    expect(second.referralToken).toBe(first.referralToken);
+    expect(second.referralToken).not.toBe(first.referralToken);
+    expect(await db.click.count()).toBe(2);
+  });
+
+  it("hands a browser that sends back its live token that same token instead of a second click", async () => {
+    const a = await seedMerchantWithAffiliate("a");
+
+    const first = await (await GET(requestFor(a.merchant.domain, a.link.code))).json();
+    const again = await (
+      await GET(requestFor(a.merchant.domain, `${a.link.code}&token=${first.referralToken}`))
+    ).json();
+
+    expect(again.referralToken).toBe(first.referralToken);
     expect(await db.click.count()).toBe(1);
+  });
+
+  it("starts a new click when the token sent back is from an earlier visit, not a reload", async () => {
+    const a = await seedMerchantWithAffiliate("a");
+
+    const first = await (await GET(requestFor(a.merchant.domain, a.link.code))).json();
+    await db.click.update({
+      where: { referralToken: first.referralToken },
+      data: { createdAt: new Date(Date.now() - 11 * 60 * 1000) },
+    });
+    const later = await (
+      await GET(requestFor(a.merchant.domain, `${a.link.code}&token=${first.referralToken}`))
+    ).json();
+
+    expect(later.referralToken).not.toBe(first.referralToken);
+    expect(await db.click.count()).toBe(2);
+  });
+
+  it("never hands back a click confirmed as a self referral", async () => {
+    const a = await seedMerchantWithAffiliate("a");
+
+    const first = await (await GET(requestFor(a.merchant.domain, a.link.code))).json();
+    await db.click.update({ where: { referralToken: first.referralToken }, data: { fraudConfirmedAt: new Date() } });
+    const again = await (
+      await GET(requestFor(a.merchant.domain, `${a.link.code}&token=${first.referralToken}`))
+    ).json();
+
+    expect(again.referralToken).not.toBe(first.referralToken);
+  });
+
+  it("starts a new click when the token sent back belongs to another link", async () => {
+    const a = await seedMerchantWithAffiliate("a");
+    const other = await db.affiliateLink.create({
+      data: { code: "track-route-a-second", affiliateId: a.affiliate.id },
+    });
+
+    const first = await (await GET(requestFor(a.merchant.domain, a.link.code))).json();
+    const next = await (
+      await GET(requestFor(a.merchant.domain, `${other.code}&token=${first.referralToken}`))
+    ).json();
+
+    expect(next.referralToken).not.toBe(first.referralToken);
+    expect(await db.click.count()).toBe(2);
   });
 
   it("does not attribute a code its affiliate retired", async () => {

@@ -3,9 +3,12 @@ import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { clientAddress, isPrivateAddress } from "@/lib/clientAddress";
-import { decideClick, forgetClick, rememberClick } from "@/lib/trackThrottle";
+import { isClickLimited, rememberClick } from "@/lib/trackThrottle";
 
 const CORS = { "Access-Control-Allow-Origin": "*" };
+
+/** How long a browser's own token counts as the same visit. */
+const RELOAD_WINDOW_MS = 10 * 60 * 1000;
 
 // Called cross-origin, from the Merchant's own site (wherever the tracking
 // script is embedded), not from this Merchant's own domain — so this is
@@ -58,21 +61,35 @@ export async function GET(req: NextRequest) {
     return new NextResponse(null, { status: 404 });
   }
 
+  // A reload sends back the token this browser was just given, and keeps that
+  // Click rather than writing another. Only the browser's own token is trusted
+  // for this, never the address, which many customers can share. A later visit
+  // is a new click: it restarts the attribution window and, after a purchase,
+  // starts a new referral, the same as it always has.
+  const heldToken = req.nextUrl.searchParams.get("token");
+  if (heldToken) {
+    const held = await db.click.findUnique({
+      where: { referralToken: heldToken },
+      select: { linkId: true, createdAt: true, fraudConfirmedAt: true },
+    });
+    if (
+      held &&
+      held.linkId === link.id &&
+      held.fraudConfirmedAt === null &&
+      Date.now() - held.createdAt.getTime() < RELOAD_WINDOW_MS
+    ) {
+      return NextResponse.json({ referralToken: heldToken }, { headers: CORS });
+    }
+  }
+
   // Limited only when the address is an internet visitor. A private one means
   // the proxy in front did not report the visitor (an operator's own proxy
-  // with no X-Forwarded-For), and every visitor would then share one key:
-  // they would all be handed the same token and throttled together.
+  // with no X-Forwarded-For), and every visitor would then share one key and
+  // be throttled together.
   const address = clientAddress(req.headers);
   const throttled = address !== null && !isPrivateAddress(address) ? address : null;
-
-  if (throttled) {
-    const decision = decideClick(throttled, referralCode);
-    if (decision.kind === "reuse") {
-      return NextResponse.json({ referralToken: decision.referralToken }, { headers: CORS });
-    }
-    if (decision.kind === "limited") {
-      return new NextResponse(null, { status: 429, headers: CORS });
-    }
+  if (throttled && isClickLimited(throttled)) {
+    return new NextResponse(null, { status: 429, headers: CORS });
   }
 
   const referralToken = randomUUID();
@@ -80,15 +97,10 @@ export async function GET(req: NextRequest) {
     Date.now() + link.affiliate.program.attributionWindowDays * 24 * 60 * 60 * 1000
   );
 
-  if (throttled) rememberClick(throttled, referralCode, referralToken);
-  try {
-    await db.click.create({
-      data: { affiliateId: link.affiliate.id, linkId: link.id, referralToken, expiresAt },
-    });
-  } catch (err) {
-    if (throttled) forgetClick(throttled, referralCode, referralToken);
-    throw err;
-  }
+  if (throttled) rememberClick(throttled);
+  await db.click.create({
+    data: { affiliateId: link.affiliate.id, linkId: link.id, referralToken, expiresAt },
+  });
 
   return NextResponse.json({ referralToken }, { headers: CORS });
 }

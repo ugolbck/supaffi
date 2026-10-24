@@ -35,7 +35,14 @@ export async function GET(req: NextRequest) {
   var code = params.get(${JSON.stringify(REFERRAL_QUERY_PARAM)});
   if (!code) return;
 
-  fetch(${trackUrl} + encodeURIComponent(code))
+  // Sends back the token this browser already holds, read by exact cookie
+  // name, so a reload keeps its Click rather than starting a new referral.
+  var held = document.cookie.split("; ").filter(function (c) {
+    return c.indexOf(${JSON.stringify(`${REFERRAL_COOKIE}=`)}) === 0;
+  })[0];
+  var token = held ? held.slice(${JSON.stringify(`${REFERRAL_COOKIE}=`)}.length) : "";
+
+  fetch(${trackUrl} + encodeURIComponent(code) + (token ? "&token=" + encodeURIComponent(token) : ""))
     .then(function (res) { return res.ok ? res.json() : null; })
     .then(function (data) {
       if (!data || !data.referralToken) return;

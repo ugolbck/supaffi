@@ -58,6 +58,11 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     expect(await script()).toContain(`"${REFERRAL_COOKIE}="`);
   });
 
+  it("sends back the token this browser already holds, so a reload keeps its click", async () => {
+    const code = await script();
+    expect(code).toContain('"&token=" + encodeURIComponent(token)');
+  });
+
   it("never sends SameSite=None, which would make the cookie cross-site", async () => {
     const code = await script();
     expect(code).toContain("SameSite=Lax");

@@ -1,45 +1,33 @@
-// Limits on /api/track, which anyone on the internet can call and which writes
+// Limit on /api/track, which anyone on the internet can call and which writes
 // a Click row for every valid code.
 //
-// Two rules, both per client address. A repeat of the same code from the same
-// address inside the dedupe window gets the Referral Token it was already
-// given instead of a new row, which is also what a visitor reloading a
-// referred page should get. And one address can only start so many new clicks
-// per window across all codes, so cycling through codes does not get around
-// the first rule.
+// One address can only start so many new clicks per window. Repeat visits are
+// not recognised here: an address is shared by an office or a mobile carrier,
+// so handing one visitor's token to another would merge two customers into one
+// referral. The route recognises a repeat by the token the visitor's own
+// browser sends back instead.
 //
 // In memory, not in the database and not in Redis (ADR 0005, ADR 0007), same
-// as loginThrottle. A restart clears it, which costs at most one extra Click
-// per visitor.
+// as loginThrottle. A restart clears it.
 
-const DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 const ADDRESS_WINDOW_MS = 10 * 60 * 1000;
 const MAX_NEW_CLICKS_PER_ADDRESS = 30;
 
-// Both maps are keyed by what a caller sends, so both are capped. Map iterates
-// in insertion order, so dropping from the front drops the oldest.
+// Keyed by what a caller sends, so capped. Map iterates in insertion order, so
+// dropping from the front drops the oldest.
 const MAX_TRACKED = 10_000;
 
-type RecentClick = { referralToken: string; at: number };
 type AddressWindow = { count: number; windowStartedAt: number };
 
 const globalForThrottle = globalThis as unknown as {
-  supaffiTrackClicks?: Map<string, RecentClick>;
   supaffiTrackAddresses?: Map<string, AddressWindow>;
 };
 
-// Held on globalThis so dev-mode Fast Refresh does not hand out empty maps.
-const recentClicks: Map<string, RecentClick> =
-  globalForThrottle.supaffiTrackClicks ?? new Map<string, RecentClick>();
+// Held on globalThis so dev-mode Fast Refresh does not hand out an empty map.
 const addresses: Map<string, AddressWindow> =
   globalForThrottle.supaffiTrackAddresses ?? new Map<string, AddressWindow>();
 if (process.env.NODE_ENV !== "production") {
-  globalForThrottle.supaffiTrackClicks = recentClicks;
   globalForThrottle.supaffiTrackAddresses = addresses;
-}
-
-function clickKey(address: string, code: string): string {
-  return `${address} ${code}`;
 }
 
 function cap<V>(map: Map<string, V>): void {
@@ -50,43 +38,19 @@ function cap<V>(map: Map<string, V>): void {
   }
 }
 
-export type TrackDecision =
-  | { kind: "reuse"; referralToken: string }
-  | { kind: "limited" }
-  | { kind: "new" };
-
 /**
- * What to do with a click. `now` is injectable so windows can be tested
- * without waiting them out.
+ * Whether this address may start another click. `now` is injectable so the
+ * window can be tested without waiting it out.
  */
-export function decideClick(address: string, code: string, now: number = Date.now()): TrackDecision {
-  const recent = recentClicks.get(clickKey(address, code));
-  if (recent && now - recent.at < DEDUPE_WINDOW_MS) {
-    return { kind: "reuse", referralToken: recent.referralToken };
-  }
-
+export function isClickLimited(address: string, now: number = Date.now()): boolean {
   const window = addresses.get(address);
-  if (window && now - window.windowStartedAt < ADDRESS_WINDOW_MS && window.count >= MAX_NEW_CLICKS_PER_ADDRESS) {
-    return { kind: "limited" };
-  }
-  return { kind: "new" };
+  return Boolean(
+    window && now - window.windowStartedAt < ADDRESS_WINDOW_MS && window.count >= MAX_NEW_CLICKS_PER_ADDRESS
+  );
 }
 
-/**
- * Records a new click before its row is written, so parallel requests from the
- * same address for the same code reuse this token rather than each inserting.
- */
-export function rememberClick(
-  address: string,
-  code: string,
-  referralToken: string,
-  now: number = Date.now()
-): void {
-  const key = clickKey(address, code);
-  recentClicks.delete(key);
-  recentClicks.set(key, { referralToken, at: now });
-  cap(recentClicks);
-
+/** Counts a new click against its address. */
+export function rememberClick(address: string, now: number = Date.now()): void {
   const window = addresses.get(address);
   if (window && now - window.windowStartedAt < ADDRESS_WINDOW_MS) {
     window.count += 1;
@@ -97,14 +61,7 @@ export function rememberClick(
   }
 }
 
-/** Undoes rememberClick for a row that was never written. */
-export function forgetClick(address: string, code: string, referralToken: string): void {
-  const key = clickKey(address, code);
-  if (recentClicks.get(key)?.referralToken === referralToken) recentClicks.delete(key);
-}
-
 /** Test seam. Never called by application code. */
 export function resetTrackThrottle(): void {
-  recentClicks.clear();
   addresses.clear();
 }
