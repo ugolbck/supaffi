@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   hashPassword,
   verifyPassword,
+  verifyAgainstNoAccount,
   limitConcurrency,
   ConcurrencyLimitError,
 } from "@/lib/password";
@@ -16,6 +17,11 @@ describe("password", () => {
   it("rejects the wrong password", async () => {
     const hash = await hashPassword("correct horse battery staple");
     expect(await verifyPassword("wrong password", hash)).toBe(false);
+  });
+
+  it("refuses every password when there is no account to check against", async () => {
+    expect(await verifyAgainstNoAccount("correct horse battery staple")).toBe(false);
+    expect(await verifyAgainstNoAccount("")).toBe(false);
   });
 });
 

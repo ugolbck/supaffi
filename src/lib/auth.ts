@@ -3,18 +3,15 @@ import Credentials from "next-auth/providers/credentials";
 import { checkOwnerPassword, findOwnerForLogin } from "@/lib/owner";
 import { reserveLoginRequest, reserveLoginAttempt, clearLoginAttempts } from "@/lib/loginThrottle";
 import { clientAddress } from "@/lib/clientAddress";
-import { consumeAffiliateLoginToken } from "@/lib/affiliateAuth";
+import { checkAffiliatePassword, findAffiliateForLogin } from "@/lib/affiliatePassword";
+import { getMerchantByDomain } from "@/lib/merchant";
 import { authConfig } from "@/lib/auth.config";
 import { ownerSessionIsCurrent } from "@/lib/ownerExists";
 
-// Two Credentials providers, JWT sessions, no database adapter. Auth.js's
-// built-in Email provider needs an adapter whose contract assumes email is
-// globally unique per user — Affiliate email is only unique per Merchant
-// (@@unique([merchantId, email])), a real mismatch, not a config detail.
-// Instead, the Affiliate magic-link flow is hand-rolled
-// (AffiliateLoginToken, src/lib/affiliateAuth.ts) and redeemed through the
-// second Credentials provider below — the same pattern Owner login already
-// uses, just with a token instead of a password.
+// Two Credentials providers, JWT sessions, no database adapter: one for the
+// Owner, one for Affiliates. Affiliate email is only unique per Merchant
+// (@@unique([merchantId, email])), so the Affiliate provider finds the
+// Merchant from the host the form was posted on before it looks the email up.
 //
 // Both Credentials providers (and their native/wasm or DB-heavy authorize()
 // callbacks) live only here, not in auth.config.ts, so Edge Proxy can
@@ -87,16 +84,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
     Credentials({
-      id: "affiliate-token",
+      id: "affiliate-password",
       credentials: {
-        token: { label: "Token", type: "text" },
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
       },
-      authorize: async (credentials) => {
-        const token = credentials?.token;
-        if (typeof token !== "string") return null;
-        const affiliate = await consumeAffiliateLoginToken(token);
-        if (!affiliate) return null;
-        return { ...affiliate, role: "affiliate" as const };
+      authorize: async (credentials, request) => {
+        const email = credentials?.email;
+        const password = credentials?.password;
+        if (typeof email !== "string" || typeof password !== "string") return null;
+        const reported = clientAddress(request.headers);
+        // Same order and same throttle as the Owner's provider above, with the
+        // budget per product and email, so guesses on one affiliate never
+        // lock out another or the Owner.
+        if (!reserveLoginRequest(reported)) return null;
+        const address = reported ?? "unknown";
+        const host = request.headers.get("host");
+        const merchant = host ? await getMerchantByDomain(host) : null;
+        const affiliate = merchant ? await findAffiliateForLogin(merchant.id, email) : null;
+        const budget = merchant && affiliate ? `${merchant.id}/${affiliate.email}` : null;
+        if (!budget || !reserveLoginAttempt(budget, address)) {
+          await checkAffiliatePassword(null, password);
+          return null;
+        }
+        const verified = await checkAffiliatePassword(affiliate, password);
+        if (!verified) return null;
+        clearLoginAttempts(budget, address);
+        return { ...verified, role: "affiliate" as const };
       },
     }),
   ],

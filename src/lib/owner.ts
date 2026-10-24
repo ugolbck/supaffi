@@ -1,6 +1,5 @@
-import { randomBytes } from "crypto";
 import { db } from "@/lib/db";
-import { ConcurrencyLimitError, hashPassword, verifyPassword } from "@/lib/password";
+import { ConcurrencyLimitError, hashPassword, verifyAgainstNoAccount, verifyPassword } from "@/lib/password";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
 // Lives in its own module so the startup hook can reach it without dragging
@@ -57,19 +56,6 @@ export async function findOwnerForLogin(email: string): Promise<OwnerForLogin | 
   });
 }
 
-let dummyHash: Promise<string> | null = null;
-
-// A real Argon2id hash of a random secret nobody knows, made on first use
-// rather than at import so the startup path never pays for it. Forgotten on
-// failure, or one bad moment would leave every later call rejecting.
-function dummyPasswordHash(): Promise<string> {
-  dummyHash ??= hashPassword(randomBytes(32).toString("hex")).catch((err) => {
-    dummyHash = null;
-    throw err;
-  });
-  return dummyHash;
-}
-
 /**
  * Checks a password against the Owner found for the attempt.
  *
@@ -88,7 +74,7 @@ export async function checkOwnerPassword(
 ): Promise<{ id: string; email: string } | null> {
   try {
     if (!owner) {
-      await verifyPassword(password, await dummyPasswordHash());
+      await verifyAgainstNoAccount(password);
       return null;
     }
     const valid = await verifyPassword(password, owner.passwordHash);

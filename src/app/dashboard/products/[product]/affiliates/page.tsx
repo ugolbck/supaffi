@@ -187,6 +187,7 @@ export default async function AffiliatesPage({
       rate: selected.commissionRate,
       rateIsOverride: selected.rateIsOverride,
       payoutDetails: detail?.payoutDetails ?? null,
+      hasPassword: detail?.hasPassword ?? true,
       links: links.map((l) => ({
         url: linkUrl(merchant.websiteUrl, l),
         clicks: l.clicks,
@@ -315,6 +316,7 @@ export default async function AffiliatesPage({
       {sheetAffiliate && (
         <AffiliateSheet
           affiliate={sheetAffiliate}
+          productDomain={merchant.domain}
           programs={programs.map((p) => ({ id: p.id, name: p.name }))}
           product={{ id: merchant.id, slug: merchant.slug }}
           listHref={listHref}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Sheet,
@@ -17,7 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { changeProgramAction, setCustomRateAction } from "./affiliateActions";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { originFor } from "@/lib/url";
+import { changeProgramAction, createPasswordLinkAction, setCustomRateAction } from "./affiliateActions";
 
 /**
  * Everything about one affiliate, in one place, without leaving the list.
@@ -39,17 +42,21 @@ export type SheetAffiliate = {
   rate: string;
   rateIsOverride: boolean;
   payoutDetails: string | null;
+  hasPassword: boolean;
   links: { url: string; clicks: number }[];
   commissions: { id: string; date: string; amount: string; status: string }[];
 };
 
 export function AffiliateSheet({
   affiliate,
+  productDomain,
   programs,
   product,
   listHref,
 }: {
   affiliate: SheetAffiliate;
+  /** The product's affiliate domain, where a password link has to be opened. */
+  productDomain: string;
   programs: { id: string; name: string }[];
   product: { id: string; slug: string };
   listHref: string;
@@ -144,6 +151,8 @@ export function AffiliateSheet({
             </span>
           </div>
 
+          <PasswordLink affiliateId={affiliate.id} hasPassword={affiliate.hasPassword} product={product} domain={productDomain} />
+
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Links</p>
             <ul className="flex flex-col gap-1 text-sm">
@@ -176,5 +185,60 @@ export function AffiliateSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * Supaffi sends no email, so a forgotten password, or an affiliate who signed
+ * up before passwords existed, is handled by the Owner: make a one-time link
+ * here and send it to them. Making a new one voids the last.
+ */
+function PasswordLink({
+  affiliateId,
+  hasPassword,
+  product,
+  domain,
+}: {
+  affiliateId: string;
+  hasPassword: boolean;
+  product: { id: string };
+  domain: string;
+}) {
+  const [link, setLink] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted-foreground">Password</span>
+        {hasPassword ? <span>Set</span> : <span className="text-status-warning">Not set yet</span>}
+      </div>
+      {link ? (
+        <div className="flex gap-2">
+          <Input readOnly value={link} className="font-mono text-xs" onFocus={(e) => e.target.select()} />
+          <CopyLinkButton link={link} size="sm" label="Copy" />
+        </div>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="cursor-pointer self-start"
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              const result = await createPasswordLinkAction(product, affiliateId);
+              if ("error" in result) setError(result.error);
+              else setLink(`${originFor(domain)}/affiliates/password?token=${result.token}`);
+            })
+          }
+        >
+          Create password link
+        </Button>
+      )}
+      {link && <p className="text-xs text-muted-foreground">Works once, for 3 days. Send it to them yourself.</p>}
+      {error && <p className="text-xs text-status-danger">{error}</p>}
+    </div>
   );
 }

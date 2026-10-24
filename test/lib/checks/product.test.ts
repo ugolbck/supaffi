@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
-import { createMerchant, connectStripe, connectEmailProvider } from "@/lib/merchant";
+import { createMerchant, connectStripe } from "@/lib/merchant";
 import { runProductChecks } from "@/lib/checks/product";
 import { checkState, NOT_LOOKED_YET } from "@/components/onboarding/checkRows";
 import type { CheckResult } from "@/lib/checks/dns";
@@ -29,7 +29,7 @@ if (!hasDatabase) {
 const ok = { ok: true, detail: "ok" };
 const no = { ok: false, detail: "no" };
 
-const ALL_SECTIONS = new Set(["dns", "stripe", "email", "tracking"] as const);
+const ALL_SECTIONS = new Set(["dns", "stripe", "tracking"] as const);
 
 describe.skipIf(!hasDatabase)("runProductChecks", () => {
   let previousHostIp: string | undefined;
@@ -70,8 +70,6 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
           webhookArgs.push([ownerId, merchantId]);
           return no;
         },
-        resendKeyWorks: async () => ok,
-        sendingDomainVerified: async () => ok,
         scriptFound: async () => no,
       },
     });
@@ -81,13 +79,11 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     // No Stripe key on file, so the key check is not run and reads as not connected.
     expect(result.stripe.key.ok).toBe(false);
     expect(result.stripe.key.detail).toMatch(/not connected/i);
-    expect(result.email.key.detail).toMatch(/not connected/i);
     expect(result.tracking.script.ok).toBe(false);
     // The webhook check is owner-scoped, so it has to be handed the owner.
     expect(webhookArgs).toEqual([[owner.id, merchant.id]]);
 
     await connectStripe(owner.id, merchant.id, { secretKey: "rk_test_1", webhookSecret: "whsec_1" });
-    await connectEmailProvider(owner.id, merchant.id, "re_1");
     // Credentials that were not there a moment ago, so every section is asked
     // for fresh rather than served from the run above.
     const after = await runProductChecks(owner.id, merchant.id, {
@@ -97,13 +93,11 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
         httpsReachable: async () => ({ reachable: ok, certificate: ok }),
         stripeKeyWorks: async () => ok,
         webhookEventReceived: async () => ok,
-        resendKeyWorks: async () => ok,
-        sendingDomainVerified: async () => ok,
         scriptFound: async () => ok,
       },
     });
     expect(after.stripe.key.ok).toBe(true);
-    expect(after.email.domain.ok).toBe(true);
+    expect(after.tracking.script.ok).toBe(true);
   });
 
   it("runs every section on a cold cache and only the named ones on a warm one", async () => {
@@ -114,7 +108,6 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
       websiteUrl: "https://c.test",
     });
     await connectStripe(owner.id, merchant.id, { secretKey: "rk_test_1", webhookSecret: "whsec_1" });
-    await connectEmailProvider(owner.id, merchant.id, "re_1");
     process.env.SUPAFFI_HOST_IP = "146.59.195.140";
 
     const calls: string[] = [];
@@ -135,53 +128,39 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
         calls.push("webhookEventReceived");
         return ok;
       },
-      resendKeyWorks: async () => {
-        calls.push("resendKeyWorks");
-        return no;
-      },
-      sendingDomainVerified: async () => {
-        calls.push("sendingDomainVerified");
-        return no;
-      },
       scriptFound: async () => {
         calls.push("scriptFound");
-        return ok;
+        return no;
       },
     };
 
     // Cold: this product has never been checked in this process.
-    await runProductChecks(owner.id, merchant.id, { fresh: new Set(["email"] as const), overrides });
+    await runProductChecks(owner.id, merchant.id, { fresh: new Set(["tracking"] as const), overrides });
     expect(calls.sort()).toEqual([
       "httpsReachable",
-      "resendKeyWorks",
       "resolvesTo",
       "scriptFound",
-      "sendingDomainVerified",
       "stripeKeyWorks",
       "webhookEventReceived",
     ]);
 
-    // Warm: only the email section is asked for fresh, so only it runs, and
-    // the other three lights come back exactly as they were.
+    // Warm: only the tracking section is asked for fresh, so only it runs,
+    // and the other two lights come back exactly as they were.
     calls.length = 0;
     const warm = await runProductChecks(owner.id, merchant.id, {
-      fresh: new Set(["email"] as const),
+      fresh: new Set(["tracking"] as const),
       overrides: {
         ...overrides,
-        resendKeyWorks: async () => {
-          calls.push("resendKeyWorks");
-          return ok;
-        },
-        sendingDomainVerified: async () => {
-          calls.push("sendingDomainVerified");
+        scriptFound: async () => {
+          calls.push("scriptFound");
           return ok;
         },
       },
     });
-    expect(calls.sort()).toEqual(["resendKeyWorks", "sendingDomainVerified"]);
-    expect(warm.email.key.ok).toBe(true);
-    expect(warm.dns.resolves.ok).toBe(true);
+    expect(calls).toEqual(["scriptFound"]);
     expect(warm.tracking.script.ok).toBe(true);
+    expect(warm.dns.resolves.ok).toBe(true);
+    expect(warm.stripe.key.ok).toBe(true);
 
     // Nothing named fresh at all: nothing runs.
     calls.length = 0;
@@ -197,7 +176,6 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
       websiteUrl: "https://c.test",
     });
     await connectStripe(owner.id, merchant.id, { secretKey: "rk_test_1", webhookSecret: "whsec_1" });
-    await connectEmailProvider(owner.id, merchant.id, "re_1");
     process.env.SUPAFFI_HOST_IP = "146.59.195.140";
 
     const calls: string[] = [];
@@ -218,45 +196,36 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
         calls.push("webhookEventReceived");
         return ok;
       },
-      resendKeyWorks: async () => {
-        calls.push("resendKeyWorks");
-        return ok;
-      },
-      sendingDomainVerified: async () => {
-        calls.push("sendingDomainVerified");
-        return ok;
-      },
       scriptFound: async () => {
         calls.push("scriptFound");
         return ok;
       },
     };
-    const email = new Set(["email"] as const);
+    const tracking = new Set(["tracking"] as const);
 
     let clock = 1_000_000;
     const now = () => clock;
 
     // Warms every section.
-    await runProductChecks(owner.id, merchant.id, { fresh: email, overrides, now });
+    await runProductChecks(owner.id, merchant.id, { fresh: tracking, overrides, now });
 
-    // Still inside the minute: only the email section runs.
+    // Still inside the minute: only the tracking section runs.
     calls.length = 0;
     clock += 30_000;
-    await runProductChecks(owner.id, merchant.id, { fresh: email, overrides, now });
-    expect(calls.sort()).toEqual(["resendKeyWorks", "sendingDomainVerified"]);
+    await runProductChecks(owner.id, merchant.id, { fresh: tracking, overrides, now });
+    expect(calls).toEqual(["scriptFound"]);
 
-    // Sixty-one seconds after the first run. The email section has been asked
-    // for on every poll, but the other three have not been run since, so they
-    // are stale and run again rather than living forever on the email poll.
+    // Sixty-one seconds after the first run. The tracking section has been
+    // asked for on every poll, but the other two have not been run since, so
+    // they are stale and run again rather than living forever on the
+    // tracking poll.
     calls.length = 0;
     clock += 31_000;
-    await runProductChecks(owner.id, merchant.id, { fresh: email, overrides, now });
+    await runProductChecks(owner.id, merchant.id, { fresh: tracking, overrides, now });
     expect(calls.sort()).toEqual([
       "httpsReachable",
-      "resendKeyWorks",
       "resolvesTo",
       "scriptFound",
-      "sendingDomainVerified",
       "stripeKeyWorks",
       "webhookEventReceived",
     ]);
@@ -279,8 +248,6 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
         webhookEventReceived: async () => {
           throw new Error("db down");
         },
-        resendKeyWorks: async () => ok,
-        sendingDomainVerified: async () => ok,
         scriptFound: async () => ok,
       },
     });

@@ -23,7 +23,7 @@ export async function Terms({ ctx }: { ctx: Ctx }) {
 
   return (
     <StepShell
-      step={displayStep("terms", ctx.emailRequired)}
+      step={displayStep("terms")}
       title="What affiliates earn"
       lede="Sensible defaults are already filled in. Change them now or later."
     >

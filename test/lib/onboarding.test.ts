@@ -10,8 +10,6 @@ const setup = (over: Partial<ProductSetup> = {}): ProductSetup => ({
   stripeConnected: false,
   stripeKeyStored: false,
   stripeWebhookStored: false,
-  emailConnected: false,
-  emailRequired: true,
   integrationsConnected: false,
   firstProgramSlug: null,
   trackingStatus: "not-started",
@@ -25,22 +23,17 @@ const setup = (over: Partial<ProductSetup> = {}): ProductSetup => ({
 const checks = (over: Partial<ProductChecks> = {}): ProductChecks => ({
   dns: { resolves: no, https: no, certificate: no },
   stripe: { key: no, webhook: no },
-  email: { key: no, domain: no },
   tracking: { script: no },
   ...over,
 });
 
 describe("stepIds", () => {
-  it("has six steps when email is required, the finished screen not being one", () => {
-    expect(stepIds(true)).toHaveLength(6);
-    expect(stepIds(true)).not.toContain("link");
+  it("has five steps, the finished screen not being one", () => {
+    expect(stepIds()).toEqual(["product", "subdomain", "stripe-key", "terms", "tracking"]);
+    expect(stepIds()).not.toContain("link");
   });
   it("has no webhook step: the key's own save creates the endpoint", () => {
-    expect(stepIds(true)).not.toContain("stripe-webhook");
-  });
-  it("drops the email step when the instance prints emails", () => {
-    expect(stepIds(false)).not.toContain("email");
-    expect(stepIds(false)).toHaveLength(5);
+    expect(stepIds()).not.toContain("stripe-webhook");
   });
 });
 
@@ -57,7 +50,7 @@ describe("stepStates", () => {
       setup: setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }),
       checks: checks({ stripe: { key: ok, webhook: no } }),
       onboardingCompletedAt: null,
-      current: "email",
+      current: "terms",
     });
     expect(states.find((s) => s.id === "stripe-key")?.state).toBe("done");
   });
@@ -101,19 +94,17 @@ describe("stepStates", () => {
         stripeConnected: true,
         stripeKeyStored: true,
         stripeWebhookStored: true,
-        emailConnected: true,
         firstProgramSlug: "standard",
         trackingStatus: "verified",
       }),
       checks: checks({
         stripe: { key: ok, webhook: ok },
-        email: { key: ok, domain: ok },
         tracking: { script: ok },
       }),
       onboardingCompletedAt: null,
       current: "subdomain",
     });
-    for (const id of ["stripe-key", "email", "terms", "tracking"]) {
+    for (const id of ["stripe-key", "terms", "tracking"]) {
       expect(states.find((s) => s.id === id)?.state, id).toBe("done");
     }
   });
@@ -122,28 +113,6 @@ describe("stepStates", () => {
     const states = stepStates({ setup: setup(), checks: checks(), onboardingCompletedAt: null, current: "subdomain" });
     expect(states.find((s) => s.id === "stripe-key")?.state).toBe("upcoming");
     expect(states.find((s) => s.id === "tracking")?.state).toBe("upcoming");
-  });
-
-  it("needs both halves of email, not just the key that was stored", () => {
-    // A key Resend accepts and a domain it will not send from delivers
-    // nothing, so the step is not finished and the rail does not say it is.
-    const states = stepStates({
-      setup: setup({ emailConnected: true }),
-      checks: checks({ email: { key: ok, domain: no } }),
-      onboardingCompletedAt: null,
-      current: "terms",
-    });
-    expect(states.find((s) => s.id === "email")?.state).toBe("waiting");
-  });
-
-  it("ticks email once the key works and the domain is verified", () => {
-    const states = stepStates({
-      setup: setup({ emailConnected: true }),
-      checks: checks({ email: { key: ok, domain: ok } }),
-      onboardingCompletedAt: null,
-      current: "terms",
-    });
-    expect(states.find((s) => s.id === "email")?.state).toBe("done");
   });
 
   it("does not hold the subdomain open where nothing outside can reach the instance", () => {
@@ -165,25 +134,25 @@ describe("stepStates", () => {
 
 describe("displayStep", () => {
   it("counts the steps there are, with nothing added for work already done", () => {
-    expect(displayStep("product", true)).toEqual({ index: 1, total: 6 });
-    expect(displayStep("terms", false)).toEqual({ index: 4, total: 5 });
+    expect(displayStep("product")).toEqual({ index: 1, total: 5 });
+    expect(displayStep("terms")).toEqual({ index: 4, total: 5 });
   });
 });
 
 describe("stepIndex", () => {
-  it("counts from one and shifts once email drops out", () => {
-    expect(stepIndex("stripe-key", true)).toBe(3);
-    expect(stepIndex("terms", false)).toBe(4);
+  it("counts from one", () => {
+    expect(stepIndex("product")).toBe(1);
+    expect(stepIndex("stripe-key")).toBe(3);
+    expect(stepIndex("terms")).toBe(4);
   });
 });
 
 describe("navigation", () => {
-  it("walks forward and back, skipping email when not required", () => {
-    expect(nextStep("stripe-key", true)).toBe("email");
-    expect(nextStep("stripe-key", false)).toBe("terms");
-    expect(previousStep("terms", false)).toBe("stripe-key");
-    expect(nextStep("tracking", true)).toBeNull();
-    expect(previousStep("product", true)).toBeNull();
+  it("walks forward and back", () => {
+    expect(nextStep("stripe-key")).toBe("terms");
+    expect(previousStep("terms")).toBe("stripe-key");
+    expect(nextStep("tracking")).toBeNull();
+    expect(previousStep("product")).toBeNull();
   });
 
   it("builds the path", () => {
@@ -195,20 +164,16 @@ describe("resumeStep", () => {
   it("lands on the first step whose stored data is missing", () => {
     // Nothing stored anywhere means the Owner never got past the subdomain.
     expect(resumeStep(setup(), null)).toBe("subdomain");
-    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }), null)).toBe("email");
-    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true }), null)).toBe("terms");
-    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true, firstProgramSlug: "standard" }), null)).toBe("tracking");
+    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true }), null)).toBe("terms");
+    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, firstProgramSlug: "standard" }), null)).toBe("tracking");
   });
   it("moves past the key once it is stored, webhook or not", () => {
     // The endpoint is made in the same save as the key, so a stored key with
     // no webhook is a local instance, and nothing further to ask for.
-    expect(resumeStep(setup({ stripeKeyStored: true, stripeWebhookStored: false }), null)).toBe("email");
+    expect(resumeStep(setup({ stripeKeyStored: true, stripeWebhookStored: false }), null)).toBe("terms");
   });
   it("lands on the link when everything is stored but the owner never saw it", () => {
-    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, emailConnected: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBeNull();
-  });
-  it("lands on the link when email is not required and the rest is stored", () => {
-    expect(resumeStep(setup({ emailRequired: false, stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBeNull();
+    expect(resumeStep(setup({ stripeConnected: true, stripeKeyStored: true, stripeWebhookStored: true, firstProgramSlug: "standard", trackingStatus: "awaiting-sale" }), null)).toBeNull();
   });
 });
 
@@ -234,7 +199,6 @@ describe("checkSectionFor", () => {
   it("names the one group of checks the step's screen shows", () => {
     expect(checkSectionFor("subdomain")).toBe("dns");
     expect(checkSectionFor("stripe-key")).toBe("stripe");
-    expect(checkSectionFor("email")).toBe("email");
     expect(checkSectionFor("tracking")).toBe("tracking");
     expect(checkSectionFor("product")).toBeNull();
     expect(checkSectionFor("terms")).toBeNull();

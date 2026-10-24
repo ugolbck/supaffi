@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { hash, verify } from "@node-rs/argon2";
 
 // OWASP 2026 baseline for Argon2id: 64MB memory, 3 iterations, 4 parallel
@@ -67,4 +68,28 @@ export async function hashPassword(plain: string): Promise<string> {
 
 export async function verifyPassword(plain: string, hashed: string): Promise<boolean> {
   return withArgon2Slot(() => verify(hashed, plain));
+}
+
+let dummyHash: Promise<string> | null = null;
+
+// A real Argon2id hash of a random secret nobody knows, made on first use
+// rather than at import so the startup path never pays for it. Forgotten on
+// failure, or one bad moment would leave every later call rejecting.
+function dummyPasswordHash(): Promise<string> {
+  dummyHash ??= hashPassword(randomBytes(32).toString("hex")).catch((err) => {
+    dummyHash = null;
+    throw err;
+  });
+  return dummyHash;
+}
+
+/**
+ * A full verify that always fails, for a login whose email matched no
+ * account. Returning straight away would answer an unknown email in
+ * milliseconds and a real one in a tenth of a second, which tells a stranger
+ * which emails have accounts without them guessing a password.
+ */
+export async function verifyAgainstNoAccount(plain: string): Promise<false> {
+  await verifyPassword(plain, await dummyPasswordHash());
+  return false;
 }

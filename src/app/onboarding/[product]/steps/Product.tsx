@@ -17,11 +17,11 @@ import type { Ctx } from "../checks";
 export function Product({ ctx }: { ctx: Ctx }) {
   const { merchant } = ctx;
   const product = { id: merchant.id, slug: merchant.slug };
-  const next = nextStep("product", ctx.emailRequired)!;
+  const next = nextStep("product")!;
 
   return (
     <StepShell
-      step={displayStep("product", ctx.emailRequired)}
+      step={displayStep("product")}
       title="What are you promoting?"
       action={
         <Button size="lg" render={<Link href={stepPath(merchant.slug, next)} />}>

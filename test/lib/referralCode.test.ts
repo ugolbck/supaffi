@@ -46,7 +46,6 @@ describe.skipIf(!hasDatabase)("generateLinkCode", () => {
         websiteUrl: "https://refcode-test.example.com",
         stripeSecretKeyEnc: "x",
         stripeWebhookSecretEnc: "x",
-        emailProviderConfigEnc: "x",
       },
     });
     merchantId = merchant.id;

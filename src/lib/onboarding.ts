@@ -6,7 +6,6 @@ export type StepId =
   | "product"
   | "subdomain"
   | "stripe-key"
-  | "email"
   | "terms"
   | "tracking";
 
@@ -30,12 +29,6 @@ const ALL: StepId[] = [
   // webhook endpoints, and saving it creates the endpoint in the same
   // action, so there was nothing left for a screen to ask.
   "stripe-key",
-  // One step, not two. The domain and the key are both done in Resend, in
-  // one sitting, in one browser tab: splitting them meant two screens each
-  // carrying their own "Open Resend" button, and a domain screen with
-  // nothing to check on it because checking needs the key from the screen
-  // after it.
-  "email",
   "terms",
   "tracking",
 ];
@@ -44,14 +37,13 @@ const LABELS: Record<StepId, string> = {
   product: "Product",
   subdomain: "Subdomain",
   "stripe-key": "Stripe key",
-  email: "Email",
   terms: "Terms",
   tracking: "Tracking",
 };
 
-/** The steps in order. The email step exists only when the instance sends real email. */
-export function stepIds(emailRequired: boolean): StepId[] {
-  return emailRequired ? ALL : ALL.filter((id) => id !== "email");
+/** The steps in order. */
+export function stepIds(): StepId[] {
+  return ALL;
 }
 
 export function stepLabel(id: StepId): string {
@@ -59,8 +51,8 @@ export function stepLabel(id: StepId): string {
 }
 
 /** The step's 1-based position among the steps the instance actually has. */
-export function stepIndex(id: StepId, emailRequired: boolean): number {
-  return stepIds(emailRequired).indexOf(id) + 1;
+export function stepIndex(id: StepId): number {
+  return stepIds().indexOf(id) + 1;
 }
 
 /**
@@ -71,8 +63,8 @@ export function stepIndex(id: StepId, emailRequired: boolean): number {
  * anything they do not know, so all they did was make the flow look two
  * steps longer than it is.
  */
-export function displayStep(id: StepId, emailRequired: boolean): { index: number; total: number } {
-  return { index: stepIndex(id, emailRequired), total: stepIds(emailRequired).length };
+export function displayStep(id: StepId): { index: number; total: number } {
+  return { index: stepIndex(id), total: stepIds().length };
 }
 
 /**
@@ -85,8 +77,6 @@ export function checkSectionFor(id: StepId): keyof ProductChecks | null {
       return "dns";
     case "stripe-key":
       return "stripe";
-    case "email":
-      return "email";
     case "tracking":
       return "tracking";
     case "product":
@@ -120,14 +110,11 @@ function stored(id: StepId, setup: ProductSetup, onboardingCompletedAt: Date | n
       return (
         setup.stripeKeyStored ||
         setup.stripeWebhookStored ||
-        setup.emailConnected ||
         setup.firstProgramSlug !== null ||
         setup.trackingStatus !== "not-started"
       );
     case "stripe-key":
       return setup.stripeKeyStored;
-    case "email":
-      return setup.emailConnected;
     case "terms":
       return setup.firstProgramSlug !== null;
     case "tracking":
@@ -142,11 +129,6 @@ function verified(id: StepId, checks: ProductChecks, setup: ProductSetup, onboar
       return checks.dns.resolves.ok && checks.dns.https.ok && checks.dns.certificate.ok;
     case "stripe-key":
       return checks.stripe.key.ok;
-    // Both halves, because both are needed before a single affiliate can log
-    // in: a key that works but a domain Resend will not send from delivers
-    // nothing.
-    case "email":
-      return checks.email.key.ok && checks.email.domain.ok;
     case "tracking":
       return checks.tracking.script.ok || setup.trackingStatus !== "not-started";
     default:
@@ -166,7 +148,7 @@ export function stepStates(input: {
    */
   dnsUnavailable?: boolean;
 }): Step[] {
-  const ids = stepIds(input.setup.emailRequired);
+  const ids = stepIds();
   const currentIndex = ids.indexOf(input.current);
   return ids.map((id, index) => {
     const behind = index < currentIndex;
@@ -179,8 +161,7 @@ export function stepStates(input: {
     if (id === input.current) state = "current";
     // A tick means the outside world agreed, and nothing else. Walking past a
     // step used to be enough to paint it green, so a subdomain whose record
-    // had been deleted and an email step whose domain was never added both
-    // read as finished the moment the Owner pressed Continue. A step that has
+    // had been deleted read as finished the moment the Owner pressed Continue. A step that has
     // been reached and is not passing is waiting, wherever the Owner is
     // standing now, and the rail's waiting rows are links back to it.
     else if (isVerified) state = "done";
@@ -190,14 +171,14 @@ export function stepStates(input: {
   });
 }
 
-export function nextStep(current: StepId, emailRequired: boolean): StepId | null {
-  const ids = stepIds(emailRequired);
+export function nextStep(current: StepId): StepId | null {
+  const ids = stepIds();
   const i = ids.indexOf(current);
   return i >= 0 && i < ids.length - 1 ? ids[i + 1] : null;
 }
 
-export function previousStep(current: StepId, emailRequired: boolean): StepId | null {
-  const ids = stepIds(emailRequired);
+export function previousStep(current: StepId): StepId | null {
+  const ids = stepIds();
   const i = ids.indexOf(current);
   return i > 0 ? ids[i - 1] : null;
 }
@@ -206,9 +187,7 @@ export function previousStep(current: StepId, emailRequired: boolean): StepId | 
  * The subdomain to propose from the website address: go. on the site's own
  * domain, www dropped.
  *
- * Not affiliates. Every affiliate link carries this host, so short wins, and
- * the login emails go out from affiliates@ this domain, which under
- * affiliates.acme.com read as affiliates@affiliates.acme.com.
+ * Not affiliates. Every affiliate link carries this host, so short wins.
  */
 export function suggestSubdomain(websiteUrl: string): string {
   try {
@@ -308,7 +287,7 @@ export function backToDashboardHref(
  * cue to send them to the finished screen rather than back into the flow.
  */
 export function resumeStep(setup: ProductSetup, onboardingCompletedAt: Date | null): StepId | null {
-  const ids = stepIds(setup.emailRequired).filter((id) => id !== "product");
+  const ids = stepIds().filter((id) => id !== "product");
   for (const id of ids) {
     if (!stored(id, setup, onboardingCompletedAt)) return id;
   }

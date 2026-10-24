@@ -10,7 +10,14 @@ const verifyPassword = vi.fn(async (_plain: string, _hashed: string): Promise<bo
 const { ConcurrencyLimitError } = await vi.importActual<typeof import("@/lib/password")>(
   "@/lib/password"
 );
-vi.mock("@/lib/password", () => ({ hashPassword, verifyPassword, ConcurrencyLimitError }));
+// The no-account verify and its dummy hash live in password.ts, and are
+// covered there. Here it only has to run a verify, so the failures below
+// travel through it the way they do in the real thing.
+const verifyAgainstNoAccount = vi.fn(async (plain: string): Promise<false> => {
+  await verifyPassword(plain, "dummy-hash");
+  return false;
+});
+vi.mock("@/lib/password", () => ({ hashPassword, verifyPassword, verifyAgainstNoAccount, ConcurrencyLimitError }));
 
 const { checkOwnerPassword, findOwnerForLogin, verifyOwnerCredentials } = await import(
   "@/lib/owner"
@@ -19,6 +26,7 @@ const { checkOwnerPassword, findOwnerForLogin, verifyOwnerCredentials } = await 
 beforeEach(() => {
   findUnique.mockReset();
   verifyPassword.mockClear();
+  verifyAgainstNoAccount.mockClear();
 });
 
 describe("owner login timing", () => {
@@ -27,13 +35,8 @@ describe("owner login timing", () => {
     // right one, which gives the Owner's email away.
     findUnique.mockResolvedValue(null);
     expect(await verifyOwnerCredentials("nobody@example.com", "guess")).toBeNull();
+    expect(verifyAgainstNoAccount).toHaveBeenCalledWith("guess");
     expect(verifyPassword).toHaveBeenCalledWith("guess", "dummy-hash");
-  });
-
-  it("makes the dummy hash once, not on every attempt", async () => {
-    await checkOwnerPassword(null, "one");
-    await checkOwnerPassword(null, "two");
-    expect(hashPassword).toHaveBeenCalledTimes(1);
   });
 
   it("verifies against the Owner's own hash when the email matches", async () => {

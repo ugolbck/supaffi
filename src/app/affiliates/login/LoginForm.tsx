@@ -1,43 +1,53 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { requestAffiliateLogin } from "./requestAffiliateLogin";
+import { loginAffiliate } from "./loginAffiliate";
 
-const initialState = { status: "form" as const };
-
-export function LoginForm() {
-  const [state, formAction] = useActionState(requestAffiliateLogin, initialState);
-
-  if (state.status === "sent") {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Check your email</CardTitle>
-          <CardDescription>
-            If an affiliate account exists for that address, we sent a login link.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
+export function LoginForm({ merchantName }: { merchantName: string | null }) {
+  const [state, formAction, pending] = useActionState(loginAffiliate, { error: "" });
+  // Held here so a refused login keeps the email: React resets an
+  // uncontrolled form after every action.
+  const [email, setEmail] = useState("");
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Log in</CardTitle>
-        <CardDescription>We&apos;ll email you a link. No password needed.</CardDescription>
+        {merchantName && <CardDescription>{merchantName} affiliate program</CardDescription>}
       </CardHeader>
       <CardContent>
         <form action={formAction} className="flex flex-col gap-4">
+          {state.error && (
+            <p role="alert" className="text-[13px] text-status-danger">
+              {state.error}
+            </p>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" name="email" required />
+            <Input
+              id="email"
+              type="email"
+              name="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
-          <Button type="submit">Send login link</Button>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input id="password" type="password" name="password" autoComplete="current-password" required />
+          </div>
+          <Button type="submit" className="cursor-pointer" disabled={pending}>
+            Log in
+          </Button>
+          <p className="text-center text-[13px] text-muted-foreground text-pretty">
+            Forgot your password, or never set one? Ask {merchantName ?? "the program owner"} for a password link.
+          </p>
         </form>
       </CardContent>
     </Card>

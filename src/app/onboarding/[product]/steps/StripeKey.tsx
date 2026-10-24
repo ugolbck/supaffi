@@ -16,7 +16,7 @@ import type { Ctx } from "../checks";
 export function StripeKey({ ctx }: { ctx: Ctx }) {
   const { merchant, checks, setup } = ctx;
   const stored = setup.stripeKeyStored;
-  const next = nextStep("stripe-key", ctx.emailRequired)!;
+  const next = nextStep("stripe-key")!;
   const product = { id: merchant.id, slug: merchant.slug };
   // Stripe cannot reach a machine on your desk, so the only way to see a real
   // event locally is to have Stripe's own CLI forward it. This is the one
@@ -26,7 +26,7 @@ export function StripeKey({ ctx }: { ctx: Ctx }) {
 
   return (
     <StepShell
-      step={displayStep("stripe-key", ctx.emailRequired)}
+      step={displayStep("stripe-key")}
       title="Let Supaffi read your Stripe payments"
       lede="The link opens Stripe with the permissions already ticked."
       action={

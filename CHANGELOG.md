@@ -8,6 +8,23 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- Supaffi no longer sends email, and setup no longer asks for a Resend key or
+  a sending domain. Affiliates sign up with an email and a password and log in
+  with them.
+- Affiliates who signed up before this release have no password yet. Open each
+  one in Affiliates, press Create password link and send them the link. It
+  works once, for 3 days. The same link resets a forgotten password.
+- The stored Resend keys are deleted on upgrade.
+
+### Fixed
+
+- Your login page no longer answers on a product's affiliate domain. Opening
+  that domain's address on its own goes to the affiliate login.
+
 ## 0.2.7
 
 ### Security

@@ -1,12 +1,10 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { Plus, TriangleAlert } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { CommissionDurationType } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { listProgramsForMerchant } from "@/lib/program";
-import { runProductChecks } from "@/lib/checks/product";
-import { deliveryMode } from "@/lib/email/transport";
 import type { ProgramFormValues } from "@/lib/programValidation";
 import { originFor } from "@/lib/url";
 import { Button } from "@/components/ui/button";
@@ -20,12 +18,6 @@ import { createProgramAction, updateProgramAction } from "./programActions";
  * editing in a sheet the URL opens: ?new=1 for a fresh one, ?edit=<id> for an
  * existing one. The two routes those used to be redirect here, so a bookmark
  * still lands on the right panel.
- *
- * A signup link handed out before the sending domain is verified takes
- * affiliates as far as the form and no further: the login email cannot leave
- * the instance. Onboarding lets an Owner finish with that still pending,
- * because verification can take hours and is not theirs to hurry, so the
- * consequence is carried to the one screen where the link is copied.
  */
 
 type Program = {
@@ -40,20 +32,6 @@ type Program = {
   signupOpen: boolean;
   affiliateCount: number;
 };
-
-/**
- * Whether the login email would fail today. Live rather than a stored flag: a
- * domain unverified in Resend this morning is verified this afternoon without
- * anything here writing a row. `runProductChecks` serves a section it ran less
- * than a minute ago from its own cache, so visiting this page costs nothing on
- * the second visit. An instance that prints its email has no domain to verify
- * and no warning to give.
- */
-async function sendingDomainPending(ownerId: string, merchantId: string, programCount: number): Promise<boolean> {
-  if (programCount === 0 || deliveryMode() !== "send") return false;
-  const checks = await runProductChecks(ownerId, merchantId);
-  return !(checks.email.key.ok && checks.email.domain.ok);
-}
 
 function durationLabel(p: Program): string {
   if (p.commissionDurationType === "FOREVER") return "forever";
@@ -95,7 +73,6 @@ export default async function ProgramsPage({
 
   const base = `/dashboard/products/${merchant.slug}/programs`;
   const programs = await listProgramsForMerchant(ownerId, merchant.id);
-  const emailPending = await sendingDomainPending(ownerId, merchant.id, programs.length);
   const productRef = { id: merchant.id, slug: merchant.slug };
 
   // An id that names nothing opens nothing, rather than an empty form.
@@ -111,21 +88,6 @@ export default async function ProgramsPage({
           </Button>
         }
       />
-
-      {emailPending && (
-        <p className="flex shrink-0 items-start gap-2.5 rounded-(--radius-md) border border-status-warning/30 bg-status-warning-bg px-4 py-2.5 text-[13px] text-neutral-700">
-          <TriangleAlert className="mt-px size-4 shrink-0 text-status-warning" />
-          <span>
-            Affiliates can sign up but cannot log in until your sending domain is verified.{" "}
-            <Link
-              href={`/dashboard/products/${merchant.slug}/settings`}
-              className="cursor-pointer font-medium text-status-warning underline decoration-status-warning/40 underline-offset-2 transition-colors hover:decoration-status-warning"
-            >
-              Check your email setup
-            </Link>
-          </span>
-        </p>
-      )}
 
       {/* Content sized rows, scrolling as a set: the cards say what they have
           to say and the page underneath them never scrolls. */}

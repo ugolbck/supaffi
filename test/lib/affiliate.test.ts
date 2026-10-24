@@ -73,7 +73,6 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         websiteUrl: "https://affiliate-lib-test.example.com",
         stripeSecretKeyEnc: "x",
         stripeWebhookSecretEnc: "x",
-        emailProviderConfigEnc: "x",
       },
     });
     merchantId = merchant.id;
@@ -111,7 +110,6 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         websiteUrl: "https://affiliate-lib-other.example.com",
         stripeSecretKeyEnc: "x",
         stripeWebhookSecretEnc: "x",
-        emailProviderConfigEnc: "x",
       },
     });
     otherMerchantId = otherMerchant.id;

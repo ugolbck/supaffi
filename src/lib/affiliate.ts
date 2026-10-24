@@ -29,6 +29,8 @@ export type CreateAffiliateInput = {
    * collision on this means instead.
    */
   code?: string;
+  /** Argon2id hash of the password chosen at signup. */
+  passwordHash?: string;
 };
 
 function normalizeEmail(email: string): string {
@@ -71,6 +73,7 @@ export async function createAffiliate(
         programId,
         email,
         name: input.name,
+        passwordHash: input.passwordHash,
         links: { create: { code, isPrimary: true } },
       },
       select: { id: true, email: true },
@@ -568,6 +571,7 @@ export type AffiliateDetailCommission = {
 };
 
 export type AffiliateDetail = {
+  hasPassword: boolean;
   payoutDetails: string | null;
   commissions: AffiliateDetailCommission[];
 };
@@ -594,6 +598,7 @@ export async function getAffiliateDetails(
     select: {
       id: true,
       payoutDetails: true,
+      passwordHash: true,
       commissions: {
         select: { id: true, amount: true, currency: true, status: true, createdAt: true },
         orderBy: { createdAt: "desc" },
@@ -607,6 +612,7 @@ export async function getAffiliateDetails(
       a.id,
       {
         payoutDetails: a.payoutDetails,
+        hasPassword: a.passwordHash !== null,
         commissions: a.commissions.map((c) => ({
           id: c.id,
           amount: c.amount.toFixed(2),

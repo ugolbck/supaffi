@@ -3,8 +3,7 @@ import {
   checkState,
   dnsCheckRows,
   dnsPending,
-  emailDomainPending,
-  emailKeyPending,
+  stripeKeyPending,
   trackingPending,
 } from "@/components/onboarding/checkRows";
 
@@ -14,7 +13,7 @@ import {
  *
  * `checkState` tells "has not happened yet" from "happened and is wrong" by
  * matching the front of a detail string that `src/lib/checks/dns.ts`,
- * `src/lib/checks/email.ts`, `src/lib/checks/script.ts` and
+ * `src/lib/checks/stripe.ts`, `src/lib/checks/script.ts` and
  * `src/lib/checks/product.ts` write. Nothing in the type system ties the two
  * together, so renaming a detail there would silently turn every waiting row
  * into a red cross and every red cross into a waiting row.
@@ -31,12 +30,8 @@ const DETAIL = {
   wrongAddress: "Points at 1.2.3.4, not this server",
   certNotIssued: "Being set up",
   nothingAnswered: "Nothing answered",
-  // src/lib/checks/email.ts
-  domainMissing: "Add affiliates.example.com in Resend",
-  domainUnverified: "Added, pending. Check the records in Resend.",
-  keyRejected: "Resend says this key is not valid",
-  keyNotAKey: "That is not a Resend API key",
-  resendUnreachable: "Could not reach Resend",
+  // src/lib/checks/stripe.ts
+  stripeUnreachable: "Could not reach Stripe",
   // src/lib/checks/script.ts
   scriptMissing: "Not found on example.com",
   siteUnreachable: "Could not load the site",
@@ -50,16 +45,10 @@ const no = (detail: string) => ({ ok: false, detail });
 describe("checkState", () => {
   it("passes when the check passed, whatever the detail says", () => {
     expect(checkState(ok("Points at 1.2.3.4"), dnsPending)).toBe("ok");
-    expect(checkState(ok("Verified as affiliates.example.com"), emailDomainPending)).toBe("ok");
   });
 
   it("waits for a record that has not appeared in DNS yet", () => {
     expect(checkState(no(DETAIL.noRecord), dnsPending)).toBe("pending");
-  });
-
-  it("waits for a domain that is not in Resend yet, or not verified yet", () => {
-    expect(checkState(no(DETAIL.domainMissing), emailDomainPending)).toBe("pending");
-    expect(checkState(no(DETAIL.domainUnverified), emailDomainPending)).toBe("pending");
   });
 
   it("waits for a script the owner has not pasted yet", () => {
@@ -75,24 +64,15 @@ describe("checkState", () => {
       DETAIL.wrongAddress
     );
 
-    expect(checkState(no(DETAIL.keyRejected), emailKeyPending)).toBe("failed");
-    expect(checkState(no(DETAIL.keyNotAKey), emailKeyPending)).toBe("failed");
     expect(checkState(no(DETAIL.siteUnreachable), trackingPending)).toBe("failed");
   });
 
-  it("waits, rather than failing, when nothing is connected to ask", () => {
-    // The email domain check needs the Resend key, and the domain step now
-    // comes first, so this is what the first email screen renders. It is not
-    // a failure: the owner has not been asked for the key yet.
-    expect(checkState(no(DETAIL.notConnected), emailKeyPending)).toBe("pending");
-    // The domain row cannot read its own way out of this one: "Not connected
-    // yet" is not one of its pending prefixes, which is why the step and the
-    // settings page both gate on the stored key before asking at all.
-    expect(checkState(no(DETAIL.notConnected), emailDomainPending)).toBe("failed");
+  it("waits, rather than failing, when no Stripe key is stored yet", () => {
+    expect(checkState(no(DETAIL.notConnected), stripeKeyPending)).toBe("pending");
   });
 
-  it("waits when Resend never answered, because no answer is not a wrong answer", () => {
-    expect(checkState(no(DETAIL.resendUnreachable), emailKeyPending)).toBe("pending");
+  it("waits when Stripe never answered, because no answer is not a wrong answer", () => {
+    expect(checkState(no(DETAIL.stripeUnreachable), stripeKeyPending)).toBe("pending");
   });
 });
 

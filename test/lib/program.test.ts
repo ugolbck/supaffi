@@ -72,7 +72,6 @@ describe.skipIf(!hasDatabase)("program", () => {
         websiteUrl: "https://example.com",
         stripeSecretKeyEnc: "x",
         stripeWebhookSecretEnc: "x",
-        emailProviderConfigEnc: "x",
       },
     });
     merchantId = merchant.id;
@@ -89,7 +88,6 @@ describe.skipIf(!hasDatabase)("program", () => {
         websiteUrl: "https://example.com",
         stripeSecretKeyEnc: "x",
         stripeWebhookSecretEnc: "x",
-        emailProviderConfigEnc: "x",
       },
     });
     merchantId2 = merchant2.id;
@@ -107,7 +105,6 @@ describe.skipIf(!hasDatabase)("program", () => {
         websiteUrl: "https://example.com",
         stripeSecretKeyEnc: "x",
         stripeWebhookSecretEnc: "x",
-        emailProviderConfigEnc: "x",
       },
     });
     otherMerchantId = otherMerchant.id;

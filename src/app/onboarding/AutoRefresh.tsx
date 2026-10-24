@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 // Re-renders the server page on an interval while something is still
 // waiting. Stops the moment it is not, so a finished step does not keep
-// polling Stripe and Resend for the rest of the session.
+// polling Stripe for the rest of the session.
 export function AutoRefresh({
   active,
   everyMs = 5000,

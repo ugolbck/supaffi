@@ -1,6 +1,6 @@
 // Destructive: clears Program / Merchant / Owner. Runs against the scratch
 // DATABASE_URL, never the dev one.
-import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 
 import { db } from "@/lib/db";
 import { getProductSetup } from "@/lib/productSetup";
@@ -41,35 +41,18 @@ afterAll(clearAll);
 describe.skipIf(!hasDatabase)("product setup", () => {
   beforeEach(clearAll);
 
-  it("counts the integrations step done without an email provider in console mode", async () => {
-    // The reason this exists: mail is sent from the Merchant's own domain, so
-    // a local Merchant on `localhost:3600` can never connect a real provider,
-    // and demanding one would make setup impossible to finish in development.
-    vi.stubEnv("EMAIL_DELIVERY", "console");
+  it("counts the integrations step done once Stripe is connected", async () => {
     const { owner, merchant } = await seedMerchant(true);
 
     const setup = await getProductSetup(owner.id, merchant.id);
-    expect(setup.emailRequired).toBe(false);
-    expect(setup.emailConnected).toBe(false);
     expect(setup.integrationsConnected).toBe(true);
     expect(setup.doneCount).toBe(1);
   });
 
-  it("still requires Stripe in console mode", async () => {
-    vi.stubEnv("EMAIL_DELIVERY", "console");
+  it("requires Stripe", async () => {
     const { owner, merchant } = await seedMerchant(false);
 
     const setup = await getProductSetup(owner.id, merchant.id);
-    expect(setup.integrationsConnected).toBe(false);
-    expect(setup.doneCount).toBe(0);
-  });
-
-  it("requires an email provider when the instance actually sends", async () => {
-    vi.stubEnv("EMAIL_DELIVERY", "send");
-    const { owner, merchant } = await seedMerchant(true);
-
-    const setup = await getProductSetup(owner.id, merchant.id);
-    expect(setup.emailRequired).toBe(true);
     expect(setup.integrationsConnected).toBe(false);
     expect(setup.doneCount).toBe(0);
   });
@@ -78,7 +61,6 @@ describe.skipIf(!hasDatabase)("product setup", () => {
     // Recruiting an affiliate is using the product, not setting it up. Counting
     // it kept a working product reading "3 of 4" forever, and kept the step rail
     // on screens that had stopped being onboarding.
-    vi.stubEnv("EMAIL_DELIVERY", "console");
     const { owner, merchant } = await seedMerchant(true);
     await db.program.create({
       data: {
@@ -108,7 +90,6 @@ describe.skipIf(!hasDatabase)("product setup", () => {
     // snippet is firing and there is nothing further the Owner can do; only a
     // paying customer arriving through a link can move it to verified, and
     // waiting on that kept a finished product showing the step rail forever.
-    vi.stubEnv("EMAIL_DELIVERY", "console");
     const { owner, merchant } = await seedMerchant(true);
     const program = await db.program.create({
       data: {

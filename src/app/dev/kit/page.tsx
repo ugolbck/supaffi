@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { CheckList, type CheckRow } from "@/components/onboarding/CheckList";
 import { CodeBlock, CopyField } from "@/components/onboarding/CodeBlock";
@@ -34,9 +34,7 @@ import {
 import { Suspense } from "react";
 import { SignupScreen } from "@/app/affiliates/signup/[program]/SignupScreen";
 import type { SignupFormAction } from "@/app/affiliates/signup/[program]/SignupForm";
-import { emailShell } from "@/components/email/shell";
 import { ProgramCard } from "@/components/dashboard/ProgramCard";
-import { TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { OverviewScreen } from "@/app/affiliates/dashboard/OverviewCards";
 import { LinksScreen } from "@/app/affiliates/dashboard/links/LinksScreen";
@@ -122,10 +120,10 @@ function useMockSave(initial: string) {
 export default function Kit() {
   // ?only=<frame> renders a single frame. Read after mount: reading it during
   // render would not match the server's render.
-  const [only, setOnly] = useState<string | null>(null);
-  useEffect(
-    () => setOnly(new URLSearchParams(window.location.search).get("only")),
-    [],
+  const only = useSyncExternalStore(
+    () => () => {},
+    () => new URLSearchParams(window.location.search).get("only"),
+    () => null,
   );
   const show = (key: string) => only === null || only === key;
 
@@ -143,9 +141,6 @@ export default function Kit() {
         </Frame>
         <Frame label="Tracking" show={show("tracking")}>
           <TrackingScreen />
-        </Frame>
-        <Frame label="Email" show={show("email")}>
-          <EmailScreen />
         </Frame>
         <Frame label="Check list, the three states" show={show("checks")}>
           <div className="max-w-[640px]">
@@ -286,10 +281,6 @@ export default function Kit() {
         <Frame label="Affiliate signup" show={show("c-signup")}>
           <CSignupScreen />
         </Frame>
-        <Frame label="Affiliate magic link email" show={show("c-email")}>
-          <CEmailPreview />
-        </Frame>
-
         <Frame label="Affiliate overview" show={show("e-overview")}>
           <EViewport>
             <EOverview />
@@ -482,56 +473,6 @@ function SubdomainScreen({ provider }: { provider: "cloudflare" | null }) {
         </TaskCardSection>
         <TaskCardSection sunken>
           <CheckList rows={DNS_PENDING} />
-        </TaskCardSection>
-      </TaskCard>
-    </StepShell>
-  );
-}
-
-function EmailScreen() {
-  return (
-    <StepShell
-      step={{ index: 4, total: 6 }}
-      title="Send email to your affiliates"
-      lede="Affiliates log in with a link sent to their inbox."
-      action={<Button size="lg">Continue</Button>}
-    >
-      <TaskCard>
-        <TaskCardHeader
-          title="1. Add this domain in Resend"
-          action={
-            <Button variant="secondary" size="sm">
-              <Image src="/logos/resend.svg" alt="" width={16} height={16} className="size-4" />
-              Open Resend
-            </Button>
-          }
-        />
-        <TaskCardSection>
-          <RecordTable records={[{ label: "Domain", value: "go.instantgradient.com" }]} />
-        </TaskCardSection>
-        <TaskCardHeader title="2. Then create a key with these settings" />
-        <TaskCardSection>
-          <RecordTable
-            records={[
-              { label: "Access", value: "Full access", copyable: false },
-              { label: "Domains", value: "All domains", copyable: false },
-            ]}
-          />
-        </TaskCardSection>
-        <TaskCardSection sunken>
-          <CheckList
-            rows={[
-              { id: "key", state: "ok", pending: "Checking your key", passed: "Your key works" },
-              {
-                id: "domain",
-                state: "pending",
-                pending: "Checking go.instantgradient.com in Resend",
-                passed: "go.instantgradient.com is ready to send email",
-                info: "Resend can take a few minutes to verify this. Carry on with the next steps, it finishes on its own. Affiliates cannot sign up until it does.",
-              },
-            ]}
-            onRecheck={mockRecheck}
-          />
         </TaskCardSection>
       </TaskCard>
     </StepShell>
@@ -932,25 +873,6 @@ function CSignupScreen() {
   );
 }
 
-function CEmailPreview() {
-  const html = emailShell({
-    merchantName: "Mokkit",
-    heading: "Log in to your affiliate account",
-    body: "This link expires in 15 minutes and can only be used once.",
-    action: {
-      label: "Log in",
-      href: "https://affiliates.mokkit.co/affiliates/verify?token=preview",
-    },
-  });
-  return (
-    <iframe
-      srcDoc={html}
-      title="Affiliate magic link email preview"
-      className="h-[420px] w-full max-w-[600px] rounded-(--radius-md) border border-neutral-300 bg-white"
-    />
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Track E: the affiliate dashboard. Every screen is a presentational component
 // that takes the whole screen as props, so it can be read here without a
@@ -1318,18 +1240,6 @@ function EShell() {
 function BProgramWarning() {
   return (
     <div className="flex flex-col gap-4 rounded-(--radius-lg) bg-background p-6">
-      <p className="flex shrink-0 items-start gap-2.5 rounded-(--radius-md) border border-status-warning/30 bg-status-warning-bg px-4 py-2.5 text-[13px] text-neutral-700">
-        <TriangleAlert className="mt-px size-4 shrink-0 text-status-warning" />
-        <span>
-          Affiliates can sign up but cannot log in until your sending domain is verified.{" "}
-          <Link
-            href="#"
-            className="cursor-pointer font-medium text-status-warning underline decoration-status-warning/40 underline-offset-2 hover:decoration-status-warning"
-          >
-            Check your email setup
-          </Link>
-        </span>
-      </p>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ProgramCard
           name="Standard"
