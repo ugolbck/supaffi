@@ -5,8 +5,8 @@
 <h1 align="center">Supaffi</h1>
 
 <p align="center">
-  Self-hosted affiliate programs for SaaS that sells through Stripe Checkout.<br>
-  Your server, your Stripe account, no cut of your revenue.
+  Affiliate program for SaaS that sells through Stripe Checkout.<br>
+  Pays commission on money you kept. Runs on your own server.
 </p>
 
 <p align="center">
@@ -19,25 +19,29 @@
   <img src="docs/images/hero.png" alt="Supaffi owner dashboard with the affiliate dashboard in front" width="100%">
 </p>
 
-Affiliates share a link to your site. Supaffi reads every sale and renewal from Stripe's webhooks, works out what each affiliate earned, and holds it until refunds have had time to land. You pay affiliates however you like and mark it paid.
+Your affiliates get a signup page and a dashboard on your own domain. You get a list of who to pay, how much, and where to send it.
 
-One command installs it on a server you already rent. One install runs several products.
+## Commission on money you kept
 
-## Why founders run it
+Supaffi reads every sale and renewal from Stripe. A commission is the affiliate's rate on what the customer paid, after discounts and before tax. Credit balance, setup fees, manual invoices and anything paid outside Stripe earn nothing.
 
-- **No revenue share.** Hosted affiliate tools charge by tier, and some take a percentage of what affiliates bring in. Supaffi costs the server it runs on.
-- **Commissions match what Stripe collected.** Earned on the price after discounts and before tax. Credit balance, one-off charges, manual invoices and money paid outside Stripe earn nothing.
-- **Refunds and chargebacks are handled before you pay.** A holding period keeps new commissions unpayable. A refund cancels or lowers the commission, an open dispute freezes it, a lost one cancels it.
-- **Self-referrals get caught.** A sale is flagged when the buyer uses the affiliate's email or one of their cards. A flagged commission is never payable until you decide.
-- **Your data stays on your server.** Stripe keys are encrypted at rest. Every image comes from this repository's release workflow, and you can verify that yourself.
+New commissions wait out a holding period you choose. A refund in that time cancels or shrinks the commission. A chargeback freezes it until the dispute closes. By the time you pay, most refunds have already landed.
 
-## How it works
+## Self-referrals don't get paid
 
-1. Install Supaffi and add your product with a restricted Stripe key. Supaffi creates its own webhook.
-2. Add the script tag to your site and pass the referral into your Stripe Checkout Session.
-3. Share your affiliate address. Commissions show up as sales come in, become payable after the holding period, and you pay them from the Payouts page.
+When a buyer uses the affiliate's own email or one of their cards, Supaffi flags the sale. It stays unpayable until you look at it.
 
-## What it pays on
+## You pay for a server, nothing else
+
+No plan tiers and no share of what affiliates bring in. One install runs all your products. Customer and affiliate data stays on your machine, and Stripe keys are encrypted with a key only that machine holds.
+
+## Setup
+
+1. Run the install command on a server and add your product with a restricted Stripe key. Supaffi creates its own webhook.
+2. Add one script tag to your site and pass the referral into your Checkout Session.
+3. Share your affiliate link. Sales show up as they happen, and you pay from the Payouts page.
+
+## What earns a commission
 
 - One-time purchases and subscriptions through Stripe Checkout, including trials that convert and SEPA or ACH payments once they settle.
 - A percentage per program, with a custom rate per affiliate. Paid once, for a set number of months, or for as long as the subscription pays.
