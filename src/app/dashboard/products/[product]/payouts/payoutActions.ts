@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { alreadyPaidParams } from "@/lib/payoutNotices";
 import { markCommissionsPaid, type ShownCommission, STALE_PAGE } from "@/lib/commission";
 
 function refusalCode(error: string): string {
@@ -31,11 +32,7 @@ export async function markPayoutPaidAction(
   if ("error" in result) params.set("error", refusalCode(result.error));
   else {
     if (result.skipped) params.set("skipped", String(result.skipped));
-    if (result.alreadyPaid) {
-      params.set("already", String(result.alreadyPaid.count));
-      if (result.alreadyPaid.paidAt) params.set("paidOn", String(result.alreadyPaid.paidAt.getTime()));
-      if (result.count > 0) params.set("recorded", "1");
-    }
+    for (const [key, value] of Object.entries(alreadyPaidParams(result))) params.set(key, value);
   }
   const search = params.toString();
   revalidatePath("/dashboard", "layout");

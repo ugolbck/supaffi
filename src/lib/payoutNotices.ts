@@ -42,7 +42,19 @@ export function alreadyPaidNote(
   const at = on ? new Date(Number(on)) : null;
   const when = at && !Number.isNaN(at.getTime()) ? ` on ${formatDate(at)}` : "";
   if (!recorded) return `Already marked paid${when}. Nothing recorded.`;
-  return already === 1
-    ? `1 commission was already marked paid${when} and was not recorded again.`
-    : `${formatCount(already)} commissions were already marked paid${when} and were not recorded again.`;
+  return `${formatCount(already)} already marked paid${when}, not recorded again.`;
+}
+
+// The query parameters `alreadyPaidNote` reads, from what the ledger returned.
+export function alreadyPaidParams(result: {
+  count: number;
+  alreadyPaid?: { count: number; paidAt: Date | null };
+}): Record<string, string> {
+  const { alreadyPaid } = result;
+  if (!alreadyPaid) return {};
+  return {
+    already: String(alreadyPaid.count),
+    ...(alreadyPaid.paidAt && { paidOn: String(alreadyPaid.paidAt.getTime()) }),
+    ...(result.count > 0 && { recorded: "1" }),
+  };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { alreadyPaidNote } from "@/lib/payoutNotices";
+import { alreadyPaidNote, alreadyPaidParams } from "@/lib/payoutNotices";
 
 const ON = String(Date.UTC(2020, 2, 4));
 
@@ -20,7 +20,25 @@ describe("alreadyPaidNote", () => {
   });
 
   it("says what was left out when the press still recorded other rows", () => {
-    expect(alreadyPaidNote("1", ON, "1")).toBe("1 commission was already marked paid on 4 Mar 2020 and was not recorded again.");
-    expect(alreadyPaidNote("3", ON, "1")).toBe("3 commissions were already marked paid on 4 Mar 2020 and were not recorded again.");
+    expect(alreadyPaidNote("1", ON, "1")).toBe("1 already marked paid on 4 Mar 2020, not recorded again.");
+    expect(alreadyPaidNote("3", ON, "1")).toBe("3 already marked paid on 4 Mar 2020, not recorded again.");
+  });
+});
+
+describe("alreadyPaidParams", () => {
+  it("adds nothing when no row was already paid", () => {
+    expect(alreadyPaidParams({ count: 2 })).toEqual({});
+  });
+
+  it("carries the count and date, and whether other rows were recorded", () => {
+    const paidAt = new Date(1_700_000_000_000);
+    expect(alreadyPaidParams({ count: 0, alreadyPaid: { count: 2, paidAt } })).toEqual({
+      already: "2",
+      paidOn: "1700000000000",
+    });
+    expect(alreadyPaidParams({ count: 1, alreadyPaid: { count: 1, paidAt: null } })).toEqual({
+      already: "1",
+      recorded: "1",
+    });
   });
 });
