@@ -8,6 +8,21 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.3.4
+
+### Changed
+
+- The affiliate signup page and dashboard no longer assume you sell
+  subscriptions. The second signup tile reads "Earn on" (every payment, a
+  number of months, or the first payment only), and the terms line says
+  "of every payment" instead of "forever".
+
+### Fixed
+
+- Customers who bought once are no longer counted as "still paying" on the
+  affiliate dashboard or the Affiliates page. Only referred subscribers count,
+  and the affiliate's Referrals card appears once they have one.
+
 ## 0.3.3
 
 ### Fixed
