@@ -17,7 +17,7 @@ A SaaS founder or small team that:
 
 - One install runs several products, each with its own affiliate domain, Stripe account connection, program and affiliates.
 - Stripe is connected with a restricted key, or a full secret key if you prefer. Supaffi creates the Stripe webhook itself and subscribes to exactly the events it needs.
-- Several products can share one Stripe account without paying the wrong affiliate, as long as each runs on its own site.
+- Several products can share one Stripe account without paying the wrong affiliate, as long as each runs on its own site and neither site links to the other's Payment Links, buy buttons or pricing tables.
 
 ### Tracking a referral
 
@@ -49,17 +49,17 @@ A SaaS founder or small team that:
 ### Protecting your money
 
 - **Holding period.** A commission becomes payable only after the number of days you set, so most refunds land before you pay.
-- **Refunds.** A full refund cancels the commission. A partial refund lowers it in proportion. A refund that reaches Supaffi before its sale still applies.
+- **Refunds.** A full refund cancels the commission. A partial refund lowers it in proportion. On an invoice with charges besides the referred subscription, the refund counts against the referred part first, since Stripe does not say which part was refunded. A refund that reaches Supaffi before its sale still applies.
 - **Refunds after you paid.** A paid commission is final. A refund or chargeback that arrives after you paid is your loss, and Supaffi never takes money back from the affiliate. The holding period is what protects you.
 - **Disputes.** While a chargeback is open, its commission cannot be paid. If it is lost before you paid, the commission is cancelled. A won one releases the commission.
 - **Self-referrals.** A sale is flagged when the buyer's email matches the affiliate's, or, when Stripe can show it, the card used matches a card on the affiliate's own Stripe customer. A flagged commission is never payable until you decide. Once you confirm a flag, or mark a referral as a self-referral yourself, everything unpaid from that referral is cancelled and it never earns again.
 - **Cancellations.** Once a subscription ends, it earns nothing more. Commissions already earned stay.
-- **Marking a payout paid.** You pay one affiliate in one currency at a time. Supaffi records exactly the commissions and amounts you saw, even if one was refunded after you opened the page, since you already sent that money. A page over an hour old has to be reloaded first. Sales that arrive meanwhile stay unpaid.
+- **Marking a payout paid.** You pay one affiliate in one currency at a time. Supaffi records exactly the commissions and amounts you saw, even if one was refunded after you opened the page, since you already sent that money. A page over an hour old has to be reloaded first. If some of those commissions were already marked paid, Supaffi tells you. Sales that arrive meanwhile stay unpaid.
 - **Stripe delivery problems.** Duplicate, late or out-of-order Stripe events never create a second commission. Failed processing is retried for about two days.
 
 ### Affiliates
 
-- Sign up on a public page with an email and password. A forgotten password is reset with a link you copy from their panel and send them. Supaffi sends no email.
+- Sign up on a public page with an email and password. A forgotten password is reset with a link you copy from their panel and send them. Supaffi sends no email. Replacing a password signs the affiliate out everywhere.
 - See clicks, sales, earnings, what is pending, payable and paid, and their payout history.
 - Create extra links pointing at any page of your site, and add their payout details.
 
@@ -69,7 +69,7 @@ These are outside the product on purpose. They may come later if users need them
 
 - **Payments that do not go through Stripe Checkout or a Payment Link:** custom Stripe Elements checkouts, invoices sent by hand, subscriptions created in the Stripe Dashboard or through the API without Checkout.
 - **Payment Links on your own custom checkout domain.** The script only tags links that point to Stripe's own address.
-- **Payment Links, buy buttons and pricing tables that already carry your own client reference.** The script leaves them alone, so sales through them are not tracked.
+- **Payment Links, buy buttons and pricing tables that already carry a client reference of your own.** The script leaves a filled-in one alone, so sales through them are not tracked. An empty one is tagged.
 - **Other payment providers:** Paddle, Lemon Squeezy, PayPal, app stores.
 - **Stripe Connect** platforms and marketplaces.
 - **Sending money.** Supaffi records payouts. It never pays affiliates itself.
