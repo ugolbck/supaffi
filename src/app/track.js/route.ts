@@ -34,27 +34,38 @@ export async function GET(req: NextRequest) {
   var params = new URLSearchParams(window.location.search);
   var code = params.get(${JSON.stringify(REFERRAL_QUERY_PARAM)});
 
-  // Sends back the token this browser already holds, read by exact cookie
-  // name, so a reload keeps its Click rather than starting a new referral.
-  var held = document.cookie.split("; ").filter(function (c) {
-    return c.indexOf(${JSON.stringify(`${REFERRAL_COOKIE}=`)}) === 0;
-  })[0];
-  var token = held ? held.slice(${JSON.stringify(`${REFERRAL_COOKIE}=`)}.length) : "";
+  // The token this browser already holds, read by exact cookie name. Sent
+  // back to /api/track so a reload keeps its Click rather than starting a new
+  // referral, and re-read later so a newer affiliate click is picked up.
+  function readHeld() {
+    var held = document.cookie.split("; ").filter(function (c) {
+      return c.indexOf(${JSON.stringify(`${REFERRAL_COOKIE}=`)}) === 0;
+    })[0];
+    return held ? held.slice(${JSON.stringify(`${REFERRAL_COOKIE}=`)}.length) : "";
+  }
+  var token = readHeld();
 
   // Checkouts Stripe builds without the Merchant's code (Payment Links, buy
   // buttons, pricing tables) have no place for metadata, so they carry the
-  // token in client_reference_id. A value the Merchant already set is theirs
-  // and is never overwritten.
+  // token in client_reference_id. An empty value counts as absent, and one
+  // carrying our prefix is ours to keep current (last click wins). Any other
+  // value is the Merchant's own and is never overwritten.
   function tag(el) {
     var name = el.tagName.toLowerCase();
     var ref = ${JSON.stringify(REFERRAL_CLIENT_REFERENCE_PREFIX)} + token;
+    function taken(cur) {
+      return !!cur && cur.indexOf(${JSON.stringify(REFERRAL_CLIENT_REFERENCE_PREFIX)}) !== 0;
+    }
     if (name === "a") {
       var url;
       try { url = new URL(el.href); } catch (e) { return; }
-      if (url.hostname !== "buy.stripe.com" || url.searchParams.has("client_reference_id")) return;
+      var cur = url.searchParams.get("client_reference_id");
+      if (url.hostname !== "buy.stripe.com" || taken(cur) || cur === ref) return;
       url.searchParams.set("client_reference_id", ref);
       el.href = url.href;
-    } else if ((name === "stripe-buy-button" || name === "stripe-pricing-table") && !el.hasAttribute("client-reference-id")) {
+    } else if (name === "stripe-buy-button" || name === "stripe-pricing-table") {
+      var attr = el.getAttribute("client-reference-id");
+      if (taken(attr) || attr === ref) return;
       // Both components watch this attribute and forward a changed value to
       // their checkout, so setting it is enough even once they have rendered.
       el.setAttribute("client-reference-id", ref);
@@ -66,6 +77,14 @@ export async function GET(req: NextRequest) {
     tag(root);
     var found = root.querySelectorAll('a[href*="buy.stripe.com"], stripe-buy-button, stripe-pricing-table');
     for (var i = 0; i < found.length; i++) tag(found[i]);
+  }
+
+  // Picks up a newer click made in another tab since this page loaded.
+  function refresh() {
+    var t = readHeld();
+    if (!t || t === token) return;
+    token = t;
+    scan(document.documentElement);
   }
 
   function run(t) {
@@ -80,9 +99,13 @@ export async function GET(req: NextRequest) {
         }
       }).observe(document.documentElement, { childList: true, subtree: true });
     }
+    // Coming back to a page left open (or restored from the back button)
+    // re-reads the cookie, since a newer affiliate click may have replaced it.
+    document.addEventListener("visibilitychange", refresh);
     // A link whose href changed after load still carries the reference.
     ["click", "auxclick"].forEach(function (type) {
       document.addEventListener(type, function (e) {
+        refresh();
         for (var n = e.target; n; n = n.parentNode) {
           if (n.nodeType === 1 && n.tagName.toLowerCase() === "a") return tag(n);
         }
