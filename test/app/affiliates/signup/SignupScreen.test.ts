@@ -1,33 +1,33 @@
 import { describe, it, expect } from "vitest";
-import { recurringTerm, formatRate } from "@/app/affiliates/signup/[program]/SignupScreen";
+import { durationTerm, formatRate } from "@/app/affiliates/signup/[program]/SignupScreen";
 
-describe("recurringTerm", () => {
+describe("durationTerm", () => {
   it("reads as an ongoing payment for FOREVER", () => {
     expect(
-      recurringTerm({ rate: 20, durationType: "FOREVER", durationMonths: null })
-    ).toEqual({ value: "Every payment", hint: "for as long as they stay" });
+      durationTerm({ rate: 20, durationType: "FOREVER", durationMonths: null })
+    ).toEqual({ value: "Every payment", hint: "as long as the customer pays" });
   });
 
   it("counts the months for FIXED_MONTHS", () => {
     expect(
-      recurringTerm({ rate: 20, durationType: "FIXED_MONTHS", durationMonths: 6 })
-    ).toEqual({ value: "6 months", hint: "of everything they pay" });
+      durationTerm({ rate: 20, durationType: "FIXED_MONTHS", durationMonths: 6 })
+    ).toEqual({ value: "6 months", hint: "of everything the customer pays" });
   });
 
   it("never falls through to one-time wording for FIXED_MONTHS, even without a month count", () => {
-    const result = recurringTerm({
+    const result = durationTerm({
       rate: 20,
       durationType: "FIXED_MONTHS",
       durationMonths: null,
     });
     expect(result.value).not.toBe("First payment");
-    expect(result.hint).toBe("of everything they pay");
+    expect(result.hint).toBe("of everything the customer pays");
   });
 
   it("reads as a single payment for ONE_TIME", () => {
     expect(
-      recurringTerm({ rate: 20, durationType: "ONE_TIME", durationMonths: null })
-    ).toEqual({ value: "First payment", hint: "one commission per referral" });
+      durationTerm({ rate: 20, durationType: "ONE_TIME", durationMonths: null })
+    ).toEqual({ value: "First payment", hint: "one commission per customer" });
   });
 });
 
