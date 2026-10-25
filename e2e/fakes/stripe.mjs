@@ -9,6 +9,7 @@
 // The /_test routes are the test's levers: a paid checkout, a refund, a
 // dispute. They stand in for what a buyer and a bank do on the real Stripe.
 //
+// A Payment Link sale is a checkout with a client_reference_id and no metadata.
 // Only the one-time payment path is modelled. Subscriptions, invoices and
 // taxes are not; their reads answer with empty lists.
 
@@ -178,6 +179,7 @@ async function testCheckout(body) {
     currency,
     customer: customer.id,
     customer_details: { email },
+    client_reference_id: body.client_reference_id ?? null,
     metadata: body.metadata ?? {},
     payment_intent: pi.id,
     invoice: null,
