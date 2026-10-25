@@ -69,6 +69,7 @@ These are outside the product on purpose. They may come later if users need them
 
 - **Payments that do not go through Stripe Checkout or a Payment Link:** custom Stripe Elements checkouts, invoices sent by hand, subscriptions created in the Stripe Dashboard or through the API without Checkout.
 - **Payment Links on your own custom checkout domain.** The script only tags links that point to Stripe's own address.
+- **Payment Links, buy buttons and pricing tables that already carry your own client reference.** The script leaves them alone, so sales through them are not tracked.
 - **Other payment providers:** Paddle, Lemon Squeezy, PayPal, app stores.
 - **Stripe Connect** platforms and marketplaces.
 - **Sending money.** Supaffi records payouts. It never pays affiliates itself.

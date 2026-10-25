@@ -23,7 +23,7 @@ export type PaymentLinkSaleResult = {
 // site for the provider's hosted page, which this suite does not load: the
 // buyer's payment is made at the provider fake with what the link's address
 // carried.
-export async function paymentLinkSale(buyer: Page, input: { via: string; email: string; amount: number }): Promise<PaymentLinkSaleResult> {
+export async function paymentLinkSale(buyer: Page, input: { via: string; email: string; amount: number; cardFingerprint?: string }): Promise<PaymentLinkSaleResult> {
   await buyer.goto(`https://shop.test/?via=${input.via}`);
   const cookie = async () => (await buyer.context().cookies("https://shop.test")).find((c) => c.name === "__supaffi_referral");
   await expect.poll(async () => Boolean(await cookie())).toBe(true);
@@ -33,7 +33,7 @@ export async function paymentLinkSale(buyer: Page, input: { via: string; email: 
   const href = (await link.getAttribute("href"))!;
   const clientReference = new URL(href).searchParams.get("client_reference_id");
   const res = await buyer.request.post("http://127.0.0.1:12111/_test/checkout", {
-    data: { amount: input.amount, email: input.email, client_reference_id: clientReference },
+    data: { amount: input.amount, email: input.email, client_reference_id: clientReference, cardFingerprint: input.cardFingerprint },
   });
   return { href, referral, delivered: (await res.json()).deliveries.map((d: { status: number }) => d.status) };
 }

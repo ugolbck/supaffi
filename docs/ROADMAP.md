@@ -10,13 +10,6 @@ then switching costs, then the rest of the program.
 
 ## Now: sales Supaffi cannot see yet
 
-### Stripe Payment Links
-Many founders sell through buy.stripe.com links, not a Checkout Session their
-own code creates, so those sales earn nothing today. Stripe accepts a
-`client_reference_id` in a Payment Link's URL and returns it on
-checkout.session.completed. The tracking script adds the referral to every
-Payment Link on the page, so the founder changes no code.
-
 ### Promo codes
 Creators promote with a discount code, not a link. A Stripe promotion code
 assigned to an affiliate credits them when a customer uses it, with or without
