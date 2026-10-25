@@ -75,9 +75,7 @@ function Referrals({ total, active }: { total: number; active: number }) {
             <span className="text-[15px] text-muted-foreground tabular-nums">of {total}</span>
           )}
         </span>
-        <span className="text-[13px] text-muted-foreground">
-          {total === 0 ? "No referred customers yet" : "still paying"}
-        </span>
+        <span className="text-[13px] text-muted-foreground">still paying</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
         {share > 0 && (
