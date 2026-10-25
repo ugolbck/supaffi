@@ -5,8 +5,8 @@
 <h1 align="center">Supaffi</h1>
 
 <p align="center">
-  <b>Run an affiliate program without paying for one.</b><br>
-  Self-hosted. Built for Stripe Checkout. No revenue share.
+  <b>The simple, self-hostable affiliate software for SaaS.</b><br>
+  One install runs a separate affiliate program for every app you own, and it never takes a cut.
 </p>
 
 <p align="center">
@@ -22,19 +22,19 @@
   <img src="docs/images/hero.png" alt="Supaffi owner dashboard with the affiliate dashboard in front" width="100%">
 </p>
 
-Affiliates share a link. Supaffi tracks every sale and renewal from Stripe. You see who to pay and how much.
+Your affiliates share their link, Supaffi follows each sale and renewal through your payment provider, and you get a list of who to pay and how much.
 
 ## Features
 
-- **Recurring commissions.** Once, for a set number of months, or for life.
-- **Refund-safe.** Commissions wait out a holding period before they're payable.
-- **Chargebacks.** An open dispute freezes its commission.
-- **Self-referrals.** Same email or card as the affiliate? Flagged, never paid until you decide.
-- **Your domain.** Affiliate signup and dashboard on `partners.yourapp.com`.
-- **Payouts.** Who you owe, where to send it, one click to mark paid.
-- **Multi-product.** One install runs every product you sell.
+- **Unlimited apps on one install**, each with its own affiliate program, domain, affiliates and payment account, fully separate from the others.
+- **Recurring commissions** paid once, for a set number of months, or for as long as the customer keeps paying.
+- **Several programs per app** for different tiers, plus a custom rate for any affiliate.
+- **Refund-safe payouts**, because commissions wait out a holding period and an open chargeback freezes its commission until the dispute closes.
+- **Self-referral detection** that holds back any sale made with the affiliate's own email or card.
+- **An affiliate portal on your domain**, like `partners.yourapp.com`, where affiliates sign up and follow their earnings.
+- **A payouts page** that lists who you owe and where to send it, with one click to mark them paid.
 
-Works with Stripe Checkout. Other payment providers are not supported yet.
+Stripe is supported today, and more payment providers are on the way.
 
 ## Install
 
@@ -50,7 +50,7 @@ It prints an address and a token. Open the address, accept the self-signed certi
 
 1. Point an A record for `affiliates.yourproduct.com` at the server. On Cloudflare, proxy off (grey cloud).
 2. Add the product in the dashboard with that hostname, your site's address and a Stripe key.
-3. Paste the tracking snippet into your site, and pass the referral into your Checkout Session.
+3. Paste the tracking snippet into your site, and pass the referral to Stripe when you create the checkout.
 
 The hostname hosts the affiliate signup and their dashboard, so it must be on the product's own domain. One per product. Supaffi sends no email. If an affiliate forgets their password, you copy them a password link from their panel.
 
