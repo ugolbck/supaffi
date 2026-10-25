@@ -1,6 +1,6 @@
 # What Supaffi handles
 
-Describes Supaffi once the money-safety fixes ship in 0.2.7. The gaps that remain in 0.2.6 are listed at the end. This is the source for the docs site and the landing page's use-case list. If a behaviour is not listed under "What it solves reliably", Supaffi does not promise it.
+Describes what Supaffi does today. This is the source for the docs site and the landing page's use-case list. If a behaviour is not listed under "What it solves reliably", Supaffi does not promise it. Fixes in each version are in the changelog, and what comes next is in the [roadmap](ROADMAP.md).
 
 ## Who it is for
 
@@ -87,13 +87,3 @@ These are outside the product on purpose. They may come later if users need them
 - **Credit notes credited to a customer's balance** instead of refunded. They do not lower a commission yet.
 - **Separate test and live modes.** Use a separate product for testing.
 - **Warnings in the dashboard for a disabled webhook or Stripe events that failed.** These are written to the server log. A revoked key does show in the dashboard.
-
-## Gaps in 0.2.6, closed by 0.2.7
-
-- An open chargeback does not stop its commission from becoming payable.
-- One-off charges and manual invoices on a referred subscription earn, and so does a switch to another Stripe product.
-- Cancelling and subscribing again through the same referral restarts the commission duration.
-- Voiding a self-referral by hand does not stop its renewals.
-- A refund after payout is taken off the affiliate's next payout, and Mark paid can refuse while that is outstanding or when an amount changed.
-- A first subscription payment partly covered by the customer's credit balance earns on the full price.
-- A one-time purchase can earn on tax already included in the price, and a refund on a one-time purchase with Stripe's post-purchase invoice can miss its commission.

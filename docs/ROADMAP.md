@@ -1,109 +1,44 @@
 # Roadmap
 
-What is still missing, roughly in the order it gets built. Deliberately coarse:
-this is the shape of the work, not a changelog. Shipped versions are in
-CHANGELOG.md.
+What's coming to Supaffi, in the order we plan to build it. There are no dates.
+What already shipped is in the [changelog](../CHANGELOG.md), and what Supaffi
+handles today is in [What Supaffi handles](what-supaffi-handles.md).
 
-The order follows what makes a SaaS founder pass on Supaffi today, measured
-against Rewardful, Tolt, FirstPromoter and Affonso: sales it cannot see first,
-then switching costs, then the rest of the program.
+Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
-## Now: sales Supaffi cannot see yet
+## Just shipped
 
-### Promo codes
-Creators promote with a discount code, not a link. A Stripe promotion code
-assigned to an affiliate credits them when a customer uses it, with or without
-a click.
+| Feature | What you get |
+| --- | --- |
+| **Stripe Payment Links, buy buttons and pricing tables** | Sales through them earn commissions. The tracking script is all you add. |
 
-## Next: switching and paying
+## Up next
 
-### Polar and Paddle
-Founders who let a merchant of record handle sales tax cannot use Supaffi.
-Polar and Paddle first, Lemon Squeezy after. The e2e sale step is already
-written without naming Stripe, so each needs only a fake.
+| Feature | What you get |
+| --- | --- |
+| **Promo codes** | Give an affiliate a Stripe promotion code. They get the sale when a customer uses it, even without clicking their link. |
 
-### Import from another tool
-Affiliates, their links and their commission history from Rewardful, Tolt and
-FirstPromoter, so moving costs nothing and nobody's link breaks.
+## Planned
 
-### Affiliates who hear from you
-Tell affiliates when they earn and when they are paid, and let them reset their
-own password. Optional: the owner brings a mail server, and without one
-nothing changes.
+| Feature | What you get |
+| --- | --- |
+| **Polar and Paddle** | Sell through a merchant of record that handles your sales tax. Lemon Squeezy after them. |
+| **Import from Rewardful, Tolt and FirstPromoter** | Bring your affiliates, their links and their history. Nobody's link breaks. |
+| **Affiliate notifications** | Affiliates hear when they earn and when they are paid, and reset their own password. Optional, with your own mail server. |
+| **Bulk payouts** | One file to pay everyone through PayPal or Wise, and a minimum payout amount. |
+| **Applications** | Approve new affiliates before they go live. |
 
-### Paying in one go
-A payout file in the format PayPal and Wise accept for bulk payouts, from the
-Payouts page, and a minimum amount below which an affiliate is not paid yet.
+## Later
 
-### Applications
-A program can hold new affiliates until the owner approves them, instead of
-choosing between open to anyone and invite only.
+| Feature | What you get |
+| --- | --- |
+| **Fixed and tiered rewards** | A flat amount per sale or signup, and a higher rate past a sales volume. |
+| **Discount for the referred customer** | Customers who come through an affiliate get a discount too. |
+| **Affiliate kit** | Your logo and colours on the affiliate pages, plus banners and copy ready to share. |
+| **Alerts and webhooks** | A Slack message or a Zapier webhook when an affiliate signs up, a sale earns or a commission is flagged. |
+| **Stats per link** | See which of an affiliate's links and sources bring sales. |
+| **Late refunds** | Optionally take a refund that arrives after payout off the affiliate's next payout. |
+| **Stripe problems in the dashboard** | See a disabled webhook or failing events without reading server logs. |
 
-## Later: the rest of a program
-
-### Fixed and tiered rewards
-A flat amount per sale or per signup, and a higher rate once an affiliate
-passes a sales volume.
-
-### A discount for the referred customer
-Two-sided rewards: the customer who came through an affiliate gets a discount
-on their purchase.
-
-### Affiliate kit
-The product's logo and colours on the affiliate pages, and banners, copy and
-links ready to share from the affiliate dashboard.
-
-### Owner alerts and webhooks
-A message in Slack, or a webhook for Zapier, when an affiliate signs up, a sale
-earns or a commission is flagged.
-
-### Stats per link
-Which of an affiliate's links and sources bring clicks and sales, on both
-dashboards.
-
-### Recovering late refunds
-A refund or chargeback that arrives after a commission was paid is the owner's
-loss today. An optional setting could take it off the affiliate's next payouts
-instead, for owners whose refund window is longer than their holding period.
-
-### Stripe problems in the dashboard
-A disabled webhook or events that keep failing reach only the server log
-today. They should show in the dashboard.
-
-## Alongside
-
-### UX polish
-Flagged commissions confirmed or dismissed on the row. Totals at the top of the
-affiliate panel, with a way to all of their commissions, and a program change
-that saves when picked. Tracking code blocks that show in full, larger hit
-areas on small buttons, the product's name on the password page. The review
-behind these is in docs/ux-review/README.md.
-
-### Real Stripe test mode in CI
-The browser tests run on every pull request against a fake Stripe. On main and
-release tags they should also complete a real Checkout Session in test mode,
-with Stripe's CLI forwarding webhooks, to catch Stripe API changes. Needs a
-test-mode key as a repository secret, so it never runs on pull requests from
-outside or from Dependabot. No scheduled runs.
-
-### What cannot be tested
-- Public DNS and certificate issuance from a real CA. Emulated locally.
-- Stripe's hosted Checkout page, which blocks automation by design.
-- Stripe reaching a public webhook URL over the internet.
-- The merchant's own checkout code.
-- Polar and Paddle sandboxes in CI: neither documents completing a checkout
-  without a browser, and Paddle's simulator needs a public URL.
-- Time passing (holding periods, renewals) without a fake clock or Stripe
-  test clocks.
-- Safari's cookie restrictions, only approximated.
-
-## Known gaps
-
-- A session that outlives its owner account still passes the dashboard guard
-  and renders an empty dashboard instead of sending you back to login.
-- The Stripe restricted key permissions named in the connect instructions have
-  not been checked against Stripe's live form. Stripe ignores an unknown one
-  silently, so a wrong name produces a key that fails later with no warning at
-  connect time.
-- Credit notes credited to a customer's balance instead of refunded do not
-  lower a commission.
+Contributors: the detailed version, with technical notes and known gaps, is in
+[docs/dev/roadmap.md](dev/roadmap.md).

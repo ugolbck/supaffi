@@ -5,7 +5,7 @@ name: E2E
 # on the merchant's site, a purchase, and what refunds, disputes and
 # self-referrals do to the commission. The stack and its fakes are in e2e/;
 # what this cannot reach (public DNS, a real CA, real Stripe) is listed in
-# docs/ROADMAP.md.
+# docs/dev/roadmap.md.
 #
 # Actions are pinned to a commit, not a tag, for the reason spelled out in
 # release.yml.
