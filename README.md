@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero.png" alt="Supaffi owner dashboard with the affiliate dashboard in front" width="100%">
+  <img src="docs/images/hero.jpg" alt="Supaffi owner dashboard with the affiliate dashboard in front" width="100%">
 </p>
 
 Your affiliates share their link, Supaffi follows each sale and renewal through your payment provider, and you get a list of who to pay and how much.
