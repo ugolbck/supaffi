@@ -47,12 +47,17 @@ describe("resolveProductDomainRoute", () => {
     }
   });
 
-  it("sends the root to the affiliate login", () => {
-    expect(resolveProductDomainRoute("/")).toEqual({ redirect: "/affiliates/login" });
+  it("sends the root to the program's entry page", () => {
+    expect(resolveProductDomainRoute("/")).toEqual({ redirect: "/affiliates" });
+    expect(resolveProductDomainRoute("/", "owner")).toEqual({ redirect: "/affiliates" });
+  });
+
+  it("sends a logged in affiliate from the root to their dashboard", () => {
+    expect(resolveProductDomainRoute("/", "affiliate")).toEqual({ redirect: "/affiliates/dashboard" });
   });
 
   it("leaves affiliate pages and look-alike paths alone", () => {
-    for (const path of ["/affiliates/login", "/affiliates/dashboard", "/affiliates/signup/standard", "/loginx", "/dashboards"]) {
+    for (const path of ["/affiliates", "/affiliates/login", "/affiliates/dashboard", "/affiliates/signup/standard", "/loginx", "/dashboards"]) {
       expect(resolveProductDomainRoute(path), path).toBeNull();
     }
   });

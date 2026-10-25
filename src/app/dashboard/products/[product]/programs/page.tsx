@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { listProgramsForMerchant } from "@/lib/program";
 import type { ProgramFormValues } from "@/lib/programValidation";
-import { originFor } from "@/lib/url";
+import { signupLinkFor } from "@/lib/url";
 import { Button } from "@/components/ui/button";
 import { Page, PageTitle } from "@/components/dashboard/Page";
 import { ProgramCard } from "@/components/dashboard/ProgramCard";
@@ -73,6 +73,7 @@ export default async function ProgramsPage({
 
   const base = `/dashboard/products/${merchant.slug}/programs`;
   const programs = await listProgramsForMerchant(ownerId, merchant.id);
+  const defaultSlug = programs.find((p) => p.signupOpen)?.slug ?? null;
   const productRef = { id: merchant.id, slug: merchant.slug };
 
   // An id that names nothing opens nothing, rather than an empty form.
@@ -101,7 +102,7 @@ export default async function ProgramsPage({
             attributionDays={p.attributionWindowDays}
             holdingDays={p.holdingPeriodDays}
             affiliateCount={p.affiliateCount}
-            signupLink={p.signupOpen ? `${originFor(merchant.domain)}/affiliates/signup/${p.slug}` : null}
+            signupLink={p.signupOpen ? signupLinkFor(merchant.domain, p.slug, defaultSlug) : null}
             editHref={`${base}?edit=${p.id}`}
           />
         ))}

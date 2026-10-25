@@ -199,8 +199,13 @@ export async function saveTermsAction(
   formData: FormData
 ): Promise<{ error: string }> {
   const ownerId = await owner();
+  const merchant = await getMerchantForOwner(ownerId, product.id);
+  if (!merchant) redirect("/onboarding");
+  // The step asks no name: the first program is named after the product,
+  // and going back keeps whatever name it has since been given.
+  const existing = await listProgramsForMerchant(ownerId, product.id);
   const result = validateProgramInput({
-    name: String(formData.get("name") ?? ""),
+    name: existing[0]?.name ?? merchant.name,
     defaultCommissionRate: String(formData.get("defaultCommissionRate") ?? ""),
     commissionDurationType: String(formData.get("commissionDurationType") ?? ""),
     commissionDurationMonths: String(formData.get("commissionDurationMonths") ?? ""),
@@ -212,7 +217,6 @@ export async function saveTermsAction(
   // The onboarding step edits the first program if one exists rather than
   // adding a second, so going back and changing a number does not leave a
   // trail of near identical programs.
-  const existing = await listProgramsForMerchant(ownerId, product.id);
   if (existing.length > 0) {
     await updateProgram(ownerId, product.id, existing[0].id, result.parsed);
   } else {

@@ -4,6 +4,7 @@ import { loggableError } from "@/lib/stripeErrors";
 import { decrypt } from "@/lib/crypto";
 import { isLocalDomain } from "@/lib/url";
 import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
+import { stripeApiLocation } from "@/lib/stripeApi";
 import {
   ensureRequiredWebhookEvents,
   type WebhookEndpointsClient,
@@ -18,6 +19,7 @@ function defaultClient(secretKey: string): WebhookEndpointsClient {
   return new Stripe(secretKey, {
     timeout: 10_000,
     maxNetworkRetries: 0,
+    ...stripeApiLocation(),
   }) as unknown as WebhookEndpointsClient;
 }
 

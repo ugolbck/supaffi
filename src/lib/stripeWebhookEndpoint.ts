@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/stripeWebhookEvents";
 import { stripeErrorLabel } from "@/lib/stripeErrors";
+import { stripeApiLocation } from "@/lib/stripeApi";
 
 export type EndpointResult =
   | { ok: true; id: string; secret: string }
@@ -25,7 +26,11 @@ export async function createWebhookEndpoint(input: {
   url: string;
   productName: string;
 }): Promise<EndpointResult> {
-  const stripe = new Stripe(input.secretKey, { timeout: 10_000, maxNetworkRetries: 0 });
+  const stripe = new Stripe(input.secretKey, {
+    timeout: 10_000,
+    maxNetworkRetries: 0,
+    ...stripeApiLocation(),
+  });
   try {
     const endpoint = await stripe.webhookEndpoints.create({
       url: input.url,
@@ -136,7 +141,7 @@ export async function ensureRequiredWebhookEvents(
 
 /** Removes an endpoint Supaffi created, so a replace does not leave a duplicate behind. */
 export async function deleteWebhookEndpoint(secretKey: string, endpointId: string): Promise<void> {
-  const stripe = new Stripe(secretKey);
+  const stripe = new Stripe(secretKey, stripeApiLocation());
   try {
     await stripe.webhookEndpoints.del(endpointId);
   } catch {
