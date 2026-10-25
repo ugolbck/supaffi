@@ -8,6 +8,20 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.3.2
+
+### Changed
+
+- Your affiliate address now opens the signup of your first open program,
+  instead of the login. Share it as your affiliate link. Other programs keep
+  their own signup links, and the copy buttons give the right one for each.
+  A logged in affiliate goes straight to their dashboard, and the login page
+  links to the signup.
+- Onboarding no longer asks for a program name. The first program is named
+  after the product, and the step is called Commission.
+- Open Cloudflare in onboarding lands on the product's DNS records instead of
+  the list of domains.
+
 ## 0.3.1
 
 ### Security
