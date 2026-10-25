@@ -47,8 +47,9 @@ export type OverviewView = {
   /** Counts only. Which customers they are is never the affiliate's to see. */
   referrals: { total: number; active: number };
   /**
-   * Whether the program pays on a subscription. A one-time program has no
-   * "still paying" question to answer, so the card is not shown at all.
+   * Whether the program pays beyond the first payment and the affiliate has
+   * referred someone. Otherwise there is no "still paying" question to
+   * answer, so the card is not shown at all.
    */
   recurring: boolean;
 };
