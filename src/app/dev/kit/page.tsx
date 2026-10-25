@@ -400,7 +400,7 @@ function Variant({
 }) {
   return (
     <div className="flex max-w-[640px] flex-col gap-3">
-      <p className="text-[13px] font-semibold text-neutral-700">{name}</p>
+      <p className="text-[13px] font-medium text-neutral-700">{name}</p>
       {children}
     </div>
   );
@@ -421,7 +421,7 @@ function Frame({
       <p className="text-xs font-medium tracking-[0.06em] text-muted-foreground uppercase">
         {label}
       </p>
-      <div className="rounded-(--radius-lg) border border-dashed border-neutral-300 bg-card p-10">
+      <div className="rounded-(--radius) border border-dashed border-neutral-300 bg-card p-10">
         {children}
       </div>
     </section>
@@ -621,7 +621,7 @@ const D_LEDGER: LedgerRow[] = [
 
 function DCommissionTable() {
   return (
-    <div className="flex flex-col rounded-(--radius-md) border border-black/[0.08] bg-elevated">
+    <div className="flex flex-col rounded-(--radius) border border-black/[0.08] bg-elevated">
       <div className="flex shrink-0 items-center justify-between px-5 pt-4 pb-3">
         <Suspense>
           <CommissionFilters
@@ -838,7 +838,7 @@ const D_AFFILIATES: AffiliateRowView[] = [
 
 function DAffiliateTable() {
   return (
-    <div className="flex flex-col rounded-(--radius-md) border border-black/[0.08] bg-elevated">
+    <div className="flex flex-col rounded-(--radius) border border-black/[0.08] bg-elevated">
       <AffiliateTable
         rows={D_AFFILIATES}
         selectedId={null}
@@ -858,7 +858,7 @@ const cSignupAction: SignupFormAction = async () => ({
 
 function CSignupScreen() {
   return (
-    <div className="mx-auto w-full rounded-(--radius-lg) bg-background p-8">
+    <div className="mx-auto w-full rounded-(--radius) bg-background p-8">
       <SignupScreen
         merchantName="Mokkit"
         terms={{
@@ -883,7 +883,7 @@ function EViewport({ children }: { children: React.ReactNode }) {
   return (
     // -m-10 escapes the Frame's own padding, so a phone-width screenshot is
     // close to the width the affiliate actually gets.
-    <div className="-m-10 w-[calc(100%+5rem)] overflow-hidden rounded-(--radius-md) bg-background p-8 md:h-[760px]">
+    <div className="-m-10 w-[calc(100%+5rem)] overflow-hidden rounded-(--radius) bg-background p-8 md:h-[760px]">
       {children}
     </div>
   );
@@ -1164,7 +1164,7 @@ function ELedger() {
   return (
     <div className="flex h-full flex-col gap-6">
       <div className="flex shrink-0 items-start justify-between gap-4">
-        <h1 className="text-[22px] font-semibold tracking-tight">
+        <h1 className="text-[22px] font-medium tracking-tight">
           Commissions
         </h1>
         <Tabs value="all" className="hidden md:block">
@@ -1190,7 +1190,7 @@ function ELedger() {
           </TabsList>
         </Tabs>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-(--radius-md) border border-black/[0.08] bg-elevated">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-(--radius) border border-black/[0.08] bg-elevated">
         <div className="min-h-0 flex-1 overflow-auto">
           <CommissionLedger rows={E_LEDGER} filtered={false} />
         </div>
@@ -1201,7 +1201,7 @@ function ELedger() {
 
 function ELedgerEmpty() {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-(--radius-md) border border-black/[0.08] bg-elevated">
+    <div className="flex h-full flex-col overflow-hidden rounded-(--radius) border border-black/[0.08] bg-elevated">
       <CommissionLedger rows={[]} filtered={false} />
     </div>
   );
@@ -1218,8 +1218,8 @@ function ELinkDialog() {
 
 function EShell() {
   return (
-    <div className="-m-10 w-[calc(100%+5rem)] overflow-hidden rounded-(--radius-md) bg-(--shell) md:h-[760px]">
-      <SidebarProvider style={{ "--sidebar-width": "312px" } as React.CSSProperties}>
+    <div className="-m-10 w-[calc(100%+5rem)] overflow-hidden rounded-(--radius) bg-(--canvas) md:h-[760px]">
+      <SidebarProvider style={{ "--sidebar-width": "264px" } as React.CSSProperties}>
         <AffiliateSidebar
           merchantName="InstantGradient"
           merchantSite="instantgradient.com"
@@ -1240,7 +1240,7 @@ function EShell() {
 
 function BProgramWarning() {
   return (
-    <div className="flex flex-col gap-4 rounded-(--radius-lg) bg-background p-6">
+    <div className="flex flex-col gap-4 rounded-(--radius) bg-background p-6">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ProgramCard
           name="Standard"

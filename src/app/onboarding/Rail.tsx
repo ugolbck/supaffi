@@ -52,7 +52,7 @@ export function Rail({ steps, productSlug, backHref }: { steps: Step[]; productS
 function Marker({ state }: { state: Step["state"] }) {
   if (state === "done") {
     return (
-      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-status-success text-white">
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-(--radius) bg-status-success text-white">
         <Check className="size-3" strokeWidth={3} />
       </span>
     );
@@ -62,11 +62,11 @@ function Marker({ state }: { state: Step["state"] }) {
   // without claiming a light it has not earned.
   if (state === "waiting") {
     return (
-      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-neutral-400 text-white">
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-(--radius) bg-neutral-400 text-white">
         <Check className="size-3" strokeWidth={3} />
       </span>
     );
   }
-  if (state === "current") return <span className="size-4 shrink-0 rounded-full border-2 border-accent-700" />;
-  return <span className="size-4 shrink-0 rounded-full border border-border" />;
+  if (state === "current") return <span className="size-4 shrink-0 rounded-(--radius) border-2 border-accent-700" />;
+  return <span className="size-4 shrink-0 rounded-(--radius) border border-border" />;
 }

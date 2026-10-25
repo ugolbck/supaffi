@@ -34,10 +34,10 @@ export function ProgramCard({
   editHref: string;
 }) {
   return (
-    <div className="flex flex-col divide-y divide-neutral-200 rounded-(--radius-md) border border-neutral-300 bg-white shadow-sm">
+    <div className="flex flex-col divide-y divide-neutral-200 rounded-(--radius) border border-neutral-300 bg-white">
       <div className="flex items-stretch gap-6 p-5">
         <div className="flex min-w-0 flex-1 flex-col justify-between gap-5">
-          <p className="truncate text-[17px] font-semibold tracking-tight">{name}</p>
+          <p className="truncate text-[17px] font-medium tracking-tight">{name}</p>
           <dl className="flex divide-x divide-neutral-200">
             <Term icon={<CalendarDays />} value={`${attributionDays} days`} label="Attribution" first />
             <Term icon={<Clock />} value={`${holdingDays} days`} label="Hold" />
@@ -45,7 +45,7 @@ export function ProgramCard({
         </div>
         <div className="flex w-40 shrink-0 flex-col justify-center rounded-(--radius) bg-accent-50 px-4 py-3">
           <span className="text-[11px] font-medium tracking-[0.04em] text-accent-700 uppercase">Earn</span>
-          <span className="font-heading text-[34px] leading-none font-semibold tracking-tight text-accent-800 tabular-nums">
+          <span className="font-heading text-[34px] leading-none font-medium tracking-tight text-accent-800 tabular-nums">
             {rate}%
           </span>
           <span className="mt-1 text-[13px] font-medium text-accent-700">{duration}</span>
@@ -85,7 +85,7 @@ function Term({
 }) {
   return (
     <div className={first ? "flex items-center gap-2.5 pr-5" : "flex items-center gap-2.5 px-5"}>
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 [&_svg]:size-4">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-(--radius) bg-neutral-100 text-neutral-600 [&_svg]:size-4">
         {icon}
       </span>
       <div className="flex flex-col leading-tight">

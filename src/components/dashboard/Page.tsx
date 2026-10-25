@@ -17,7 +17,7 @@ export function PageTitle({ title, subtitle, actions }: { title: string; subtitl
   return (
     <header className="flex shrink-0 items-start justify-between gap-4">
       <div className="flex flex-col gap-0.5">
-        <h1 className="text-[22px] font-semibold tracking-tight text-balance">{title}</h1>
+        <h1 className="text-[22px] font-medium tracking-tight text-balance">{title}</h1>
         {subtitle && <p className="text-[13px] text-muted-foreground">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -55,7 +55,7 @@ export function Section({
   return (
     <section
       className={cn(
-        "flex flex-col rounded-(--radius-md) border border-(--card-hairline) bg-elevated shadow-(--shadow-raised)",
+        "flex flex-col rounded-(--radius) border border-border bg-elevated",
         (scroll || fill) && "min-h-0 flex-1",
         className
       )}

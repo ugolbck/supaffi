@@ -22,12 +22,12 @@ export function FinishedModal({ link, dashboardHref }: { link: string; dashboard
       <div className="supaffi-fade-in absolute inset-0 bg-white/70 backdrop-blur-md" />
       <Confetti />
       <div className="absolute inset-0 flex items-center justify-center p-6">
-        <div className="supaffi-modal-in relative z-50 flex w-full max-w-[520px] flex-col items-center gap-6 rounded-(--radius-lg) border border-neutral-300 bg-white p-8 text-center shadow-xl">
-          <span className="supaffi-pop flex size-12 items-center justify-center rounded-full bg-status-success">
+        <div className="supaffi-modal-in relative z-50 flex w-full max-w-[520px] flex-col items-center gap-6 rounded-(--radius) border border-neutral-300 bg-white p-8 text-center shadow-(--shadow-float)">
+          <span className="supaffi-pop flex size-12 items-center justify-center rounded-(--radius) bg-status-success">
             <Check className="size-6 text-white" strokeWidth={3} />
           </span>
           <div className="flex flex-col gap-2">
-            <h2 id="finished-title" className="text-[24px] leading-[1.2] font-semibold tracking-[-0.02em] text-balance">
+            <h2 id="finished-title" className="text-[24px] leading-[1.2] font-medium tracking-[-0.02em] text-balance">
               Your affiliate program is live
             </h2>
             <p className="text-sm text-muted-foreground text-pretty">

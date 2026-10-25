@@ -74,7 +74,7 @@ export default async function ProductsPage() {
                 href={`/dashboard/products/${row.slug}`}
                 className="flex cursor-pointer items-center gap-4 px-5 py-4 hover:bg-black/[0.02]"
               >
-                <span className="flex size-9 items-center justify-center rounded-lg bg-accent-700 text-xs font-semibold text-accent-100">
+                <span className="flex size-9 items-center justify-center rounded-lg bg-accent-700 text-xs font-medium text-accent-100">
                   {initials(row.name)}
                 </span>
                 <span className="min-w-0 flex-1">

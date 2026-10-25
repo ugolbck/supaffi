@@ -68,7 +68,7 @@ function Referrals({ total, active }: { total: number; active: number }) {
     <div className="flex flex-1 flex-col justify-center gap-3">
       <div className="flex flex-col gap-1">
         <span className="flex items-baseline gap-1.5">
-          <span className="text-[32px] leading-none font-semibold tracking-tight tabular-nums">
+          <span className="text-[32px] leading-none font-medium tracking-tight tabular-nums">
             {active}
           </span>
           {total > 0 && (
@@ -77,10 +77,10 @@ function Referrals({ total, active }: { total: number; active: number }) {
         </span>
         <span className="text-[13px] text-muted-foreground">still paying</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+      <div className="h-1.5 overflow-hidden rounded-(--radius) bg-muted">
         {share > 0 && (
           <div
-            className="h-full rounded-full bg-accent-500"
+            className="h-full rounded-(--radius) bg-accent-500"
             style={{ width: `${Math.max(4, Math.round(share * 100))}%` }}
           />
         )}
@@ -243,7 +243,7 @@ export function OverviewScreen({
                     </div>
                     <span
                       className={cn(
-                        "ml-auto shrink-0 text-right text-[13px] font-semibold tabular-nums",
+                        "ml-auto shrink-0 text-right text-[13px] font-medium tabular-nums",
                         row.isAdjustment ? "text-destructive" : "text-neutral-900",
                         row.status === "VOIDED" && "font-normal text-muted-foreground"
                       )}

@@ -61,7 +61,7 @@ export function UpdateDialog({
           <p className="text-sm text-muted-foreground">
             Run this on your server. It backs up your database first and stops if that fails.
           </p>
-          <pre className="overflow-x-auto rounded-(--radius-md) border border-border/70 bg-muted/50 px-3 py-2.5 font-mono text-xs leading-relaxed">
+          <pre className="overflow-x-auto rounded-(--radius) border border-border/70 bg-muted/50 px-3 py-2.5 font-mono text-xs leading-relaxed">
             <code>{command}</code>
           </pre>
           <div className="flex items-center gap-2">

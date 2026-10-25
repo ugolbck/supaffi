@@ -32,13 +32,13 @@ export function TrackingVerified({ merchantId }: { merchantId: string }) {
   return (
     <div
       role="status"
-      className="flex animate-in items-start gap-3 rounded-(--radius-xl) border border-status-success/25 bg-status-success-bg fade-in slide-in-from-top-2 p-4 shadow-[var(--edge-light),var(--shadow-sm)] duration-300 ease-[var(--ease-out)]"
+      className="flex animate-in items-start gap-3 rounded-(--radius) border border-status-success/25 bg-status-success-bg fade-in slide-in-from-top-2 p-4 duration-300 ease-[var(--ease-out)]"
     >
-      <span className="flex size-7 shrink-0 animate-in items-center justify-center rounded-full bg-status-success text-white zoom-in-50 delay-150 duration-300 ease-[var(--ease-out)] fill-mode-both">
+      <span className="flex size-7 shrink-0 animate-in items-center justify-center rounded-(--radius) bg-status-success text-white zoom-in-50 delay-150 duration-300 ease-[var(--ease-out)] fill-mode-both">
         <Check className="size-4" strokeWidth={3} />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="font-heading text-sm font-semibold tracking-tight text-status-success">
+        <p className="font-heading text-sm font-medium tracking-tight text-status-success">
           Tracking is working
         </p>
         <p className="text-sm text-muted-foreground">

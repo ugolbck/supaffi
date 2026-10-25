@@ -52,7 +52,7 @@ function Tile({ label, value, hint }: { label: string; value: string; hint: stri
   return (
     <div className="flex flex-col gap-1 px-5 py-4">
       <p className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">{label}</p>
-      <p className="text-[22px] leading-7 font-semibold tracking-[-0.02em] whitespace-nowrap text-neutral-900 tabular-nums">
+      <p className="text-[22px] leading-7 font-medium tracking-[-0.02em] whitespace-nowrap text-neutral-900 tabular-nums">
         {value}
       </p>
       <p className="text-xs leading-4 text-muted-foreground text-pretty">{hint}</p>
@@ -81,12 +81,12 @@ export function SignupScreen({
           <p className="text-xs font-medium tracking-[0.06em] text-muted-foreground uppercase">
             {merchantName} affiliate program
           </p>
-          <h1 className="text-[32px] leading-[1.1] font-semibold tracking-[-0.025em] text-balance sm:text-[38px]">
+          <h1 className="text-[32px] leading-[1.1] font-medium tracking-[-0.025em] text-balance sm:text-[38px]">
             Earn from every sale you send to {merchantName}
           </h1>
         </div>
 
-        <div className="grid grid-cols-1 divide-y divide-neutral-200 overflow-hidden rounded-(--radius-md) border border-neutral-300 bg-white shadow-sm sm:max-w-[440px] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <div className="grid grid-cols-1 divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-white sm:max-w-[440px] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
           <Tile label="You earn" value={formatRate(terms.rate)} hint="of every sale" />
           <Tile label="Earn on" value={duration.value} hint={duration.hint} />
         </div>

@@ -8,16 +8,7 @@ import {
 } from "@/lib/affiliate";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { pageList } from "@/lib/pagination";
+import { TablePagination } from "@/components/dashboard/TablePagination";
 import { CommissionLedger, STATUS_LABELS, toLedgerRow, type LedgerRow } from "./CommissionLedger";
 
 /**
@@ -106,8 +97,6 @@ export default async function AffiliateCommissionsPage({
     </Tabs>
   );
 
-  const firstShown = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const lastShown = Math.min(page * PAGE_SIZE, total);
 
   return (
     <Page>
@@ -123,49 +112,12 @@ export default async function AffiliateCommissionsPage({
         <CommissionLedger rows={ledgerRows} filtered={status !== null} />
       </Section>
 
-      {total > 0 && (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {`${firstShown}-${lastShown} of ${total}`}
-          </p>
-          {totalPages > 1 && (
-            <Pagination className="mx-0 w-auto justify-end">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    render={<Link href={hrefWith({ page: String(Math.max(1, page - 1)) })} />}
-                    aria-disabled={page <= 1}
-                  />
-                </PaginationItem>
-                {pageList(page, totalPages).map((p, i) =>
-                  p === "gap" ? (
-                    <PaginationItem key={`gap-${i}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={p}>
-                      <PaginationLink
-                        render={<Link href={hrefWith({ page: String(p) })} />}
-                        isActive={p === page}
-                      >
-                        {p}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
-                )}
-                <PaginationItem>
-                  <PaginationNext
-                    render={
-                      <Link href={hrefWith({ page: String(Math.min(totalPages, page + 1)) })} />
-                    }
-                    aria-disabled={page >= totalPages}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
-        </div>
-      )}
+      <TablePagination
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        hrefFor={(p) => hrefWith({ page: p > 1 ? String(p) : null })}
+      />
     </Page>
   );
 }

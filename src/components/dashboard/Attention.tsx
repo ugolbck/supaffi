@@ -28,12 +28,12 @@ export function Attention({ items, className }: { items: AttentionItem[]; classN
   return (
     <section
       className={cn(
-        "shrink-0 rounded-(--radius-md) border border-(--card-hairline) bg-elevated shadow-(--shadow-raised)",
+        "shrink-0 rounded-(--radius) border border-border bg-elevated",
         className
       )}
     >
       <div className="flex items-center gap-2.5 px-5 pt-4 pb-3">
-        <span className="flex size-7 items-center justify-center rounded-[6px] border border-(--card-hairline) bg-neutral-50 text-neutral-600">
+        <span className="flex size-7 items-center justify-center rounded-(--radius) border border-border bg-neutral-50 text-neutral-600">
           <Bell className="size-3.5" />
         </span>
         <h2 className="text-sm font-medium">Needs your attention</h2>
@@ -47,16 +47,16 @@ export function Attention({ items, className }: { items: AttentionItem[]; classN
             >
               <span
                 className={cn(
-                  "flex size-10 shrink-0 items-center justify-center rounded-[8px] border",
+                  "flex size-10 shrink-0 items-center justify-center rounded-(--radius) border",
                   item.urgent
                     ? "border-status-danger/20 bg-status-danger-bg text-status-danger"
-                    : "border-(--card-hairline) bg-neutral-50 text-neutral-700"
+                    : "border-border bg-neutral-50 text-neutral-700"
                 )}
               >
                 <item.icon className="size-[18px]" />
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className={cn("truncate text-sm font-semibold", item.urgent && "text-status-danger")}>
+                <span className={cn("truncate text-sm font-medium", item.urgent && "text-status-danger")}>
                   {item.title}
                 </span>
                 <span className="truncate text-[12.5px] text-muted-foreground">{item.detail}</span>

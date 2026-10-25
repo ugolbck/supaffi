@@ -1,4 +1,3 @@
-import { useId } from "react";
 
 /**
  * A trend line that fills whatever box it is given.
@@ -22,7 +21,6 @@ export function Sparkline({
   className?: string;
   area?: boolean;
 }) {
-  const id = useId();
   if (points.length < 2) return null;
 
   const max = Math.max(...points);
@@ -45,15 +43,7 @@ export function Sparkline({
       className={className}
     >
       {area && (
-        <>
-          <defs>
-            <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="currentColor" stopOpacity="0.28" />
-              <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <polygon points={`0,32 ${line} 100,32`} fill={`url(#${id})`} />
-        </>
+        <polygon points={`0,32 ${line} 100,32`} fill="currentColor" fillOpacity={0.08} />
       )}
       <polyline
         points={line}

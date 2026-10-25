@@ -12,11 +12,8 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        // Depth comes from three stacked cues, not one: a top-lit surface
-        // gradient, a 1px white inset highlight on the top edge (the lit
-        // bevel), and a layered drop shadow below (the cast shadow). Drop
-        // any one of them and the card flattens out again.
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-(--radius-2xl) border border-border/70 bg-card [background-image:var(--card-surface)] py-(--card-spacing) text-sm text-card-foreground shadow-[var(--edge-light),var(--shadow-sm)] [--card-spacing:--spacing(5)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(4)] data-[size=sm]:has-data-[slot=card-footer]:pb-0",
+        // Flat: white on a hairline, no gradient and no shadow.
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-(--radius) border border-border bg-card py-(--card-spacing) text-sm text-card-foreground [--card-spacing:--spacing(5)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(4)] data-[size=sm]:has-data-[slot=card-footer]:pb-0",
         className
       )}
       {...props}
@@ -29,7 +26,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-header"
       className={cn(
-        "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-xl px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)",
+        "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-(--radius) px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)",
         className
       )}
       {...props}
@@ -88,7 +85,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-footer"
       className={cn(
-        "flex items-center rounded-b-xl border-t bg-muted/50 p-(--card-spacing)",
+        "flex items-center rounded-b-(--radius) border-t bg-neutral-50 p-(--card-spacing)",
         className
       )}
       {...props}

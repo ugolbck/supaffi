@@ -44,7 +44,7 @@ function PaymentRows({ payments }: { payments: AffiliatePaymentGroup[] }) {
             </span>
             <span className="flex-1 sm:hidden" />
             <span className="flex shrink-0 flex-col items-end">
-              <span className="text-[15px] font-semibold text-neutral-900 tabular-nums">
+              <span className="text-[15px] font-medium text-neutral-900 tabular-nums">
                 {money(payment.totals)}
               </span>
               {hint && (

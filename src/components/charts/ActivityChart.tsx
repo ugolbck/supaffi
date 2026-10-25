@@ -31,7 +31,7 @@ import { currencySymbol, formatMoney } from "@/lib/format";
  * the colour of the series they measure, so the two scales read apart.
  *
  * Hover is a column, not a point. Anywhere in a bucket's width lights that
- * bucket, glows its bar, and opens the tooltip at once. There is no delay
+ * bucket, lights its bar, and opens the tooltip at once. There is no delay
  * to wait through and no animation to sit out: the reader is scanning, and
  * a tooltip that fades is a tooltip that lags.
  */
@@ -260,7 +260,7 @@ export function ActivityChart({
     <div data-slot="activity-chart" className={cn("flex min-h-0 flex-1 flex-col gap-3", className)}>
       <ul className="flex shrink-0 items-center gap-4 text-[12px] text-muted-foreground">
         <li className="flex items-center gap-1.5">
-          <span className="h-0.5 w-3 rounded-full bg-(--chart-line)" />
+          <span className="h-0.5 w-3 bg-(--chart-line)" />
           Clicks
         </li>
         {currency && (
@@ -271,7 +271,7 @@ export function ActivityChart({
         )}
         {currency && splitLabel && (
           <li className="flex items-center gap-1.5">
-            <span className="size-2 rounded-[2px] border border-dashed border-(--chart-bar) bg-(--chart-bar)/20" />
+            <span className="size-2 rounded-[2px] border border-(--chart-split-edge) bg-(--chart-split)" />
             {splitLabel}
           </li>
         )}
@@ -279,14 +279,6 @@ export function ActivityChart({
       <div ref={box} className="relative min-h-0 flex-1 select-none">
         {width > 0 && height > 0 && (
           <svg width={width} height={height} className="block overflow-visible" aria-hidden>
-            <defs>
-              <linearGradient id="clicks-area" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--chart-line-soft)" stopOpacity="0.30" />
-                <stop offset="55%" stopColor="var(--chart-line-soft)" stopOpacity="0.10" />
-                <stop offset="100%" stopColor="var(--chart-line-soft)" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-
             {/* Grid and the two axes' numbers. Dashed and faint: a rule, not a bar. */}
             {ticks.map((t) => {
               const y = PAD.top + plotH - t * plotH;
@@ -312,7 +304,7 @@ export function ActivityChart({
                     x={PAD.left + plotW + 8}
                     y={y + 3.5}
                     textAnchor="start"
-                    className="fill-(--chart-bar) text-[10px] tabular-nums opacity-70"
+                    className="fill-neutral-400 text-[10px] tabular-nums"
                   >
                     {currency ? `${currencySymbol(currency)}${compactMoney(t * barMax)}` : compactMoney(t * barMax)}
                   </text>
@@ -323,7 +315,7 @@ export function ActivityChart({
             {/* The area first: it is translucent, and anything behind it is
                 tinted by it. Then the bars, then the line on top of both. */}
             <g key={`area-${signature}`} className="supaffi-area">
-              <path d={areaPath} fill="url(#clicks-area)" />
+              <path d={areaPath} fill="var(--chart-area)" />
             </g>
 
             <g key={`bars-${signature}`}>
@@ -338,28 +330,24 @@ export function ActivityChart({
               const kept = Math.max(0, full - (cost / Math.max(gross, 0.01)) * full);
               const lit = hovered === i;
               const x = xAt(i) - barW / 2;
-              const glow = lit
-                ? "drop-shadow(0 0 9px color-mix(in oklch, var(--chart-bar) 38%, transparent))"
-                : "drop-shadow(0 0 0 color-mix(in oklch, var(--chart-bar) 0%, transparent))";
               return (
                 <g
                   key={p.date}
-                  className="supaffi-bar transition-[filter] duration-500 ease-(--ease-out) motion-reduce:transition-none"
-                  style={{ filter: glow, animationDelay: `${Math.min(i * 20, 500)}ms` }}
+                  className="supaffi-bar"
+                  style={{ animationDelay: `${Math.min(i * 20, 500)}ms` }}
                 >
                   {cost > 0 && (
                     <path
                       // Only the slice above what he keeps. Drawn as the whole
-                      // bar, its dashed outline ran down both sides of the
+                      // bar, its outline ran down both sides of the
                       // solid part as well, which read as a box around the bar
                       // rather than a slice off the top of it.
-                      d={barPath(x, baseline - full, barW, full - kept, 5)}
+                      d={barPath(x, baseline - full, barW, full - kept, 2)}
                       className="transition-[fill] duration-500 ease-(--ease-out)"
                       style={{
-                        fill: "color-mix(in oklch, var(--chart-bar) 20%, white)",
-                        stroke: "color-mix(in oklch, var(--chart-bar) 55%, white)",
+                        fill: "var(--chart-split)",
+                        stroke: "var(--chart-split-edge)",
                         strokeWidth: 1,
-                        strokeDasharray: "3 2.5",
                       }}
                     />
                   )}
@@ -367,7 +355,7 @@ export function ActivityChart({
                     // Square topped while a ghost sits on it, rounded when it
                     // is the whole bar: a rounded top under the ghost reads as
                     // two bars rather than one divided.
-                    d={barPath(x, baseline - kept, barW, kept, cost > 0 ? 0 : 5)}
+                    d={barPath(x, baseline - kept, barW, kept, cost > 0 ? 0 : 2)}
                     className="transition-[fill] duration-500 ease-(--ease-out) motion-reduce:transition-none"
                     style={{ fill: lit ? "var(--chart-bar-lit)" : "var(--chart-bar)" }}
                   />
@@ -445,14 +433,14 @@ export function ActivityChart({
         {active && (
           <div
             role="tooltip"
-            className="pointer-events-none absolute top-1 z-10 w-[220px] -translate-x-1/2 rounded-(--radius) border border-(--card-hairline) bg-white px-3 py-2.5 text-[12px] shadow-(--shadow-md)"
+            className="pointer-events-none absolute top-1 z-10 w-[220px] -translate-x-1/2 rounded-(--radius) border border-border bg-white px-3 py-2.5 text-[12px] shadow-(--shadow-float)"
             style={{ left: tooltipX }}
           >
             <p className="mb-1.5 font-medium text-neutral-900">{periodLabel(active, bucket)}</p>
             <dl className="flex flex-col gap-1">
               <div className="flex items-center justify-between gap-3">
                 <dt className="flex items-center gap-1.5 text-muted-foreground">
-                  <span className="h-0.5 w-3 rounded-full bg-(--chart-line)" />
+                  <span className="h-0.5 w-3 bg-(--chart-line)" />
                   Clicks
                 </dt>
                 <dd className="font-medium tabular-nums">{active.clicks}</dd>
@@ -473,7 +461,7 @@ export function ActivityChart({
               {costLines.length > 0 && (
                 <div className="flex items-start justify-between gap-3">
                   <dt className="flex items-center gap-1.5 text-muted-foreground">
-                    <span className="mt-[5px] size-2 shrink-0 self-start rounded-[2px] border border-dashed border-(--chart-bar) bg-(--chart-bar)/20" />
+                    <span className="mt-[5px] size-2 shrink-0 self-start rounded-[2px] border border-(--chart-split-edge) bg-(--chart-split)" />
                     {splitLabel}
                   </dt>
                   <dd className="flex flex-col items-end font-medium text-neutral-900 tabular-nums">

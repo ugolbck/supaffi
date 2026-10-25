@@ -42,11 +42,11 @@ function Row({ record }: { record: RecordRow }) {
       <dd className="flex min-w-0 flex-1 items-center gap-2">
         {record.value === null ? (
           <span
-            className="h-3 w-40 animate-pulse rounded-full bg-neutral-200"
+            className="h-3 w-40 animate-pulse rounded-(--radius) bg-neutral-200"
             aria-label={record.missing ?? "Not available yet"}
           />
         ) : record.badge ? (
-          <span className="rounded-(--radius-sm) border border-neutral-300 bg-neutral-100 px-1.5 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-neutral-700 uppercase">
+          <span className="rounded-(--radius) border border-neutral-300 bg-neutral-100 px-1.5 py-0.5 font-mono text-[11px] font-medium tracking-wide text-neutral-700 uppercase">
             {record.value}
           </span>
         ) : (
@@ -58,7 +58,7 @@ function Row({ record }: { record: RecordRow }) {
             onClick={() => copy(record.value!)}
             aria-label={copied ? "Copied" : `Copy ${record.label}`}
             className={cn(
-              "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-(--radius-sm) text-neutral-500",
+              "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-(--radius) text-neutral-500",
               "opacity-0 transition-[opacity,color,background-color] duration-100 ease-(--ease-out)",
               "group-hover:opacity-100 hover:bg-neutral-200 hover:text-neutral-900 focus-visible:opacity-100"
             )}

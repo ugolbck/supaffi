@@ -27,7 +27,7 @@ export default async function AffiliateDashboardLayout({
   const payoutDetails = await getAffiliatePayoutDetails(affiliateId);
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": "312px" } as React.CSSProperties}>
+    <SidebarProvider style={{ "--sidebar-width": "264px" } as React.CSSProperties}>
       <AffiliateSidebar
         merchantName={merchant.name}
         merchantSite={siteHost(merchant.websiteUrl)}

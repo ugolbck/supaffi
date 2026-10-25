@@ -41,7 +41,7 @@ function FilterMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="outline" size="sm" className="cursor-pointer justify-between gap-1.5" />
+          <Button variant="outline" className="cursor-pointer justify-between gap-1.5" />
         }
       >
         <span className={current ? "font-medium" : "text-muted-foreground"}>
@@ -151,7 +151,6 @@ export function CommissionFilters({
       {anyFilterActive && (
         <Button
           variant="ghost"
-          size="sm"
           className="cursor-pointer text-muted-foreground"
           onClick={() => {
             setDraft("");

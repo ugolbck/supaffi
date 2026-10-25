@@ -31,7 +31,7 @@ export function PasteField({
           placeholder={placeholder}
           autoComplete="off"
           required
-          className="h-12 min-w-0 flex-1 rounded-(--radius-md) border border-neutral-300 bg-white px-4 font-mono text-[15px] shadow-xs outline-none transition-colors duration-100 ease-(--ease-out) placeholder:text-neutral-400 focus:border-accent-400"
+          className="h-12 min-w-0 flex-1 rounded-(--radius) border border-neutral-300 bg-white px-4 font-mono text-[15px] outline-none transition-colors duration-100 ease-(--ease-out) placeholder:text-neutral-400 focus:border-accent-400"
         />
         <Button type="submit" size="lg" className="h-12" disabled={pending}>
           {pending && <Loader2 className="animate-spin" />}

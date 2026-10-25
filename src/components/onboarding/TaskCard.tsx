@@ -17,7 +17,7 @@ export function TaskCard({ className, children }: { className?: string; children
   return (
     <div
       className={cn(
-        "divide-y divide-neutral-200 overflow-hidden rounded-(--radius-md) border border-neutral-300 bg-white shadow-sm",
+        "divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-white",
         className
       )}
     >
@@ -46,7 +46,7 @@ export function TaskCardHeader({
   return (
     <div className="flex min-h-11 items-center justify-between gap-3 bg-neutral-100 px-4 py-1.5">
       <div className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate text-[13px] font-semibold text-neutral-700">{title}</span>
+        <span className="truncate text-[13px] font-medium text-neutral-700">{title}</span>
         {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
       </div>
       {action && <div className="shrink-0">{action}</div>}

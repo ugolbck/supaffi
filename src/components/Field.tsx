@@ -17,7 +17,7 @@ export function Field({ label, htmlFor, children }: { label: ReactNode; htmlFor?
 /** The raised white surface a form's fields sit on. */
 export function FormCard({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-5 rounded-(--radius-md) border border-(--card-hairline) bg-elevated p-5 shadow-(--shadow-raised)">
+    <div className="flex flex-col gap-5 rounded-(--radius) border border-border bg-elevated p-5">
       {children}
     </div>
   );

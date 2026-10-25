@@ -43,11 +43,11 @@ export function DashboardCard({
 }) {
   return (
     <section
-      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-(--radius-md) border border-(--card-hairline) bg-elevated shadow-(--shadow-raised) ${className}`}
+      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-(--radius) border border-border bg-elevated ${className}`}
     >
       {title && (
         <div className="flex shrink-0 items-center justify-between gap-3 px-4 pt-3.5 pb-2.5">
-          <h2 className="font-heading text-sm font-semibold tracking-tight">{title}</h2>
+          <h2 className="font-heading text-sm font-medium tracking-tight">{title}</h2>
           {action}
         </div>
       )}
@@ -83,7 +83,7 @@ export function CardEmpty({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2.5 py-4 text-center">
-      <span className="flex size-9 items-center justify-center rounded-full bg-muted text-muted-foreground">
+      <span className="flex size-9 items-center justify-center rounded-(--radius) bg-muted text-muted-foreground">
         <Icon className="size-4" />
       </span>
       <p className="max-w-52 text-xs leading-relaxed text-balance text-muted-foreground">

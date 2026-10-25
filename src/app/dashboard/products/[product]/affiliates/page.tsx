@@ -16,16 +16,7 @@ import { signupLinkFor } from "@/lib/url";
 import { linkUrl, listLinksWithStats } from "@/lib/affiliateLink";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { pageList } from "@/lib/pagination";
+import { TablePagination } from "@/components/dashboard/TablePagination";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { AffiliateFilters } from "./AffiliateFilters";
 import { AffiliateTable, type AffiliateRowView } from "./AffiliateTable";
@@ -99,8 +90,6 @@ export default async function AffiliatesPage({
     redirect(`${base}/affiliates${corrected === "?" ? "" : corrected}`);
   }
 
-  const firstShown = total === 0 ? 0 : (page - 1) * AFFILIATES_PAGE_SIZE + 1;
-  const lastShown = Math.min(page * AFFILIATES_PAGE_SIZE, total);
 
   // Every href keeps the filters already on and changes one thing. The
   // selected affiliate is one of them, which is what makes a row a link.
@@ -199,6 +188,14 @@ export default async function AffiliatesPage({
     </Button>
   );
 
+  // The header's copy sits in the filter toolbar, so it takes the toolbar's
+  // control height rather than the empty state's smaller one.
+  const toolbarNewProgramButton = (
+    <Button className="cursor-pointer" render={<Link href={`${base}/programs?new=1`} />}>
+      New program
+    </Button>
+  );
+
   const programCount = programs.length === 1 ? "1 program" : `${programs.length} programs`;
 
   // What closing the sheet goes back to: this same list, filters and page kept.
@@ -219,9 +216,9 @@ export default async function AffiliatesPage({
               anyFilterActive={anyFilterActive}
             />
             {signupLink ? (
-              <CopyLinkButton size="sm" link={signupLink} label="Copy link" />
+              <CopyLinkButton link={signupLink} label="Copy link" />
             ) : (
-              newProgramButton
+              toolbarNewProgramButton
             )}
           </>
         }
@@ -244,47 +241,12 @@ export default async function AffiliatesPage({
         />
       </Section>
 
-      {total > 0 && (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {`${firstShown}-${lastShown} of ${total}`}
-          </p>
-          {totalPages > 1 && (
-            <Pagination className="mx-0 w-auto justify-end">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    render={<Link href={hrefWith({ page: String(Math.max(1, page - 1)) })} />}
-                    aria-disabled={page <= 1}
-                  />
-                </PaginationItem>
-                {pageList(page, totalPages).map((p, i) =>
-                  p === "gap" ? (
-                    <PaginationItem key={`gap-${i}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={p}>
-                      <PaginationLink
-                        render={<Link href={hrefWith({ page: String(p) })} />}
-                        isActive={p === page}
-                      >
-                        {p}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
-                )}
-                <PaginationItem>
-                  <PaginationNext
-                    render={<Link href={hrefWith({ page: String(Math.min(totalPages, page + 1)) })} />}
-                    aria-disabled={page >= totalPages}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
-        </div>
-      )}
+      <TablePagination
+        page={page}
+        pageSize={AFFILIATES_PAGE_SIZE}
+        total={total}
+        hrefFor={(p) => hrefWith({ page: p > 1 ? String(p) : null })}
+      />
 
       {sheetAffiliate && (
         <AffiliateSheet

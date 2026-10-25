@@ -168,7 +168,7 @@ function InfoTip({ text }: { text: string }) {
 function Marker({ state }: { state: CheckState }) {
   if (state === "ok") {
     return (
-      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-status-success">
+      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-(--radius) bg-status-success">
         <svg viewBox="0 0 16 16" className="size-3" fill="none" aria-hidden>
           <path
             d="M4 8.5l2.5 2.5L12 5.5"
@@ -184,7 +184,7 @@ function Marker({ state }: { state: CheckState }) {
   }
   if (state === "failed") {
     return (
-      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-status-danger">
+      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-(--radius) bg-status-danger">
         <svg viewBox="0 0 16 16" className="size-3" fill="none" aria-hidden>
           <path d="M5 5l6 6M11 5l-6 6" stroke="white" strokeWidth="2" strokeLinecap="round" />
         </svg>
@@ -193,7 +193,7 @@ function Marker({ state }: { state: CheckState }) {
   }
   return (
     <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-      <span className="supaffi-pulse size-2 rounded-full bg-neutral-400" />
+      <span className="supaffi-pulse size-2 rounded-[1px] bg-neutral-400" />
     </span>
   );
 }

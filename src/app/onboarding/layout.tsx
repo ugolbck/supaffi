@@ -25,14 +25,14 @@ export default async function OnboardingLayout({ children }: { children: React.R
       <header className={`${COLUMN} flex h-14 items-center justify-between`}>
         <span className="flex items-center gap-2.5 pl-3">
           <Image
-            src="/logo.svg"
+            src="/logo_bgless_black.svg"
             alt=""
             width={22}
             height={22}
             priority
-            className="size-[22px] rounded-[6px] shadow-[0_0_0_1px_rgb(0_0_0/0.06),0_1px_2px_rgb(0_0_0/0.10)]"
+            className="size-[22px]"
           />
-          <span className="text-[13.5px] font-semibold tracking-[-0.01em] text-foreground">Supaffi</span>
+          <span className="text-[13.5px] font-medium tracking-[-0.01em] text-foreground">Supaffi</span>
         </span>
         <div className="flex items-center gap-2.5 text-xs">
           <span className="hidden max-w-[28ch] truncate text-muted-foreground sm:block">{session.user.email ?? ""}</span>

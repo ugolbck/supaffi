@@ -170,7 +170,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                 <span className="flex shrink-0 flex-col items-end">
                   <span
                     className={cn(
-                      "text-[15px] font-semibold whitespace-nowrap tabular-nums",
+                      "text-[15px] font-medium whitespace-nowrap tabular-nums",
                       row.isAdjustment && "text-destructive",
                       !row.isAdjustment && !voided && "text-neutral-900"
                     )}
@@ -206,19 +206,19 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
             blending into them. */}
         <TableHeader className="sticky top-0 z-10 bg-neutral-100">
           <TableRow className="border-neutral-200 hover:bg-transparent">
-            <TableHead className="h-9 w-[13%] px-4 text-[13px] font-semibold text-neutral-700">
+            <TableHead className="h-9 w-[13%] text-[13px] font-medium text-neutral-700">
               Date
             </TableHead>
-            <TableHead className="h-9 w-[18%] px-4 text-right text-[13px] font-semibold text-neutral-700">
+            <TableHead className="h-9 w-[18%] text-right text-[13px] font-medium text-neutral-700">
               Amount
             </TableHead>
-            <TableHead className="h-9 w-[13%] px-4 text-[13px] font-semibold text-neutral-700">
+            <TableHead className="h-9 w-[13%] text-[13px] font-medium text-neutral-700">
               Status
             </TableHead>
-            <TableHead className="h-9 w-[16%] px-4 text-[13px] font-semibold text-neutral-700">
+            <TableHead className="h-9 w-[16%] text-[13px] font-medium text-neutral-700">
               Link
             </TableHead>
-            <TableHead className="h-9 w-[40%] px-4 text-[13px] font-semibold text-neutral-700">
+            <TableHead className="h-9 w-[40%] text-[13px] font-medium text-neutral-700">
               Detail
             </TableHead>
           </TableRow>
@@ -237,16 +237,16 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                 voided && "text-muted-foreground"
               )}
             >
-              <TableCell className="px-4 py-3 align-top whitespace-nowrap text-muted-foreground tabular-nums">
+              <TableCell className="align-top whitespace-nowrap text-muted-foreground tabular-nums">
                 {row.dateLabel}
               </TableCell>
-              <TableCell className="px-4 py-3 text-right align-top">
+              <TableCell className="text-right align-top">
                 {/* The heaviest thing in the row: this screen's whole subject
                     is money, and the currency is carried once, on the figure
                     itself. */}
                 <span
                   className={cn(
-                    "block text-[15px] font-semibold whitespace-nowrap tabular-nums",
+                    "block text-[15px] font-medium whitespace-nowrap tabular-nums",
                     row.isAdjustment && "text-destructive",
                     !row.isAdjustment && !voided && "text-neutral-900"
                   )}
@@ -262,15 +262,15 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                   </span>
                 )}
               </TableCell>
-              <TableCell className="px-4 py-3 align-top">
+              <TableCell className="align-top">
                 <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>
               </TableCell>
-              <TableCell className="px-4 py-3 align-top">
+              <TableCell className="align-top">
                 <span className="block truncate font-mono text-[13px] text-muted-foreground">
                   {row.linkCode ?? "Deleted"}
                 </span>
               </TableCell>
-              <TableCell className="px-4 py-3 align-top">
+              <TableCell className="align-top">
                 {/* Never truncated. The reason money moved is the one string on
                     this screen an affiliate cannot be asked to guess at. */}
                 <span className="block text-[13px] text-pretty text-muted-foreground">
