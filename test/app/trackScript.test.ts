@@ -121,17 +121,25 @@ function notify(node: FakeEl) {
 // before the script runs. Returns the body and a way to click an element.
 async function runOn(
   code: string,
-  opts: { search?: string; cookie?: string; build?: (body: FakeEl) => void } = {},
+  opts: { search?: string; cookie?: string; blockCookieWrites?: boolean; build?: (body: FakeEl) => void } = {},
 ) {
   observers = [];
   rootEl = new FakeEl("html");
   const body = rootEl.appendChild(new FakeEl("body"));
   opts.build?.(body);
-  const listeners: Array<(e: { target: FakeEl }) => void> = [];
+  const listeners: Array<{ type: string; fn: (e: { target: FakeEl }) => void }> = [];
+  // A blocked write (a consent tool wrapping document.cookie) is dropped by the
+  // setter; the test's own changes go through `jar` directly.
+  let jar = opts.cookie ?? "";
   const document = {
     documentElement: rootEl,
-    cookie: opts.cookie ?? "",
-    addEventListener: (_type: string, fn: (e: { target: FakeEl }) => void) => listeners.push(fn),
+    get cookie() {
+      return jar;
+    },
+    set cookie(v: string) {
+      if (!opts.blockCookieWrites) jar = v;
+    },
+    addEventListener: (type: string, fn: (e: { target: FakeEl }) => void) => listeners.push({ type, fn }),
   };
   const sandbox: Record<string, unknown> = {
     document,
@@ -148,7 +156,22 @@ async function runOn(
   sandbox.window = { ...sandbox, location: { search: opts.search ?? "", protocol: "https:" } };
   vm.runInNewContext(code, sandbox);
   await new Promise((r) => setTimeout(r, 0));
-  return { body, click: (target: FakeEl) => listeners.forEach((fn) => fn({ target })) };
+  const fire = (type: string, target: FakeEl) =>
+    listeners.filter((l) => l.type === type).forEach((l) => l.fn({ target }));
+  return {
+    body,
+    click: (target: FakeEl) => fire("click", target),
+    // The visitor comes back to this page after following another affiliate
+    // link elsewhere, which replaced the cookie.
+    returnWith: (cookie: string) => {
+      jar = cookie;
+      fire("visibilitychange", rootEl);
+    },
+    // The cookie changes between page load and a click, with no event between.
+    setCookie: (cookie: string) => {
+      jar = cookie;
+    },
+  };
 }
 
 const HELD = `${REFERRAL_COOKIE}=held_token`;
@@ -316,5 +339,126 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     expect(link.getAttribute("href")).toBe("https://buy.stripe.com/test_abc");
     expect(late.getAttribute("href")).toBe("https://buy.stripe.com/test_abc");
     expect(button.hasAttribute("client-reference-id")).toBe(false);
+  });
+
+  it("replaces an older affiliate's token in a link, including at click time", async () => {
+    const link = stripeLink(`https://buy.stripe.com/test_abc?client_reference_id=${REF}old_token`);
+    const { click, setCookie } = await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+    setCookie(`${REFERRAL_COOKIE}=newer_token`);
+    click(link);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}newer_token`);
+  });
+
+  it("keeps every other query parameter when it swaps the token", async () => {
+    const link = stripeLink(`https://buy.stripe.com/test_abc?prefilled_email=a%40b.co&client_reference_id=${REF}old_token`);
+    await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
+    const params = new URL(link.href).searchParams;
+    expect(params.get("prefilled_email")).toBe("a@b.co");
+    expect(params.get("client_reference_id")).toBe(`${REF}held_token`);
+  });
+
+  it("replaces an older affiliate's token on the embeds", async () => {
+    const button = new FakeEl("stripe-buy-button", { "client-reference-id": `${REF}old_token` });
+    const table = new FakeEl("stripe-pricing-table", { "client-reference-id": `${REF}old_token` });
+    await runOn(await script(), { cookie: HELD, build: (b) => [button, table].forEach((el) => b.appendChild(el)) });
+    expect(button.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+    expect(table.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+  });
+
+  it("moves a page left open to the newer affiliate when the visitor comes back", async () => {
+    const link = stripeLink();
+    const button = new FakeEl("stripe-buy-button");
+    const { returnWith } = await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => [link, button].forEach((el) => b.appendChild(el)),
+    });
+    returnWith(`${REFERRAL_COOKIE}=newer_token`);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}newer_token`);
+    expect(button.getAttribute("client-reference-id")).toBe(`${REF}newer_token`);
+  });
+
+  it("does not touch a Merchant's own value when the visitor comes back", async () => {
+    const link = stripeLink("https://buy.stripe.com/test_abc?client_reference_id=user_42");
+    const own = new FakeEl("stripe-pricing-table", { "client-reference-id": "user_42" });
+    const { returnWith, click, setCookie } = await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => [link, own].forEach((el) => b.appendChild(el)),
+    });
+    returnWith(`${REFERRAL_COOKIE}=newer_token`);
+    setCookie(`${REFERRAL_COOKIE}=newest_token`);
+    click(link);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe("user_42");
+    expect(own.getAttribute("client-reference-id")).toBe("user_42");
+  });
+
+  it("keeps the fresh ?via= token when the cookie still holds an older one", async () => {
+    // The script's own cookie write is blocked here (the fake jar ignores it),
+    // so the older cookie stays in place; a click must not revert to it.
+    const link = stripeLink();
+    const button = new FakeEl("stripe-buy-button");
+    const { click, returnWith } = await runOn(await script(), {
+      search: "?via=sarah",
+      cookie: HELD,
+      blockCookieWrites: true,
+      build: (b) => [link, button].forEach((el) => b.appendChild(el)),
+    });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}fresh_token`);
+    click(link);
+    returnWith(HELD);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}fresh_token`);
+    expect(button.getAttribute("client-reference-id")).toBe(`${REF}fresh_token`);
+  });
+
+  it("still follows a genuinely newer cookie after a ?via= click", async () => {
+    const link = stripeLink();
+    const { click, setCookie } = await runOn(await script(), {
+      search: "?via=sarah",
+      cookie: HELD,
+      blockCookieWrites: true,
+      build: (b) => b.appendChild(link),
+    });
+    setCookie(`${REFERRAL_COOKIE}=newer_token`);
+    click(link);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}newer_token`);
+  });
+
+  it("writes nothing when the token is already current", async () => {
+    const link = stripeLink(`https://buy.stripe.com/test_abc?client_reference_id=${REF}held_token`);
+    const button = new FakeEl("stripe-buy-button", { "client-reference-id": `${REF}held_token` });
+    let writes = 0;
+    button.setAttribute = () => {
+      writes++;
+    };
+    const before = link.getAttribute("href");
+    const { click } = await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => [link, button].forEach((el) => b.appendChild(el)),
+    });
+    click(link);
+    expect(link.getAttribute("href")).toBe(before);
+    expect(writes).toBe(0);
+  });
+
+  it("treats an empty client_reference_id as absent and tags the link", async () => {
+    const link = stripeLink("https://buy.stripe.com/test_abc?client_reference_id=");
+    await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+  });
+
+  it("treats an empty client-reference-id on an embed as absent and tags it", async () => {
+    const button = new FakeEl("stripe-buy-button", { "client-reference-id": "" });
+    const table = new FakeEl("stripe-pricing-table", { "client-reference-id": "" });
+    await runOn(await script(), { cookie: HELD, build: (b) => [button, table].forEach((el) => b.appendChild(el)) });
+    expect(button.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+    expect(table.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+  });
+
+  it("keeps a non-empty value that only resembles ours", async () => {
+    const link = stripeLink("https://buy.stripe.com/test_abc?client_reference_id=xsupaffi_abc");
+    const own = new FakeEl("stripe-buy-button", { "client-reference-id": "SUPAFFI_abc" });
+    await runOn(await script(), { cookie: HELD, build: (b) => [link, own].forEach((el) => b.appendChild(el)) });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe("xsupaffi_abc");
+    expect(own.getAttribute("client-reference-id")).toBe("SUPAFFI_abc");
   });
 });

@@ -249,7 +249,14 @@ export async function getCommissionFilterOptions(
 /** One commission as a page showed it: its id and its amount as rendered, two decimals. */
 export type ShownCommission = { id: string; amount: string };
 
-export type MarkPaidResult = { count: number; skipped: number } | { error: string };
+/**
+ * `alreadyPaid` is present only when some shown rows were already PAID, with
+ * the latest time one of them was marked. Those are neither recorded again nor
+ * counted as skipped, so without it a press from an older tab says nothing.
+ */
+export type MarkPaidResult =
+  | { count: number; skipped: number; alreadyPaid?: { count: number; paidAt: Date | null } }
+  | { error: string };
 
 /** The refusal for bound input no page could have produced. */
 const REFUSED = "The ledger refused that payout.";
@@ -282,6 +289,7 @@ type PayoutRow = {
   voidReason: string | null;
   adjustsCommissionId: string | null;
   disputeOpenedAt: Date | null;
+  paidAt: Date | null;
 };
 
 type Payout = "as stored" | "at shown amount" | "already paid" | "skip";
@@ -442,6 +450,7 @@ export async function markCommissionsPaid(
         voidReason: true,
         adjustsCommissionId: true,
         disputeOpenedAt: true,
+        paidAt: true,
       },
     });
     // An id this product does not have was not on its page.
@@ -454,12 +463,18 @@ export async function markCommissionsPaid(
     const asStored: string[] = [];
     const atShownAmount: { id: string; amount: Prisma.Decimal; ceiling: Prisma.Decimal }[] = [];
     let skipped = 0;
+    let alreadyPaid = 0;
+    let alreadyPaidAt: Date | null = null;
     for (const row of rows) {
       const amount = amounts.get(row.id)!;
       const payout = payoutFor(row, amount, loadedAt);
       if (payout === "as stored") asStored.push(row.id);
       else if (payout === "at shown amount") atShownAmount.push({ id: row.id, amount, ceiling: row.grossAmount ?? row.amount });
       else if (payout === "skip") skipped += 1;
+      else if (payout === "already paid") {
+        alreadyPaid += 1;
+        if (row.paidAt && (!alreadyPaidAt || row.paidAt > alreadyPaidAt)) alreadyPaidAt = row.paidAt;
+      }
     }
 
     // One write for the usual case, so a payout of many rows stays well inside
@@ -486,7 +501,11 @@ export async function markCommissionsPaid(
       });
     }
 
-    return { count: asStored.length + atShownAmount.length, skipped };
+    return {
+      count: asStored.length + atShownAmount.length,
+      skipped,
+      ...(alreadyPaid > 0 && { alreadyPaid: { count: alreadyPaid, paidAt: alreadyPaidAt } }),
+    };
   });
 }
 

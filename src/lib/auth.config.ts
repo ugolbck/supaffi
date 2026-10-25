@@ -24,7 +24,8 @@ declare module "next-auth/jwt" {
      * `iat` each time, so `iat` says when the cookie was last refreshed, not
      * when the session began. A custom claim survives those refreshes, which
      * is what lets a password change end sessions older than itself
-     * (ownerSessionIsCurrent in src/lib/ownerExists.ts).
+     * (ownerSessionIsCurrent in src/lib/ownerExists.ts, and
+     * affiliateSessionIsCurrent in src/lib/affiliateSession.ts).
      */
     authAt?: number;
   }

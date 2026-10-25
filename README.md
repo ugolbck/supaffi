@@ -62,17 +62,23 @@ If ports 80 and 443 are taken, Supaffi leaves them alone. To switch modes later:
 cd /opt/supaffi && sudo SUPAFFI_PROXY_MODE=external bash install.sh
 ```
 
-Route each product hostname to the app and keep the `Host` header, which selects the product:
+Route each product hostname to the app. Pass the `Host` header, which selects the product, and set the visitor's address yourself, replacing anything the visitor sent. Rate limits and the certificate check rely on these headers. Keep `/api/internal/` closed to outside visitors:
 
 ```nginx
+location /api/internal/ {
+    return 404;
+}
+
 location / {
     proxy_pass http://127.0.0.1:3000;
     proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
 
-A proxy running in a container can't reach the host's loopback. Share a network and forward to `http://supaffi-app-1:3000`:
+A proxy running in a container can't reach the host's loopback. Share a network and forward to `http://supaffi-app-1:3000`, with the same headers and the same closed `/api/internal/`:
 
 ```yaml
 # docker-compose.override.yml

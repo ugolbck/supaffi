@@ -11,7 +11,7 @@ import {
   type CommissionStatus,
 } from "@/lib/commission";
 import { getOwedTotals, type CurrencyTotal } from "@/lib/analytics";
-import { refusalText, skippedNote } from "@/lib/payoutNotices";
+import { alreadyPaidNote, refusalText, skippedNote } from "@/lib/payoutNotices";
 import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
 import {
@@ -114,6 +114,9 @@ export default async function CommissionsPage({
     commission?: string;
     error?: string;
     skipped?: string;
+    already?: string;
+    paidOn?: string;
+    recorded?: string;
   }>;
 }) {
   const { product } = await params;
@@ -235,6 +238,7 @@ export default async function CommissionsPage({
 
   const refusal = refusalText(query.error);
   const skipped = skippedNote(query.skipped);
+  const alreadyPaid = alreadyPaidNote(query.already, query.paidOn, query.recorded);
 
   return (
     <Page>
@@ -265,6 +269,7 @@ export default async function CommissionsPage({
 
       {refusal && <p className="shrink-0 text-[13px] text-status-warning">{refusal}</p>}
       {skipped && <p className="shrink-0 text-[13px] text-muted-foreground">{skipped}</p>}
+      {alreadyPaid && <p className="shrink-0 text-[13px] text-status-warning">{alreadyPaid}</p>}
 
       {/* Flush and clipped: the rows are the card, and the table scrolls
           inside it so the page never does. */}
