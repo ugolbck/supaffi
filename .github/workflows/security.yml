@@ -3,17 +3,16 @@ name: Security
 # Static analysis of the code, the workflows and the image. Findings land in
 # the repository's Security tab and as annotations on the pull request; none
 # of these jobs fail the run on their own, so a new advisory against a base
-# image does not block unrelated work. The weekly run is what catches
-# advisories published after the code last changed.
+# image does not block unrelated work. Release tags are scanned too, so every
+# published version has a result of its own. Nothing runs on a schedule.
 #
 # Actions are pinned to a commit, not a tag, for the reason spelled out in
 # release.yml.
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
-  schedule:
-    - cron: "17 6 * * 1"
 
 permissions: {}
 
@@ -48,6 +47,7 @@ jobs:
           config: |
             paths-ignore:
               - test
+              - e2e
 
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:

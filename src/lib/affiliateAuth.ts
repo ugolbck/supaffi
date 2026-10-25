@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { getMerchantByDomain } from "@/lib/merchant";
+import { requestHost } from "@/lib/requestHost";
 import { db } from "@/lib/db";
 
 /**
@@ -20,7 +20,7 @@ export async function requireAffiliate(): Promise<{
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "affiliate") redirect("/affiliates/login");
 
-  const host = (await headers()).get("host");
+  const host = await requestHost();
   const merchant = host ? await getMerchantByDomain(host) : null;
   if (!merchant) redirect("/affiliates/login");
 

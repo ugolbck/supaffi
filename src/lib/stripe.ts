@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { decrypt } from "@/lib/crypto";
+import { stripeApiLocation } from "@/lib/stripeApi";
 
 // Pinned explicitly so outgoing calls made *by* Supaffi always get object
 // shapes matching the bundled SDK's types, regardless of what API version
@@ -21,6 +22,7 @@ export function stripeClientFor(merchant: { stripeSecretKeyEnc: string | null })
   }
   return new Stripe(decrypt(merchant.stripeSecretKeyEnc), {
     apiVersion: STRIPE_API_VERSION,
+    ...stripeApiLocation(),
   });
 }
 

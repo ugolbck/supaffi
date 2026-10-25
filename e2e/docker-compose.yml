@@ -1,0 +1,84 @@
+# The end-to-end stack: the production image behind Caddy, a merchant site
+# and a fake Stripe. The .test names exist only on this network (aliases on
+# caddy) and in the browser (host resolver rules in playwright.config.ts).
+#
+# Every container that speaks TLS to another trusts Caddy's local root through
+# NODE_EXTRA_CA_CERTS, so the app's certificate and tracking-script checks
+# pass for the same reasons they pass live, not because checking is off.
+
+name: supaffi-e2e
+
+x-caddy-root: &caddy-root
+  NODE_EXTRA_CA_CERTS: /caddy/caddy/pki/authorities/local/root.crt
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: supaffi
+      POSTGRES_PASSWORD: supaffi
+      POSTGRES_DB: supaffi
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supaffi -d supaffi"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    healthcheck:
+      test: ["CMD", "test", "-f", "/data/caddy/pki/authorities/local/root.crt"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+    networks:
+      default:
+        aliases: [admin.test, shop.test, go.shop.test]
+
+  app:
+    image: ${SUPAFFI_E2E_IMAGE:-supaffi:e2e}
+    environment:
+      <<: *caddy-root
+      DATABASE_URL: postgres://supaffi:supaffi@db:5432/supaffi
+      MASTER_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      AUTH_SECRET: e2e-only-not-a-real-secret
+      AUTH_TRUST_HOST: "true"
+      SUPAFFI_DOMAIN: admin.test
+      SUPAFFI_PROXY_HOST: caddy
+      SUPAFFI_UPDATE_CHECK: "off"
+      SUPAFFI_STRIPE_API_BASE: http://fake-stripe:12111
+    volumes:
+      - caddy_data:/caddy:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      caddy:
+        condition: service_healthy
+
+  merchant:
+    image: node:24-alpine
+    command: ["node", "/fakes/merchant.mjs"]
+    volumes:
+      - ./fakes:/fakes:ro
+
+  fake-stripe:
+    image: node:24-alpine
+    command: ["node", "/fakes/stripe.mjs"]
+    environment:
+      <<: *caddy-root
+    ports:
+      - "127.0.0.1:12111:12111"
+    volumes:
+      - ./fakes:/fakes:ro
+      - caddy_data:/caddy:ro
+    depends_on:
+      caddy:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
