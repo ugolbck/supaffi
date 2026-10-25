@@ -9,7 +9,7 @@ export function Light({ result, label }: { result: CheckResult; label: string })
       <span
         aria-hidden
         className={cn(
-          "size-2.5 shrink-0 rounded-full",
+          "size-2.5 shrink-0 rounded-[1px]",
           result.ok ? "bg-status-success" : "border-2 border-status-warning"
         )}
       />

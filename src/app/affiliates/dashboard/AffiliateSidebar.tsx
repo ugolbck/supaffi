@@ -37,7 +37,7 @@ import {
 const NAV_BADGE = "right-3 peer-data-[size=default]/menu-button:top-2.5";
 
 const NAV_ROW =
-  "h-10 cursor-pointer gap-3 rounded-(--radius-md) px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-black/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active)";
+  "h-10 cursor-pointer gap-3 rounded-(--radius) px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-black/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active)";
 
 const BASE = "/affiliates/dashboard";
 
@@ -53,7 +53,7 @@ const NAV: { key: string; href: string; label: string; icon: LucideIcon }[] = [
 /** The merchant's own mark, the same one the owner's product switcher draws. */
 function Mark({ name }: { name: string }) {
   return (
-    <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent-700 text-[11px] font-semibold text-accent-100">
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent-700 text-[11px] font-medium text-accent-100">
       {initials(name)}
     </span>
   );
@@ -88,7 +88,7 @@ export function AffiliateSidebar({
             <span className="block truncate text-[11px] text-muted-foreground">{merchantSite}</span>
           </span>
         </div>
-        <div className="my-3 h-px bg-(--shell-border)" aria-hidden />
+        <div className="my-3 h-px bg-border" aria-hidden />
       </SidebarHeader>
 
       <SidebarContent className="px-3">
@@ -112,7 +112,7 @@ export function AffiliateSidebar({
                         waiting on something only they can fix. */}
                     {item.key === "payouts" && payoutDetailsMissing && (
                       <SidebarMenuBadge className={NAV_BADGE}>
-                        <span className="block size-2 rounded-full border-2 border-status-warning" />
+                        <span className="block size-2 rounded-[1px] border-2 border-status-warning" />
                       </SidebarMenuBadge>
                     )}
                   </SidebarMenuItem>

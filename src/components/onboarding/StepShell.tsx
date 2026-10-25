@@ -28,7 +28,7 @@ export function StepShell({
         <p className="text-xs font-medium tracking-[0.06em] text-muted-foreground uppercase">
           Step {step.index} of {step.total}
         </p>
-        <h1 className="text-[27px] leading-[1.2] font-semibold tracking-[-0.02em] text-balance">{title}</h1>
+        <h1 className="text-[27px] leading-[1.2] font-medium tracking-[-0.02em] text-balance">{title}</h1>
         {lede && <p className="max-w-[52ch] text-sm text-muted-foreground text-pretty">{lede}</p>}
       </header>
       <div className="mt-8 flex flex-col gap-4">{children}</div>

@@ -6,20 +6,11 @@ import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { getOwedTotals, getPayableGroups, listPayouts } from "@/lib/analytics";
 import { formatCount, formatDate, formatMoney, money, moneyHint } from "@/lib/format";
 import { refusalText, skippedNote } from "@/lib/payoutNotices";
-import { pageList } from "@/lib/pagination";
 import { Button } from "@/components/ui/button";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { EmptyState } from "@/components/dashboard/EmptyState";
+import { TablePagination } from "@/components/dashboard/TablePagination";
 import { CopyValue } from "@/components/CopyValue";
 import { markPayoutPaidAction } from "./payoutActions";
 
@@ -36,7 +27,7 @@ import { markPayoutPaidAction } from "./payoutActions";
 
 const HISTORY_PAGE_SIZE = 25;
 
-const HEAD = "h-9 px-4 text-[13px] font-semibold text-neutral-700";
+const HEAD = "h-9 text-[13px] font-medium text-neutral-700";
 
 export default async function PayoutsPage({
   params,
@@ -67,7 +58,6 @@ export default async function PayoutsPage({
 
   const base = `/dashboard/products/${merchant.slug}`;
   const productRef = { id: merchant.id, slug: merchant.slug };
-  const totalPages = Math.max(1, Math.ceil(history.total / HISTORY_PAGE_SIZE));
   const pageHref = (p: number) => `${base}/payouts${p > 1 ? `?page=${p}` : ""}`;
 
   const refusal = refusalText(query.error);
@@ -104,7 +94,7 @@ export default async function PayoutsPage({
               <TableBody className="divide-y divide-neutral-200">
                 {groups.map((group) => (
                   <TableRow key={`${group.affiliateId}:${group.currency}`} className="border-neutral-200 hover:bg-neutral-50">
-                    <TableCell className="max-w-56 px-4 py-2.5">
+                    <TableCell className="max-w-56">
                       <Link
                         href={`${base}/affiliates?affiliate=${group.affiliateId}`}
                         className="block cursor-pointer truncate font-medium hover:underline"
@@ -115,20 +105,20 @@ export default async function PayoutsPage({
                         <span className="block truncate text-xs text-muted-foreground">{group.affiliateEmail}</span>
                       )}
                     </TableCell>
-                    <TableCell className="max-w-72 px-4 py-2.5 text-sm">
+                    <TableCell className="max-w-72 text-sm">
                       {group.payoutDetails ? (
                         <CopyValue value={group.payoutDetails} />
                       ) : (
                         <span className="text-status-warning">Not given yet</span>
                       )}
                     </TableCell>
-                    <TableCell className="px-4 py-2.5 text-right text-muted-foreground tabular-nums">
+                    <TableCell className="text-right text-muted-foreground tabular-nums">
                       {formatCount(group.commissions.length)}
                     </TableCell>
-                    <TableCell className="px-4 py-2.5 text-right text-[15px] font-semibold whitespace-nowrap tabular-nums">
+                    <TableCell className="text-right text-[15px] font-medium whitespace-nowrap tabular-nums">
                       {formatMoney(group.total, group.currency)}
                     </TableCell>
-                    <TableCell className="w-px px-4 py-2.5 text-right">
+                    <TableCell className="w-px text-right">
                       <form action={markPayoutPaidAction.bind(null, productRef, group.commissions, renderedAt)}>
                         <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
                           Mark paid
@@ -164,16 +154,16 @@ export default async function PayoutsPage({
                   key={`${row.affiliateId}:${row.currency}:${row.paidAt.toISOString()}`}
                   className="border-neutral-200 hover:bg-neutral-50"
                 >
-                  <TableCell className="px-4 py-2.5 whitespace-nowrap text-muted-foreground tabular-nums">
+                  <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
                     {formatDate(row.paidAt)}
                   </TableCell>
-                  <TableCell className="max-w-56 px-4 py-2.5">
+                  <TableCell className="max-w-56">
                     <span className="block truncate">{row.affiliateName ?? row.affiliateEmail}</span>
                   </TableCell>
-                  <TableCell className="px-4 py-2.5 text-right text-muted-foreground tabular-nums">
+                  <TableCell className="text-right text-muted-foreground tabular-nums">
                     {formatCount(row.count)}
                   </TableCell>
-                  <TableCell className="px-4 py-2.5 text-right font-medium whitespace-nowrap tabular-nums">
+                  <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
                     {formatMoney(row.total, row.currency)}
                   </TableCell>
                 </TableRow>
@@ -183,39 +173,12 @@ export default async function PayoutsPage({
         )}
       </Section>
 
-      {totalPages > 1 && (
-        <div className="flex shrink-0 items-center justify-end gap-3">
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {`${(page - 1) * HISTORY_PAGE_SIZE + 1}-${Math.min(page * HISTORY_PAGE_SIZE, history.total)} of ${history.total}`}
-          </p>
-          <Pagination className="mx-0 w-auto justify-end">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious render={<Link href={pageHref(Math.max(1, page - 1))} />} aria-disabled={page <= 1} />
-              </PaginationItem>
-              {pageList(page, totalPages).map((p, i) =>
-                p === "gap" ? (
-                  <PaginationItem key={`gap-${i}`}>
-                    <PaginationEllipsis />
-                  </PaginationItem>
-                ) : (
-                  <PaginationItem key={p}>
-                    <PaginationLink render={<Link href={pageHref(p)} />} isActive={p === page}>
-                      {p}
-                    </PaginationLink>
-                  </PaginationItem>
-                )
-              )}
-              <PaginationItem>
-                <PaginationNext
-                  render={<Link href={pageHref(Math.min(totalPages, page + 1))} />}
-                  aria-disabled={page >= totalPages}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
-      )}
+      <TablePagination
+        page={page}
+        pageSize={HISTORY_PAGE_SIZE}
+        total={history.total}
+        hrefFor={pageHref}
+      />
     </Page>
   );
 }

@@ -115,7 +115,7 @@ export function LinksTable({
                 <span className="min-w-0 truncate text-[13px] text-muted-foreground tabular-nums">
                   {link.clicks} clicks · {link.conversions} sales
                 </span>
-                <span className="shrink-0 text-[13px] font-semibold text-neutral-900 tabular-nums">
+                <span className="shrink-0 text-[13px] font-medium text-neutral-900 tabular-nums">
                   {money(link.earned)}
                 </span>
               </div>
@@ -133,19 +133,19 @@ export function LinksTable({
       <Table className="hidden table-fixed md:table">
         <TableHeader className="sticky top-0 z-10 bg-neutral-100">
           <TableRow className="border-neutral-200 hover:bg-transparent">
-            <TableHead className="h-9 w-[46%] px-4 text-[13px] font-semibold text-neutral-700">
+            <TableHead className="h-9 w-[46%] text-[13px] font-medium text-neutral-700">
               Link
             </TableHead>
-            <TableHead className="h-9 w-[10%] px-4 text-right text-[13px] font-semibold text-neutral-700">
+            <TableHead className="h-9 w-[10%] text-right text-[13px] font-medium text-neutral-700">
               Clicks
             </TableHead>
-            <TableHead className="h-9 w-[10%] px-4 text-right text-[13px] font-semibold text-neutral-700">
+            <TableHead className="h-9 w-[10%] text-right text-[13px] font-medium text-neutral-700">
               Sales
             </TableHead>
-            <TableHead className="h-9 w-[18%] px-4 text-right text-[13px] font-semibold text-neutral-700">
+            <TableHead className="h-9 w-[18%] text-right text-[13px] font-medium text-neutral-700">
               Earned
             </TableHead>
-            <TableHead className="h-9 w-[16%] px-4">
+            <TableHead className="h-9 w-[16%]">
               <span className="sr-only">Actions</span>
             </TableHead>
           </TableRow>
@@ -156,7 +156,7 @@ export function LinksTable({
             const hint = moneyHint(link.earned);
             return (
               <TableRow key={link.id} className="border-neutral-200 hover:bg-neutral-50">
-                <TableCell className="px-4 py-3">
+                <TableCell className="py-3">
                   <span className="flex items-center gap-2">
                     <span className="truncate font-medium">{link.code}</span>
                     {link.isPrimary && <Badge variant="outline">Primary</Badge>}
@@ -167,14 +167,14 @@ export function LinksTable({
                     {url}
                   </code>
                 </TableCell>
-                <TableCell className="px-4 py-3 text-right text-muted-foreground tabular-nums">
+                <TableCell className="text-right text-muted-foreground tabular-nums">
                   {link.clicks}
                 </TableCell>
-                <TableCell className="px-4 py-3 text-right text-muted-foreground tabular-nums">
+                <TableCell className="text-right text-muted-foreground tabular-nums">
                   {link.conversions}
                 </TableCell>
-                <TableCell className="px-4 py-3 text-right">
-                  <span className="block text-[15px] font-semibold whitespace-nowrap text-neutral-900 tabular-nums">
+                <TableCell className="text-right">
+                  <span className="block text-[15px] font-medium whitespace-nowrap text-neutral-900 tabular-nums">
                     {money(link.earned)}
                   </span>
                   {hint && (
@@ -183,7 +183,7 @@ export function LinksTable({
                     </span>
                   )}
                 </TableCell>
-                <TableCell className="px-4 py-3">
+                <TableCell className="py-3">
                   <span className="flex items-center justify-end gap-1.5">
                     <CopyLinkButton size="sm" link={url} label="Copy" />
                     <RowMenu link={link} />

@@ -39,7 +39,7 @@ export function AccountMenu({
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger className="flex h-12 w-full cursor-pointer items-center gap-2.5 rounded-(--radius-md) px-2 text-left transition-[background-color] duration-150 hover:bg-black/[0.04] data-popup-open:bg-black/[0.04]">
+        <DropdownMenuTrigger className="flex h-12 w-full cursor-pointer items-center gap-2.5 rounded-(--radius) px-2 text-left transition-[background-color] duration-150 hover:bg-black/[0.04] data-popup-open:bg-black/[0.04]">
           <span className="relative shrink-0">
             <Avatar className="size-8">
               <AvatarFallback>{initial}</AvatarFallback>
@@ -48,7 +48,7 @@ export function AccountMenu({
               <span
                 aria-label={update.security ? "Security update available" : "Update available"}
                 className={cn(
-                  "absolute -top-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-(--shell)",
+                  "absolute -top-0.5 -right-0.5 size-2.5 rounded-[1px] ring-2 ring-(--canvas)",
                   update.security ? "bg-status-danger" : "bg-accent-600"
                 )}
               />

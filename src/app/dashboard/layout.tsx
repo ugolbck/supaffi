@@ -61,7 +61,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const update = availableUpdate();
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": "312px" } as React.CSSProperties}>
+    <SidebarProvider style={{ "--sidebar-width": "264px" } as React.CSSProperties}>
       <AppSidebar
         merchants={merchants}
         counts={counts}

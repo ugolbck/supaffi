@@ -77,14 +77,14 @@ export function CommissionTable({
           blending into them. */}
       <TableHeader className="sticky top-0 z-10 bg-neutral-100">
         <TableRow className="border-neutral-200 hover:bg-transparent">
-          <TableHead className="h-9 px-4 text-[13px] font-semibold text-neutral-700">Date</TableHead>
-          <TableHead className="h-9 px-4 text-[13px] font-semibold text-neutral-700">Name</TableHead>
-          <TableHead className="h-9 px-4 text-right text-[13px] font-semibold text-neutral-700">
+          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">Date</TableHead>
+          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">Name</TableHead>
+          <TableHead className="h-9 text-right text-[13px] font-medium text-neutral-700">
             Amount
           </TableHead>
-          <TableHead className="h-9 px-4 text-[13px] font-semibold text-neutral-700">Status</TableHead>
-          <TableHead className="h-9 px-4 text-[13px] font-semibold text-neutral-700">Detail</TableHead>
-          <TableHead className="h-9 px-4 text-right text-[13px] font-semibold text-neutral-700">
+          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">Status</TableHead>
+          <TableHead className="h-9 text-[13px] font-medium text-neutral-700">Detail</TableHead>
+          <TableHead className="h-9 text-right text-[13px] font-medium text-neutral-700">
             Sale
           </TableHead>
         </TableRow>
@@ -104,7 +104,7 @@ export function CommissionTable({
                 voided && "text-muted-foreground"
               )}
             >
-              <TableCell className="px-4 py-3 whitespace-nowrap tabular-nums text-muted-foreground">
+              <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
                 {/* One link, stretched over the row by its own overlay: a table
                     row cannot be an anchor, and a click handler would put the
                     whole ledger back on the client. */}
@@ -112,18 +112,18 @@ export function CommissionTable({
                   {row.createdLabel}
                 </Link>
               </TableCell>
-              <TableCell className="max-w-48 px-4 py-3">
+              <TableCell className="max-w-48">
                 <span className="block truncate font-medium">
                   {row.affiliateName ?? row.affiliateEmail}
                 </span>
               </TableCell>
-              <TableCell className="px-4 py-3 text-right">
+              <TableCell className="text-right">
                 {/* The heaviest thing in the row: this page's whole subject
                     is money, and the currency is carried once, on the figure
                     itself, never repeated per line. */}
                 <span
                   className={cn(
-                    "text-[15px] font-semibold whitespace-nowrap tabular-nums",
+                    "text-[15px] font-medium whitespace-nowrap tabular-nums",
                     row.isAdjustment && "text-destructive",
                     !row.isAdjustment && !voided && "text-neutral-900"
                   )}
@@ -131,13 +131,13 @@ export function CommissionTable({
                   {row.amount}
                 </span>
               </TableCell>
-              <TableCell className="px-4 py-3">
+              <TableCell className="py-3">
                 <StatusBadge status={row.status} />
               </TableCell>
-              <TableCell className="max-w-56 px-4 py-3">
+              <TableCell className="max-w-56">
                 <span className="block truncate text-sm text-muted-foreground">{row.stateLabel}</span>
               </TableCell>
-              <TableCell className="px-4 py-3 text-right whitespace-nowrap text-muted-foreground tabular-nums">
+              <TableCell className="text-right whitespace-nowrap text-muted-foreground tabular-nums">
                 {row.sale ?? ""}
               </TableCell>
             </TableRow>

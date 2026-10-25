@@ -19,12 +19,12 @@ export function EmptyState({
   return (
     <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-4 px-6 py-12 text-center">
       {icon && (
-        <span className="flex size-12 items-center justify-center rounded-full bg-neutral-100 text-neutral-500 [&_svg]:size-5">
+        <span className="flex size-12 items-center justify-center rounded-(--radius) bg-neutral-100 text-neutral-500 [&_svg]:size-5">
           {icon}
         </span>
       )}
       <div className="flex flex-col gap-1">
-        <p className="text-[15px] font-semibold tracking-tight">{title}</p>
+        <p className="text-[15px] font-medium tracking-tight">{title}</p>
         {body && <p className="max-w-[36ch] text-sm text-muted-foreground text-pretty">{body}</p>}
       </div>
       {action && <div className="mt-1">{action}</div>}

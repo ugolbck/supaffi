@@ -64,7 +64,6 @@ export function AffiliateFilters({
             render={
               <Button
                 variant="outline"
-                size="sm"
                 className="cursor-pointer justify-between gap-1.5"
               />
             }
@@ -128,7 +127,6 @@ export function AffiliateFilters({
       {anyFilterActive && (
         <Button
           variant="ghost"
-          size="sm"
           className="cursor-pointer text-muted-foreground"
           onClick={() => {
             setDraft("");

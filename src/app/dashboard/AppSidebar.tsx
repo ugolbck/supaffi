@@ -28,16 +28,16 @@ import { ProductSwitcher } from "./ProductSwitcher";
 import { AccountMenu } from "./AccountMenu";
 import type { UpdateInfo } from "./VersionNotice";
 
-// One raised tile for the open section; every other row is flat on the
-// canvas and only tints on hover. The tile's edge comes from its shadow, not
-// a border, so it reads as lifted rather than outlined.
+// The open section is a white row with a hairline; every other row is flat
+// on the canvas and only tints on hover. The hairline is an inset shadow so
+// the selected row takes no extra layout.
 // The primitive centres its badge on a 32px row. Ours are 40px and padded
 // 12px, so the badge drops to the row's middle and lines up with the label's
 // right padding.
 const NAV_BADGE = "right-3 peer-data-[size=default]/menu-button:top-2.5";
 
 const NAV_ROW =
-  "h-10 cursor-pointer gap-3 rounded-(--radius-md) px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-black/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active)";
+  "h-10 cursor-pointer gap-3 rounded-(--radius) px-3 text-sm text-neutral-700 transition-[background-color,box-shadow,color] duration-150 hover:bg-black/[0.04] hover:text-foreground data-active:bg-(--nav-active) data-active:text-foreground data-active:shadow-(--nav-active-shadow) data-active:hover:bg-(--nav-active)";
 
 type Merchant = { id: string; slug: string; name: string; domain: string };
 
@@ -138,7 +138,7 @@ export function AppSidebar({
           between the switcher and the first row. */}
       <SidebarHeader className="gap-0 px-3 pt-0 pb-0">
         <ProductSwitcher merchants={merchants} active={active} />
-        <div className="my-3 h-px bg-(--shell-border)" aria-hidden />
+        <div className="my-3 h-px bg-border" aria-hidden />
       </SidebarHeader>
 
       <SidebarContent className="px-3">
@@ -167,7 +167,7 @@ export function AppSidebar({
                       <SidebarMenuBadge className={NAV_BADGE}>
                         <span
                           className={cn(
-                            "block size-2 rounded-full",
+                            "block size-2 rounded-[1px]",
                             item.dot === "ok"
                               ? "bg-status-success"
                               : "border-2 border-status-warning"

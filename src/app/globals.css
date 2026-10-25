@@ -3,8 +3,7 @@
 @import "shadcn/tailwind.css";
 
 :root {
-  /* Accent — periwinkle/indigo duo. Works dark-on-light (700 on 50/100) and
-     light-on-dark (100/300 on 900/950), same hue both directions. */
+  /* Accent, the one blue. 700 is the primary fill, 600 its hover. */
   --accent-50: #f2f4fe;
   --accent-100: #e6eafc;
   --accent-200: #cfd8fa;
@@ -43,42 +42,51 @@
   --status-danger: #dc2626;
   --status-danger-bg: #fef2f2;
 
-  /* shadcn/ui tokens, mapped onto the palette above. Light-only — no .dark
-     overrides exist by design (Theme decision: light only).
+  /* shadcn/ui tokens, mapped onto the palette above. Light only, no .dark
+     overrides by design.
 
-     Three-tier surface elevation, darkest to lightest (closest to the light
-     source): --background (page canvas) < --card (main content panels) <
-     --elevated (buttons, header, sidebar — the surfaces meant to pop). */
-  --background: var(--neutral-100);
+     Surfaces are flat and only two: the canvas (page background, sidebar)
+     and white (content sheet, cards, controls, popovers). Edges are 1px
+     zinc-200 hairlines; nothing is lifted by gradient or shadow. */
+  --canvas: #f6f6f7;
+  --background: var(--canvas);
   --foreground: var(--neutral-900);
-  --card: var(--neutral-50);
+  --card: #ffffff;
   --card-foreground: var(--neutral-900);
   --elevated: #ffffff;
   --popover: #ffffff;
   --popover-foreground: var(--neutral-900);
   --primary: var(--accent-700);
-  --primary-foreground: var(--accent-50);
+  --primary-hover: var(--accent-600);
+  --primary-foreground: #ffffff;
   --secondary: var(--neutral-100);
   --secondary-foreground: var(--neutral-900);
   --muted: var(--neutral-100);
   --muted-foreground: var(--neutral-500);
-  --accent: var(--accent-100);
-  --accent-foreground: var(--accent-800);
+  /* Hover and highlighted-item tint in menus: a flat grey, so blue stays
+     reserved for the primary action and the selection. */
+  --accent: var(--neutral-100);
+  --accent-foreground: var(--neutral-900);
   --destructive: var(--status-danger);
   --destructive-foreground: #ffffff;
   --border: var(--neutral-200);
-  --input: var(--neutral-200);
+  /* One step darker than --border: an empty field on white needs to read
+     as a field, not as a divider. */
+  --input: var(--neutral-300);
   --ring: var(--accent-400);
 
-  /* The chart's two series. Clicks are the product's own indigo; what they
-     turned into is a warm coral. The two have to separate at a glance and no
-     second shade of blue ever does. */
+  /* The chart: clicks are the one blue line over a soft fill; what they
+     turned into are grey bars, so the line carries the colour and the bars
+     carry the volume. Lit is the hovered bar. */
   --chart-line: var(--accent-600);
   --chart-line-soft: var(--accent-400);
-  /* Teal: apart from the indigo line, and from red, green and amber, which
-     mean danger, done and waiting everywhere else in the product. */
-  --chart-bar: #1f9e90;
-  --chart-bar-lit: #2bb8a8;
+  --chart-bar: var(--neutral-300);
+  --chart-bar-lit: var(--neutral-400);
+  /* The commission slice on top of a bar: blue, so it reads as part of the
+     money, but pale, so the line stays the loudest thing on the chart. */
+  --chart-split: var(--accent-100);
+  --chart-split-edge: var(--accent-300);
+  --chart-area: var(--accent-50);
 
   --chart-1: var(--accent-600);
   --chart-2: var(--accent-300);
@@ -86,139 +94,49 @@
   --chart-4: var(--status-warning);
   --chart-5: var(--neutral-400);
 
-  /* The dashboard shell. The sidebar is not a panel: it sits directly on the
-     page canvas, which is a shade cooler and darker than --background so the
-     white content area beside it reads as a sheet lifted off the desk. The
-     one raised thing inside the sidebar is the selected row: an off-white
-     tile with a hairline of shade along its bottom edge and a short cast
-     shadow under it. Hover only tints; it does not lift. */
-  --shell: #f3f2f0;
-  --shell-border: #e4e3df;
-
-  --shell-shadow: 0 0 0 1px rgb(0 0 0 / 0.02), 0 2px 12px rgb(0 0 0 / 0.04), 0 8px 24px -8px rgb(0 0 0 / 0.06);
+  /* The dashboard shell. The sidebar sits on the canvas with a hairline
+     toward the content sheet. The selected row is white with a hairline
+     (drawn inset so it takes no layout); hover is a flat tint. */
   --nav-active: #ffffff;
-  --nav-active-shadow: inset 0 -1px 0 0 #e5e5e6, 0 0 0 1px rgb(0 0 0 / 0.03), 0 1px 2px rgb(0 0 0 / 0.08),
-    0 2px 6px -2px rgb(0 0 0 / 0.08);
+  --nav-active-shadow: inset 0 0 0 1px var(--border);
 
-  --sidebar: var(--shell);
+  --sidebar: var(--canvas);
   --sidebar-foreground: var(--neutral-900);
   --sidebar-primary: var(--accent-700);
-  --sidebar-primary-foreground: var(--accent-50);
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: rgb(0 0 0 / 0.04);
   --sidebar-accent-foreground: var(--neutral-900);
-  --sidebar-border: var(--shell-border);
+  --sidebar-border: var(--border);
   --sidebar-ring: var(--accent-400);
 
-  /* macOS-style rounded shape language. Base scale, concentric per
-     component: outer radius = inner radius + the padding between them.
-     Tuned per-component, not just multiplied blindly. */
-  --radius-sm: 6px;
-  --radius: 10px;
-  /* Every card, sheet, block and the row you are on. Tight, because this is
-     tooling for people running a business, and one value because a sheet at
-     one rounding holding cards at another is what makes a layout look
-     assembled from parts. */
-  --radius-md: 8px;
-  --radius-lg: 16px;
-  --radius-xl: 22px;
-  --radius-2xl: 28px;
+  /* Square geometry. Every control, card, menu and badge is 2px; structural
+     containers (page sheet, sidebar) use rounded-none. The named steps all
+     resolve to the same value so older rounded-(--radius-*) classes follow. */
+  --radius: 2px;
+  --radius-xs: var(--radius);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
 
-  /* Layered shadows, not flat borders — natural depth on any background.
-     One light source, fixed above the page: every layer offsets downward
-     only, and each successive layer roughly doubles its blur while the
-     alpha drops. That falloff is what a single box-shadow can't fake, and
-     it's the same stacking Stripe/Linear-class UIs use. Contact layer
-     (1px, tightest) sells the "resting on the surface" read; the wide
-     layer sells the height. */
-  --shadow-color: 220 20% 15%;
-  --shadow-xs: 0 1px 1px hsl(var(--shadow-color) / 0.04), 0 1px 2px -1px hsl(var(--shadow-color) / 0.05);
-  --shadow-sm: 0 1px 1px hsl(var(--shadow-color) / 0.04), 0 2px 4px -2px hsl(var(--shadow-color) / 0.05),
-    0 4px 8px -4px hsl(var(--shadow-color) / 0.04);
-  --shadow-md: 0 1px 1px hsl(var(--shadow-color) / 0.05), 0 3px 6px -2px hsl(var(--shadow-color) / 0.06),
-    0 8px 16px -6px hsl(var(--shadow-color) / 0.07), 0 16px 32px -12px hsl(var(--shadow-color) / 0.06);
-  --shadow-lg: 0 1px 1px hsl(var(--shadow-color) / 0.05), 0 4px 8px -2px hsl(var(--shadow-color) / 0.07),
-    0 12px 24px -6px hsl(var(--shadow-color) / 0.09), 0 28px 48px -16px hsl(var(--shadow-color) / 0.10);
-  --shadow-xl: 0 1px 1px hsl(var(--shadow-color) / 0.06), 0 6px 12px -3px hsl(var(--shadow-color) / 0.08),
-    0 20px 40px -10px hsl(var(--shadow-color) / 0.12), 0 48px 80px -24px hsl(var(--shadow-color) / 0.14);
+  /* Flat depth. Things in the page cast nothing; only what floats over it
+     (menus, popovers, dialogs, chart tooltips) gets one soft shadow, plus
+     its hairline. The small steps are an empty shadow rather than `none` so
+     they stay valid inside a comma list. */
+  --shadow-none: 0 0 #0000;
+  --shadow-float: 0 4px 16px rgb(0 0 0 / 0.06);
+  --shadow-xs: var(--shadow-none);
+  --shadow-sm: var(--shadow-none);
+  --shadow-md: var(--shadow-float);
+  --shadow-lg: var(--shadow-float);
+  --shadow-xl: var(--shadow-float);
 
-  /* Cards sit on the white content sheet, so their edge cannot be a grey
-     border: against white it reads as a drawn box rather than as an object.
-     A near-white hairline gives the edge its crispness and the shadow does
-     the lifting, tight at the contact point and wide underneath. */
-  --card-hairline: #e9e9ee;
-  --shadow-raised: 0 1px 1px hsl(var(--shadow-color) / 0.05), 0 2px 4px -1px hsl(var(--shadow-color) / 0.07),
-    0 6px 12px -4px hsl(var(--shadow-color) / 0.08), 0 16px 28px -12px hsl(var(--shadow-color) / 0.10);
-
-  /* The other half of "light comes from the top": a 1px inset highlight on
-     an element's top edge reads as the lit bevel, the drop shadow below
-     reads as the cast shadow. Without the highlight, surfaces look printed
-     on rather than raised. -strong is for saturated/dark fills (primary
-     buttons), where a near-opaque white line would blow out. */
-  --edge-light: inset 0 1px 0 0 rgb(255 255 255 / 0.9);
-  --edge-strong: inset 0 1px 0 0 rgb(255 255 255 / 0.18);
-  --edge-pressed: inset 0 2px 4px -1px hsl(var(--shadow-color) / 0.18);
-
-  /* The built-in CSS easings are too weak to read as intentional. These are
-     the stronger variants: -out for anything entering or responding to the
-     user, -in-out for something moving on screen. Never ease-in for UI, it
-     delays the first frame, which is the frame being watched. */
+  /* The built-in CSS easings are too weak to read as intentional. -out for
+     anything entering or responding to the user, -in-out for something
+     moving on screen. Never ease-in for UI, it delays the first frame. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-
-  /* Crisp, deliberately unblurred: a 1px bright line along the top edge and
-     a 1px dark line along the bottom. These two lines do the edge
-     definition; the fill gradient does the volume. Blurring the highlight
-     instead just fogs the top of the element. */
-  --edge-crisp: inset 0 1px 0 0 rgb(255 255 255 / 0.4), inset 0 -1px 0 0 rgb(0 0 0 / 0.16);
-
-  /* A saturated fill casts a shadow in its own hue. A grey shadow under a
-     blue button reads as a sticker laid on the page; a blue one reads as a
-     solid object sitting on it. The first two layers carry zero blur — they
-     are the button's extruded side wall, not a shadow at all. Only the
-     layers below them are the actual cast shadow. */
-  --shadow-primary: 0 1px 0 0 var(--accent-900), 0 2px 0 0 color-mix(in oklch, var(--accent-900), black 12%),
-    0 4px 8px -2px color-mix(in oklch, var(--accent-950) 42%, transparent),
-    0 10px 20px -6px color-mix(in oklch, var(--accent-950) 32%, transparent);
-  --shadow-primary-hover: 0 1px 0 0 var(--accent-900),
-    0 3px 0 0 color-mix(in oklch, var(--accent-900), black 12%),
-    0 6px 12px -2px color-mix(in oklch, var(--accent-950) 48%, transparent),
-    0 14px 26px -6px color-mix(in oklch, var(--accent-950) 36%, transparent);
-  /* Pressed: the side wall collapses to a single pixel, so the button
-     visibly sits down onto the page instead of only shrinking. */
-  --shadow-primary-pressed: 0 1px 0 0 var(--accent-900),
-    0 1px 3px -1px color-mix(in oklch, var(--accent-950) 42%, transparent);
-
-  /* Light from the top. A faint bright line along the top edge is the lit
-     bevel, a fainter one along the bottom is the bounce off the surface it
-     sits on, and the cast shadow below is in the fill's own hue so it reads
-     as a solid object rather than a sticker. Kept well under the alpha that
-     once read as a white border: the ring people saw was the transparent
-     1px border with the fill clipped to the padding box, not the bevel. */
-  --edge-primary: inset 0 1px 0 0 rgb(255 255 255 / 0.22), inset 0 -1px 0 0 rgb(255 255 255 / 0.07);
-  --shadow-button: var(--edge-primary), 0 1px 2px 0 color-mix(in oklch, var(--accent-950) 30%, transparent),
-    0 2px 8px -2px color-mix(in oklch, var(--accent-950) 26%, transparent);
-  --shadow-button-hover: var(--edge-primary), 0 2px 4px 0 color-mix(in oklch, var(--accent-950) 32%, transparent),
-    0 6px 16px -4px color-mix(in oklch, var(--accent-950) 30%, transparent);
-  /* Pressed: the cast shadow goes, the bevel stays. The button has moved
-     down onto the page, it has not changed material. */
-  --shadow-button-pressed: var(--edge-primary);
-  /* Hover: the centre catches the light. Painted by a pseudo-element whose
-     opacity is what animates, since a gradient itself cannot transition. */
-  --sheen-primary: radial-gradient(ellipse 75% 140% at 50% 45%, rgb(255 255 255 / 0.2), transparent 74%);
-
-  /* The win moment is green, so its button needs a shadow in its own hue for
-     the same reason the primary one does: a grey shadow under a coloured fill
-     reads as a sticker laid on the page. */
-  --shadow-success: 0 1px 2px 0 color-mix(in oklch, var(--status-success) 45%, black 30%),
-    0 2px 8px -2px color-mix(in oklch, var(--status-success) 40%, black 25%);
-  --shadow-success-hover: 0 2px 4px 0 color-mix(in oklch, var(--status-success) 48%, black 30%),
-    0 6px 16px -4px color-mix(in oklch, var(--status-success) 45%, black 25%);
-
-  /* Surfaces are top-lit gradients, not flat fills — a few percent of
-     luminance falloff over the height is enough to stop a card reading as
-     a rectangle of paint. */
-  --card-surface: linear-gradient(180deg, #ffffff 0%, var(--card) 55%);
-  --elevated-surface: linear-gradient(180deg, #ffffff 0%, var(--neutral-50) 100%);
 }
 
 @theme inline {
@@ -226,10 +144,12 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-canvas: var(--canvas);
   --color-elevated: var(--elevated);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -279,11 +199,14 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-xl: var(--radius-xl);
-  --radius-2xl: var(--radius-2xl);
+  --radius-xs: var(--radius);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
 
   --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);

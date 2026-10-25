@@ -116,7 +116,7 @@ function Figure({
       <span
         className={cn(
           "truncate font-mono text-[13px]",
-          muted ? "text-neutral-500 line-through" : "font-semibold text-neutral-900"
+          muted ? "text-neutral-500 line-through" : "font-medium text-neutral-900"
         )}
       >
         {value}
@@ -174,9 +174,9 @@ export function CommissionSheet({
           inset, radius and border are what separate it from the page behind
           it, the same "floating panel" treatment the design system gives any
           surface that sits over the canvas rather than in it. */}
-      <SheetContent className="w-[420px] gap-0 overflow-y-auto bg-white p-0 shadow-xl data-[side=right]:inset-y-3 data-[side=right]:right-3 data-[side=right]:h-[calc(100%-1.5rem)] data-[side=right]:rounded-(--radius-lg) data-[side=right]:border data-[side=right]:border-neutral-200 data-[side=right]:sm:max-w-[420px]">
+      <SheetContent className="w-[420px] gap-0 overflow-y-auto bg-white p-0 shadow-(--shadow-float) data-[side=right]:inset-y-3 data-[side=right]:right-3 data-[side=right]:h-[calc(100%-1.5rem)] data-[side=right]:rounded-(--radius) data-[side=right]:border data-[side=right]:border-neutral-200 data-[side=right]:sm:max-w-[420px]">
         <SheetHeader className="gap-1 border-b border-neutral-200 bg-neutral-50 px-5 py-4 pr-12">
-          <SheetTitle className="text-xl font-semibold tabular-nums text-neutral-900">
+          <SheetTitle className="text-xl font-medium tabular-nums text-neutral-900">
             {commission.amount}
           </SheetTitle>
           <SheetDescription className="truncate">
@@ -188,7 +188,7 @@ export function CommissionSheet({
           {/* The owner is being asked to accuse someone: the evidence comes
               before the confirm/dismiss controls, never after. */}
           {flag && (
-            <div className="flex flex-col gap-3 rounded-(--radius-md) border border-status-warning/30 bg-status-warning-bg px-4 py-3.5">
+            <div className="flex flex-col gap-3 rounded-(--radius) border border-status-warning/30 bg-status-warning-bg px-4 py-3.5">
               <p className="text-sm font-medium text-neutral-900">{flag.title}</p>
               {flag.evidence.length > 0 && (
                 // Stacked, not side by side: these are the exact values the
@@ -203,7 +203,7 @@ export function CommissionSheet({
                         <dt className="w-16 shrink-0 text-[11px] font-medium tracking-wide text-neutral-500 uppercase">
                           {label}
                         </dt>
-                        <dd className="min-w-0 flex-1 font-mono text-[13px] leading-snug font-semibold break-all text-neutral-900">
+                        <dd className="min-w-0 flex-1 font-mono text-[13px] leading-snug font-medium break-all text-neutral-900">
                           {value}
                         </dd>
                       </div>
@@ -215,7 +215,7 @@ export function CommissionSheet({
           )}
 
           {voidCause && (
-            <div className="flex flex-col gap-0.5 rounded-(--radius-md) border border-neutral-200 bg-neutral-50 px-4 py-3.5">
+            <div className="flex flex-col gap-0.5 rounded-(--radius) border border-neutral-200 bg-neutral-50 px-4 py-3.5">
               <p className="text-sm text-neutral-900">{voidCause}</p>
               {commission.voidedLabel && (
                 <p className="text-[13px] text-muted-foreground">{commission.voidedLabel}</p>
@@ -224,7 +224,7 @@ export function CommissionSheet({
           )}
 
           {reduced && commission.grossAmount && (
-            <div className="flex flex-col gap-3 rounded-(--radius-md) border border-neutral-200 bg-neutral-50 px-4 py-3.5">
+            <div className="flex flex-col gap-3 rounded-(--radius) border border-neutral-200 bg-neutral-50 px-4 py-3.5">
               <p className="text-sm text-neutral-900">{reasonText}</p>
               <div className="grid grid-cols-2 gap-4">
                 <Figure label="What it was" value={commission.grossAmount} muted />

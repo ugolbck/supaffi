@@ -34,7 +34,7 @@ export function TopAffiliates({
   return (
     <section
       className={cn(
-        "@container flex min-h-0 flex-col rounded-(--radius-md) border border-(--card-hairline) bg-elevated shadow-(--shadow-raised)",
+        "@container flex min-h-0 flex-col rounded-(--radius) border border-border bg-elevated",
         className
       )}
     >
@@ -65,7 +65,7 @@ export function TopAffiliates({
                     {index + 1}
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className={cn("truncate text-sm", index === 0 ? "font-semibold" : "font-medium")}>
+                    <span className={cn("truncate text-sm", index === 0 ? "font-medium" : "font-medium")}>
                       {affiliate.name ?? affiliate.email}
                     </span>
                     <span className="truncate text-[12px] text-muted-foreground tabular-nums">
@@ -78,13 +78,13 @@ export function TopAffiliates({
                     </span>
                   </div>
                   <div className="flex shrink-0 flex-col items-end">
-                    <span className="text-sm font-semibold tabular-nums">{money(affiliate.earned)}</span>
+                    <span className="text-sm font-medium tabular-nums">{money(affiliate.earned)}</span>
                     {hint && <span className="text-[11px] text-muted-foreground tabular-nums">{hint}</span>}
                   </div>
                 </div>
-                <div className="ml-7 h-1 overflow-hidden rounded-full bg-neutral-100">
+                <div className="ml-7 h-1 overflow-hidden rounded-(--radius) bg-neutral-100">
                   <div
-                    className={cn("h-full rounded-full", index === 0 ? "bg-accent-600" : "bg-accent-300")}
+                    className={cn("h-full rounded-(--radius)", index === 0 ? "bg-accent-600" : "bg-accent-300")}
                     style={{ width: `${Math.round(share * 100)}%` }}
                   />
                 </div>

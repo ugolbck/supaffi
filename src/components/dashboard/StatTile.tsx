@@ -62,7 +62,7 @@ export function StatTile({
       <div className="flex items-end justify-between gap-3">
         <span
           className={cn(
-            "shrink-0 font-heading leading-none font-semibold tracking-[-0.025em] tabular-nums",
+            "shrink-0 font-heading leading-none font-medium tracking-[-0.025em] tabular-nums",
             isFigure ? "text-[22px] @min-[200px]:text-[26px]" : "text-[18px] @min-[200px]:text-[21px]",
             valueTone
           )}
@@ -92,13 +92,13 @@ export function StatTile({
   // inside the padding, which is what a container query measures: about
   // 220 four up on a laptop, 160 on a small laptop, 120 two up on a phone.
   const surface =
-    "@container flex flex-col gap-3 rounded-(--radius-md) border border-(--card-hairline) bg-elevated px-4 py-3.5 shadow-(--shadow-raised)";
+    "@container flex flex-col gap-3 rounded-(--radius) border border-border bg-elevated px-4 py-3.5";
 
   if (href) {
     return (
       <Link
         href={href}
-        className={cn(surface, "cursor-pointer transition-[box-shadow,transform] duration-150 ease-(--ease-out) hover:shadow-(--shadow-md) active:scale-[0.99]")}
+        className={cn(surface, "cursor-pointer transition-[border-color,background-color,transform] duration-150 ease-(--ease-out) hover:border-neutral-300 hover:bg-neutral-50 active:scale-[0.99]")}
       >
         {body}
       </Link>

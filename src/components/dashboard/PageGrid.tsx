@@ -30,7 +30,7 @@ export function PageHeader({
   return (
     <header className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="font-heading text-xl font-extrabold tracking-tight">{title}</h1>
+        <h1 className="font-heading text-xl font-medium tracking-tight">{title}</h1>
         {subtitle && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
