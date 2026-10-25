@@ -104,6 +104,10 @@ model Affiliate {
   // Argon2id, same as the Owner's. Null for an Affiliate who signed up before
   // passwords existed, until the Owner sends them a password link.
   passwordHash         String?
+  // Set when a password link replaces the password. Affiliate sessions issued
+  // before it are refused, like the Owner's (see affiliateSessionIsCurrent).
+  // Left null at signup: the session that signup starts is the one to keep.
+  passwordChangedAt    DateTime?
   customCommissionRate Decimal? @db.Decimal(5, 2) // overrides the current Program's default when set
   payoutDetails        String? // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
 

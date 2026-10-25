@@ -7,6 +7,7 @@ import { checkAffiliatePassword, findAffiliateForLogin } from "@/lib/affiliatePa
 import { getMerchantByDomain } from "@/lib/merchant";
 import { authConfig } from "@/lib/auth.config";
 import { ownerSessionIsCurrent } from "@/lib/ownerExists";
+import { affiliateSessionIsCurrent } from "@/lib/affiliateSession";
 
 // Two Credentials providers, JWT sessions, no database adapter: one for the
 // Owner, one for Affiliates. Affiliate email is only unique per Merchant
@@ -21,17 +22,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
     ...authConfig.callbacks,
-    // Owner sessions are checked against the password-change stamp on the
-    // Owner row. Sessions are JWTs with no adapter, so there is no session
-    // record to delete when the password changes; without this a stolen
-    // cookie would keep working for its full 30 days. The lookup is Prisma,
-    // so it lives here rather than in auth.config.ts, which Edge Middleware
-    // imports. The affiliate path is untouched.
+    // Owner and Affiliate sessions are checked against the password-change
+    // stamp on their row. Sessions are JWTs with no adapter, so there is no
+    // session record to delete when the password changes; without this a
+    // stolen cookie would keep working for its full 30 days. The lookups are
+    // Prisma, so they live here rather than in auth.config.ts, which Edge
+    // Middleware imports.
     async session(params) {
       const session = await authConfig.callbacks!.session!(params);
       const { token } = params;
-      if (token?.role !== "owner" || !token.sub) return session;
-      if (await ownerSessionIsCurrent(token.sub, token.authAt)) return session;
+      if (!token?.sub) return session;
+      const current =
+        token.role === "owner"
+          ? await ownerSessionIsCurrent(token.sub, token.authAt)
+          : token.role === "affiliate"
+            ? await affiliateSessionIsCurrent(token.sub, token.authAt)
+            : true;
+      if (current) return session;
       // Neither id nor role, so every `session.user.id` guard in the app
       // fails closed rather than seeing a half-populated session.
       const { id: _id, role: _role, ...user } = (session as Session).user;
