@@ -1,7 +1,8 @@
 // The merchant's own website, for the end-to-end suite only.
 //
 // It does what the onboarding tells a merchant to do: load track.js in the
-// page head, and pass the referral cookie into the checkout as metadata. The
+// page head, and pass the referral cookie into the checkout as metadata. It
+// also carries a Stripe Payment Link, which the owner leaves alone. The
 // checkout itself is the fake Stripe's /_test/checkout, which stands in for a
 // buyer paying on Stripe's hosted page.
 
@@ -22,7 +23,8 @@ const home = page(`<h1>Shop</h1>
 <form method="post" action="/buy">
   <label>Email <input name="email" type="email" required></label>
   <button type="submit">Buy for $100</button>
-</form>`);
+</form>
+<p><a data-testid="payment-link" href="https://buy.stripe.com/test_e2e">Pay with a Payment Link</a></p>`);
 
 function cookie(req, name) {
   for (const part of (req.headers.cookie ?? "").split(";")) {

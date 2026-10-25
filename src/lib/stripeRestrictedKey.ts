@@ -42,7 +42,7 @@ export const KEY_PERMISSIONS = [
   // row in this table, is only the `rak_` link-form token below: whether an
   // unrecognised one is silently ignored rather than rejected is not
   // documented by Stripe, and is instead a known gap recorded in the project
-  // (docs/ROADMAP.md, "Known gaps"), so the owner still has to confirm the
+  // (docs/dev/roadmap.md, "Known gaps"), so the owner still has to confirm the
   // Checkout Sessions row is actually selected on the key form the link opens.
   {
     token: "rak_checkout_session_read",

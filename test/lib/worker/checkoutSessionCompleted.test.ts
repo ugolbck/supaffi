@@ -382,6 +382,34 @@ describe("handleCheckoutSessionCompleted", () => {
     expect(await db.commission.count()).toBe(0);
   });
 
+  it("earns on a Payment Link checkout that carries the token in client_reference_id", async () => {
+    const session = sessionFixture({ invoice: "in_link" });
+    session.metadata = {};
+    session.client_reference_id = `supaffi_${clickInput.referralToken}`;
+    await handleCheckoutSessionCompleted(merchant, session);
+
+    expect(await db.commission.count({ where: { clickId: click.id } })).toBe(1);
+  });
+
+  it("ignores a client_reference_id that does not start with the supaffi_ prefix", async () => {
+    const session = sessionFixture({ invoice: "in_user_id" });
+    session.metadata = {};
+    session.client_reference_id = clickInput.referralToken;
+    await handleCheckoutSessionCompleted(merchant, session);
+
+    expect(await db.commission.count()).toBe(0);
+  });
+
+  it("prefers the metadata token over client_reference_id when both carry one", async () => {
+    const other = await db.click.create({ data: { ...clickInput, referralToken: "tok-other" } });
+    const session = sessionFixture({ invoice: "in_both" });
+    session.client_reference_id = "supaffi_tok-other";
+    await handleCheckoutSessionCompleted(merchant, session);
+
+    expect(await db.commission.count({ where: { clickId: click.id } })).toBe(1);
+    expect(await db.commission.count({ where: { clickId: other.id } })).toBe(0);
+  });
+
   it("earns on the price before VAT when the price already includes it", async () => {
     // 120.00 paid, 20.00 of it VAT: the sale is 100.00 and 20% of it is 20.00.
     await handleCheckoutSessionCompleted(

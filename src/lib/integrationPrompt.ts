@@ -29,5 +29,7 @@ export function checkoutPrompt(input: { checkoutSnippet: string }): string {
     input.checkoutSnippet,
     "",
     "Keep any metadata that is already being set.",
+    "",
+    "If the site only uses Stripe Payment Links, buy buttons or pricing tables, change nothing here. The tracking script already covers them.",
   ].join("\n");
 }

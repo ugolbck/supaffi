@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { sale } from "./provider";
+import { paymentLinkSale, sale } from "./provider";
 
 // One owner, one product, one affiliate, driven through the real screens:
 // setup, onboarding, signup, the affiliate link landing on the merchant's
@@ -156,4 +156,22 @@ test("an affiliate buying through their own link is flagged", async ({ browser }
   await sale(buyer, { via: AFFILIATE.code, email: AFFILIATE.email });
   await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
   await eventually(owner, () => expect(owner.getByRole("cell", { name: "Flagged" })).toBeVisible());
+});
+
+test("a Payment Link on the merchant's page earns a commission", async ({ browser }) => {
+  const buyer = await newPage(browser);
+  const result = await paymentLinkSale(buyer, { via: AFFILIATE.code, email: "linkbuyer@example.com", amount: 5000, cardFingerprint: "fp_link_buyer_card" });
+  // The script tagged the link with the visitor's referral, and nothing else
+  // on the merchant's side did.
+  expect(new URL(result.href).searchParams.get("client_reference_id")).toBe(`supaffi_${result.referral}`);
+  expect(result.delivered).toEqual([200]);
+  // A different amount from every other sale, so this commission is its own.
+  await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
+  // A card of its own, so it is not mistaken for the affiliate buying through
+  // their own link.
+  await eventually(owner, async () => {
+    const row = owner.getByRole("row").filter({ has: owner.getByRole("cell", { name: "$15.00" }) });
+    await expect(row).toBeVisible();
+    await expect(row.getByRole("cell", { name: "Flagged" })).toHaveCount(0);
+  });
 });

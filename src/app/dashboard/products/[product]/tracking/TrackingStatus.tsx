@@ -85,6 +85,9 @@ export function TrackingStatus({
         <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">
           Wherever you create the Stripe Checkout Session, server side.
         </p>
+        <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">
+          Stripe Payment Links, buy buttons and pricing tables need nothing more.
+        </p>
         <CodeBlock title="Checkout session" code={checkoutSnippet} prompt={checkoutPromptText} />
       </Section>
 

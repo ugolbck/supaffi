@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
+import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { originFor } from "@/lib/url";
 
 // Served at /track.js on the Merchant's own Supaffi domain, embedded on
@@ -33,7 +33,6 @@ export async function GET(req: NextRequest) {
 (function () {
   var params = new URLSearchParams(window.location.search);
   var code = params.get(${JSON.stringify(REFERRAL_QUERY_PARAM)});
-  if (!code) return;
 
   // Sends back the token this browser already holds, read by exact cookie
   // name, so a reload keeps its Click rather than starting a new referral.
@@ -42,10 +41,64 @@ export async function GET(req: NextRequest) {
   })[0];
   var token = held ? held.slice(${JSON.stringify(`${REFERRAL_COOKIE}=`)}.length) : "";
 
+  // Checkouts Stripe builds without the Merchant's code (Payment Links, buy
+  // buttons, pricing tables) have no place for metadata, so they carry the
+  // token in client_reference_id. A value the Merchant already set is theirs
+  // and is never overwritten.
+  function tag(el) {
+    var name = el.tagName.toLowerCase();
+    var ref = ${JSON.stringify(REFERRAL_CLIENT_REFERENCE_PREFIX)} + token;
+    if (name === "a") {
+      var url;
+      try { url = new URL(el.href); } catch (e) { return; }
+      if (url.hostname !== "buy.stripe.com" || url.searchParams.has("client_reference_id")) return;
+      url.searchParams.set("client_reference_id", ref);
+      el.href = url.href;
+    } else if ((name === "stripe-buy-button" || name === "stripe-pricing-table") && !el.hasAttribute("client-reference-id")) {
+      // Both components watch this attribute and forward a changed value to
+      // their checkout, so setting it is enough even once they have rendered.
+      el.setAttribute("client-reference-id", ref);
+    }
+  }
+
+  function scan(root) {
+    if (root.nodeType !== 1) return;
+    tag(root);
+    var found = root.querySelectorAll('a[href*="buy.stripe.com"], stripe-buy-button, stripe-pricing-table');
+    for (var i = 0; i < found.length; i++) tag(found[i]);
+  }
+
+  function run(t) {
+    if (!t) return;
+    token = t;
+    scan(document.documentElement);
+    // Elements added later (single-page apps, async embeds) get tagged too.
+    if (window.MutationObserver) {
+      new MutationObserver(function (records) {
+        for (var i = 0; i < records.length; i++) {
+          for (var j = 0; j < records[i].addedNodes.length; j++) scan(records[i].addedNodes[j]);
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    }
+    // A link whose href changed after load still carries the reference.
+    ["click", "auxclick"].forEach(function (type) {
+      document.addEventListener(type, function (e) {
+        for (var n = e.target; n; n = n.parentNode) {
+          if (n.nodeType === 1 && n.tagName.toLowerCase() === "a") return tag(n);
+        }
+      }, true);
+    });
+  }
+
+  // Without ?via= the held token is all there is. With it, the fresh token
+  // replaces the held one, so links are tagged once it has arrived.
+  if (!code) return run(token);
+
   fetch(${trackUrl} + encodeURIComponent(code) + (token ? "&token=" + encodeURIComponent(token) : ""))
     .then(function (res) { return res.ok ? res.json() : null; })
+    .catch(function () { return null; })
     .then(function (data) {
-      if (!data || !data.referralToken) return;
+      if (!data || !data.referralToken) return run(token);
       window.supaffi = window.supaffi || {};
       window.supaffi.referralToken = data.referralToken;
       // A generous fixed client-side lifetime, just so the browser doesn't
@@ -62,6 +115,7 @@ export async function GET(req: NextRequest) {
         "; path=/; max-age=" + (60 * 60 * 24 * 90) +
         "; SameSite=Lax" +
         (window.location.protocol === "https:" ? "; Secure" : "");
+      run(data.referralToken);
     });
 })();
 `.trim();

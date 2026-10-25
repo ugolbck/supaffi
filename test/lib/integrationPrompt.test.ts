@@ -20,4 +20,9 @@ describe("checkoutPrompt", () => {
     expect(prompt).toContain("stripe.checkout.sessions.create");
     expect(prompt).toContain("already being set");
   });
+
+  it("tells a Payment Links site there is nothing to change", () => {
+    const prompt = checkoutPrompt({ checkoutSnippet: "await stripe.checkout.sessions.create({});" });
+    expect(prompt).toContain("Payment Links, buy buttons or pricing tables, change nothing here");
+  });
 });

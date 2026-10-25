@@ -76,6 +76,7 @@ await stripe.checkout.sessions.create({
 
       <StepLabel>Then, wherever you create the Stripe checkout session.</StepLabel>
       <CodeBlock title="Checkout session" code={checkoutSnippet} prompt={checkoutPrompt({ checkoutSnippet })} />
+      <StepLabel>Stripe Payment Links, buy buttons and pricing tables need nothing more.</StepLabel>
       {program && (
         <FinishedModal
           link={`${originFor(merchant.domain)}/affiliates/signup/${program.slug}`}

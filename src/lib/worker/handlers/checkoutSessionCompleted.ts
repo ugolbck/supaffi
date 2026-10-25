@@ -15,13 +15,22 @@ import { referredEarningOn, storableReferredShare } from "../referredEarning";
 import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
-import { REFERRAL_METADATA_KEY } from "@/lib/referral";
+import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { claimFirstPayment, idOf, recordReferredSubscription, subscriptionProductIds } from "../referredSubscription";
 import { referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
 export async function handleCheckoutSessionCompleted(merchant: Merchant, session: Stripe.Checkout.Session): Promise<void> {
-  const referralToken = session.metadata?.[REFERRAL_METADATA_KEY];
+  // Metadata wins when present. A checkout Stripe built without the
+  // Merchant's code (Payment Link, buy button, pricing table) can only carry
+  // the token in client_reference_id, behind a prefix so a Merchant's own
+  // value in that field is never read as one.
+  const clientReferenceId = session.client_reference_id;
+  const referralToken =
+    session.metadata?.[REFERRAL_METADATA_KEY] ||
+    (clientReferenceId?.startsWith(REFERRAL_CLIENT_REFERENCE_PREFIX)
+      ? clientReferenceId.slice(REFERRAL_CLIENT_REFERENCE_PREFIX.length)
+      : undefined);
   if (!referralToken) return; // not a Supaffi-tracked checkout
 
   // Scoped to the Merchant whose webhook this is. A token is just a string in

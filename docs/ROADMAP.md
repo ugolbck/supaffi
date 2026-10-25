@@ -1,76 +1,44 @@
 # Roadmap
 
-What is still missing, roughly in the order it gets built. Deliberately coarse:
-this is the shape of the work, not a changelog. Shipped versions are in
-CHANGELOG.md. The UX review behind the current order is in
-docs/ux-review/README.md.
+What's coming to Supaffi, in the order we plan to build it. There are no dates.
+What already shipped is in the [changelog](../CHANGELOG.md), and what Supaffi
+handles today is in [What Supaffi handles](what-supaffi-handles.md).
 
-## Now: UX polish
+Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
-### Flagged commissions
-Confirm and dismiss on the row, with the buyer and the affiliate side by side,
-instead of inside the commission's panel.
+## Just shipped
 
-### The affiliate panel
-Totals at the top (earned, paid, owed) and a way to every commission of that
-affiliate. A program change that saves when picked.
+| Feature | What you get |
+| --- | --- |
+| **Stripe Payment Links, buy buttons and pricing tables** | Sales through them earn commissions. The tracking script is all you add. |
 
-### Small details
-Tracking code blocks that show in full, headings that wrap evenly, larger hit
-areas on small buttons, the product's name on the password page.
+## Up next
 
-## Now: testing the affiliate chain end to end
+| Feature | What you get |
+| --- | --- |
+| **Promo codes** | Give an affiliate a Stripe promotion code. They get the sale when a customer uses it, even without clicking their link. |
 
-Unit tests already cover each handler with Stripe stubbed. What nothing
-checks is the whole chain on a running install: affiliate link, tracking
-script, cookie, checkout, webhook, worker, commission on both dashboards.
+## Planned
 
-### v1: every pull request, no secrets
-The production image, Caddy and Postgres, plus a fake merchant site and a
-small stateful fake Stripe that signs and sends webhooks the way Stripe does.
-Hostnames like go.shop.test resolve only inside the test and Caddy issues
-local certificates, so the app takes its production paths, not the local ones.
-A browser walks owner setup, onboarding, affiliate signup, the link, the
-purchase, then a refund, a dispute and a self-referral. The sale step is
-written without naming Stripe, so Polar and Paddle each only need a fake.
-
-### v2: real Stripe test mode, on main and release tags
-Stripe's CLI forwards webhooks and completes a real Checkout Session carrying
-a referral. Catches Stripe API changes. Needs a test-mode key as a repository
-secret, so it never runs on pull requests from outside or from Dependabot.
-No scheduled runs.
-
-### What cannot be tested
-- Public DNS and certificate issuance from a real CA. Emulated locally.
-- Stripe's hosted Checkout page, which blocks automation by design.
-- Stripe reaching a public webhook URL over the internet.
-- The merchant's own checkout code.
-- Polar and Paddle sandboxes in CI: neither documents completing a checkout
-  without a browser, and Paddle's simulator needs a public URL.
-- Time passing (holding periods, renewals) without a fake clock or Stripe
-  test clocks.
-- Safari's cookie restrictions, only approximated.
-
-### Also worth building
-A "Send a test sale" check in the product, run against the owner's own Stripe
-test mode, so a self-hoster can prove their own install end to end.
+| Feature | What you get |
+| --- | --- |
+| **Polar and Paddle** | Sell through a merchant of record that handles your sales tax. Lemon Squeezy after them. |
+| **Import from Rewardful, Tolt and FirstPromoter** | Bring your affiliates, their links and their history. Nobody's link breaks. |
+| **Affiliate notifications** | Affiliates hear when they earn and when they are paid, and reset their own password. Optional, with your own mail server. |
+| **Bulk payouts** | One file to pay everyone through PayPal or Wise, and a minimum payout amount. |
+| **Applications** | Approve new affiliates before they go live. |
 
 ## Later
 
-### More providers
-Stripe is the only payment provider. Paddle and Polar are the obvious next
-ones.
+| Feature | What you get |
+| --- | --- |
+| **Fixed and tiered rewards** | A flat amount per sale or signup, and a higher rate past a sales volume. |
+| **Discount for the referred customer** | Customers who come through an affiliate get a discount too. |
+| **Affiliate kit** | Your logo and colours on the affiliate pages, plus banners and copy ready to share. |
+| **Alerts and webhooks** | A Slack message or a Zapier webhook when an affiliate signs up, a sale earns or a commission is flagged. |
+| **Stats per link** | See which of an affiliate's links and sources bring sales. |
+| **Late refunds** | Optionally take a refund that arrives after payout off the affiliate's next payout. |
+| **Stripe problems in the dashboard** | See a disabled webhook or failing events without reading server logs. |
 
-### Recovering late refunds
-A refund or chargeback that arrives after a commission was paid is the owner's
-loss today. An optional setting could take it off the affiliate's next payouts
-instead, for owners whose refund window is longer than their holding period.
-
-## Known gaps
-
-- A session that outlives its owner account still passes the dashboard guard
-  and renders an empty dashboard instead of sending you back to login.
-- The Stripe restricted key permissions named in the connect instructions have
-  not been checked against Stripe's live form. Stripe ignores an unknown one
-  silently, so a wrong name produces a key that fails later with no warning at
-  connect time.
+Contributors: the detailed version, with technical notes and known gaps, is in
+[docs/dev/roadmap.md](dev/roadmap.md).

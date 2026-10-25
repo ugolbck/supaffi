@@ -1,12 +1,12 @@
 # What Supaffi handles
 
-Describes Supaffi once the money-safety fixes ship in 0.2.7. The gaps that remain in 0.2.6 are listed at the end. This is the source for the docs site and the landing page's use-case list. If a behaviour is not listed under "What it solves reliably", Supaffi does not promise it.
+Describes what Supaffi does today. This is the source for the docs site and the landing page's use-case list. If a behaviour is not listed under "What it solves reliably", Supaffi does not promise it. Fixes in each version are in the changelog, and what comes next is in the [roadmap](ROADMAP.md).
 
 ## Who it is for
 
 A SaaS founder or small team that:
 
-- sells subscriptions, and optionally one-time purchases, through **Stripe Checkout** started from their own site or app;
+- sells subscriptions, and optionally one-time purchases, through **Stripe Checkout** started from their own site or app, or through **Stripe Payment Links**, buy buttons and pricing tables embedded on it;
 - wants to reward affiliates with a **percentage of what customers actually pay**;
 - pays affiliates **themselves**, by bank transfer, PayPal or similar, and records it in Supaffi;
 - is comfortable running a server, or following a one-command install.
@@ -23,12 +23,13 @@ A SaaS founder or small team that:
 
 - Affiliates share links on your site, such as `yoursite.com/pricing?via=sarah`.
 - A small script on your site remembers the referral. Your checkout code passes it to Stripe Checkout in the session metadata.
+- Stripe Payment Links, buy buttons and pricing tables need no code of yours. The script adds the referral to them on your pages, including ones that appear after the page loads.
 - The last affiliate link a visitor used gets the credit, as long as they buy within the attribution window you set, up to 90 days.
 
 ### Payments that earn a commission
 
-- A one-time purchase through Stripe Checkout.
-- The first payment of a subscription started through Stripe Checkout.
+- A one-time purchase through Stripe Checkout, or through a Payment Link, buy button or pricing table.
+- The first payment of a subscription started through Stripe Checkout, or through a Payment Link, buy button or pricing table.
 - Every later renewal of that same subscription, including upgrades and downgrades within the same Stripe product, until the commission duration ends.
 - A free trial that converts: the commission starts at the first real payment.
 - The duration counts once per referral. A customer who cancels and subscribes again through the same referral does not restart it. A new click on the affiliate's link is a new referral.
@@ -66,7 +67,9 @@ A SaaS founder or small team that:
 
 These are outside the product on purpose. They may come later if users need them.
 
-- **Payments that do not go through Stripe Checkout:** Payment Links, custom Stripe Elements checkouts, invoices sent by hand, subscriptions created in the Stripe Dashboard or through the API without Checkout.
+- **Payments that do not go through Stripe Checkout or a Payment Link:** custom Stripe Elements checkouts, invoices sent by hand, subscriptions created in the Stripe Dashboard or through the API without Checkout.
+- **Payment Links on your own custom checkout domain.** The script only tags links that point to Stripe's own address.
+- **Payment Links, buy buttons and pricing tables that already carry your own client reference.** The script leaves them alone, so sales through them are not tracked.
 - **Other payment providers:** Paddle, Lemon Squeezy, PayPal, app stores.
 - **Stripe Connect** platforms and marketplaces.
 - **Sending money.** Supaffi records payouts. It never pays affiliates itself.
@@ -84,13 +87,3 @@ These are outside the product on purpose. They may come later if users need them
 - **Credit notes credited to a customer's balance** instead of refunded. They do not lower a commission yet.
 - **Separate test and live modes.** Use a separate product for testing.
 - **Warnings in the dashboard for a disabled webhook or Stripe events that failed.** These are written to the server log. A revoked key does show in the dashboard.
-
-## Gaps in 0.2.6, closed by 0.2.7
-
-- An open chargeback does not stop its commission from becoming payable.
-- One-off charges and manual invoices on a referred subscription earn, and so does a switch to another Stripe product.
-- Cancelling and subscribing again through the same referral restarts the commission duration.
-- Voiding a self-referral by hand does not stop its renewals.
-- A refund after payout is taken off the affiliate's next payout, and Mark paid can refuse while that is outstanding or when an amount changed.
-- A first subscription payment partly covered by the customer's credit balance earns on the full price.
-- A one-time purchase can earn on tax already included in the price, and a refund on a one-time purchase with Stripe's post-purchase invoice can miss its commission.
