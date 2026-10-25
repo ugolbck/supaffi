@@ -78,9 +78,6 @@ class FakeEl {
   setAttribute(k: string, v: string) {
     this.attrs.set(k, v);
   }
-  cloneNode() {
-    return new FakeEl(this.tagName, Object.fromEntries(this.attrs));
-  }
   get attached(): boolean {
     return this.parentNode ? this.parentNode.attached : this === root();
   }
@@ -90,19 +87,21 @@ class FakeEl {
     if (this.attached) notify(child);
     return child;
   }
-  replaceChild(next: FakeEl, old: FakeEl) {
-    this.children[this.children.indexOf(old)] = next;
-    next.parentNode = this;
-    old.parentNode = null;
-    if (this.attached) notify(next);
-    return old;
-  }
-  querySelectorAll(): FakeEl[] {
+  // Supports the selector forms the script uses: a tag name, or a tag with a
+  // [attr*="value"] filter, comma separated. Anything else throws, so a typo
+  // in the script's selector fails a test rather than matching by accident.
+  querySelectorAll(selector: string): FakeEl[] {
+    const matchers = selector.split(",").map((part) => {
+      const m = part.trim().match(/^([a-z-]+)(?:\[([a-z-]+)\*="([^"]*)"\])?$/);
+      if (!m) throw new Error(`unsupported selector: ${part}`);
+      const [, tag, attr, value] = m;
+      return (el: FakeEl) =>
+        el.tagName.toLowerCase() === tag && (!attr || (el.attrs.get(attr) ?? "").includes(value));
+    });
     const out: FakeEl[] = [];
     const walk = (el: FakeEl) => {
       for (const c of el.children) {
-        const t = c.tagName.toLowerCase();
-        if (t === "stripe-buy-button" || t === "stripe-pricing-table" || (t === "a" && (c.attrs.get("href") ?? "").includes("buy.stripe.com"))) out.push(c);
+        if (matchers.some((match) => match(c))) out.push(c);
         walk(c);
       }
     };
@@ -259,12 +258,19 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     expect(own.getAttribute("client-reference-id")).toBe("user_42");
   });
 
-  it("swaps in a fresh copy of an embed that had already rendered", async () => {
+  it("sets the attribute on an embed that had already rendered, without replacing it", async () => {
     const rendered = new FakeEl("stripe-buy-button");
     rendered.shadowRoot = {};
     const { body } = await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(rendered) });
-    expect(body.children[0]).not.toBe(rendered);
-    expect(body.children[0].getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+    expect(body.children[0]).toBe(rendered);
+    expect(rendered.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+  });
+
+  it("looks up exactly the anchors and the two Stripe components", async () => {
+    // The fake DOM only understands this selector, so a typo in the script's
+    // selector fails the other tests; this pins what it is meant to match.
+    const code = await script();
+    expect(code).toContain(`'a[href*="buy.stripe.com"], stripe-buy-button, stripe-pricing-table'`);
   });
 
   it("tags elements added after the script ran", async () => {

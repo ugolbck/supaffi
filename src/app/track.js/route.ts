@@ -55,11 +55,9 @@ export async function GET(req: NextRequest) {
       url.searchParams.set("client_reference_id", ref);
       el.href = url.href;
     } else if ((name === "stripe-buy-button" || name === "stripe-pricing-table") && !el.hasAttribute("client-reference-id")) {
-      var rendered = el.shadowRoot || el.firstChild;
+      // Both components watch this attribute and forward a changed value to
+      // their checkout, so setting it is enough even once they have rendered.
       el.setAttribute("client-reference-id", ref);
-      // Stripe's component reads the attribute once, when it renders, so one
-      // that already did gets swapped for a fresh copy that will read it.
-      if (rendered && el.parentNode) el.parentNode.replaceChild(el.cloneNode(true), el);
     }
   }
 
