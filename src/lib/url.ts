@@ -18,3 +18,14 @@ export function isLocalDomain(domain: string): boolean {
 export function originFor(domain: string): string {
   return `${isLocalDomain(domain) ? "http" : "https"}://${domain}`;
 }
+
+/**
+ * The signup link handed to a would-be affiliate. For the default program,
+ * the first one open, it is the affiliate address itself, which opens that
+ * signup. Any other program gets its own signup page. A local address keeps
+ * the long form: its root is the dashboard's.
+ */
+export function signupLinkFor(domain: string, programSlug: string, defaultSlug: string | null): string {
+  if (programSlug === defaultSlug && !isLocalDomain(domain)) return originFor(domain);
+  return `${originFor(domain)}/affiliates/signup/${programSlug}`;
+}
