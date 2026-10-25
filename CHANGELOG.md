@@ -8,6 +8,13 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.3.3
+
+### Fixed
+
+- Affiliates land on their dashboard after logging in or signing up. Before,
+  they were sent back to the login page, though the login had worked.
+
 ## 0.3.2
 
 ### Changed
