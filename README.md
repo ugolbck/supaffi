@@ -5,51 +5,36 @@
 <h1 align="center">Supaffi</h1>
 
 <p align="center">
-  Affiliate program for SaaS that sells through Stripe Checkout.<br>
-  Pays commission on money you kept. Runs on your own server.
+  <b>Run an affiliate program without paying for one.</b><br>
+  Self-hosted. Built for Stripe Checkout. No revenue share.
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> · <a href="docs/what-supaffi-handles.md">What it handles</a> · <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/ugolbck/supaffi/releases/latest"><img src="https://img.shields.io/github/v/release/ugolbck/supaffi?label=release&color=232DBE" alt="Latest release"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-232DBE" alt="AGPL-3.0"></a>
-  <a href="https://github.com/ugolbck/supaffi/pkgs/container/supaffi"><img src="https://img.shields.io/badge/image-ghcr.io-232DBE" alt="Container image"></a>
 </p>
 
 <p align="center">
   <img src="docs/images/hero.png" alt="Supaffi owner dashboard with the affiliate dashboard in front" width="100%">
 </p>
 
-Your affiliates get a signup page and a dashboard on your own domain. You get a list of who to pay, how much, and where to send it.
+Affiliates share a link. Supaffi tracks every sale and renewal from Stripe. You see who to pay and how much.
 
-## Commission on money you kept
+## Features
 
-Supaffi reads every sale and renewal from Stripe. A commission is the affiliate's rate on what the customer paid, after discounts and before tax. Credit balance, setup fees, manual invoices and anything paid outside Stripe earn nothing.
+- **Recurring commissions.** Once, for a set number of months, or for life.
+- **Refund-safe.** Commissions wait out a holding period before they're payable.
+- **Chargebacks.** An open dispute freezes its commission.
+- **Self-referrals.** Same email or card as the affiliate? Flagged, never paid until you decide.
+- **Your domain.** Affiliate signup and dashboard on `partners.yourapp.com`.
+- **Payouts.** Who you owe, where to send it, one click to mark paid.
+- **Multi-product.** One install runs every product you sell.
 
-New commissions wait out a holding period you choose. A refund in that time cancels or shrinks the commission. A chargeback freezes it until the dispute closes. By the time you pay, most refunds have already landed.
-
-## Self-referrals don't get paid
-
-When a buyer uses the affiliate's own email or one of their cards, Supaffi flags the sale. It stays unpayable until you look at it.
-
-## You pay for a server, nothing else
-
-No plan tiers and no share of what affiliates bring in. One install runs all your products. Customer and affiliate data stays on your machine, and Stripe keys are encrypted with a key only that machine holds.
-
-## Setup
-
-1. Run the install command on a server and add your product with a restricted Stripe key. Supaffi creates its own webhook.
-2. Add one script tag to your site and pass the referral into your Checkout Session.
-3. Share your affiliate link. Sales show up as they happen, and you pay from the Payouts page.
-
-## What earns a commission
-
-- One-time purchases and subscriptions through Stripe Checkout, including trials that convert and SEPA or ACH payments once they settle.
-- A percentage per program, with a custom rate per affiliate. Paid once, for a set number of months, or for as long as the subscription pays.
-- Renewals of the subscription the affiliate referred, including plan changes within the same Stripe product. Cancelling and coming back does not restart the clock.
-- Last click wins, within an attribution window of up to 90 days.
-- Each sale in its own currency. Nothing is converted.
-
-It does not cover Payment Links, custom Elements checkouts, Paddle or Lemon Squeezy, Stripe Connect, sending the money itself, or tax forms. The full list of what it handles and what it doesn't is in [docs/what-supaffi-handles.md](docs/what-supaffi-handles.md).
+Works with Stripe Checkout. Other payment providers are not supported yet.
 
 ## Install
 
