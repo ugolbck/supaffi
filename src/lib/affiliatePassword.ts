@@ -79,8 +79,9 @@ export async function createAffiliateResetLink(
 
 /**
  * Spends a password link and saves the new password. The link must belong to
- * an Affiliate of the product it was opened on. Answers the Affiliate's email,
- * so the caller can log them in, or null for a link that is unknown, used,
+ * an Affiliate of the product it was opened on. Ends every session the
+ * Affiliate already had. Answers the Affiliate's email, so the caller can log
+ * them in again, or null for a link that is unknown, used,
  * expired or from another product.
  */
 export async function redeemAffiliateResetLink(
@@ -105,7 +106,13 @@ export async function redeemAffiliateResetLink(
       data: { usedAt: new Date() },
     });
     if (claimed.count === 0) return false;
-    await tx.affiliate.update({ where: { id: record.affiliate.id }, data: { passwordHash } });
+    // The stamp goes down in the same update as the hash: every session issued
+    // before this moment stops working (see affiliateSessionIsCurrent). It is
+    // what makes a reset end a hijacker's session, not just their password.
+    await tx.affiliate.update({
+      where: { id: record.affiliate.id },
+      data: { passwordHash, passwordChangedAt: new Date() },
+    });
     return true;
   });
   return saved ? { email: record.affiliate.email } : null;

@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { getOwedTotals, getPayableGroups, listPayouts } from "@/lib/analytics";
 import { formatCount, formatDate, formatMoney, money, moneyHint } from "@/lib/format";
-import { refusalText, skippedNote } from "@/lib/payoutNotices";
+import { alreadyPaidNote, refusalText, skippedNote } from "@/lib/payoutNotices";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
@@ -34,7 +34,14 @@ export default async function PayoutsPage({
   searchParams,
 }: {
   params: Promise<{ product: string }>;
-  searchParams: Promise<{ page?: string; error?: string; skipped?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    error?: string;
+    skipped?: string;
+    already?: string;
+    paidOn?: string;
+    recorded?: string;
+  }>;
 }) {
   const { product } = await params;
   const query = await searchParams;
@@ -62,6 +69,7 @@ export default async function PayoutsPage({
 
   const refusal = refusalText(query.error);
   const skipped = skippedNote(query.skipped);
+  const alreadyPaid = alreadyPaidNote(query.already, query.paidOn, query.recorded);
   const hint = moneyHint(payableNow);
 
   return (
@@ -73,6 +81,7 @@ export default async function PayoutsPage({
 
       {refusal && <p className="shrink-0 text-[13px] text-status-warning">{refusal}</p>}
       {skipped && <p className="shrink-0 text-[13px] text-muted-foreground">{skipped}</p>}
+      {alreadyPaid && <p className="shrink-0 text-[13px] text-status-warning">{alreadyPaid}</p>}
 
       <Section title="Ready to pay" flush className="shrink-0 overflow-hidden">
         {groups.length === 0 ? (

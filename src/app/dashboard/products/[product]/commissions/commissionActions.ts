@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { alreadyPaidParams } from "@/lib/payoutNotices";
 import { safeListHref } from "@/lib/commissionRedirect";
 import {
   markCommissionsPaid,
@@ -45,19 +46,20 @@ function refusalCode(error: string): string {
 }
 
 // `markCommissionsPaid` refuses rather than throws, so its reason travels back
-// in the URL, and so does how many shown rows it skipped. Without them a
+// in the URL, and so does how many shown rows it skipped or found already paid. Without them a
 // payout the ledger declined or shortened would look like a button that did
 // nothing, or did everything.
 function back(
   product: { slug: string },
   listHref: string,
-  outcome?: { error?: string; skipped?: number }
+  outcome?: { error?: string; skipped?: number; already?: Record<string, string> }
 ): never {
   const list = `/dashboard/products/${product.slug}/commissions`;
   const target = safeListHref(listHref, list);
   const params = new URLSearchParams();
   if (outcome?.error) params.set("error", outcome.error);
   if (outcome?.skipped) params.set("skipped", String(outcome.skipped));
+  for (const [key, value] of Object.entries(outcome?.already ?? {})) params.set(key, value);
   const search = params.toString();
   const query = search ? `${target.includes("?") ? "&" : "?"}${search}` : "";
   revalidatePath("/dashboard", "layout");
@@ -76,7 +78,13 @@ export async function markPaidAction(
   renderedAt: string
 ): Promise<void> {
   const result = await markCommissionsPaid(await owner(), product.id, shown, renderedAt);
-  back(product, listHref, "error" in result ? { error: refusalCode(result.error) } : { skipped: result.skipped });
+  back(
+    product,
+    listHref,
+    "error" in result
+      ? { error: refusalCode(result.error) }
+      : { skipped: result.skipped, already: alreadyPaidParams(result) }
+  );
 }
 
 export async function confirmFraudAction(

@@ -54,6 +54,7 @@ vi.mock("@/lib/referralCode", () => ({
 import { createAffiliateSignup } from "@/app/affiliates/signup/[program]/createAffiliateSignup";
 import { resetAffiliateSignupThrottle } from "@/lib/affiliateSignupThrottle";
 import { verifyPassword } from "@/lib/password";
+import { affiliateSessionIsCurrent } from "@/lib/affiliateSession";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -183,6 +184,15 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
       { email: "sarah2@example.com", referralCode: "sarah2" },
     ]);
     expect(signInMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not stamp a password change at signup, so the session it starts is kept", async () => {
+    referralCodeQueue.push("sarah");
+    await createAffiliateSignup(programSlug, { error: "" }, formDataFor("Sarah", "sarah@example.com"));
+
+    const affiliate = await db.affiliate.findFirstOrThrow({ where: { merchantId, email: "sarah@example.com" } });
+    expect(affiliate.passwordChangedAt).toBeNull();
+    expect(await affiliateSessionIsCurrent(affiliate.id, Math.floor(Date.now() / 1000))).toBe(true);
   });
 
   it("refuses a second signup with an email already registered, without logging anyone in", async () => {

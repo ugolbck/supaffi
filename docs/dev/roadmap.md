@@ -112,5 +112,10 @@ outside or from Dependabot. No scheduled runs.
 - Credit notes credited to a customer's balance instead of refunded do not
   lower a commission.
 - Payment Links on a merchant's own custom checkout domain are not tagged.
+- Products sharing one Stripe account must not link to each other's Payment
+  Links, buy buttons or pricing tables. A site's script tags every Stripe buy
+  link on its pages, and Supaffi cannot tell which Stripe products belong to
+  which of its products, so an affiliate of one could be credited for the
+  other's sale.
 - On the page a visitor lands on through an affiliate link, a buy link clicked
   before the click is recorded (a fraction of a second) goes untagged.
