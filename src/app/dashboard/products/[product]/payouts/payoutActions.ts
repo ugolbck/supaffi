@@ -15,7 +15,7 @@ function refusalCode(error: string): string {
 /**
  * One payout: the commissions on the row as shown, at the amounts shown, and
  * when the page was drawn. The ledger records those amounts; see
- * `markCommissionsPaid`. Its refusal, or how many rows it skipped, comes back
+ * `markCommissionsPaid`. Its refusal, or how many rows it skipped or found already paid, comes back
  * in the URL as a code.
  */
 export async function markPayoutPaidAction(
@@ -29,7 +29,14 @@ export async function markPayoutPaidAction(
 
   const params = new URLSearchParams();
   if ("error" in result) params.set("error", refusalCode(result.error));
-  else if (result.skipped) params.set("skipped", String(result.skipped));
+  else {
+    if (result.skipped) params.set("skipped", String(result.skipped));
+    if (result.alreadyPaid) {
+      params.set("already", String(result.alreadyPaid.count));
+      if (result.alreadyPaid.paidAt) params.set("paidOn", String(result.alreadyPaid.paidAt.getTime()));
+      if (result.count > 0) params.set("recorded", "1");
+    }
+  }
   const search = params.toString();
   revalidatePath("/dashboard", "layout");
   redirect(`/dashboard/products/${product.slug}/payouts${search ? `?${search}` : ""}`);

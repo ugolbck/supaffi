@@ -613,13 +613,40 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect(row.amount.toFixed(2)).toBe("6.00");
   });
 
-  it("does not count a second press on an already paid payout as skipped", async () => {
+  it("reports a second press on an already paid payout and records nothing", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const only = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
     const renderedAt = loadedNow();
 
     expect(await markCommissionsPaid(ownerId, merchantId, shownOf(only), renderedAt)).toEqual({ count: 1, skipped: 0 });
-    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(only), renderedAt)).toEqual({ count: 0, skipped: 0 });
+    const paid = await db.commission.findUniqueOrThrow({ where: { id: only.id } });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(only), renderedAt)).toEqual({
+      count: 0,
+      skipped: 0,
+      alreadyPaid: { count: 1, paidAt: paid.paidAt },
+    });
+    const after = await db.commission.findUniqueOrThrow({ where: { id: only.id } });
+    expect(after.paidAt).toEqual(paid.paidAt);
+  });
+
+  it("records the new rows of a press that also holds already paid ones, and reports the rest", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const click = await makeClick(affiliate.id);
+    const earlier = await makeCommission(affiliate.id, click.id, {});
+    const fresh = await makeCommission(affiliate.id, click.id, {});
+    const renderedAt = loadedNow();
+
+    await markCommissionsPaid(ownerId, merchantId, shownOf(earlier), renderedAt);
+    const paid = await db.commission.findUniqueOrThrow({ where: { id: earlier.id } });
+
+    expect(await markCommissionsPaid(ownerId, merchantId, shownOf(earlier, fresh), renderedAt)).toEqual({
+      count: 1,
+      skipped: 0,
+      alreadyPaid: { count: 1, paidAt: paid.paidAt },
+    });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: fresh.id } })).status).toBe("PAID");
+    expect((await db.commission.findUniqueOrThrow({ where: { id: earlier.id } })).paidAt).toEqual(paid.paidAt);
   });
 
   it("records a shown commission a dispute opened on after the page loaded, at the shown amount", async () => {

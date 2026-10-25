@@ -1,5 +1,5 @@
 import { STALE_PAGE } from "@/lib/commission";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatDate } from "@/lib/format";
 
 /**
  * The refusals the ledger can hand back after Mark paid, as sentences. The
@@ -26,4 +26,23 @@ export function skippedNote(raw: string | undefined): string | null {
   return skipped === 1
     ? "1 commission was not marked paid because it is no longer payable."
     : `${formatCount(skipped)} commissions were not marked paid because they are no longer payable.`;
+}
+
+// Said when Mark paid reached rows an earlier press had already recorded, for
+// example from a tab opened before that payout. `on` is when the latest of
+// them was marked, in milliseconds; `recorded` is set when the same press
+// still recorded other rows.
+export function alreadyPaidNote(
+  raw: string | undefined,
+  on: string | undefined,
+  recorded: string | undefined
+): string | null {
+  const already = Math.floor(Number(raw));
+  if (!Number.isFinite(already) || already < 1) return null;
+  const at = on ? new Date(Number(on)) : null;
+  const when = at && !Number.isNaN(at.getTime()) ? ` on ${formatDate(at)}` : "";
+  if (!recorded) return `Already marked paid${when}. Nothing recorded.`;
+  return already === 1
+    ? `1 commission was already marked paid${when} and was not recorded again.`
+    : `${formatCount(already)} commissions were already marked paid${when} and were not recorded again.`;
 }
