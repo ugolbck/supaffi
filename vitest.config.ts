@@ -4,6 +4,9 @@ import path from "path";
 export default defineConfig({
   test: {
     environment: "node",
+    // e2e/ holds Playwright specs that need the whole stack running (the
+    // E2E workflow); they are not Vitest's to pick up.
+    include: ["test/**/*.test.{ts,tsx}"],
     // Runs before anything imports the Prisma client, which reads
     // DATABASE_URL at construction. Redirects the database-backed suites to a
     // scratch database and refuses to run against the development one.
