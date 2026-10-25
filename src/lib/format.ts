@@ -123,6 +123,6 @@ export function termsLine(terms: {
       ? `${rate} of the first payment`
       : terms.durationType === "FIXED_MONTHS"
         ? `${rate} for ${terms.durationMonths ?? 0} months`
-        : `${rate} forever`;
+        : `${rate} of every payment`;
   return [earning, `${terms.attributionWindowDays}-day cookie`, `${terms.holdingPeriodDays}-day hold`].join(" · ");
 }

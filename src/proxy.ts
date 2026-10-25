@@ -23,7 +23,7 @@ async function isProductDomain(host: string | null): Promise<boolean> {
 }
 
 export default auth(async (req) => {
-  const productRoute = resolveProductDomainRoute(req.nextUrl.pathname);
+  const productRoute = resolveProductDomainRoute(req.nextUrl.pathname, req.auth?.user?.role ?? null);
   if (productRoute && (await isProductDomain(req.headers.get("host")))) {
     if ("redirect" in productRoute) {
       return NextResponse.redirect(new URL(productRoute.redirect, req.nextUrl.origin));

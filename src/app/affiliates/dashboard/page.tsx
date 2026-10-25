@@ -101,7 +101,7 @@ export default async function AffiliateOverviewPage({
       payable={metrics.payable}
       paid={metrics.paid}
       referrals={referrals}
-      recurring={program?.program.commissionDurationType !== "ONE_TIME"}
+      recurring={program?.program.commissionDurationType !== "ONE_TIME" && referrals.total > 0}
     />
   );
 }

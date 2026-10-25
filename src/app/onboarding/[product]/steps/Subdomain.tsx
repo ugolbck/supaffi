@@ -9,7 +9,7 @@ import { StepShell } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { detectDnsProvider } from "@/lib/checks/dns";
 import { cloudflareDnsRecordsUrl } from "@/lib/dnsProviderLinks";
-import { displayStep, dnsRecordName, nextStep, splitSubdomain, stepPath } from "@/lib/onboarding";
+import { displayStep, dnsRecordName, dnsZone, nextStep, splitSubdomain, stepPath } from "@/lib/onboarding";
 import { isLocalDomain } from "@/lib/url";
 import { isDevInstance } from "@/lib/instanceMode";
 import { AutoRefresh } from "../../AutoRefresh";
@@ -82,7 +82,7 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
               <Button
                 variant="secondary"
                 size="sm"
-                render={<a href={cloudflareDnsRecordsUrl()} target="_blank" rel="noreferrer" />}
+                render={<a href={cloudflareDnsRecordsUrl(dnsZone(merchant.domain))} target="_blank" rel="noreferrer" />}
               >
                 <Image src="/logos/cloudflare-icon.svg" alt="" width={16} height={16} className="mr-1 size-4" />
                 Open Cloudflare

@@ -30,10 +30,10 @@ function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
-/** How long commissions keep coming on a subscription, in plain words. */
-export function recurringTerm(terms: SignupTerms): { value: string; hint: string } {
+/** How long commissions keep coming from a customer, in plain words. */
+export function durationTerm(terms: SignupTerms): { value: string; hint: string } {
   if (terms.durationType === "FOREVER") {
-    return { value: "Every payment", hint: "for as long as they stay" };
+    return { value: "Every payment", hint: "as long as the customer pays" };
   }
   if (terms.durationType === "FIXED_MONTHS") {
     // `durationMonths` is only ever null when durationType isn't
@@ -41,11 +41,11 @@ export function recurringTerm(terms: SignupTerms): { value: string; hint: string
     // expected. Either way, a FIXED_MONTHS program must never fall through
     // to the one-time wording below, which reads as a weaker plan than it is.
     if (terms.durationMonths) {
-      return { value: plural(terms.durationMonths, "month"), hint: "of everything they pay" };
+      return { value: plural(terms.durationMonths, "month"), hint: "of everything the customer pays" };
     }
-    return { value: "For a set period", hint: "of everything they pay" };
+    return { value: "For a set period", hint: "of everything the customer pays" };
   }
-  return { value: "First payment", hint: "one commission per referral" };
+  return { value: "First payment", hint: "one commission per customer" };
 }
 
 function Tile({ label, value, hint }: { label: string; value: string; hint: string }) {
@@ -72,7 +72,7 @@ export function SignupScreen({
   linkHost: string;
   action: SignupFormAction;
 }) {
-  const recurring = recurringTerm(terms);
+  const duration = durationTerm(terms);
 
   return (
     <div className="mx-auto grid w-full max-w-[960px] gap-10 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-center lg:gap-16">
@@ -88,7 +88,7 @@ export function SignupScreen({
 
         <div className="grid grid-cols-1 divide-y divide-neutral-200 overflow-hidden rounded-(--radius-md) border border-neutral-300 bg-white shadow-sm sm:max-w-[440px] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
           <Tile label="You earn" value={formatRate(terms.rate)} hint="of every sale" />
-          <Tile label="On subscriptions" value={recurring.value} hint={recurring.hint} />
+          <Tile label="Earn on" value={duration.value} hint={duration.hint} />
         </div>
       </div>
 
