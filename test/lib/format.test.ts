@@ -87,7 +87,7 @@ describe("termsLine", () => {
     expect(termsLine({ ...base, rate: 30, durationType: "FIXED_MONTHS", durationMonths: 12 })).toBe(
       "30% for 12 months · 60-day cookie · 30-day hold"
     );
-    expect(termsLine({ ...base, rate: 12.5, durationType: "FOREVER" })).toBe("12.5% forever · 60-day cookie · 30-day hold");
+    expect(termsLine({ ...base, rate: 12.5, durationType: "FOREVER" })).toBe("12.5% of every payment · 60-day cookie · 30-day hold");
     expect(termsLine({ ...base, rate: 25, durationType: "ONE_TIME" })).toBe(
       "25% of the first payment · 60-day cookie · 30-day hold"
     );

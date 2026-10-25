@@ -43,13 +43,16 @@ function isOwnerPath(pathname: string): boolean {
 
 /**
  * What a request on a product's affiliate domain gets instead of the page it
- * asked for, or null when the page is fine there. The root goes to the
- * affiliate login, since an affiliate is the only visitor who belongs there.
+ * asked for, or null when the page is fine there. The root is where a
+ * product's site sends would-be partners, so it goes to the program's entry
+ * page, which signs them up; an affiliate already logged in goes straight to
+ * their dashboard.
  */
 export function resolveProductDomainRoute(
-  pathname: string
+  pathname: string,
+  role: SessionRole = null
 ): { redirect: string } | { notFound: true } | null {
-  if (pathname === "/") return { redirect: "/affiliates/login" };
+  if (pathname === "/") return { redirect: role === "affiliate" ? "/affiliates/dashboard" : "/affiliates" };
   if (isOwnerPath(pathname)) return { notFound: true };
   return null;
 }

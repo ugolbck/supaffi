@@ -30,6 +30,7 @@ export async function Terms({ ctx }: { ctx: Ctx }) {
       <TermsForm
         action={saveTermsAction.bind(null, { id: merchant.id, slug: merchant.slug })}
         initial={initial}
+        askName={false}
         submitLabel="Continue"
       />
     </StepShell>
