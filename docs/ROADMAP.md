@@ -2,43 +2,96 @@
 
 What is still missing, roughly in the order it gets built. Deliberately coarse:
 this is the shape of the work, not a changelog. Shipped versions are in
-CHANGELOG.md. The UX review behind the current order is in
-docs/ux-review/README.md.
+CHANGELOG.md.
 
-## Now: UX polish
+The order follows what makes a SaaS founder pass on Supaffi today, measured
+against Rewardful, Tolt, FirstPromoter and Affonso: sales it cannot see first,
+then switching costs, then the rest of the program.
 
-### Flagged commissions
-Confirm and dismiss on the row, with the buyer and the affiliate side by side,
-instead of inside the commission's panel.
+## Now: sales Supaffi cannot see yet
 
-### The affiliate panel
-Totals at the top (earned, paid, owed) and a way to every commission of that
-affiliate. A program change that saves when picked.
+### Stripe Payment Links
+Many founders sell through buy.stripe.com links, not a Checkout Session their
+own code creates, so those sales earn nothing today. Stripe accepts a
+`client_reference_id` in a Payment Link's URL and returns it on
+checkout.session.completed. The tracking script adds the referral to every
+Payment Link on the page, so the founder changes no code.
 
-### Small details
-Tracking code blocks that show in full, headings that wrap evenly, larger hit
-areas on small buttons, the product's name on the password page.
+### Promo codes
+Creators promote with a discount code, not a link. A Stripe promotion code
+assigned to an affiliate credits them when a customer uses it, with or without
+a click.
 
-## Now: testing the affiliate chain end to end
+## Next: switching and paying
 
-Unit tests already cover each handler with Stripe stubbed. What nothing
-checks is the whole chain on a running install: affiliate link, tracking
-script, cookie, checkout, webhook, worker, commission on both dashboards.
+### Polar and Paddle
+Founders who let a merchant of record handle sales tax cannot use Supaffi.
+Polar and Paddle first, Lemon Squeezy after. The e2e sale step is already
+written without naming Stripe, so each needs only a fake.
 
-### v1: every pull request, no secrets
-The production image, Caddy and Postgres, plus a fake merchant site and a
-small stateful fake Stripe that signs and sends webhooks the way Stripe does.
-Hostnames like go.shop.test resolve only inside the test and Caddy issues
-local certificates, so the app takes its production paths, not the local ones.
-A browser walks owner setup, onboarding, affiliate signup, the link, the
-purchase, then a refund, a dispute and a self-referral. The sale step is
-written without naming Stripe, so Polar and Paddle each only need a fake.
+### Import from another tool
+Affiliates, their links and their commission history from Rewardful, Tolt and
+FirstPromoter, so moving costs nothing and nobody's link breaks.
 
-### v2: real Stripe test mode, on main and release tags
-Stripe's CLI forwards webhooks and completes a real Checkout Session carrying
-a referral. Catches Stripe API changes. Needs a test-mode key as a repository
-secret, so it never runs on pull requests from outside or from Dependabot.
-No scheduled runs.
+### Affiliates who hear from you
+Tell affiliates when they earn and when they are paid, and let them reset their
+own password. Optional: the owner brings a mail server, and without one
+nothing changes.
+
+### Paying in one go
+A payout file in the format PayPal and Wise accept for bulk payouts, from the
+Payouts page, and a minimum amount below which an affiliate is not paid yet.
+
+### Applications
+A program can hold new affiliates until the owner approves them, instead of
+choosing between open to anyone and invite only.
+
+## Later: the rest of a program
+
+### Fixed and tiered rewards
+A flat amount per sale or per signup, and a higher rate once an affiliate
+passes a sales volume.
+
+### A discount for the referred customer
+Two-sided rewards: the customer who came through an affiliate gets a discount
+on their purchase.
+
+### Affiliate kit
+The product's logo and colours on the affiliate pages, and banners, copy and
+links ready to share from the affiliate dashboard.
+
+### Owner alerts and webhooks
+A message in Slack, or a webhook for Zapier, when an affiliate signs up, a sale
+earns or a commission is flagged.
+
+### Stats per link
+Which of an affiliate's links and sources bring clicks and sales, on both
+dashboards.
+
+### Recovering late refunds
+A refund or chargeback that arrives after a commission was paid is the owner's
+loss today. An optional setting could take it off the affiliate's next payouts
+instead, for owners whose refund window is longer than their holding period.
+
+### Stripe problems in the dashboard
+A disabled webhook or events that keep failing reach only the server log
+today. They should show in the dashboard.
+
+## Alongside
+
+### UX polish
+Flagged commissions confirmed or dismissed on the row. Totals at the top of the
+affiliate panel, with a way to all of their commissions, and a program change
+that saves when picked. Tracking code blocks that show in full, larger hit
+areas on small buttons, the product's name on the password page. The review
+behind these is in docs/ux-review/README.md.
+
+### Real Stripe test mode in CI
+The browser tests run on every pull request against a fake Stripe. On main and
+release tags they should also complete a real Checkout Session in test mode,
+with Stripe's CLI forwarding webhooks, to catch Stripe API changes. Needs a
+test-mode key as a repository secret, so it never runs on pull requests from
+outside or from Dependabot. No scheduled runs.
 
 ### What cannot be tested
 - Public DNS and certificate issuance from a real CA. Emulated locally.
@@ -51,21 +104,6 @@ No scheduled runs.
   test clocks.
 - Safari's cookie restrictions, only approximated.
 
-### Also worth building
-A "Send a test sale" check in the product, run against the owner's own Stripe
-test mode, so a self-hoster can prove their own install end to end.
-
-## Later
-
-### More providers
-Stripe is the only payment provider. Paddle and Polar are the obvious next
-ones.
-
-### Recovering late refunds
-A refund or chargeback that arrives after a commission was paid is the owner's
-loss today. An optional setting could take it off the affiliate's next payouts
-instead, for owners whose refund window is longer than their holding period.
-
 ## Known gaps
 
 - A session that outlives its owner account still passes the dashboard guard
@@ -74,3 +112,5 @@ instead, for owners whose refund window is longer than their holding period.
   not been checked against Stripe's live form. Stripe ignores an unknown one
   silently, so a wrong name produces a key that fails later with no warning at
   connect time.
+- Credit notes credited to a customer's balance instead of refunded do not
+  lower a commission.
