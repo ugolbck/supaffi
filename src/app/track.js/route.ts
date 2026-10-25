@@ -44,6 +44,11 @@ export async function GET(req: NextRequest) {
     return held ? held.slice(${JSON.stringify(`${REFERRAL_COOKIE}=`)}.length) : "";
   }
   var token = readHeld();
+  // The cookie value last seen or written by this script. A re-read only moves
+  // the links when the cookie has changed since, so a fresh token whose cookie
+  // write was blocked (or shadowed by a same-named cookie) is not undone by
+  // reading back the older value.
+  var seen = token;
 
   // Checkouts Stripe builds without the Merchant's code (Payment Links, buy
   // buttons, pricing tables) have no place for metadata, so they carry the
@@ -82,7 +87,9 @@ export async function GET(req: NextRequest) {
   // Picks up a newer click made in another tab since this page loaded.
   function refresh() {
     var t = readHeld();
-    if (!t || t === token) return;
+    if (!t || t === seen) return;
+    seen = t;
+    if (t === token) return;
     token = t;
     scan(document.documentElement);
   }
@@ -138,6 +145,7 @@ export async function GET(req: NextRequest) {
         "; path=/; max-age=" + (60 * 60 * 24 * 90) +
         "; SameSite=Lax" +
         (window.location.protocol === "https:" ? "; Secure" : "");
+      seen = readHeld();
       run(data.referralToken);
     });
 })();

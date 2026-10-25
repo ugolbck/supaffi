@@ -121,16 +121,24 @@ function notify(node: FakeEl) {
 // before the script runs. Returns the body and a way to click an element.
 async function runOn(
   code: string,
-  opts: { search?: string; cookie?: string; build?: (body: FakeEl) => void } = {},
+  opts: { search?: string; cookie?: string; blockCookieWrites?: boolean; build?: (body: FakeEl) => void } = {},
 ) {
   observers = [];
   rootEl = new FakeEl("html");
   const body = rootEl.appendChild(new FakeEl("body"));
   opts.build?.(body);
   const listeners: Array<{ type: string; fn: (e: { target: FakeEl }) => void }> = [];
+  // A blocked write (a consent tool wrapping document.cookie) is dropped by the
+  // setter; the test's own changes go through `jar` directly.
+  let jar = opts.cookie ?? "";
   const document = {
     documentElement: rootEl,
-    cookie: opts.cookie ?? "",
+    get cookie() {
+      return jar;
+    },
+    set cookie(v: string) {
+      if (!opts.blockCookieWrites) jar = v;
+    },
     addEventListener: (type: string, fn: (e: { target: FakeEl }) => void) => listeners.push({ type, fn }),
   };
   const sandbox: Record<string, unknown> = {
@@ -156,12 +164,12 @@ async function runOn(
     // The visitor comes back to this page after following another affiliate
     // link elsewhere, which replaced the cookie.
     returnWith: (cookie: string) => {
-      document.cookie = cookie;
+      jar = cookie;
       fire("visibilitychange", rootEl);
     },
     // The cookie changes between page load and a click, with no event between.
     setCookie: (cookie: string) => {
-      document.cookie = cookie;
+      jar = cookie;
     },
   };
 }
@@ -382,6 +390,37 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     click(link);
     expect(new URL(link.href).searchParams.get("client_reference_id")).toBe("user_42");
     expect(own.getAttribute("client-reference-id")).toBe("user_42");
+  });
+
+  it("keeps the fresh ?via= token when the cookie still holds an older one", async () => {
+    // The script's own cookie write is blocked here (the fake jar ignores it),
+    // so the older cookie stays in place; a click must not revert to it.
+    const link = stripeLink();
+    const button = new FakeEl("stripe-buy-button");
+    const { click, returnWith } = await runOn(await script(), {
+      search: "?via=sarah",
+      cookie: HELD,
+      blockCookieWrites: true,
+      build: (b) => [link, button].forEach((el) => b.appendChild(el)),
+    });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}fresh_token`);
+    click(link);
+    returnWith(HELD);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}fresh_token`);
+    expect(button.getAttribute("client-reference-id")).toBe(`${REF}fresh_token`);
+  });
+
+  it("still follows a genuinely newer cookie after a ?via= click", async () => {
+    const link = stripeLink();
+    const { click, setCookie } = await runOn(await script(), {
+      search: "?via=sarah",
+      cookie: HELD,
+      blockCookieWrites: true,
+      build: (b) => b.appendChild(link),
+    });
+    setCookie(`${REFERRAL_COOKIE}=newer_token`);
+    click(link);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}newer_token`);
   });
 
   it("writes nothing when the token is already current", async () => {

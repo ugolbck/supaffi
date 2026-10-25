@@ -6,8 +6,7 @@ import { clientAddress } from "@/lib/clientAddress";
 import { checkAffiliatePassword, findAffiliateForLogin } from "@/lib/affiliatePassword";
 import { getMerchantByDomain } from "@/lib/merchant";
 import { authConfig } from "@/lib/auth.config";
-import { ownerSessionIsCurrent } from "@/lib/ownerExists";
-import { affiliateSessionIsCurrent } from "@/lib/affiliateSession";
+import { dropSessionIfStale } from "@/lib/sessionGuard";
 
 // Two Credentials providers, JWT sessions, no database adapter: one for the
 // Owner, one for Affiliates. Affiliate email is only unique per Merchant
@@ -22,29 +21,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
     ...authConfig.callbacks,
-    // Owner and Affiliate sessions are checked against the password-change
-    // stamp on their row. Sessions are JWTs with no adapter, so there is no
-    // session record to delete when the password changes; without this a
-    // stolen cookie would keep working for its full 30 days. The lookups are
-    // Prisma, so they live here rather than in auth.config.ts, which Edge
-    // Middleware imports.
+    // Stale-session check lives in sessionGuard.ts so it can be tested.
     async session(params) {
       const session = await authConfig.callbacks!.session!(params);
-      const { token } = params;
-      if (!token?.sub) return session;
-      const current =
-        token.role === "owner"
-          ? await ownerSessionIsCurrent(token.sub, token.authAt)
-          : token.role === "affiliate"
-            ? await affiliateSessionIsCurrent(token.sub, token.authAt)
-            : true;
-      if (current) return session;
-      // Neither id nor role, so every `session.user.id` guard in the app
-      // fails closed rather than seeing a half-populated session.
-      const { id: _id, role: _role, ...user } = (session as Session).user;
-      // Cast because the app's own module augmentation declares `id` and
-      // `role` as present on every session user. Dropping them is the point.
-      return { ...session, user } as unknown as Session;
+      return dropSessionIfStale(session as Session, params.token);
     },
   },
   providers: [
