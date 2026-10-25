@@ -44,6 +44,18 @@ updates:
       - dependency-name: "@types/node"
         update-types: [version-update:semver-major]
 
+  # The end-to-end suite's own tooling (Playwright), kept apart from the
+  # app's dependencies.
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      e2e:
+        patterns: ["*"]
+
   - package-ecosystem: docker
     directory: /
     schedule:

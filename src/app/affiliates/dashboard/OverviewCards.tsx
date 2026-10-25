@@ -47,8 +47,9 @@ export type OverviewView = {
   /** Counts only. Which customers they are is never the affiliate's to see. */
   referrals: { total: number; active: number };
   /**
-   * Whether the program pays on a subscription. A one-time program has no
-   * "still paying" question to answer, so the card is not shown at all.
+   * Whether the program pays beyond the first payment and the affiliate has
+   * referred someone. Otherwise there is no "still paying" question to
+   * answer, so the card is not shown at all.
    */
   recurring: boolean;
 };
@@ -74,9 +75,7 @@ function Referrals({ total, active }: { total: number; active: number }) {
             <span className="text-[15px] text-muted-foreground tabular-nums">of {total}</span>
           )}
         </span>
-        <span className="text-[13px] text-muted-foreground">
-          {total === 0 ? "No referred customers yet" : "still paying"}
-        </span>
+        <span className="text-[13px] text-muted-foreground">still paying</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
         {share > 0 && (

@@ -1,13 +1,14 @@
 import Stripe from "stripe";
 import { db } from "@/lib/db";
 import type { CheckResult } from "@/lib/checks/dns";
+import { stripeApiLocation } from "@/lib/stripeApi";
 
 type MinimalStripe = { customers: { list: (params: { limit: number }) => Promise<unknown> } };
 
 // Stripe's own default is 80 seconds, which on a screen that says
 // "Checking" is indistinguishable from hung.
 function defaultClient(key: string): MinimalStripe {
-  return new Stripe(key, { timeout: 10_000, maxNetworkRetries: 0 }) as unknown as MinimalStripe;
+  return new Stripe(key, { timeout: 10_000, maxNetworkRetries: 0, ...stripeApiLocation() }) as unknown as MinimalStripe;
 }
 
 /**
