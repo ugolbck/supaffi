@@ -2,10 +2,11 @@
 // DATABASE_URL at a disposable database, never a real deployment's data.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { NextRequest } from "next/server";
+import vm from "node:vm";
 
 import { db } from "@/lib/db";
 import { GET } from "@/app/track.js/route";
-import { REFERRAL_COOKIE } from "@/lib/referral";
+import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_COOKIE } from "@/lib/referral";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -47,6 +48,113 @@ async function script(): Promise<string> {
   await seedMerchant();
   return (await serve(DOMAIN)).text();
 }
+
+// The repo has no DOM library, so the served script runs against a tiny
+// stand-in that implements only what it touches.
+class FakeEl {
+  nodeType = 1;
+  parentNode: FakeEl | null = null;
+  children: FakeEl[] = [];
+  attrs = new Map<string, string>();
+  shadowRoot: object | null = null;
+  constructor(public tagName: string, attrs: Record<string, string> = {}) {
+    for (const [k, v] of Object.entries(attrs)) this.attrs.set(k, v);
+  }
+  get firstChild() {
+    return this.children[0] ?? null;
+  }
+  get href() {
+    return new URL(this.attrs.get("href") ?? "", "https://acme.test/").href;
+  }
+  set href(v: string) {
+    this.attrs.set("href", v);
+  }
+  hasAttribute(k: string) {
+    return this.attrs.has(k);
+  }
+  getAttribute(k: string) {
+    return this.attrs.get(k) ?? null;
+  }
+  setAttribute(k: string, v: string) {
+    this.attrs.set(k, v);
+  }
+  cloneNode() {
+    return new FakeEl(this.tagName, Object.fromEntries(this.attrs));
+  }
+  get attached(): boolean {
+    return this.parentNode ? this.parentNode.attached : this === root();
+  }
+  appendChild(child: FakeEl) {
+    child.parentNode = this;
+    this.children.push(child);
+    if (this.attached) notify(child);
+    return child;
+  }
+  replaceChild(next: FakeEl, old: FakeEl) {
+    this.children[this.children.indexOf(old)] = next;
+    next.parentNode = this;
+    old.parentNode = null;
+    if (this.attached) notify(next);
+    return old;
+  }
+  querySelectorAll(): FakeEl[] {
+    const out: FakeEl[] = [];
+    const walk = (el: FakeEl) => {
+      for (const c of el.children) {
+        const t = c.tagName.toLowerCase();
+        if (t === "stripe-buy-button" || t === "stripe-pricing-table" || (t === "a" && (c.attrs.get("href") ?? "").includes("buy.stripe.com"))) out.push(c);
+        walk(c);
+      }
+    };
+    walk(this);
+    return out;
+  }
+}
+
+let rootEl: FakeEl;
+let observers: Array<(records: Array<{ addedNodes: FakeEl[] }>) => void> = [];
+const root = () => rootEl;
+function notify(node: FakeEl) {
+  for (const cb of observers) cb([{ addedNodes: [node] }]);
+}
+
+// Runs the script as a browser would, on a page whose body is built by `build`
+// before the script runs. Returns the body and a way to click an element.
+async function runOn(
+  code: string,
+  opts: { search?: string; cookie?: string; build?: (body: FakeEl) => void } = {},
+) {
+  observers = [];
+  rootEl = new FakeEl("html");
+  const body = rootEl.appendChild(new FakeEl("body"));
+  opts.build?.(body);
+  const listeners: Array<(e: { target: FakeEl }) => void> = [];
+  const document = {
+    documentElement: rootEl,
+    cookie: opts.cookie ?? "",
+    addEventListener: (_type: string, fn: (e: { target: FakeEl }) => void) => listeners.push(fn),
+  };
+  const sandbox: Record<string, unknown> = {
+    document,
+    URL,
+    URLSearchParams,
+    MutationObserver: class {
+      constructor(cb: (records: Array<{ addedNodes: FakeEl[] }>) => void) {
+        observers.push(cb);
+      }
+      observe() {}
+    },
+    fetch: async () => ({ ok: true, json: async () => ({ referralToken: "fresh_token" }) }),
+  };
+  sandbox.window = { ...sandbox, location: { search: opts.search ?? "", protocol: "https:" } };
+  vm.runInNewContext(code, sandbox);
+  await new Promise((r) => setTimeout(r, 0));
+  return { body, click: (target: FakeEl) => listeners.forEach((fn) => fn({ target })) };
+}
+
+const HELD = `${REFERRAL_COOKIE}=held_token`;
+const REF = REFERRAL_CLIENT_REFERENCE_PREFIX;
+const stripeLink = (href = "https://buy.stripe.com/test_abc") => new FakeEl("a", { href });
 
 describe.skipIf(!hasDatabase)("track.js", () => {
   beforeEach(clear);
@@ -110,5 +218,97 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     const res = await serve(DOMAIN);
     expect(res.headers.get("cache-control")).toContain("max-age=");
     expect(res.headers.get("vary")).toBe("Host");
+  });
+
+  it("tags a Payment Link with the referral", async () => {
+    const link = stripeLink();
+    await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+  });
+
+  it("keeps a client_reference_id the Merchant already set", async () => {
+    const link = stripeLink("https://buy.stripe.com/test_abc?client_reference_id=user_42");
+    await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe("user_42");
+  });
+
+  it("leaves links to anywhere else alone", async () => {
+    const other = new FakeEl("a", { href: "https://example.com/pay" });
+    const lookalike = new FakeEl("a", { href: "https://example.com/?u=buy.stripe.com" });
+    await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => {
+        b.appendChild(other);
+        b.appendChild(lookalike);
+      },
+    });
+    expect(other.getAttribute("href")).toBe("https://example.com/pay");
+    expect(lookalike.getAttribute("href")).toBe("https://example.com/?u=buy.stripe.com");
+  });
+
+  it("tags the buy button and the pricing table, and keeps one the Merchant set", async () => {
+    const button = new FakeEl("stripe-buy-button");
+    const table = new FakeEl("stripe-pricing-table");
+    const own = new FakeEl("stripe-buy-button", { "client-reference-id": "user_42" });
+    await runOn(await script(), {
+      cookie: HELD,
+      build: (b) => [button, table, own].forEach((el) => b.appendChild(el)),
+    });
+    expect(button.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+    expect(table.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+    expect(own.getAttribute("client-reference-id")).toBe("user_42");
+  });
+
+  it("swaps in a fresh copy of an embed that had already rendered", async () => {
+    const rendered = new FakeEl("stripe-buy-button");
+    rendered.shadowRoot = {};
+    const { body } = await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(rendered) });
+    expect(body.children[0]).not.toBe(rendered);
+    expect(body.children[0].getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+  });
+
+  it("tags elements added after the script ran", async () => {
+    const { body } = await runOn(await script(), { cookie: HELD });
+    const link = stripeLink();
+    const button = new FakeEl("stripe-buy-button");
+    const wrapper = new FakeEl("div");
+    wrapper.appendChild(button);
+    body.appendChild(link);
+    body.appendChild(wrapper);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+    expect(button.getAttribute("client-reference-id")).toBe(`${REF}held_token`);
+  });
+
+  it("tags a link whose href changed after load when it is clicked", async () => {
+    const link = stripeLink();
+    const { click } = await runOn(await script(), { cookie: HELD, build: (b) => b.appendChild(link) });
+    link.href = "https://buy.stripe.com/test_other";
+    click(link);
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+  });
+
+  it("tags on a page without ?via= from the held cookie", async () => {
+    const link = stripeLink();
+    await runOn(await script(), { cookie: `a=1; ${HELD}`, build: (b) => b.appendChild(link) });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}held_token`);
+  });
+
+  it("uses the fresh token from ?via= rather than the held one", async () => {
+    const link = stripeLink();
+    await runOn(await script(), { search: "?via=sarah", cookie: HELD, build: (b) => b.appendChild(link) });
+    expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}fresh_token`);
+  });
+
+  it("tags nothing when no token is known", async () => {
+    const link = stripeLink();
+    const button = new FakeEl("stripe-buy-button");
+    const { body } = await runOn(await script(), {
+      build: (b) => [link, button].forEach((el) => b.appendChild(el)),
+    });
+    const late = stripeLink();
+    body.appendChild(late);
+    expect(link.getAttribute("href")).toBe("https://buy.stripe.com/test_abc");
+    expect(late.getAttribute("href")).toBe("https://buy.stripe.com/test_abc");
+    expect(button.hasAttribute("client-reference-id")).toBe(false);
   });
 });
