@@ -6,7 +6,7 @@ Describes Supaffi once the money-safety fixes ship in 0.2.7. The gaps that remai
 
 A SaaS founder or small team that:
 
-- sells subscriptions, and optionally one-time purchases, through **Stripe Checkout** started from their own site or app;
+- sells subscriptions, and optionally one-time purchases, through **Stripe Checkout** started from their own site or app, or through **Stripe Payment Links**, buy buttons and pricing tables embedded on it;
 - wants to reward affiliates with a **percentage of what customers actually pay**;
 - pays affiliates **themselves**, by bank transfer, PayPal or similar, and records it in Supaffi;
 - is comfortable running a server, or following a one-command install.
@@ -23,12 +23,13 @@ A SaaS founder or small team that:
 
 - Affiliates share links on your site, such as `yoursite.com/pricing?via=sarah`.
 - A small script on your site remembers the referral. Your checkout code passes it to Stripe Checkout in the session metadata.
+- Stripe Payment Links, buy buttons and pricing tables need no code of yours. The script adds the referral to them on your pages, including ones that appear after the page loads.
 - The last affiliate link a visitor used gets the credit, as long as they buy within the attribution window you set, up to 90 days.
 
 ### Payments that earn a commission
 
-- A one-time purchase through Stripe Checkout.
-- The first payment of a subscription started through Stripe Checkout.
+- A one-time purchase through Stripe Checkout, or through a Payment Link, buy button or pricing table.
+- The first payment of a subscription started through Stripe Checkout, or through a Payment Link, buy button or pricing table.
 - Every later renewal of that same subscription, including upgrades and downgrades within the same Stripe product, until the commission duration ends.
 - A free trial that converts: the commission starts at the first real payment.
 - The duration counts once per referral. A customer who cancels and subscribes again through the same referral does not restart it. A new click on the affiliate's link is a new referral.
@@ -66,7 +67,8 @@ A SaaS founder or small team that:
 
 These are outside the product on purpose. They may come later if users need them.
 
-- **Payments that do not go through Stripe Checkout:** Payment Links, custom Stripe Elements checkouts, invoices sent by hand, subscriptions created in the Stripe Dashboard or through the API without Checkout.
+- **Payments that do not go through Stripe Checkout or a Payment Link:** custom Stripe Elements checkouts, invoices sent by hand, subscriptions created in the Stripe Dashboard or through the API without Checkout.
+- **Payment Links on your own custom checkout domain.** The script only tags links that point to Stripe's own address.
 - **Other payment providers:** Paddle, Lemon Squeezy, PayPal, app stores.
 - **Stripe Connect** platforms and marketplaces.
 - **Sending money.** Supaffi records payouts. It never pays affiliates itself.

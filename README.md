@@ -50,7 +50,7 @@ It prints an address and a token. Open the address, accept the self-signed certi
 
 1. Point an A record for `affiliates.yourproduct.com` at the server. On Cloudflare, proxy off (grey cloud).
 2. Add the product in the dashboard with that hostname, your site's address and a Stripe key.
-3. Paste the tracking snippet into your site, and pass the referral to Stripe when you create the checkout.
+3. Paste the tracking snippet into your site. If you create Stripe Checkout Sessions yourself, pass the referral to Stripe when you create them. Payment Links, buy buttons and pricing tables need only the script.
 
 The hostname hosts the affiliate signup and their dashboard, so it must be on the product's own domain. One per product. Supaffi sends no email. If an affiliate forgets their password, you copy them a password link from their panel.
 
