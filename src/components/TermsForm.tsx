@@ -12,7 +12,7 @@ import type { ProgramFormValues } from "@/lib/programValidation";
 type Action = (prev: { error: string }, formData: FormData) => Promise<{ error: string }>;
 
 export const TERMS_DEFAULTS: ProgramFormValues = {
-  name: "Standard",
+  name: "",
   defaultCommissionRate: "20",
   commissionDurationType: "FOREVER",
   commissionDurationMonths: "",
@@ -38,11 +38,14 @@ const NUMBER = "w-20 tabular-nums";
 export function TermsForm({
   action,
   initial = TERMS_DEFAULTS,
+  askName = true,
   signupOpen,
   submitLabel,
 }: {
   action: Action;
   initial?: ProgramFormValues;
+  /** Off in onboarding: the first program takes the product's name. */
+  askName?: boolean;
   /** Shown only where it is set: onboarding's first program is always open. */
   signupOpen?: boolean;
   submitLabel: string;
@@ -53,9 +56,11 @@ export function TermsForm({
   return (
     <form action={formAction} className="flex flex-col gap-6">
       <FormCard>
-        <Field label="Program name" htmlFor="program-name">
-          <Input id="program-name" name="name" defaultValue={initial.name} required />
-        </Field>
+        {askName && (
+          <Field label="Program name" htmlFor="program-name">
+            <Input id="program-name" name="name" defaultValue={initial.name} placeholder="Partners" required />
+          </Field>
+        )}
 
         <Field label="Commission" htmlFor="program-rate">
           <div className="flex items-center gap-2">

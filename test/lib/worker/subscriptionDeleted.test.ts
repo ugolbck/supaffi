@@ -163,6 +163,7 @@ describe("handleSubscriptionDeleted", () => {
 
   describe("referralCounts", () => {
     it("counts a click with a commission and no cancellation as total 1 active 1", async () => {
+      await seedReferredSubscription(merchant.id, clickId, "sub_1");
       await db.commission.create({
         data: {
           affiliateId,
@@ -178,6 +179,24 @@ describe("handleSubscriptionDeleted", () => {
       });
 
       expect(await referralCounts(affiliateId)).toEqual({ total: 1, active: 1 });
+    });
+
+    it("does not count a click with a commission from a one-time purchase", async () => {
+      await db.commission.create({
+        data: {
+          affiliateId,
+          clickId,
+          stripePaymentRef: "pi_1",
+          amount: 15.6,
+          grossAmount: 15.6,
+          currency: "usd",
+          saleAmount: 78,
+          status: "PENDING",
+          payableAt: new Date(),
+        },
+      });
+
+      expect(await referralCounts(affiliateId)).toEqual({ total: 0, active: 0 });
     });
 
     it("counts total 1 active 0 after the subscription is cancelled", async () => {
@@ -227,6 +246,7 @@ describe("handleSubscriptionDeleted", () => {
           payableAt: new Date(),
         },
       });
+      await seedReferredSubscription(merchant.id, clickId, "sub_1");
       await db.click.update({ where: { id: clickId }, data: { fraudConfirmedAt: new Date() } });
 
       expect(await referralCounts(affiliateId)).toEqual({ total: 1, active: 0 });

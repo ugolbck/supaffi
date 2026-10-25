@@ -12,7 +12,7 @@ import {
 } from "@/lib/affiliate";
 import { getProductMetrics } from "@/lib/analytics";
 import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
-import { originFor } from "@/lib/url";
+import { signupLinkFor } from "@/lib/url";
 import { linkUrl, listLinksWithStats } from "@/lib/affiliateLink";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
@@ -86,7 +86,7 @@ export default async function AffiliatesPage({
   ]);
 
   const signupLink = firstProgram
-    ? `${originFor(merchant.domain)}/affiliates/signup/${firstProgram.slug}`
+    ? signupLinkFor(merchant.domain, firstProgram.slug, firstProgram.slug)
     : null;
 
   const totalPages = Math.max(1, Math.ceil(total / AFFILIATES_PAGE_SIZE));

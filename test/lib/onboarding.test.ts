@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stepIds, stepIndex, displayStep, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor, siteHost, splitSubdomain, rehomeSubdomain, dnsRecordName } from "@/lib/onboarding";
+import { stepIds, stepIndex, displayStep, stepStates, nextStep, previousStep, resumeStep, stepPath, suggestSubdomain, backToDashboardHref, checkSectionFor, siteHost, splitSubdomain, rehomeSubdomain, dnsRecordName, dnsZone } from "@/lib/onboarding";
 import type { ProductSetup } from "@/lib/productSetup";
 import type { ProductChecks } from "@/lib/checks/product";
 
@@ -230,6 +230,13 @@ describe("splitSubdomain", () => {
   it("refuses to split an address that is not under the product's own site", () => {
     expect(splitSubdomain("affiliates.somewhereelse.com", "https://instantgradient.com")).toBeNull();
     expect(splitSubdomain("localhost:3600", "http://localhost:3600")).toBeNull();
+  });
+});
+
+describe("dnsZone", () => {
+  it("is the registrable domain, three labels under a country code suffix", () => {
+    expect(dnsZone("affiliates.dev.mokkit.co")).toBe("mokkit.co");
+    expect(dnsZone("go.example.co.uk")).toBe("example.co.uk");
   });
 });
 
