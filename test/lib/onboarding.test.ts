@@ -179,8 +179,8 @@ describe("resumeStep", () => {
 
 describe("suggestSubdomain", () => {
   it("prefixes go to the site's host", () => {
-    expect(suggestSubdomain("https://instantgradient.com")).toBe("go.instantgradient.com");
-    expect(suggestSubdomain("https://www.mokkit.co/pricing")).toBe("go.mokkit.co");
+    expect(suggestSubdomain("https://instantgradient.com")).toBe("affiliates.instantgradient.com");
+    expect(suggestSubdomain("https://www.mokkit.co/pricing")).toBe("affiliates.mokkit.co");
   });
   it("gives nothing for an address it cannot read", () => {
     expect(suggestSubdomain("not a url")).toBe("");
@@ -268,7 +268,7 @@ describe("rehomeSubdomain", () => {
   });
 
   it("falls back to the default label when there was none to carry", () => {
-    expect(rehomeSubdomain("localhost:3600", "http://localhost:3600", "https://mokkit.co")).toBe("go.mokkit.co");
+    expect(rehomeSubdomain("localhost:3600", "http://localhost:3600", "https://mokkit.co")).toBe("affiliates.mokkit.co");
   });
 
   it("leaves the address alone when the new website yields nothing usable", () => {

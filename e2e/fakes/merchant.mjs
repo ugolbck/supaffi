@@ -9,7 +9,7 @@
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.PORT ?? 8080);
-const TRACK_ORIGIN = process.env.TRACK_ORIGIN ?? "https://go.shop.test";
+const TRACK_ORIGIN = process.env.TRACK_ORIGIN ?? "https://affiliates.shop.test";
 const STRIPE = process.env.FAKE_STRIPE ?? "http://fake-stripe:12111";
 const REFERRAL_COOKIE = "__supaffi_referral";
 const REFERRAL_METADATA_KEY = "supaffi_referral";
