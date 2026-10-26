@@ -8,6 +8,30 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.4.0
+
+### Security
+
+- Changing an affiliate's password now signs out every session they had
+  before, so a hijacked affiliate account can no longer keep changing its
+  payout details after a reset.
+- If you run Supaffi behind your own reverse proxy, update its config from
+  the README. The previous example let visitors fake their address, which
+  switched off the login and signup limits.
+
+### Added
+
+- Sales through Stripe Payment Links, buy buttons and pricing tables earn
+  commissions. The tracking script is all you add. A link that already
+  carries your own client reference is left alone.
+
+### Fixed
+
+- Mark paid says when a payout was already marked paid, instead of looking
+  like it worked.
+- Buy links follow the latest affiliate click, even on a page opened before
+  it.
+
 ## 0.3.4
 
 ### Changed
