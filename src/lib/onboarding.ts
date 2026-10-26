@@ -184,15 +184,14 @@ export function previousStep(current: StepId): StepId | null {
 }
 
 /**
- * The subdomain to propose from the website address: go. on the site's own
- * domain, www dropped.
- *
- * Not affiliates. Every affiliate link carries this host, so short wins.
+ * The subdomain to propose from the website address: affiliates. on the
+ * site's own domain, www dropped. It is where affiliates sign up and log in,
+ * so the name says what it is.
  */
 export function suggestSubdomain(websiteUrl: string): string {
   try {
     const host = new URL(websiteUrl).hostname.replace(/^www\./, "");
-    return host ? `go.${host}` : "";
+    return host ? `affiliates.${host}` : "";
   } catch {
     return "";
   }
