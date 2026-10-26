@@ -38,7 +38,7 @@ services:
       retries: 30
     networks:
       default:
-        aliases: [admin.test, shop.test, go.shop.test]
+        aliases: [admin.test, shop.test, affiliates.shop.test]
 
   app:
     image: ${SUPAFFI_E2E_IMAGE:-supaffi:e2e}

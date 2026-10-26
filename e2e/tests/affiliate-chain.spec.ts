@@ -11,7 +11,7 @@ test.describe.configure({ mode: "serial" });
 const OWNER = { email: "owner@example.com", password: "owner-password-123" };
 const AFFILIATE = { name: "Alice", email: "alice@example.com", password: "alice-password-123", code: "alice" };
 const ADMIN = "https://admin.test";
-const PRODUCT_DOMAIN = "https://go.shop.test";
+const PRODUCT_DOMAIN = "https://affiliates.shop.test";
 const SHOP = "https://shop.test";
 
 let owner: Page;
@@ -61,7 +61,7 @@ test("owner onboards a product", async () => {
   // TLS and the app's ask endpoint. The DNS record row cannot pass: it needs
   // a real authoritative nameserver.
   await owner.waitForURL(/\/subdomain$/);
-  await expect(owner.getByText("go.shop.test").first()).toBeVisible();
+  await expect(owner.getByText("affiliates.shop.test").first()).toBeVisible();
   await expect(owner.getByText("Secured with HTTPS")).toBeVisible();
   await owner.getByRole("button", { name: "Continue" }).click();
 
