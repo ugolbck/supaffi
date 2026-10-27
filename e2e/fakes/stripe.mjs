@@ -10,6 +10,8 @@
 // dispute. They stand in for what a buyer and a bank do on the real Stripe.
 //
 // A Payment Link sale is a checkout with a client_reference_id and no metadata.
+// A promo code sale is a checkout whose discounts name one of the promotion
+// codes below, which exist from the start as the owner's would in Stripe.
 // Only the one-time payment path is modelled. Subscriptions, invoices and
 // taxes are not; their reads answer with empty lists.
 
@@ -27,6 +29,9 @@ const state = {
   charges: new Map(),
   sessions: new Map(),
   disputes: new Map(),
+  promotionCodes: new Map([
+    ["promo_partner20", { id: "promo_partner20", object: "promotion_code", code: "PARTNER20", active: true, metadata: {} }],
+  ]),
   deliveries: [],
 };
 
@@ -127,6 +132,11 @@ async function testCheckout(body) {
   const amount = Number(body.amount ?? 10000);
   const currency = body.currency ?? "usd";
   const email = body.email ?? "buyer@example.com";
+  // Case-insensitive, as the customer types it at checkout.
+  const promo = body.promotion_code
+    ? [...state.promotionCodes.values()].find((p) => p.code.toLowerCase() === body.promotion_code.toLowerCase())
+    : null;
+  if (body.promotion_code && !promo) return null;
 
   const customer = { id: id("cus"), object: "customer", email, metadata: {}, deleted: undefined };
   state.customers.set(customer.id, customer);
@@ -185,6 +195,7 @@ async function testCheckout(body) {
     invoice: null,
     subscription: null,
     shipping_cost: null,
+    discounts: promo ? [{ coupon: null, promotion_code: promo.id }] : [],
     total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0, breakdown: { discounts: [], taxes: [] } },
   };
   state.sessions.set(s.id, s);
@@ -231,6 +242,13 @@ function api(method, path, params) {
     return list(path, all.slice(0, Number(params.limit ?? 10)));
   }
   if (method === "GET" && (m = path.match(/^\/v1\/customers\/([^/]+)$/))) return state.customers.get(m[1]);
+
+  if (method === "GET" && path === "/v1/promotion_codes") {
+    const all = [...state.promotionCodes.values()].filter(
+      (p) => (!params.code || p.code.toLowerCase() === params.code.toLowerCase()) && (params.active !== "true" || p.active)
+    );
+    return list(path, all.slice(0, Number(params.limit ?? 10)));
+  }
 
   if (method === "POST" && path === "/v1/webhook_endpoints") {
     const endpoint = {

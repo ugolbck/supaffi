@@ -10,19 +10,12 @@ then switching costs, then the rest of the program.
 
 ## Up next
 
-### Promo codes
-Creators promote with a discount code, not a link. A Stripe promotion code
-assigned to an affiliate credits them when a customer uses it, with or without
-a click. Open questions before building: which Stripe permission reading the
-code on a Checkout Session needs (existing restricted keys may lack it), and
-which affiliate wins when a code and a link point to different ones.
-
-## Planned
-
 ### Polar and Paddle
 Founders who let a merchant of record handle sales tax cannot use Supaffi.
 Polar and Paddle first, Lemon Squeezy after. The e2e sale step is already
 written without naming Stripe, so each needs only a fake.
+
+## Planned
 
 ### Import from another tool
 Affiliates, their links and their commission history from Rewardful, Tolt and
@@ -119,3 +112,12 @@ outside or from Dependabot. No scheduled runs.
   other's sale.
 - On the page a visitor lands on through an affiliate link, a buy link clicked
   before the click is recorded (a fraction of a second) goes untagged.
+- A promo code only credits when used at checkout. One a customer adds later,
+  in Stripe's customer portal or on a subscription through the API, earns
+  nothing: invoices name their discounts only by Discount id, and reading the
+  code behind one costs an expanded invoice read on every renewal.
+- Products sharing one Stripe account see the same promotion codes. Giving the
+  same code out on both credits an affiliate of each for one sale.
+- Promotion Codes read is needed only to add a code, and an older key says so
+  when the owner tries. Its `rak_promotion_code_read` link token is unchecked
+  like the others above.

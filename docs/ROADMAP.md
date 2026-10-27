@@ -10,19 +10,19 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
 | Feature | What you get |
 | --- | --- |
+| **Promo codes** | Give an affiliate a Stripe promotion code. They get the sale when a customer uses it, even without clicking their link. |
 | **Stripe Payment Links, buy buttons and pricing tables** | Sales through them earn commissions. The tracking script is all you add. |
 
 ## Up next
 
 | Feature | What you get |
 | --- | --- |
-| **Promo codes** | Give an affiliate a Stripe promotion code. They get the sale when a customer uses it, even without clicking their link. |
+| **Polar and Paddle** | Sell through a merchant of record that handles your sales tax. Lemon Squeezy after them. |
 
 ## Planned
 
 | Feature | What you get |
 | --- | --- |
-| **Polar and Paddle** | Sell through a merchant of record that handles your sales tax. Lemon Squeezy after them. |
 | **Import from Rewardful, Tolt and FirstPromoter** | Bring your affiliates, their links and their history. Nobody's link breaks. |
 | **Affiliate notifications** | Affiliates hear when they earn and when they are paid, and reset their own password. Optional, with your own mail server. |
 | **Bulk payouts** | One file to pay everyone through PayPal or Wise, and a minimum payout amount. |
