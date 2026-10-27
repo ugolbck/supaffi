@@ -1873,8 +1873,9 @@ describe("handleCheckoutSessionCompleted", () => {
         paymentStatus: "unpaid",
       });
       await handleCheckoutSessionCompleted(merchant, session);
-      // Nothing is recorded until the money moves.
-      expect(await db.click.count({ where: { promoCheckoutSessionId: { not: null } } })).toBe(0);
+      // The referral is chosen at once; nothing earns until the money moves.
+      expect(await db.click.count({ where: { promoCheckoutSessionId: { not: null } } })).toBe(1);
+      expect(await db.commission.count()).toBe(0);
 
       const paid = { ...session, payment_status: "paid" } as Stripe.Checkout.Session;
       await handleCheckoutSessionCompleted(merchant, paid);
@@ -1894,6 +1895,39 @@ describe("handleCheckoutSessionCompleted", () => {
       await handleCheckoutSessionCompleted(merchant, session);
 
       expect((await db.commission.findMany()).map((c) => c.affiliateId)).toEqual([alice.id]);
+    });
+
+    it("keeps a delayed payment with the code's affiliate when the code changes hands while it settles", async () => {
+      const session = sessionFixture({
+        mode: "payment",
+        paymentIntent: "pi_settling",
+        metadataToken: "",
+        promotionCode: "promo_alice",
+        paymentStatus: "unpaid",
+      });
+      await handleCheckoutSessionCompleted(merchant, session);
+      await db.affiliatePromoCode.update({ where: { id: code.id }, data: { affiliateId: clickInput.affiliateId } });
+
+      await handleCheckoutSessionCompleted(merchant, { ...session, payment_status: "paid" } as Stripe.Checkout.Session);
+
+      expect((await db.commission.findMany()).map((c) => c.affiliateId)).toEqual([alice.id]);
+    });
+
+    it("pays the first payment where the renewals go when a code was given out between retries", async () => {
+      await db.affiliatePromoCode.delete({ where: { id: code.id } });
+      const session = sessionFixture({ invoice: "in_retry", subscription: "sub_retry", promotionCode: "promo_alice" });
+      // The first attempt records the subscription for the link's click, then
+      // fails reading the invoice's lines.
+      stripeStub.invoices.listLineItems.mockRejectedValueOnce(Object.assign(new Error("down"), { type: "StripeConnectionError" }));
+      await expect(handleCheckoutSessionCompleted(merchant, session)).rejects.toThrow();
+      await db.affiliatePromoCode.create({
+        data: { merchantId: merchant.id, affiliateId: alice.id, stripePromotionCodeId: "promo_alice", code: "ALICE20" },
+      });
+
+      await handleCheckoutSessionCompleted(merchant, session);
+
+      expect((await db.commission.findMany()).map((c) => c.clickId)).toEqual([click.id]);
+      expect((await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_retry" } })).clickId).toBe(click.id);
     });
 
     it("ignores a code given out on another product", async () => {
@@ -1943,6 +1977,31 @@ describe("handleCheckoutSessionCompleted", () => {
 
       expect(stripeStub.checkout.sessions.retrieve).toHaveBeenCalledWith("cs_in_old");
       expect((await db.commission.findFirstOrThrow()).affiliateId).toBe(alice.id);
+    });
+
+    it("processes an older endpoint's Session without its code when the key cannot read it back", async () => {
+      stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error("no"), { type: "StripePermissionError", statusCode: 403 })
+      );
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_old", subscription: "sub_old", promotionCode: "promo_alice", noDiscountsField: true })
+      );
+
+      expect((await db.commission.findFirstOrThrow()).clickId).toBe(click.id);
+    });
+
+    it("retries an older endpoint's Session when Stripe is down", async () => {
+      stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(Object.assign(new Error("down"), { type: "StripeConnectionError" }));
+
+      await expect(
+        handleCheckoutSessionCompleted(
+          merchant,
+          sessionFixture({ invoice: "in_old", subscription: "sub_old", promotionCode: "promo_alice", noDiscountsField: true })
+        )
+      ).rejects.toThrow(/retried/);
+      expect(await db.commission.count()).toBe(0);
     });
 
     it("spends no read on an older endpoint's Session when the product gave out no code", async () => {

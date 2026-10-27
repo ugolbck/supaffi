@@ -142,6 +142,8 @@ export type AffiliateCommissionRow = {
   payableAt: Date;
   paidAt: Date | null;
   linkCode: string | null;
+  /** The promo code that earned the sale instead of a link, while the affiliate still has it. */
+  promoCode?: string | null;
   /** A refund adjustment row an older version wrote. None are written any more. */
   isAdjustment: boolean;
   /**
@@ -193,7 +195,7 @@ export async function listAffiliateCommissions(
         voidReason: true,
         voidedAt: true,
         adjustsCommissionId: true,
-        click: { select: { link: { select: { code: true } } } },
+        click: { select: { link: { select: { code: true } }, promoCode: { select: { code: true } } } },
       },
       // Sales before the refund adjustments against them on the payable tab,
       // same as the owner's ledger.
@@ -226,6 +228,7 @@ export async function listAffiliateCommissions(
         voidedAt: r.voidedAt,
         status: toDisplayStatus(r.status),
         linkCode: r.click.link?.code ?? null,
+        promoCode: r.click.promoCode?.code ?? null,
         isAdjustment: r.adjustsCommissionId !== null,
       };
     }),

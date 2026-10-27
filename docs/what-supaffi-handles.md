@@ -34,7 +34,7 @@ A SaaS founder or small team that:
 - The first payment of a subscription started through Stripe Checkout, or through a Payment Link, buy button or pricing table.
 - Every later renewal of that same subscription, including upgrades and downgrades within the same Stripe product, until the commission duration ends.
 - A free trial that converts: the commission starts at the first real payment.
-- The duration counts once per referral. A customer who cancels and subscribes again through the same referral does not restart it. A new click on the affiliate's link is a new referral.
+- The duration counts once per referral. A customer who cancels and subscribes again through the same referral does not restart it. A new click on the affiliate's link is a new referral, and so is each checkout that uses one of their promo codes.
 - Delayed payment methods such as SEPA or ACH debit: the commission is recorded once the money settles.
 
 ### How the commission is calculated

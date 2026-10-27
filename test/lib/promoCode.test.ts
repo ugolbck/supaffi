@@ -18,7 +18,8 @@ vi.mock("@/lib/stripe", async () => {
 });
 
 import { addPromoCode, listPromoCodes, removePromoCode, MAX_PROMO_CODES_PER_AFFILIATE } from "@/lib/promoCode";
-import { listAffiliatesForMerchant } from "@/lib/affiliate";
+import { listAffiliateCommissions, listAffiliatesForMerchant } from "@/lib/affiliate";
+import { listCommissions } from "@/lib/commission";
 import { getTrackingStatus } from "@/lib/tracking";
 
 async function clearAll() {
@@ -211,5 +212,42 @@ describe("promo codes", () => {
     );
     expect(rows.find((r) => r.id === aliceId)?.clicks).toBe(0);
     expect(await getTrackingStatus(merchantId)).toBe("not-started");
+  });
+
+  it("names the code, not a click or a link, on a code sale's commission", async () => {
+    const code = await db.affiliatePromoCode.create({
+      data: { merchantId, affiliateId: aliceId, stripePromotionCodeId: "promo_1", code: "ALICE20" },
+    });
+    const sale = await db.click.create({
+      data: {
+        affiliateId: aliceId,
+        referralToken: crypto.randomUUID(),
+        expiresAt: new Date(),
+        promoCodeId: code.id,
+        promoCheckoutSessionId: "cs_1",
+      },
+    });
+    await db.commission.create({
+      data: {
+        affiliateId: aliceId,
+        clickId: sale.id,
+        stripePaymentRef: "pi_1",
+        amount: 10,
+        currency: "usd",
+        payableAt: new Date(),
+      },
+    });
+    const owners = () =>
+      listCommissions(ownerId, merchantId, { status: null, affiliateId: null, currency: null, query: null }, { page: 1, pageSize: 25 });
+
+    expect((await listAffiliateCommissions(aliceId, { page: 1, pageSize: 25 })).rows[0]).toMatchObject({
+      linkCode: null,
+      promoCode: "ALICE20",
+    });
+    expect((await owners()).rows[0].promoCode).toEqual({ code: "ALICE20" });
+
+    // Taken away since: still a code sale, just without its text.
+    await removePromoCode(ownerId, merchantId, aliceId, code.id);
+    expect((await owners()).rows[0].promoCode).toEqual({ code: null });
   });
 });

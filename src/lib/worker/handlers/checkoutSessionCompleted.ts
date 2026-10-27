@@ -15,6 +15,7 @@ import { exclusionSourcesOf, retrieveInvoiceForEarning } from "../referredRevenu
 import { referredEarningOn, storableReferredShare } from "../referredEarning";
 import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { isTransientStripeError, stripeErrorLabel } from "@/lib/stripeErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { claimFirstPayment, idOf, recordReferredSubscription, subscriptionProductIds } from "../referredSubscription";
@@ -33,15 +34,19 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // commission, not whether the integration works.
   if (linkClick) await recordTrackingVerified(merchant.id);
 
-  // A delayed payment method (SEPA, ACH, Boleto) completes the Session before
-  // any money has moved, and the payment can still fail. Nothing happens yet,
-  // not even recording the subscription or the click a promo code stands in
-  // for: checkout.session.async_payment_succeeded brings this same Session
-  // back through here, paid, once it settles.
-  if (session.payment_status === "unpaid") return;
-
-  const click = await referralOn(merchant, session, linkClick);
+  // Chosen before anything else can happen, an unpaid Session included, so
+  // the click a promo code stands in for exists from the first event: a code
+  // the Owner takes away or hands to someone else while a delayed payment
+  // settles cannot move the sale.
+  let click = await referralOn(merchant, session, linkClick);
   if (!click) return; // not a Supaffi-tracked checkout
+
+  // A delayed payment method (SEPA, ACH, Boleto) completes the Session before
+  // any money has moved, and the payment can still fail. Nothing more happens
+  // yet, not even recording the subscription:
+  // checkout.session.async_payment_succeeded brings this same Session back
+  // through here, paid, once it settles.
+  if (session.payment_status === "unpaid") return;
 
   // The Owner confirmed a self referral that came through this click. Nothing
   // it brings earns again: not this purchase, and not the subscription it
@@ -116,6 +121,13 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
       subscriptionId,
       products === "unanswered" ? [] : products
     );
+    // An earlier attempt at this event recorded the subscription under
+    // another click: one whose code was only given to an affiliate since,
+    // before the retry. The first payment goes where every renewal will.
+    if (referred.clickId !== click.id) {
+      click = await db.click.findUniqueOrThrow({ where: { id: referred.clickId }, include: REFERRAL_INCLUDE });
+      if (click.fraudConfirmedAt) return;
+    }
     if (moneyPaid && stripePaymentRef) {
       // A delayed payment method's Session is created unpaid, and
       // checkout.session.async_payment_succeeded brings it back, paid, once
@@ -377,20 +389,27 @@ async function referralOn(
   session: Stripe.Checkout.Session,
   linkClick: ReferralClick | null
 ): Promise<ReferralClick | null> {
-  const recorded = await db.click.findFirst({
-    where: { promoCheckoutSessionId: session.id, affiliate: { merchantId: merchant.id } },
-    include: REFERRAL_INCLUDE,
-  });
+  const recordedOn = (tx: Prisma.TransactionClient) =>
+    tx.click.findFirst({
+      where: { promoCheckoutSessionId: session.id, affiliate: { merchantId: merchant.id } },
+      include: REFERRAL_INCLUDE,
+    });
+  const recorded = await recordedOn(db);
   if (recorded) return recorded;
 
+  // Read outside the transaction below: it can call Stripe.
   const promoCode = await promoCodeOn(merchant, session);
   if (!promoCode || promoCode.affiliateId === linkClick?.affiliateId) return linkClick;
 
-  const where = {
-    promoCheckoutSessionId_affiliateId: { promoCheckoutSessionId: session.id, affiliateId: promoCode.affiliateId },
-  };
-  try {
-    return await db.click.create({
+  // Two deliveries of one Session (completed and async_payment_succeeded, or
+  // a redelivery) can run at once, and the code can change hands between
+  // them. Serialized on the Session, the second finds the first one's click
+  // instead of writing one for a different affiliate.
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`promo-session:${merchant.id}:${session.id}`}, 0))`;
+    const first = await recordedOn(tx);
+    if (first) return first;
+    return tx.click.create({
       data: {
         affiliateId: promoCode.affiliateId,
         promoCodeId: promoCode.id,
@@ -404,12 +423,7 @@ async function referralOn(
       },
       include: REFERRAL_INCLUDE,
     });
-  } catch (err) {
-    // completed and async_payment_succeeded for the same Session, processed
-    // at once: the other one wrote it first.
-    if (!isUniqueConstraintError(err)) throw err;
-    return db.click.findUniqueOrThrow({ where, include: REFERRAL_INCLUDE });
-  }
+  });
 }
 
 /**
@@ -430,7 +444,7 @@ async function promoCodeOn(merchant: Merchant, session: Stripe.Checkout.Session)
   if (discounts === undefined) {
     const anyCode = await db.affiliatePromoCode.findFirst({ where: { merchantId: merchant.id }, select: { id: true } });
     if (!anyCode) return null;
-    discounts = (await retrieveSessionDiscounts(stripeClientFor(merchant), session.id)).discounts;
+    discounts = await retrieveSessionDiscounts(stripeClientFor(merchant), session.id);
   }
   const ids = (discounts ?? []).map((d) => idOf(d.promotion_code)).filter((id): id is string => id !== null);
   if (ids.length === 0) return null;
@@ -443,20 +457,27 @@ async function promoCodeOn(merchant: Merchant, session: Stripe.Checkout.Session)
 }
 
 /**
- * A Session read back for its discounts. A failure throws, so the event is
- * retried rather than a code sale being processed as if no code was used;
- * only a product that gave out codes reaches this, and its key had to read
- * promotion codes to do so, a permission granted alongside Checkout Sessions.
- * Same wrapping as retrieveSessionForEarning, for the same reason.
+ * A Session's discounts, read back pinned to Supaffi's version.
+ *
+ * An outage throws, so the event is retried rather than a code sale being
+ * processed as if no code was used. A key that cannot read Checkout Sessions
+ * (a separate permission from Promotion Codes, which adding the code needed)
+ * fails the same way on every retry, so it is logged and the sale goes on as
+ * one without a code: its link, if any, still earns, as it did before codes
+ * existed. Only the error's type and code are logged, never Stripe's message,
+ * which names the masked key and the account.
  */
-async function retrieveSessionDiscounts(stripe: Stripe, sessionId: string): Promise<Stripe.Checkout.Session> {
+async function retrieveSessionDiscounts(stripe: Stripe, sessionId: string): Promise<Stripe.Checkout.Session["discounts"]> {
   try {
-    return await stripe.checkout.sessions.retrieve(sessionId);
+    return (await stripe.checkout.sessions.retrieve(sessionId)).discounts;
   } catch (err) {
-    const { type, code } = err as { type?: string; code?: string };
-    throw new Error(
-      `[worker] could not read session ${sessionId} for its promo code (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`
+    if (isTransientStripeError(err)) {
+      throw new Error(`[worker] could not read session ${sessionId} for its promo code (${stripeErrorLabel(err)}), so the event is retried`);
+    }
+    console.error(
+      `[worker] could not read session ${sessionId} for its promo code (${stripeErrorLabel(err)}), so it was processed as a sale without one`
     );
+    return null;
   }
 }
 
