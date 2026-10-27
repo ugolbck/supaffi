@@ -9,7 +9,7 @@ export function CopyLinkButton({
   label = "Copy link",
 }: {
   link: string;
-  size?: "sm" | "default";
+  size?: "sm" | "default" | "lg";
   label?: string;
 }) {
   const [copied, setCopied] = useState(false);

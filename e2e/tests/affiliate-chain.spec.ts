@@ -186,7 +186,7 @@ test("a promo code earns for its affiliate with no click", async ({ browser }) =
   await expect(sheet.getByText("PARTNER20")).toBeVisible();
 
   await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard/links`);
-  await expect(affiliate.getByText("PARTNER20")).toBeVisible();
+  await expect(affiliate.getByRole("cell", { name: "PARTNER20" })).toBeVisible();
 
   const buyer = await newPage(browser);
   const result = await promoCodeSale(buyer, {

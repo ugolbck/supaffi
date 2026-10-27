@@ -1,5 +1,7 @@
 import type Stripe from "stripe";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import type { CurrencyTotal } from "@/lib/analytics";
 import { stripeClientFor } from "@/lib/stripe";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 
@@ -129,4 +131,45 @@ export async function listPromoCodes(affiliateId: string): Promise<PromoCodeRow[
     select: { id: true, code: true },
     orderBy: { createdAt: "asc" },
   });
+}
+
+export type PromoCodeStats = PromoCodeRow & { conversions: number; earned: CurrencyTotal[] };
+
+/**
+ * Every code with what it has brought in, counted the way a link's sales are
+ * (listLinksWithStats): a voided sale is not counted or earned, an unpaid
+ * adjustment row counts nowhere, a paid one stays in.
+ */
+export async function listPromoCodesWithStats(affiliateId: string): Promise<PromoCodeStats[]> {
+  const codes = await listPromoCodes(affiliateId);
+  if (codes.length === 0) return [];
+
+  const rows = await db.commission.findMany({
+    where: {
+      affiliateId,
+      click: { promoCodeId: { in: codes.map((c) => c.id) } },
+      status: { not: "VOIDED" },
+      OR: [{ status: "PAID" }, { adjustsCommissionId: null }],
+    },
+    select: { amount: true, currency: true, click: { select: { promoCodeId: true } } },
+  });
+
+  const totals = new Map<string, Map<string, Prisma.Decimal>>();
+  const conversions = new Map<string, number>();
+  for (const row of rows) {
+    const codeId = row.click.promoCodeId;
+    if (!codeId) continue;
+    conversions.set(codeId, (conversions.get(codeId) ?? 0) + 1);
+    const byCurrency = totals.get(codeId) ?? new Map<string, Prisma.Decimal>();
+    byCurrency.set(row.currency, (byCurrency.get(row.currency) ?? new Prisma.Decimal(0)).add(row.amount));
+    totals.set(codeId, byCurrency);
+  }
+
+  return codes.map((code) => ({
+    ...code,
+    conversions: conversions.get(code.id) ?? 0,
+    earned: [...(totals.get(code.id) ?? new Map<string, Prisma.Decimal>())]
+      .map(([currency, total]) => ({ currency, total: total.toFixed(2) }))
+      .sort((a, b) => a.currency.localeCompare(b.currency)),
+  }));
 }
