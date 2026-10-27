@@ -82,6 +82,7 @@ async function clearAll() {
   await db.commission.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
+  await db.affiliatePromoCode.deleteMany();
   await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
@@ -128,7 +129,12 @@ describe("handleCheckoutSessionCompleted", () => {
     breakdown?: null;
     /** Stripe's answer for a deleted customer: no metadata, just the id and the deleted flag. */
     customerDeleted?: boolean;
+    /** The promotion code id the customer used. */
+    promotionCode?: string;
+    /** A payload from an endpoint older than 2025-01-27.acacia, which has no `discounts`. */
+    noDiscountsField?: true;
   }): Stripe.Checkout.Session {
+    const discounts = opts.promotionCode ? [{ coupon: null, promotion_code: opts.promotionCode }] : [];
     const mode = opts.mode ?? "subscription";
     const amountTotal = opts.amountTotal ?? 5000;
     const tax = opts.tax ?? 0;
@@ -190,9 +196,12 @@ describe("handleCheckoutSessionCompleted", () => {
       invoice: opts.invoice ?? null,
       payment_intent: opts.paymentIntent ?? null,
       subscription,
+      ...(opts.noDiscountsField ? {} : { discounts }),
     } as unknown as Stripe.Checkout.Session;
     sessionsById.set(session.id, {
       ...session,
+      // Read back pinned to Supaffi's version, which always has the field.
+      discounts,
       total_details:
         opts.totalDetails === null
           ? null
@@ -1762,6 +1771,249 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(stripeStub.checkout.sessions.retrieve).not.toHaveBeenCalled();
       expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
       expect(stripeStub.paymentIntents.retrieve).not.toHaveBeenCalled();
+    });
+  });
+  describe("promo codes", () => {
+    let alice: { id: string; email: string };
+    let code: { id: string };
+
+    beforeEach(async () => {
+      const program = await db.program.findFirstOrThrow({ where: { merchantId: merchant.id } });
+      alice = await db.affiliate.create({
+        data: { merchantId: merchant.id, programId: program.id, email: `alice-${crypto.randomUUID()}@example.com` },
+      });
+      code = await db.affiliatePromoCode.create({
+        data: { merchantId: merchant.id, affiliateId: alice.id, stripePromotionCodeId: "promo_alice", code: "ALICE20" },
+      });
+    });
+
+    function renewal(id: string, subscription: string): Stripe.Invoice {
+      // Registers what reading the renewal back answers; the Session itself
+      // is not used.
+      sessionFixture({ invoice: id, subscription });
+      return {
+        id,
+        customer: CUSTOMER_ID,
+        billing_reason: "subscription_cycle",
+        created: Math.floor(Date.now() / 1000) + 31 * 24 * 60 * 60,
+        currency: "usd",
+        customer_email: "buyer@example.com",
+        metadata: {},
+        parent: { type: "subscription_details", subscription_details: { subscription, metadata: {} } },
+        total: 5000,
+        total_excluding_tax: 5000,
+        total_taxes: [],
+        amount_paid: 5000,
+        shipping_cost: null,
+      } as unknown as Stripe.Invoice;
+    }
+
+    it("credits the code's affiliate on a sale with no click", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_code", subscription: "sub_code", metadataToken: "", promotionCode: "promo_alice" })
+      );
+
+      const commission = await db.commission.findFirstOrThrow({ include: { click: true } });
+      expect(commission.affiliateId).toBe(alice.id);
+      expect(commission.amount.toString()).toBe("10");
+      expect(commission.click.promoCheckoutSessionId).toBe("cs_in_code");
+      expect(commission.click.promoCodeId).toBe(code.id);
+      expect(commission.click.linkId).toBeNull();
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_code" } });
+      expect(referred.clickId).toBe(commission.clickId);
+      // A code proves nothing about the tracking script.
+      expect((await db.merchant.findUniqueOrThrow({ where: { id: merchant.id } })).trackingVerifiedAt).toBeNull();
+    });
+
+    it("keeps crediting renewals, even after the code is removed", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_code", subscription: "sub_code", metadataToken: "", promotionCode: "promo_alice" })
+      );
+      await db.affiliatePromoCode.delete({ where: { id: code.id } });
+
+      await handleInvoicePaid(merchant, renewal("in_code_renewal", "sub_code"));
+
+      const commissions = await db.commission.findMany({ where: { affiliateId: alice.id }, orderBy: { createdAt: "asc" } });
+      expect(commissions.map((c) => c.stripePaymentRef)).toEqual(["in_code", "in_code_renewal"]);
+    });
+
+    it("wins over another affiliate's link, which still proves tracking", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_both", subscription: "sub_both", promotionCode: "promo_alice" })
+      );
+
+      const commissions = await db.commission.findMany();
+      expect(commissions.map((c) => c.affiliateId)).toEqual([alice.id]);
+      expect(await db.commission.count({ where: { clickId: click.id } })).toBe(0);
+      expect((await db.merchant.findUniqueOrThrow({ where: { id: merchant.id } })).trackingVerifiedAt).not.toBeNull();
+    });
+
+    it("keeps the link's click when the code belongs to the same affiliate", async () => {
+      await db.affiliatePromoCode.update({ where: { id: code.id }, data: { affiliateId: clickInput.affiliateId } });
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_same", subscription: "sub_same", promotionCode: "promo_alice" })
+      );
+
+      const commission = await db.commission.findFirstOrThrow();
+      expect(commission.clickId).toBe(click.id);
+      expect(await db.click.count({ where: { promoCheckoutSessionId: { not: null } } })).toBe(0);
+    });
+
+    it("writes one click and one commission across redeliveries and a settled delayed payment", async () => {
+      const session = sessionFixture({
+        mode: "payment",
+        paymentIntent: "pi_code",
+        metadataToken: "",
+        promotionCode: "promo_alice",
+        paymentStatus: "unpaid",
+      });
+      await handleCheckoutSessionCompleted(merchant, session);
+      // The referral is chosen at once; nothing earns until the money moves.
+      expect(await db.click.count({ where: { promoCheckoutSessionId: { not: null } } })).toBe(1);
+      expect(await db.commission.count()).toBe(0);
+
+      const paid = { ...session, payment_status: "paid" } as Stripe.Checkout.Session;
+      await handleCheckoutSessionCompleted(merchant, paid);
+      await handleCheckoutSessionCompleted(merchant, paid);
+
+      expect(await db.click.count({ where: { promoCheckoutSessionId: "cs_pi_code" } })).toBe(1);
+      const commissions = await db.commission.findMany();
+      expect(commissions).toHaveLength(1);
+      expect(commissions[0].affiliateId).toBe(alice.id);
+    });
+
+    it("keeps a sale with its code's affiliate when the code changes hands before a redelivery", async () => {
+      const session = sessionFixture({ invoice: "in_moved", subscription: "sub_moved", metadataToken: "", promotionCode: "promo_alice" });
+      await handleCheckoutSessionCompleted(merchant, session);
+      await db.affiliatePromoCode.update({ where: { id: code.id }, data: { affiliateId: clickInput.affiliateId } });
+
+      await handleCheckoutSessionCompleted(merchant, session);
+
+      expect((await db.commission.findMany()).map((c) => c.affiliateId)).toEqual([alice.id]);
+    });
+
+    it("keeps a delayed payment with the code's affiliate when the code changes hands while it settles", async () => {
+      const session = sessionFixture({
+        mode: "payment",
+        paymentIntent: "pi_settling",
+        metadataToken: "",
+        promotionCode: "promo_alice",
+        paymentStatus: "unpaid",
+      });
+      await handleCheckoutSessionCompleted(merchant, session);
+      await db.affiliatePromoCode.update({ where: { id: code.id }, data: { affiliateId: clickInput.affiliateId } });
+
+      await handleCheckoutSessionCompleted(merchant, { ...session, payment_status: "paid" } as Stripe.Checkout.Session);
+
+      expect((await db.commission.findMany()).map((c) => c.affiliateId)).toEqual([alice.id]);
+    });
+
+    it("pays the first payment where the renewals go when a code was given out between retries", async () => {
+      await db.affiliatePromoCode.delete({ where: { id: code.id } });
+      const session = sessionFixture({ invoice: "in_retry", subscription: "sub_retry", promotionCode: "promo_alice" });
+      // The first attempt records the subscription for the link's click, then
+      // fails reading the invoice's lines.
+      stripeStub.invoices.listLineItems.mockRejectedValueOnce(Object.assign(new Error("down"), { type: "StripeConnectionError" }));
+      await expect(handleCheckoutSessionCompleted(merchant, session)).rejects.toThrow();
+      await db.affiliatePromoCode.create({
+        data: { merchantId: merchant.id, affiliateId: alice.id, stripePromotionCodeId: "promo_alice", code: "ALICE20" },
+      });
+
+      await handleCheckoutSessionCompleted(merchant, session);
+
+      expect((await db.commission.findMany()).map((c) => c.clickId)).toEqual([click.id]);
+      expect((await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_retry" } })).clickId).toBe(click.id);
+    });
+
+    it("ignores a code given out on another product", async () => {
+      await db.affiliatePromoCode.update({ where: { id: code.id }, data: { stripePromotionCodeId: "promo_other" } });
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_unknown", subscription: "sub_unknown", metadataToken: "", promotionCode: "promo_alice" })
+      );
+
+      expect(await db.commission.count()).toBe(0);
+      expect(await db.click.count({ where: { promoCheckoutSessionId: { not: null } } })).toBe(0);
+    });
+
+    it("flags a code affiliate who bought with their own code", async () => {
+      await db.affiliate.update({ where: { id: alice.id }, data: { email: "buyer@example.com" } });
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_self", subscription: "sub_self", metadataToken: "", promotionCode: "promo_alice" })
+      );
+
+      expect((await db.commission.findFirstOrThrow()).status).toBe("FLAGGED");
+    });
+
+    it("earns nothing more once a self referral was confirmed on the code sale", async () => {
+      const session = sessionFixture({ invoice: "in_fraud", subscription: "sub_fraud", metadataToken: "", promotionCode: "promo_alice" });
+      await handleCheckoutSessionCompleted(merchant, session);
+      await db.click.updateMany({ where: { promoCheckoutSessionId: session.id }, data: { fraudConfirmedAt: new Date() } });
+
+      await handleInvoicePaid(merchant, renewal("in_fraud_renewal", "sub_fraud"));
+
+      expect((await db.commission.findMany()).map((c) => c.stripePaymentRef)).toEqual(["in_fraud"]);
+    });
+
+    it("reads an older endpoint's Session back for its code", async () => {
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({
+          invoice: "in_old",
+          subscription: "sub_old",
+          metadataToken: "",
+          promotionCode: "promo_alice",
+          noDiscountsField: true,
+        })
+      );
+
+      expect(stripeStub.checkout.sessions.retrieve).toHaveBeenCalledWith("cs_in_old");
+      expect((await db.commission.findFirstOrThrow()).affiliateId).toBe(alice.id);
+    });
+
+    it("processes an older endpoint's Session without its code when the key cannot read it back", async () => {
+      stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error("no"), { type: "StripePermissionError", statusCode: 403 })
+      );
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_old", subscription: "sub_old", promotionCode: "promo_alice", noDiscountsField: true })
+      );
+
+      expect((await db.commission.findFirstOrThrow()).clickId).toBe(click.id);
+    });
+
+    it("retries an older endpoint's Session when Stripe is down", async () => {
+      stripeStub.checkout.sessions.retrieve.mockRejectedValueOnce(Object.assign(new Error("down"), { type: "StripeConnectionError" }));
+
+      await expect(
+        handleCheckoutSessionCompleted(
+          merchant,
+          sessionFixture({ invoice: "in_old", subscription: "sub_old", promotionCode: "promo_alice", noDiscountsField: true })
+        )
+      ).rejects.toThrow(/retried/);
+      expect(await db.commission.count()).toBe(0);
+    });
+
+    it("spends no read on an older endpoint's Session when the product gave out no code", async () => {
+      await db.affiliatePromoCode.deleteMany();
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_old", subscription: "sub_old", noDiscountsField: true })
+      );
+
+      expect(stripeStub.checkout.sessions.retrieve).not.toHaveBeenCalled();
+      expect((await db.commission.findFirstOrThrow()).clickId).toBe(click.id);
     });
   });
 });

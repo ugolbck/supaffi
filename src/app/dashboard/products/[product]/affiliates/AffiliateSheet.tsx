@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Sheet,
   SheetContent,
@@ -22,7 +23,14 @@ import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { originFor } from "@/lib/url";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import type { CommissionStatus } from "@/lib/commission";
-import { changeProgramAction, createPasswordLinkAction, setCustomRateAction } from "./affiliateActions";
+import { XIcon } from "lucide-react";
+import {
+  addPromoCodeAction,
+  changeProgramAction,
+  createPasswordLinkAction,
+  removePromoCodeAction,
+  setCustomRateAction,
+} from "./affiliateActions";
 
 /**
  * Everything about one affiliate, in one place, without leaving the list.
@@ -46,6 +54,8 @@ export type SheetAffiliate = {
   payoutDetails: string | null;
   hasPassword: boolean;
   links: { url: string; clicks: number }[];
+  /** `earned` already formatted, like the commission amounts below. */
+  promoCodes: { id: string; code: string; sales: number; earned: string }[];
   commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
 };
 
@@ -83,39 +93,36 @@ export function AffiliateSheet({
         </SheetHeader>
 
         <div className="flex flex-col gap-6 px-4 pb-4">
-          <form
-            action={changeProgramAction.bind(null, product, affiliate.id)}
-            className="flex items-center justify-between gap-3 text-sm"
-          >
-            <span className="text-muted-foreground">Program</span>
-            <Select name="programId" items={programNames} defaultValue={affiliate.programId}>
-              <SelectTrigger className="w-40 cursor-pointer" aria-label="Program">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {programs.map((p) => (
-                  <SelectItem key={p.id} value={p.id} className="cursor-pointer">
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
-              Change
-            </Button>
-          </form>
+          <Field title="Program">
+            <form action={changeProgramAction.bind(null, product, affiliate.id)} className="flex gap-2">
+              <Select name="programId" items={programNames} defaultValue={affiliate.programId}>
+                <SelectTrigger className="min-w-0 flex-1 cursor-pointer data-[size=default]:h-9" aria-label="Program">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {programs.map((p) => (
+                    <SelectItem key={p.id} value={p.id} className="cursor-pointer">
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button type="submit" size="lg" variant="secondary" className="cursor-pointer">
+                Change
+              </Button>
+            </form>
+          </Field>
 
-          <form
-            action={setCustomRateAction.bind(null, product, affiliate.id)}
-            className="flex flex-col gap-2 text-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Rate</span>
+          <Field
+            title="Rate"
+            value={
               <span className="tabular-nums">
-                {affiliate.rate}% {affiliate.rateIsOverride ? "(custom)" : "(program default)"}
+                {affiliate.rate}%{" "}
+                <span className="text-muted-foreground">{affiliate.rateIsOverride ? "custom" : "program default"}</span>
               </span>
-            </div>
-            <div className="flex gap-2">
+            }
+          >
+            <form action={setCustomRateAction.bind(null, product, affiliate.id)} className="flex gap-2">
               <Input
                 name="rate"
                 type="number"
@@ -123,9 +130,10 @@ export function AffiliateSheet({
                 max="100"
                 step="0.01"
                 placeholder="Custom rate"
-                className="w-32"
+                aria-label="Custom rate"
+                className="min-w-0 flex-1"
               />
-              <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
+              <Button type="submit" size="lg" variant="secondary" className="cursor-pointer">
                 Set
               </Button>
               {affiliate.rateIsOverride && (
@@ -134,7 +142,7 @@ export function AffiliateSheet({
                 // clearing the override says so instead.
                 <Button
                   type="submit"
-                  size="sm"
+                  size="lg"
                   variant="ghost"
                   className="cursor-pointer"
                   name="intent"
@@ -143,31 +151,32 @@ export function AffiliateSheet({
                   Use default
                 </Button>
               )}
-            </div>
-          </form>
+            </form>
+          </Field>
 
-          <div className="flex items-start justify-between gap-3 text-sm">
-            <span className="text-muted-foreground">Payout</span>
-            <span className="max-w-60 text-right break-words">
-              {affiliate.payoutDetails ?? "Not given yet"}
-            </span>
-          </div>
+          <Field
+            title="Payout"
+            value={
+              <span className="max-w-60 text-right break-words">
+                {affiliate.payoutDetails ?? <span className="text-muted-foreground">Not given yet</span>}
+              </span>
+            }
+          />
 
           <PasswordLink affiliateId={affiliate.id} hasPassword={affiliate.hasPassword} product={product} domain={productDomain} />
 
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Links</p>
-            <ul className="flex flex-col gap-1 text-sm">
+          <Field title="Links">
+            <ul className="flex flex-col gap-1.5 text-sm">
               {affiliate.links.map((l) => (
-                <li key={l.url} className="flex justify-between gap-3">
+                <li key={l.url} className="flex items-baseline justify-between gap-3">
                   <code className="truncate font-mono text-xs">{l.url}</code>
-                  <span className="shrink-0 text-muted-foreground tabular-nums">
-                    {l.clicks} clicks
-                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{l.clicks} clicks</span>
                 </li>
               ))}
             </ul>
-          </div>
+          </Field>
+
+          <PromoCodes affiliateId={affiliate.id} codes={affiliate.promoCodes} product={product} />
 
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Commissions</p>
@@ -192,6 +201,19 @@ export function AffiliateSheet({
   );
 }
 
+/** One part of the panel: a heading, what it holds now, and its controls. */
+function Field({ title, value, children }: { title: string; value?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <p className="font-medium">{title}</p>
+        {value}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 /**
  * Supaffi sends no email, so a forgotten password, or an affiliate who signed
  * up before passwords existed, is handled by the Owner: make a one-time link
@@ -213,20 +235,19 @@ function PasswordLink({
   const [pending, startTransition] = useTransition();
 
   return (
-    <div className="flex flex-col gap-2 text-sm">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-muted-foreground">Password</span>
-        {hasPassword ? <span>Set</span> : <span className="text-status-warning">Not set yet</span>}
-      </div>
+    <Field
+      title="Password"
+      value={hasPassword ? <span>Set</span> : <span className="text-status-warning">Not set yet</span>}
+    >
       {link ? (
         <div className="flex gap-2">
-          <Input readOnly value={link} className="font-mono text-xs" onFocus={(e) => e.target.select()} />
-          <CopyLinkButton link={link} size="sm" label="Copy" />
+          <Input readOnly value={link} className="min-w-0 flex-1 font-mono text-xs" onFocus={(e) => e.target.select()} />
+          <CopyLinkButton link={link} size="lg" label="Copy" />
         </div>
       ) : (
         <Button
           type="button"
-          size="sm"
+          size="lg"
           variant="secondary"
           className="cursor-pointer self-start"
           disabled={pending}
@@ -243,6 +264,96 @@ function PasswordLink({
       )}
       {link && <p className="text-xs text-muted-foreground">Works once, for 3 days. Send it to them yourself.</p>}
       {error && <p className="text-xs text-status-danger">{error}</p>}
-    </div>
+    </Field>
+  );
+}
+
+/**
+ * Stripe promotion codes that credit this affiliate when a customer uses one,
+ * clicked link or not. Typed as the customer types it; Supaffi finds the code
+ * in Stripe once, here.
+ */
+function PromoCodes({
+  affiliateId,
+  codes,
+  product,
+}: {
+  affiliateId: string;
+  codes: SheetAffiliate["promoCodes"];
+  product: { id: string; slug: string };
+}) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<{ error: string; keyLacksPermission?: true } | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <Field title="Promo codes">
+      {codes.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {codes.map((c) => (
+            <li key={c.id} className="flex items-center gap-3">
+              <code className="min-w-0 flex-1 truncate font-mono text-xs">{c.code}</code>
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                {c.sales} {c.sales === 1 ? "sale" : "sales"} · {c.earned}
+              </span>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="shrink-0 cursor-pointer"
+                aria-label={`Remove ${c.code}`}
+                disabled={pending}
+                onClick={() => startTransition(() => removePromoCodeAction(product, affiliateId, c.id))}
+              >
+                <XIcon />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          startTransition(async () => {
+            const result = await addPromoCodeAction(product, affiliateId, code);
+            setError(result);
+            if (!result) setCode("");
+          });
+        }}
+      >
+        <Input
+          name="code"
+          value={code}
+          onChange={(e) => {
+            setCode(e.target.value);
+            setError(null);
+          }}
+          placeholder="Stripe promo code"
+          aria-label="Stripe promo code"
+          aria-invalid={error ? true : undefined}
+          className="min-w-0 flex-1 font-mono"
+        />
+        <Button type="submit" size="lg" variant="secondary" className="cursor-pointer" disabled={pending || code.trim() === ""}>
+          Add
+        </Button>
+      </form>
+      {error && (
+        <p className="text-xs text-status-danger">
+          {error.error}
+          {error.keyLacksPermission && (
+            <>
+              {" "}
+              <Link
+                href={`/dashboard/products/${product.slug}/settings?replace=stripe-key`}
+                className="cursor-pointer underline"
+              >
+                Replace it
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+    </Field>
   );
 }

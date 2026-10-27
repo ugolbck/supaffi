@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { VISITOR_CLICK } from "@/lib/referral";
 
 /**
  * How far along the tracking integration is.
@@ -28,7 +29,7 @@ export async function getTrackingStatus(merchantId: string): Promise<TrackingSta
   if (merchant.trackingVerifiedAt) return "verified";
 
   const click = await db.click.findFirst({
-    where: { affiliate: { merchantId } },
+    where: { affiliate: { merchantId }, ...VISITOR_CLICK },
     select: { id: true },
   });
   return click ? "awaiting-sale" : "not-started";
@@ -52,7 +53,7 @@ export async function getTrackingTimestamps(merchantId: string): Promise<Trackin
       select: { trackingVerifiedAt: true },
     }),
     db.click.findFirst({
-      where: { affiliate: { merchantId } },
+      where: { affiliate: { merchantId }, ...VISITOR_CLICK },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     }),

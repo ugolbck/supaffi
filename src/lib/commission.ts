@@ -58,6 +58,11 @@ export type CommissionRow = {
    * whether the Owner already confirmed that referral as a self referral.
    */
   click: { at: Date; linkCode: string | null; destinationPath: string | null; selfReferralConfirmed: boolean };
+  /**
+   * Set when a promo code earned the sale instead of a click: the code, or
+   * null once the Owner took it away from the affiliate.
+   */
+  promoCode: { code: string | null } | null;
 };
 
 export const COMMISSIONS_PAGE_SIZE = 25;
@@ -130,6 +135,8 @@ export async function listCommissions(
             // Nullable: deleting a link leaves its clicks behind, and
             // attribution reads the affiliate, not the link.
             link: { select: { code: true, destinationPath: true } },
+            promoCheckoutSessionId: true,
+            promoCode: { select: { code: true } },
           },
         },
       },
@@ -175,6 +182,7 @@ export async function listCommissions(
         destinationPath: c.click.link?.destinationPath ?? null,
         selfReferralConfirmed: c.click.fraudConfirmedAt !== null,
       },
+      promoCode: c.click.promoCheckoutSessionId !== null ? { code: c.click.promoCode?.code ?? null } : null,
     })),
   };
 }

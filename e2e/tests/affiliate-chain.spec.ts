@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { paymentLinkSale, sale } from "./provider";
+import { paymentLinkSale, promoCodeSale, sale } from "./provider";
 
 // One owner, one product, one affiliate, driven through the real screens:
 // setup, onboarding, signup, the affiliate link landing on the merchant's
@@ -171,6 +171,36 @@ test("a Payment Link on the merchant's page earns a commission", async ({ browse
   // their own link.
   await eventually(owner, async () => {
     const row = owner.getByRole("row").filter({ has: owner.getByRole("cell", { name: "$15.00" }) });
+    await expect(row).toBeVisible();
+    await expect(row.getByRole("cell", { name: "Flagged" })).toHaveCount(0);
+  });
+});
+
+test("a promo code earns for its affiliate with no click", async ({ browser }) => {
+  // The owner types the code as the customer would; Supaffi finds it in Stripe.
+  await owner.goto(`${ADMIN}/dashboard/products/shop/affiliates`);
+  await owner.getByRole("link", { name: AFFILIATE.name }).first().click();
+  const sheet = owner.getByRole("dialog");
+  await sheet.getByLabel("Stripe promo code").fill("partner20");
+  await sheet.getByRole("button", { name: "Add" }).click();
+  await expect(sheet.getByText("PARTNER20")).toBeVisible();
+
+  await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard/links`);
+  await expect(affiliate.getByRole("cell", { name: "PARTNER20" })).toBeVisible();
+
+  const buyer = await newPage(browser);
+  const result = await promoCodeSale(buyer, {
+    code: "PARTNER20",
+    email: "codebuyer@example.com",
+    amount: 7000,
+    cardFingerprint: "fp_code_buyer_card",
+  });
+  expect(result.delivered).toEqual([200]);
+
+  // A different amount from every other sale, so this commission is its own.
+  await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
+  await eventually(owner, async () => {
+    const row = owner.getByRole("row").filter({ has: owner.getByRole("cell", { name: "$21.00" }) });
     await expect(row).toBeVisible();
     await expect(row.getByRole("cell", { name: "Flagged" })).toHaveCount(0);
   });

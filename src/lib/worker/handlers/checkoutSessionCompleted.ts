@@ -1,4 +1,5 @@
-import type { Merchant, ReferredSubscription } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import type { AffiliatePromoCode, Merchant, Prisma, ReferredSubscription } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/stripe";
@@ -14,6 +15,7 @@ import { exclusionSourcesOf, retrieveInvoiceForEarning } from "../referredRevenu
 import { referredEarningOn, storableReferredShare } from "../referredEarning";
 import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerprint } from "../selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { isTransientStripeError, stripeErrorLabel } from "@/lib/stripeErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_METADATA_KEY } from "@/lib/referral";
 import { claimFirstPayment, idOf, recordReferredSubscription, subscriptionProductIds } from "../referredSubscription";
@@ -21,52 +23,35 @@ import { referralStillEarns } from "../referralDuration";
 import { createCommissionUnlessSelfReferral } from "../recordCommission";
 
 export async function handleCheckoutSessionCompleted(merchant: Merchant, session: Stripe.Checkout.Session): Promise<void> {
-  // Metadata wins when present. A checkout Stripe built without the
-  // Merchant's code (Payment Link, buy button, pricing table) can only carry
-  // the token in client_reference_id, behind a prefix so a Merchant's own
-  // value in that field is never read as one.
-  const clientReferenceId = session.client_reference_id;
-  const referralToken =
-    session.metadata?.[REFERRAL_METADATA_KEY] ||
-    (clientReferenceId?.startsWith(REFERRAL_CLIENT_REFERENCE_PREFIX)
-      ? clientReferenceId.slice(REFERRAL_CLIENT_REFERENCE_PREFIX.length)
-      : undefined);
-  if (!referralToken) return; // not a Supaffi-tracked checkout
-
-  // Scoped to the Merchant whose webhook this is. A token is just a string in
-  // Session metadata, so one minted for another Merchant's affiliate must not
-  // earn a commission on this Merchant's sale.
-  const click = await db.click.findUnique({
-    where: { referralToken, affiliate: { merchantId: merchant.id } },
-    include: { affiliate: { include: { program: true } } },
-  });
-  if (!click) return; // token doesn't match one of this Merchant's Clicks
-
-  // A stale/reused token past its Attribution Window doesn't count, even
-  // on the very first purchase.
   const completedAt = new Date(session.created * 1000);
-  if (click.expiresAt < completedAt) return;
+  const linkClick = await linkClickOn(merchant, session, completedAt);
 
-  // Reaching here proves both halves of the tracking integration at once: a
-  // Click existed, so the script is live on the Merchant's site, and the token
-  // came back on the Session, so their checkout code passes it through.
-  // Recorded before the exclusion and self-referral
-  // checks below, because those decide whether this sale earns a commission,
-  // not whether the integration works.
-  await recordTrackingVerified(merchant.id);
+  // Reaching here with a click proves both halves of the tracking integration
+  // at once: a Click existed, so the script is live on the Merchant's site,
+  // and the token came back on the Session, so their checkout code passes it
+  // through. Recorded before anything decides whether this sale earns,
+  // including a promo code crediting someone else, because that decides the
+  // commission, not whether the integration works.
+  if (linkClick) await recordTrackingVerified(merchant.id);
 
-  // The Owner confirmed a self referral that came through this click. Nothing
-  // it brings earns again: not this purchase, and not the subscription it
-  // would start. Checked after the tracking proof above, because the
-  // integration itself still worked.
-  if (click.fraudConfirmedAt) return;
+  // Chosen before anything else can happen, an unpaid Session included, so
+  // the click a promo code stands in for exists from the first event: a code
+  // the Owner takes away or hands to someone else while a delayed payment
+  // settles cannot move the sale.
+  let click = await referralOn(merchant, session, linkClick);
+  if (!click) return; // not a Supaffi-tracked checkout
 
   // A delayed payment method (SEPA, ACH, Boleto) completes the Session before
-  // any money has moved, and the payment can still fail. Nothing happens yet,
-  // not even recording the subscription:
+  // any money has moved, and the payment can still fail. Nothing more happens
+  // yet, not even recording the subscription:
   // checkout.session.async_payment_succeeded brings this same Session back
   // through here, paid, once it settles.
   if (session.payment_status === "unpaid") return;
+
+  // The Owner confirmed a self referral that came through this click. Nothing
+  // it brings earns again: not this purchase, and not the subscription it
+  // would start.
+  if (click.fraudConfirmedAt) return;
 
   const stripeCustomerId = idOf(session.customer);
   const subscriptionId = idOf(session.subscription);
@@ -136,6 +121,13 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
       subscriptionId,
       products === "unanswered" ? [] : products
     );
+    // An earlier attempt at this event recorded the subscription under
+    // another click: one whose code was only given to an affiliate since,
+    // before the retry. The first payment goes where every renewal will.
+    if (referred.clickId !== click.id) {
+      click = await db.click.findUniqueOrThrow({ where: { id: referred.clickId }, include: REFERRAL_INCLUDE });
+      if (click.fraudConfirmedAt) return;
+    }
     if (moneyPaid && stripePaymentRef) {
       // A delayed payment method's Session is created unpaid, and
       // checkout.session.async_payment_succeeded brings it back, paid, once
@@ -339,6 +331,153 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     // paid Session; whichever arrives second finds the Commission the first
     // one already created, not an error.
     if (!isUniqueConstraintError(err)) throw err;
+  }
+}
+
+const REFERRAL_INCLUDE = { affiliate: { include: { program: true } } } as const;
+type ReferralClick = Prisma.ClickGetPayload<{ include: typeof REFERRAL_INCLUDE }>;
+
+/**
+ * The visitor's click this Session carries the token of, if it is still inside
+ * its Attribution Window.
+ *
+ * Metadata wins when present. A checkout Stripe built without the Merchant's
+ * code (Payment Link, buy button, pricing table) can only carry the token in
+ * client_reference_id, behind a prefix so a Merchant's own value in that field
+ * is never read as one.
+ */
+async function linkClickOn(merchant: Merchant, session: Stripe.Checkout.Session, completedAt: Date): Promise<ReferralClick | null> {
+  const clientReferenceId = session.client_reference_id;
+  const referralToken =
+    session.metadata?.[REFERRAL_METADATA_KEY] ||
+    (clientReferenceId?.startsWith(REFERRAL_CLIENT_REFERENCE_PREFIX)
+      ? clientReferenceId.slice(REFERRAL_CLIENT_REFERENCE_PREFIX.length)
+      : undefined);
+  if (!referralToken) return null;
+
+  // Scoped to the Merchant whose webhook this is. A token is just a string in
+  // Session metadata, so one minted for another Merchant's affiliate must not
+  // earn a commission on this Merchant's sale. A promo code sale's click is
+  // never one a token can name.
+  const click = await db.click.findUnique({
+    where: { referralToken, affiliate: { merchantId: merchant.id }, promoCheckoutSessionId: null },
+    include: REFERRAL_INCLUDE,
+  });
+  if (!click) return null;
+
+  // A stale/reused token past its Attribution Window doesn't count, even on
+  // the very first purchase.
+  if (click.expiresAt < completedAt) return null;
+  return click;
+}
+
+/**
+ * The click this sale earns through: the one a promo code stands in for when
+ * the Session used an Affiliate's code, otherwise the visitor's.
+ *
+ * The code wins over another Affiliate's link. The customer typed it at the
+ * moment of paying, which is the latest and most deliberate thing they did; a
+ * link may be weeks old. When both belong to the same Affiliate the visitor's
+ * click is kept, so the sale still counts for the link it came through.
+ *
+ * Once a Session has a code click it keeps it, whatever happens to the code
+ * since: a redelivered event, or async_payment_succeeded after completed,
+ * earns through the same referral the first one recorded.
+ */
+async function referralOn(
+  merchant: Merchant,
+  session: Stripe.Checkout.Session,
+  linkClick: ReferralClick | null
+): Promise<ReferralClick | null> {
+  const recordedOn = (tx: Prisma.TransactionClient) =>
+    tx.click.findFirst({
+      where: { promoCheckoutSessionId: session.id, affiliate: { merchantId: merchant.id } },
+      include: REFERRAL_INCLUDE,
+    });
+  const recorded = await recordedOn(db);
+  if (recorded) return recorded;
+
+  // Read outside the transaction below: it can call Stripe.
+  const promoCode = await promoCodeOn(merchant, session);
+  if (!promoCode || promoCode.affiliateId === linkClick?.affiliateId) return linkClick;
+
+  // Two deliveries of one Session (completed and async_payment_succeeded, or
+  // a redelivery) can run at once, and the code can change hands between
+  // them. Serialized on the Session, the second finds the first one's click
+  // instead of writing one for a different affiliate.
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`promo-session:${merchant.id}:${session.id}`}, 0))`;
+    const first = await recordedOn(tx);
+    if (first) return first;
+    return tx.click.create({
+      data: {
+        affiliateId: promoCode.affiliateId,
+        promoCodeId: promoCode.id,
+        promoCheckoutSessionId: session.id,
+        // Required and unique, and never handed to anyone: no browser holds
+        // it, so no checkout can ever carry it back.
+        referralToken: randomUUID(),
+        // No Attribution Window: the sale is the referral. Nothing reads this
+        // back for a code click.
+        expiresAt: new Date(session.created * 1000),
+      },
+      include: REFERRAL_INCLUDE,
+    });
+  });
+}
+
+/**
+ * The Affiliate's promo code this Session used, if any.
+ *
+ * `discounts[].promotion_code` is the code's id ("Promotion code attached to
+ * the Checkout Session", Stripe docs, api/checkout/sessions/object), the same
+ * id the Owner's code was stored under, so the payload answers it with no
+ * call. The field arrived in API version 2025-01-27.acacia ("adds a new
+ * discounts field ... applied by you or the customer when creating the
+ * Checkout Session", Stripe docs, changelog/acacia/2025-01-27), and a payload
+ * follows the endpoint's version, not Supaffi's. An older endpoint sends no
+ * such field, so the Session is read back, pinned to Supaffi's version, but
+ * only for a product that has given out a code at all.
+ */
+async function promoCodeOn(merchant: Merchant, session: Stripe.Checkout.Session): Promise<AffiliatePromoCode | null> {
+  let discounts = session.discounts;
+  if (discounts === undefined) {
+    const anyCode = await db.affiliatePromoCode.findFirst({ where: { merchantId: merchant.id }, select: { id: true } });
+    if (!anyCode) return null;
+    discounts = await retrieveSessionDiscounts(stripeClientFor(merchant), session.id);
+  }
+  const ids = (discounts ?? []).map((d) => idOf(d.promotion_code)).filter((id): id is string => id !== null);
+  if (ids.length === 0) return null;
+  // A Checkout Session takes one discount ("only up to one may be
+  // specified", Stripe docs, api/checkout/sessions/create), so at most one
+  // id can match.
+  return db.affiliatePromoCode.findFirst({
+    where: { merchantId: merchant.id, stripePromotionCodeId: { in: ids } },
+  });
+}
+
+/**
+ * A Session's discounts, read back pinned to Supaffi's version.
+ *
+ * An outage throws, so the event is retried rather than a code sale being
+ * processed as if no code was used. A key that cannot read Checkout Sessions
+ * (a separate permission from Promotion Codes, which adding the code needed)
+ * fails the same way on every retry, so it is logged and the sale goes on as
+ * one without a code: its link, if any, still earns, as it did before codes
+ * existed. Only the error's type and code are logged, never Stripe's message,
+ * which names the masked key and the account.
+ */
+async function retrieveSessionDiscounts(stripe: Stripe, sessionId: string): Promise<Stripe.Checkout.Session["discounts"]> {
+  try {
+    return (await stripe.checkout.sessions.retrieve(sessionId)).discounts;
+  } catch (err) {
+    if (isTransientStripeError(err)) {
+      throw new Error(`[worker] could not read session ${sessionId} for its promo code (${stripeErrorLabel(err)}), so the event is retried`);
+    }
+    console.error(
+      `[worker] could not read session ${sessionId} for its promo code (${stripeErrorLabel(err)}), so it was processed as a sale without one`
+    );
+    return null;
   }
 }
 

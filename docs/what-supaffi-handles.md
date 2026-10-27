@@ -17,7 +17,7 @@ A SaaS founder or small team that:
 
 - One install runs several products, each with its own affiliate domain, Stripe account connection, program and affiliates.
 - Stripe is connected with a restricted key, or a full secret key if you prefer. Supaffi creates the Stripe webhook itself and subscribes to exactly the events it needs.
-- Several products can share one Stripe account without paying the wrong affiliate, as long as each runs on its own site and neither site links to the other's Payment Links, buy buttons or pricing tables.
+- Several products can share one Stripe account without paying the wrong affiliate, as long as each runs on its own site, neither site links to the other's Payment Links, buy buttons or pricing tables, and they never give out the same promo code.
 
 ### Tracking a referral
 
@@ -25,6 +25,8 @@ A SaaS founder or small team that:
 - A small script on your site remembers the referral. Your checkout code passes it to Stripe Checkout in the session metadata.
 - Stripe Payment Links, buy buttons and pricing tables need no code of yours. The script adds the referral to them on your pages, including ones that appear after the page loads.
 - The last affiliate link a visitor used gets the credit, as long as they buy within the attribution window you set, up to 90 days.
+- **Promo codes.** Give an affiliate one or more of your Stripe promotion codes. A customer who uses one at checkout credits that affiliate, whether or not they clicked a link. A code beats another affiliate's link on the same purchase. Sales with a code follow every rule below, and a subscription keeps earning after the code's discount ends.
+- Adding a code needs a Stripe key that can read promotion codes. Keys made before promo codes existed keep working for everything else. Adding a code with one tells you to replace it.
 
 ### Payments that earn a commission
 
@@ -32,7 +34,7 @@ A SaaS founder or small team that:
 - The first payment of a subscription started through Stripe Checkout, or through a Payment Link, buy button or pricing table.
 - Every later renewal of that same subscription, including upgrades and downgrades within the same Stripe product, until the commission duration ends.
 - A free trial that converts: the commission starts at the first real payment.
-- The duration counts once per referral. A customer who cancels and subscribes again through the same referral does not restart it. A new click on the affiliate's link is a new referral.
+- The duration counts once per referral. A customer who cancels and subscribes again through the same referral does not restart it. A new click on the affiliate's link is a new referral, and so is each checkout that uses one of their promo codes.
 - Delayed payment methods such as SEPA or ACH debit: the commission is recorded once the money settles.
 
 ### How the commission is calculated
@@ -61,7 +63,7 @@ A SaaS founder or small team that:
 
 - Sign up on a public page with an email and password. A forgotten password is reset with a link you copy from their panel and send them. Supaffi sends no email. Replacing a password signs the affiliate out everywhere.
 - See clicks, sales, earnings, what is pending, payable and paid, and their payout history.
-- Create extra links pointing at any page of your site, and add their payout details.
+- Create extra links pointing at any page of your site, see the promo codes you gave them, and add their payout details.
 
 ## What it does not handle
 
@@ -76,7 +78,8 @@ These are outside the product on purpose. They may come later if users need them
 - **Tax forms and withholding** for affiliates, such as 1099 or W-8.
 - **Fixed-amount commissions, tiers based on volume, minimum payout thresholds,** and multi-level or two-sided rewards such as a discount for the referred customer.
 - **Commissions on signups, leads or free trials** that never pay.
-- **Other attribution models,** such as first click, split credit, or coupon-code-only attribution.
+- **Other attribution models,** such as first click or split credit.
+- **Promo codes used outside checkout,** such as one a customer adds in Stripe's customer portal or one applied to an existing subscription through the API.
 - **Tracking across unrelated domains.** The script and your checkout must run on the same site.
 - **Several products on the same site sharing one Stripe account.** A referral for one product can be credited on the other's sale.
 - **Approving affiliates.** An affiliate's link works as soon as they sign up. A program's public signup can be turned off, and you then move affiliates into it yourself.

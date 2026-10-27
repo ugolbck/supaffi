@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { VISITOR_CLICK } from "@/lib/referral";
 import { Prisma } from "@prisma/client";
 import { MAX_SHOWN } from "@/lib/commission";
 
@@ -360,7 +361,7 @@ export type ProductMetrics = {
 async function periodFor(where: { merchantId?: string; affiliateId?: string }, window: Window): Promise<Period> {
   const scope = where.merchantId ? { affiliate: { merchantId: where.merchantId } } : { affiliateId: where.affiliateId };
   const [clicks, rows] = await Promise.all([
-    db.click.count({ where: { ...scope, createdAt: { gte: window.since, lte: window.until } } }),
+    db.click.count({ where: { ...scope, ...VISITOR_CLICK, createdAt: { gte: window.since, lte: window.until } } }),
     db.commission.findMany({
       where: {
         ...scope,
@@ -404,7 +405,7 @@ export async function getProductMetrics(
   const [clickRows, commissionRows, owed, paidRows, revenueRows, signupRows, flagged, previous] =
     await Promise.all([
       db.click.findMany({
-        where: { affiliate: { merchantId }, createdAt: { gte: since, lte: window.until } },
+        where: { affiliate: { merchantId }, ...VISITOR_CLICK, createdAt: { gte: since, lte: window.until } },
         select: { createdAt: true },
       }),
       db.commission.findMany({
@@ -597,7 +598,7 @@ export async function getTopAffiliates(
     }),
     db.click.groupBy({
       by: ["affiliateId"],
-      where: { affiliateId: { in: rankedIds }, ...inWindow },
+      where: { affiliateId: { in: rankedIds }, ...VISITOR_CLICK, ...inWindow },
       _count: { _all: true },
     }),
     // Same scope as `earned`, minus the rows that are not a sale: adjustment
@@ -885,7 +886,7 @@ export async function getAffiliateMetrics(
 
   const [clickRows, commissionRows, statusRows, paidRows, unpaid, payable, previous] = await Promise.all([
     db.click.findMany({
-      where: { affiliateId, createdAt: { gte: since, lte: window.until } },
+      where: { affiliateId, ...VISITOR_CLICK, createdAt: { gte: since, lte: window.until } },
       select: { createdAt: true },
     }),
     db.commission.findMany({

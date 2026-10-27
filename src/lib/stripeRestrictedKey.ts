@@ -80,6 +80,18 @@ export const KEY_PERMISSIONS = [
     row: "Payment Methods",
     why: "spots an affiliate buying through their own link",
   },
+  // Promotion Codes arrived with promo codes. It is read only when the Owner gives an
+  // affiliate a code, to turn the code's text into the id a Checkout Session
+  // carries: "GET /v1/promotion_codes | promotion_code_read" (Stripe docs,
+  // keys/permissions-reference.md). No sale reads it, so a key made before
+  // then keeps earning on everything it did; adding a code with it says so
+  // and sends the Owner to replace the key.
+  {
+    token: "rak_promotion_code_read",
+    access: "Read",
+    row: "Promotion Codes",
+    why: "finds the promo code you give an affiliate",
+  },
   {
     token: "rak_subscription_read",
     access: "Read",

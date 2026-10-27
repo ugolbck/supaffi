@@ -17,6 +17,7 @@ describe("restricted key link", () => {
     // Charges: reading a refund that happened before its commission existed.
     // Checkout Sessions: reading the tax on a one-time sale.
     // Disputes: holding a commission while a chargeback on its sale is open.
+    // Promotion Codes: finding the code the Owner gives an affiliate.
     expect(KEY_PERMISSIONS.map((permission) => permission.token)).toEqual([
       "rak_charge_read",
       "rak_checkout_session_read",
@@ -25,6 +26,7 @@ describe("restricted key link", () => {
       "rak_invoice_read",
       "rak_payment_intent_read",
       "rak_payment_method_read",
+      "rak_promotion_code_read",
       "rak_subscription_read",
       "rak_webhook_write",
     ]);
