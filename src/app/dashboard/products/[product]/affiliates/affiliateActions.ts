@@ -5,11 +5,11 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { updateAffiliate } from "@/lib/affiliate";
 import { createAffiliateResetLink } from "@/lib/affiliatePassword";
+import { addPromoCode, removePromoCode } from "@/lib/promoCode";
 
 /**
- * The two writes the affiliate sheet makes: which program someone is in, and
- * what they are paid. Both return nothing, so the sheet stays a form on a
- * server-rendered panel rather than a client screen holding state.
+ * The writes the affiliate sheet makes: which program someone is in, what
+ * they are paid, their password link and their promo codes.
  */
 
 async function owner(): Promise<string> {
@@ -68,4 +68,27 @@ export async function createPasswordLinkAction(
   const ownerId = await owner();
   const token = await createAffiliateResetLink(ownerId, product.id, affiliateId);
   return token ? { token } : { error: "Affiliate not found" };
+}
+
+/** Gives the affiliate a Stripe promotion code, looked up by its text. */
+export async function addPromoCodeAction(
+  product: { id: string; slug: string },
+  affiliateId: string,
+  code: string
+): Promise<{ error: string; keyLacksPermission?: true } | null> {
+  const ownerId = await owner();
+  const result = await addPromoCode(ownerId, product.id, affiliateId, code);
+  if (!result.ok) return { error: result.error, keyLacksPermission: result.keyLacksPermission };
+  revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
+  return null;
+}
+
+export async function removePromoCodeAction(
+  product: { id: string; slug: string },
+  affiliateId: string,
+  promoCodeId: string
+): Promise<void> {
+  const ownerId = await owner();
+  await removePromoCode(ownerId, product.id, affiliateId, promoCodeId);
+  revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
 }

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Sheet,
   SheetContent,
@@ -22,7 +23,14 @@ import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { originFor } from "@/lib/url";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import type { CommissionStatus } from "@/lib/commission";
-import { changeProgramAction, createPasswordLinkAction, setCustomRateAction } from "./affiliateActions";
+import { XIcon } from "lucide-react";
+import {
+  addPromoCodeAction,
+  changeProgramAction,
+  createPasswordLinkAction,
+  removePromoCodeAction,
+  setCustomRateAction,
+} from "./affiliateActions";
 
 /**
  * Everything about one affiliate, in one place, without leaving the list.
@@ -46,6 +54,7 @@ export type SheetAffiliate = {
   payoutDetails: string | null;
   hasPassword: boolean;
   links: { url: string; clicks: number }[];
+  promoCodes: { id: string; code: string }[];
   commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
 };
 
@@ -169,6 +178,8 @@ export function AffiliateSheet({
             </ul>
           </div>
 
+          <PromoCodes affiliateId={affiliate.id} codes={affiliate.promoCodes} product={product} />
+
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Commissions</p>
             <ul className="flex flex-col gap-1 text-sm">
@@ -243,6 +254,90 @@ function PasswordLink({
       )}
       {link && <p className="text-xs text-muted-foreground">Works once, for 3 days. Send it to them yourself.</p>}
       {error && <p className="text-xs text-status-danger">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Stripe promotion codes that credit this affiliate when a customer uses one,
+ * clicked link or not. Typed as the customer types it; Supaffi finds the code
+ * in Stripe once, here.
+ */
+function PromoCodes({
+  affiliateId,
+  codes,
+  product,
+}: {
+  affiliateId: string;
+  codes: { id: string; code: string }[];
+  product: { id: string; slug: string };
+}) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<{ error: string; keyLacksPermission?: true } | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <p className="font-medium">Promo codes</p>
+      {codes.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {codes.map((c) => (
+            <li key={c.id} className="flex items-center justify-between gap-3">
+              <code className="truncate font-mono text-xs">{c.code}</code>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="cursor-pointer"
+                aria-label={`Remove ${c.code}`}
+                disabled={pending}
+                onClick={() => startTransition(() => removePromoCodeAction(product, affiliateId, c.id))}
+              >
+                <XIcon />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          startTransition(async () => {
+            const result = await addPromoCodeAction(product, affiliateId, code);
+            setError(result);
+            if (!result) setCode("");
+          });
+        }}
+      >
+        <Input
+          name="code"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="Stripe promo code"
+          aria-label="Stripe promo code"
+          className="w-44 font-mono"
+        />
+        <Button type="submit" size="sm" variant="secondary" className="cursor-pointer" disabled={pending}>
+          Add
+        </Button>
+      </form>
+      {error && (
+        <p className="text-xs text-status-danger">
+          {error.error}
+          {error.keyLacksPermission && (
+            <>
+              {" "}
+              <Link
+                href={`/dashboard/products/${product.slug}/settings?replace=stripe-key`}
+                className="cursor-pointer underline"
+              >
+                Replace it
+              </Link>
+            </>
+          )}
+        </p>
+      )}
     </div>
   );
 }

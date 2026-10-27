@@ -27,7 +27,7 @@ CREATE UNIQUE INDEX "AffiliatePromoCode_merchantId_stripePromotionCodeId_key" ON
 CREATE INDEX "Click_promoCodeId_idx" ON "Click"("promoCodeId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Click_affiliateId_promoCheckoutSessionId_key" ON "Click"("affiliateId", "promoCheckoutSessionId");
+CREATE UNIQUE INDEX "Click_promoCheckoutSessionId_affiliateId_key" ON "Click"("promoCheckoutSessionId", "affiliateId");
 
 -- AddForeignKey
 ALTER TABLE "Click" ADD CONSTRAINT "Click_promoCodeId_fkey" FOREIGN KEY ("promoCodeId") REFERENCES "AffiliatePromoCode"("id") ON DELETE SET NULL ON UPDATE CASCADE;

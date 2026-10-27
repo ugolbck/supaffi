@@ -14,6 +14,7 @@ import { getProductMetrics } from "@/lib/analytics";
 import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { signupLinkFor } from "@/lib/url";
 import { linkUrl, listLinksWithStats } from "@/lib/affiliateLink";
+import { listPromoCodes } from "@/lib/promoCode";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { TablePagination } from "@/components/dashboard/TablePagination";
@@ -152,9 +153,10 @@ export default async function AffiliatesPage({
 
   let sheetAffiliate: SheetAffiliate | null = null;
   if (selected) {
-    const [details, links] = await Promise.all([
+    const [details, links, promoCodes] = await Promise.all([
       getAffiliateDetails(ownerId, merchant.id, [selected.id]),
       listLinksWithStats(selected.id),
+      listPromoCodes(selected.id),
     ]);
     const detail = details[selected.id];
     sheetAffiliate = {
@@ -172,6 +174,7 @@ export default async function AffiliatesPage({
         url: linkUrl(merchant.websiteUrl, l),
         clicks: l.clicks,
       })),
+      promoCodes,
       commissions: (detail?.commissions ?? []).map((c) => ({
         id: c.id,
         date: formatDate(c.createdAt),

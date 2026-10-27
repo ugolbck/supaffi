@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { VISITOR_CLICK } from "@/lib/referral";
 import { generateLinkCode } from "@/lib/referralCode";
 import { isCodeRetiredByAnother, lockLinkCodes } from "@/lib/affiliateLink";
 import { Prisma } from "@prisma/client";
@@ -471,7 +472,7 @@ export async function listAffiliatesForMerchant(
   const [clickCounts, conversionCounts, earnedRows] = await Promise.all([
     db.click.groupBy({
       by: ["affiliateId"],
-      where: { affiliateId: { in: ids } },
+      where: { affiliateId: { in: ids }, ...VISITOR_CLICK },
       _count: { _all: true },
     }),
     // Every commission counts as a conversion, voided ones included, which is

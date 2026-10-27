@@ -3,6 +3,8 @@ import { MAX_LINKS_PER_AFFILIATE, type AffiliateLinkStats } from "@/lib/affiliat
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
+import type { PromoCodeRow } from "@/lib/promoCode";
 import { LinksTable } from "./LinksTable";
 import { LinkDialog } from "./LinkDialog";
 
@@ -24,9 +26,12 @@ const NEAR_THE_CEILING = 3;
 export function LinksScreen({
   links,
   websiteUrl,
+  promoCodes = [],
 }: {
   links: AffiliateLinkStats[];
   websiteUrl: string;
+  /** Codes the Owner gave them. A customer who uses one credits them, link or not. */
+  promoCodes?: PromoCodeRow[];
 }) {
   const atMax = links.length >= MAX_LINKS_PER_AFFILIATE;
   // Silent until it is nearly a problem. A hard limit nobody is near is a fact
@@ -65,6 +70,19 @@ export function LinksScreen({
       <Section flush className="overflow-hidden">
         <LinksTable links={links} websiteUrl={websiteUrl} />
       </Section>
+
+      {promoCodes.length > 0 && (
+        <Section title="Promo codes" flush>
+          <ul className="divide-y divide-border">
+            {promoCodes.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-3 px-5 py-2.5">
+                <code className="truncate font-mono text-sm">{c.code}</code>
+                <CopyLinkButton size="sm" link={c.code} label="Copy" />
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
     </Page>
   );
 }
