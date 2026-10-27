@@ -56,6 +56,7 @@ model Merchant {
   affiliates            Affiliate[]
   webhookEvents         WebhookEvent[]
   referredSubscriptions ReferredSubscription[]
+  promoCodes            AffiliatePromoCode[]
   createdAt             DateTime               @default(now())
 
   @@unique([ownerId, slug])
@@ -115,6 +116,7 @@ model Affiliate {
   clicks      Click[]
   commissions Commission[]
   loginTokens AffiliateLoginToken[]
+  promoCodes  AffiliatePromoCode[]
   createdAt   DateTime              @default(now())
 
   @@unique([merchantId, email])
@@ -204,11 +206,47 @@ model Click {
   // earned again.
   fraudConfirmedAt DateTime?
 
+  // Set only on the click a promo code sale stands in for. No visitor made
+  // it: the checkout that used the Affiliate's code is the whole referral, so
+  // it carries that Session's id, one click per Session, and is left out of
+  // every click count. The code is nullable so removing it from the Affiliate
+  // keeps the history.
+  promoCheckoutSessionId String?
+  promoCodeId            String?
+  promoCode              AffiliatePromoCode? @relation(fields: [promoCodeId], references: [id], onDelete: SetNull)
+
   commissions           Commission[]
   referredSubscriptions ReferredSubscription[]
 
+  @@unique([affiliateId, promoCheckoutSessionId])
   @@index([stripeCustomerId])
   @@index([linkId])
+  @@index([promoCodeId])
+}
+
+/// A Stripe promotion code the Owner gave an Affiliate. A checkout that used it
+/// credits them, with or without a click, and wins over another Affiliate's
+/// link on the same checkout.
+///
+/// Matched on Stripe's id, which is all a Checkout Session says about the code
+/// it used. The text is looked up once, when the Owner adds it, and kept for
+/// display.
+model AffiliatePromoCode {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id])
+  affiliateId           String
+  affiliate             Affiliate @relation(fields: [affiliateId], references: [id])
+  stripePromotionCodeId String // promo_...
+  code                  String // what the customer types, as Stripe spells it
+
+  clicks    Click[]
+  createdAt DateTime @default(now())
+
+  // One Affiliate per code on a product. Not global: products sharing a
+  // Stripe account see the same codes.
+  @@unique([merchantId, stripePromotionCodeId])
+  @@index([affiliateId])
 }
 
 /// A subscription that a referred Checkout Session created. Renewals earn by
