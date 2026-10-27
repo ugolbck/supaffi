@@ -13,7 +13,7 @@ const neverFetch: typeof fetch = async () => {
 
 describe("httpsReachable", () => {
   it("passes on our proxy's own certificate, without any round trip", async () => {
-    const result = await httpsReachable("go.example.com", neverFetch, resolves, async () => ({
+    const result = await httpsReachable("affiliates.example.com", neverFetch, resolves, async () => ({
       kind: "valid",
       issuer: "Let's Encrypt",
     }));
@@ -23,7 +23,7 @@ describe("httpsReachable", () => {
   });
 
   it("reads a certificate that is not trusted yet as still being set up, not as unreachable", async () => {
-    const result = await httpsReachable("go.example.com", neverFetch, resolves, async () => ({
+    const result = await httpsReachable("affiliates.example.com", neverFetch, resolves, async () => ({
       kind: "untrusted",
       reason: "self signed",
     }));
@@ -39,18 +39,18 @@ describe("httpsReachable", () => {
       return { status: 200 } as Response;
     }) as unknown as typeof fetch;
 
-    const result = await httpsReachable("go.example.com", fetchFn, resolves, async () => ({
+    const result = await httpsReachable("affiliates.example.com", fetchFn, resolves, async () => ({
       kind: "no-proxy",
       reason: "ENOTFOUND",
     }));
-    expect(asked).toBe("https://go.example.com/track.js");
+    expect(asked).toBe("https://affiliates.example.com/track.js");
     expect(result.reachable.ok).toBe(true);
     expect(result.certificate.ok).toBe(true);
   });
 
   it("says nothing is in DNS yet before it probes anything", async () => {
     const result = await httpsReachable(
-      "go.example.com",
+      "affiliates.example.com",
       neverFetch,
       async () => {
         throw new Error("ENOTFOUND");

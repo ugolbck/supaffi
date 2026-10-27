@@ -221,8 +221,8 @@ describe("splitSubdomain", () => {
   });
 
   it("ignores www on the website when matching the root", () => {
-    expect(splitSubdomain("partners.mokkit.co", "https://www.mokkit.co")).toEqual({
-      prefix: "partners",
+    expect(splitSubdomain("affiliates.mokkit.co", "https://www.mokkit.co")).toEqual({
+      prefix: "affiliates",
       suffix: ".mokkit.co",
     });
   });
@@ -236,7 +236,7 @@ describe("splitSubdomain", () => {
 describe("dnsZone", () => {
   it("is the registrable domain, three labels under a country code suffix", () => {
     expect(dnsZone("affiliates.dev.mokkit.co")).toBe("mokkit.co");
-    expect(dnsZone("go.example.co.uk")).toBe("example.co.uk");
+    expect(dnsZone("affiliates.example.co.uk")).toBe("example.co.uk");
   });
 });
 
@@ -248,11 +248,11 @@ describe("dnsRecordName", () => {
   });
 
   it("is just the prefix on a bare domain", () => {
-    expect(dnsRecordName("go.mokkit.co")).toBe("go");
+    expect(dnsRecordName("affiliates.mokkit.co")).toBe("affiliates");
   });
 
   it("handles a public suffix without a suffix list", () => {
-    expect(dnsRecordName("go.example.co.uk")).toBe("go");
+    expect(dnsRecordName("affiliates.example.co.uk")).toBe("affiliates");
   });
 
   it("returns the whole name when there is no zone to strip", () => {
@@ -262,8 +262,8 @@ describe("dnsRecordName", () => {
 
 describe("rehomeSubdomain", () => {
   it("carries a chosen label onto the new site when the website is corrected", () => {
-    expect(rehomeSubdomain("partners.instantgradient.com", "https://instantgradient.com", "https://mokkit.co")).toBe(
-      "partners.mokkit.co"
+    expect(rehomeSubdomain("affiliates.instantgradient.com", "https://instantgradient.com", "https://mokkit.co")).toBe(
+      "affiliates.mokkit.co"
     );
   });
 

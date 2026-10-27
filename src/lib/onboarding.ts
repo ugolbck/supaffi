@@ -218,7 +218,7 @@ export function splitSubdomain(domain: string, websiteUrl: string): { prefix: st
 
 // Second-level labels that are commonly used as a suffix under a two-letter
 // country code (co.uk, com.au, ...). Not a suffix list: just enough to keep
-// the go.example.co.uk case out of registrableCandidates' two-label guess.
+// the affiliates.example.co.uk case out of registrableCandidates' two-label guess.
 const COMMON_SECOND_LEVEL_SUFFIXES = new Set(["co", "com", "org", "net", "ac", "gov", "edu"]);
 
 /** The DNS zone a domain's records live in: mokkit.co for affiliates.dev.mokkit.co. */

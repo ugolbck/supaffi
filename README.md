@@ -31,7 +31,7 @@ Your affiliates share their link, Supaffi follows each sale and renewal through 
 - **Several programs per app** for different tiers, plus a custom rate for any affiliate.
 - **Refund-safe payouts**, because commissions wait out a holding period and an open chargeback freezes its commission until the dispute closes.
 - **Self-referral detection** that holds back any sale made with the affiliate's own email or card.
-- **An affiliate portal on your domain**, like `partners.yourapp.com`, where affiliates sign up and follow their earnings.
+- **An affiliate portal on your domain**, like `affiliates.yourapp.com`, where affiliates sign up and follow their earnings.
 - **A payouts page** that lists who you owe and where to send it, with one click to mark them paid.
 
 Stripe is supported today, and more payment providers are on the way.
