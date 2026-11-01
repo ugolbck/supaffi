@@ -17,16 +17,18 @@ describe("restricted key link", () => {
     // Charges: reading a refund that happened before its commission existed.
     // Checkout Sessions: reading the tax on a one-time sale.
     // Disputes: holding a commission while a chargeback on its sale is open.
-    // Promotion Codes: finding the code the Owner gives an affiliate.
+    // Coupons: listing the discounts a program's codes can give.
+    // Promotion Codes: creating each affiliate's code and turning it off.
     expect(KEY_PERMISSIONS.map((permission) => permission.token)).toEqual([
       "rak_charge_read",
       "rak_checkout_session_read",
+      "rak_coupon_read",
       "rak_customer_read",
       "rak_dispute_read",
       "rak_invoice_read",
       "rak_payment_intent_read",
       "rak_payment_method_read",
-      "rak_promotion_code_read",
+      "rak_promotion_code_write",
       "rak_subscription_read",
       "rak_webhook_write",
     ]);
@@ -42,10 +44,9 @@ describe("restricted key link", () => {
     expect(keyName("   ")).toBe("Supaffi");
   });
 
-  it("asks for write on exactly one row, the webhook endpoint it creates itself", () => {
+  it("asks for write only on what it creates itself: promo codes and the webhook endpoint", () => {
     const writes = KEY_PERMISSIONS.filter((permission) => permission.access === "Write");
-    expect(writes).toHaveLength(1);
-    expect(writes[0].row).toBe("Webhook Endpoints");
+    expect(writes.map((permission) => permission.row)).toEqual(["Promotion Codes", "Webhook Endpoints"]);
   });
 
   it("states each permission on its own unencoded permissions[] pair", () => {

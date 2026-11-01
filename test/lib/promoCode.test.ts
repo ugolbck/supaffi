@@ -6,10 +6,12 @@ import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
 
-// Adding a code makes the one Stripe call there is: finding the code by its text.
+// Finding a code by its text, creating one, and turning one off.
 const stripeStub = vi.hoisted(() => ({
   promotionCodes: {
     list: vi.fn(async (_params: unknown): Promise<unknown> => ({ data: [] })),
+    create: vi.fn(async (params: { code: string }, _opts?: unknown): Promise<unknown> => ({ id: `promo_${params.code}`, code: params.code })),
+    update: vi.fn(async (_id: string, _params: unknown): Promise<unknown> => ({})),
   },
 }));
 vi.mock("@/lib/stripe", async () => {
@@ -19,9 +21,12 @@ vi.mock("@/lib/stripe", async () => {
 
 import {
   addPromoCode,
+  claimPromoCode,
+  issuePromoCode,
   listPromoCodes,
   listPromoCodesWithStats,
-  removePromoCode,
+  promoCodeOffer,
+  turnOffPromoCode,
   MAX_PROMO_CODES_PER_AFFILIATE,
 } from "@/lib/promoCode";
 import { listAffiliateCommissions, listAffiliatesForMerchant } from "@/lib/affiliate";
@@ -47,6 +52,7 @@ function found(...codes: { id: string; code: string }[]) {
 describe("promo codes", () => {
   let ownerId: string;
   let merchantId: string;
+  let programId: string;
   let aliceId: string;
   let bobId: string;
 
@@ -54,6 +60,9 @@ describe("promo codes", () => {
     await clearAll();
     stripeStub.promotionCodes.list.mockReset();
     stripeStub.promotionCodes.list.mockResolvedValue({ data: [] });
+    stripeStub.promotionCodes.create.mockClear();
+    stripeStub.promotionCodes.update.mockReset();
+    stripeStub.promotionCodes.update.mockResolvedValue({});
 
     const owner = await db.owner.create({ data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" } });
     ownerId = owner.id;
@@ -79,13 +88,14 @@ describe("promo codes", () => {
         holdingPeriodDays: 30,
       },
     });
+    programId = program.id;
     const affiliate = (email: string) =>
       db.affiliate.create({
         data: {
           merchantId,
           programId: program.id,
           email,
-          links: { create: { code: crypto.randomUUID(), isPrimary: true } },
+          links: { create: { code: `${email.split("@")[0]}-${crypto.randomUUID().slice(0, 8)}`, isPrimary: true } },
         },
       });
     aliceId = (await affiliate("alice@example.com")).id;
@@ -105,7 +115,8 @@ describe("promo codes", () => {
     expect(stripeStub.promotionCodes.list).toHaveBeenCalledWith({ code: "alice20", active: true, limit: 2 });
     const row = await db.affiliatePromoCode.findFirstOrThrow();
     expect(row).toMatchObject({ merchantId, affiliateId: aliceId, stripePromotionCodeId: "promo_1", code: "ALICE20" });
-    expect(await listPromoCodes(aliceId)).toEqual([{ id: row.id, code: "ALICE20" }]);
+    expect(row.issued).toBe(false);
+    expect(await listPromoCodes(aliceId)).toEqual([{ id: row.id, code: "ALICE20", discountLabel: null }]);
   });
 
   it("refuses a code Stripe has no active match for", async () => {
@@ -182,7 +193,7 @@ describe("promo codes", () => {
     expect(stripeStub.promotionCodes.list).not.toHaveBeenCalled();
   });
 
-  it("removes a code and keeps the sales it brought", async () => {
+  it("turns off a linked code without touching Stripe, and keeps the sales it brought", async () => {
     const code = await db.affiliatePromoCode.create({
       data: { merchantId, affiliateId: aliceId, stripePromotionCodeId: "promo_1", code: "ALICE20" },
     });
@@ -196,13 +207,12 @@ describe("promo codes", () => {
       },
     });
 
-    await removePromoCode(ownerId, merchantId, aliceId, code.id);
+    expect(await turnOffPromoCode(ownerId, merchantId, aliceId, code.id)).toEqual({ ok: true });
 
-    expect(await db.affiliatePromoCode.count()).toBe(0);
-    expect(await db.click.findUniqueOrThrow({ where: { id: sale.id } })).toMatchObject({
-      promoCodeId: null,
-      promoCheckoutSessionId: "cs_1",
-    });
+    expect(stripeStub.promotionCodes.update).not.toHaveBeenCalled();
+    expect((await db.affiliatePromoCode.findUniqueOrThrow({ where: { id: code.id } })).disabledAt).not.toBeNull();
+    expect(await listPromoCodes(aliceId)).toEqual([]);
+    expect(await db.click.findUniqueOrThrow({ where: { id: sale.id } })).toMatchObject({ promoCodeId: code.id });
   });
 
   it("leaves a code sale's click out of click counts and tracking", async () => {
@@ -252,9 +262,9 @@ describe("promo codes", () => {
     });
     expect((await owners()).rows[0].promoCode).toEqual({ code: "ALICE20" });
 
-    // Taken away since: still a code sale, just without its text.
-    await removePromoCode(ownerId, merchantId, aliceId, code.id);
-    expect((await owners()).rows[0].promoCode).toEqual({ code: null });
+    // Turned off since: still named, it is still the code that made the sale.
+    await turnOffPromoCode(ownerId, merchantId, aliceId, code.id);
+    expect((await owners()).rows[0].promoCode).toEqual({ code: "ALICE20" });
   });
 
   it("counts each code's sales and earnings the way a link's are", async () => {
@@ -281,13 +291,136 @@ describe("promo codes", () => {
       {
         id: first.id,
         code: "ALICE20",
+        discountLabel: null,
+        off: false,
         conversions: 2,
         earned: [
           { currency: "eur", total: "5.00" },
           { currency: "usd", total: "10.00" },
         ],
       },
-      { id: second.id, code: "ALICE50", conversions: 0, earned: [] },
+      { id: second.id, code: "ALICE50", discountLabel: null, off: false, conversions: 0, earned: [] },
     ]);
+
+    // Turned off: still listed with what it earned, after the live ones.
+    await turnOffPromoCode(ownerId, merchantId, aliceId, first.id);
+    expect((await listPromoCodesWithStats(aliceId)).map((c) => [c.code, c.off, c.conversions])).toEqual([
+      ["ALICE50", false, 0],
+      ["ALICE20", true, 2],
+    ]);
+  });
+
+  describe("issued from the program's discount", () => {
+    const giveDiscount = () =>
+      db.program.update({ where: { id: programId }, data: { stripeCouponId: "coupon_20", discountLabel: "20% off for 3 months" } });
+
+    beforeEach(giveDiscount);
+
+    it("creates the affiliate's code in Stripe from the coupon, for new customers only", async () => {
+      expect(await claimPromoCode(aliceId, " alice20 ")).toEqual({ ok: true });
+
+      expect(stripeStub.promotionCodes.list).toHaveBeenCalledWith({ code: "ALICE20", active: true, limit: 2 });
+      expect(stripeStub.promotionCodes.create).toHaveBeenCalledWith(
+        {
+          promotion: { type: "coupon", coupon: "coupon_20" },
+          code: "ALICE20",
+          restrictions: { first_time_transaction: true },
+          metadata: { supaffi_affiliate_id: aliceId },
+        },
+        { idempotencyKey: `supaffi-promo:${aliceId}:0:ALICE20` }
+      );
+      const row = await db.affiliatePromoCode.findFirstOrThrow();
+      expect(row).toMatchObject({
+        affiliateId: aliceId,
+        stripePromotionCodeId: "promo_ALICE20",
+        code: "ALICE20",
+        issued: true,
+        discountLabel: "20% off for 3 months",
+        disabledAt: null,
+      });
+      expect(await promoCodeOffer(aliceId)).toEqual({ kind: "code", code: "ALICE20", discountLabel: "20% off for 3 months" });
+    });
+
+    it("offers a claim, named after the affiliate's link, until there is a code", async () => {
+      const offer = await promoCodeOffer(aliceId);
+      expect(offer).toEqual({ kind: "claim", suggested: expect.stringMatching(/^ALICE[A-Z0-9]+20$/), discountLabel: "20% off for 3 months" });
+    });
+
+    it("offers nothing when the program has no discount", async () => {
+      await db.program.update({ where: { id: programId }, data: { stripeCouponId: null, discountLabel: null } });
+
+      expect(await promoCodeOffer(aliceId)).toBeNull();
+      expect(await claimPromoCode(aliceId, "ALICE20")).toEqual({ ok: false, error: "This program has no discount" });
+      expect(stripeStub.promotionCodes.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a name Stripe already has, without creating anything", async () => {
+      found({ id: "promo_other", code: "ALICE20" });
+
+      expect(await claimPromoCode(aliceId, "ALICE20")).toEqual({ ok: false, error: "That code is taken" });
+      expect(stripeStub.promotionCodes.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a name that is not 3 to 20 letters or numbers", async () => {
+      expect(await claimPromoCode(aliceId, "A1")).toEqual({ ok: false, error: "Use 3 to 20 letters or numbers" });
+      expect(await claimPromoCode(aliceId, "ALICE-20")).toEqual({ ok: false, error: "Use 3 to 20 letters or numbers" });
+      expect(stripeStub.promotionCodes.list).not.toHaveBeenCalled();
+    });
+
+    it("gives one live code per affiliate", async () => {
+      await claimPromoCode(aliceId, "ALICE20");
+
+      expect(await claimPromoCode(aliceId, "ALICE30")).toEqual({ ok: false, error: "There is already a code" });
+      expect(stripeStub.promotionCodes.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("says the key needs replacing, whether it cannot read codes or only cannot create them", async () => {
+      const invalid = () => Object.assign(new Error("no"), { type: "StripeInvalidRequestError", statusCode: 400 });
+      stripeStub.promotionCodes.list.mockRejectedValueOnce(invalid());
+      expect(await claimPromoCode(aliceId, "ALICE20")).toEqual({
+        ok: false,
+        error: "Your Stripe key can't create promo codes.",
+        keyLacksPermission: true,
+      });
+
+      stripeStub.promotionCodes.create.mockRejectedValueOnce(invalid());
+      expect(await claimPromoCode(aliceId, "ALICE20")).toMatchObject({ ok: false, keyLacksPermission: true });
+      expect(await db.affiliatePromoCode.count()).toBe(0);
+    });
+
+    it("lets the owner make it for the affiliate, and only for their own", async () => {
+      const other = await db.owner.create({ data: { email: `other-${crypto.randomUUID()}@example.com`, passwordHash: "x" } });
+      expect(await issuePromoCode(other.id, merchantId, aliceId, "ALICE20")).toEqual({ ok: false, error: "Affiliate not found" });
+
+      expect(await issuePromoCode(ownerId, merchantId, aliceId, "ALICE20")).toEqual({ ok: true });
+      expect((await db.affiliatePromoCode.findFirstOrThrow()).issued).toBe(true);
+    });
+
+    it("turns an issued code off in Stripe, then lets the affiliate claim a new one", async () => {
+      await claimPromoCode(aliceId, "ALICE20");
+      const code = await db.affiliatePromoCode.findFirstOrThrow();
+
+      expect(await turnOffPromoCode(ownerId, merchantId, aliceId, code.id)).toEqual({ ok: true });
+
+      expect(stripeStub.promotionCodes.update).toHaveBeenCalledWith("promo_ALICE20", { active: false });
+      expect(await promoCodeOffer(aliceId)).toMatchObject({ kind: "claim" });
+      expect(await claimPromoCode(aliceId, "ALICE21")).toEqual({ ok: true });
+      // A new idempotency key: the first code counts.
+      expect(stripeStub.promotionCodes.create).toHaveBeenLastCalledWith(expect.anything(), {
+        idempotencyKey: `supaffi-promo:${aliceId}:1:ALICE21`,
+      });
+    });
+
+    it("leaves an issued code on when Stripe cannot turn it off", async () => {
+      await claimPromoCode(aliceId, "ALICE20");
+      const code = await db.affiliatePromoCode.findFirstOrThrow();
+      stripeStub.promotionCodes.update.mockRejectedValueOnce(Object.assign(new Error("down"), { type: "StripeConnectionError" }));
+
+      expect(await turnOffPromoCode(ownerId, merchantId, aliceId, code.id)).toEqual({
+        ok: false,
+        error: "Stripe could not be reached. Try again.",
+      });
+      expect((await db.affiliatePromoCode.findFirstOrThrow()).disabledAt).toBeNull();
+    });
   });
 });

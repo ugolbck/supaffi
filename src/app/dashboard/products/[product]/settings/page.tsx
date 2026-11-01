@@ -107,7 +107,7 @@ export default async function SettingsPage({
   const sheets = {
     "stripe-key": {
       title: "Replace the Stripe key",
-      lede: "Read only. Nothing is charged or created.",
+      lede: "The link opens Stripe with the permissions already ticked. It never moves money.",
       createLabel: "Create key in Stripe",
       createUrl: restrictedKeyUrl(merchant.name),
       fieldLabel: "Paste the new key",

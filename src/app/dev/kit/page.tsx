@@ -35,6 +35,7 @@ import { Suspense } from "react";
 import { SignupScreen } from "@/app/affiliates/signup/[program]/SignupScreen";
 import type { SignupFormAction } from "@/app/affiliates/signup/[program]/SignupForm";
 import { ProgramCard } from "@/components/dashboard/ProgramCard";
+import { AffiliateSheet } from "@/app/dashboard/products/[product]/affiliates/AffiliateSheet";
 import Link from "next/link";
 import { OverviewScreen } from "@/app/affiliates/dashboard/OverviewCards";
 import { LinksScreen } from "@/app/affiliates/dashboard/links/LinksScreen";
@@ -288,13 +289,17 @@ export default function Kit() {
         </Frame>
         <Frame label="Affiliate overview, one-time program" show={show("e-overview-one-time")}>
           <EViewport>
-            <EOverview recurring={false} />
+            <EOverview recurring={false} claim />
           </EViewport>
         </Frame>
         <Frame label="Affiliate ledger" show={show("e-ledger")}>
           <EViewport>
             <ELedger />
           </EViewport>
+        </Frame>
+        {/* A sheet covers the page, so it is only ever drawn on its own. */}
+        <Frame label="Owner affiliate panel" show={only === "b-affiliate-sheet"}>
+          <BAffiliateSheet />
         </Frame>
         <Frame label="Affiliate links" show={show("e-links")}>
           <EViewport>
@@ -865,6 +870,7 @@ function CSignupScreen() {
           rate: 20,
           durationType: "FOREVER",
           durationMonths: null,
+          discount: "20% off for 3 months",
         }}
         linkHost="dev.mokkit.co"
         action={cSignupAction}
@@ -1005,11 +1011,16 @@ const E_RECENT = [
   },
 ];
 
-function EOverview({ recurring = true }: { recurring?: boolean }) {
+function EOverview({ recurring = true, claim = false }: { recurring?: boolean; claim?: boolean }) {
   return (
     <OverviewScreen
       referralUrl="https://instantgradient.com/?via=sarah"
       terms="30% for 12 months · 60-day cookie · 30-day hold"
+      promoCode={
+        claim
+          ? { kind: "claim", suggested: "SARAH20", discountLabel: "20% off for 3 months" }
+          : { kind: "code", code: "SARAH20", discountLabel: "20% off for 3 months" }
+      }
       recent={E_RECENT}
       series={E_SERIES}
       bucket="day"
@@ -1033,7 +1044,14 @@ function EOverview({ recurring = true }: { recurring?: boolean }) {
 
 function ELinks() {
   return (
-    <LinksScreen links={E_LINKS} websiteUrl="https://instantgradient.com" />
+    <LinksScreen
+      links={E_LINKS}
+      websiteUrl="https://instantgradient.com"
+      promoCodes={[
+        { id: "pc1", code: "SARAH20", discountLabel: "20% off for 3 months", off: false, conversions: 14, earned: [{ currency: "usd", total: "336.00" }] },
+        { id: "pc2", code: "SARAHVIP", discountLabel: null, off: true, conversions: 3, earned: [{ currency: "usd", total: "72.00" }] },
+      ]}
+    />
   );
 }
 
@@ -1238,6 +1256,34 @@ function EShell() {
   );
 }
 
+/** Opens over the page, so it is best read alone: ?only=b-affiliate-sheet. */
+function BAffiliateSheet() {
+  return (
+    <AffiliateSheet
+      affiliate={{
+        id: "aff_kit",
+        name: "Sarah Jones",
+        email: "sarah@example.com",
+        joinedAt: "12 Aug",
+        programId: "p1",
+        programName: "Standard",
+        rate: "20",
+        rateIsOverride: false,
+        payoutDetails: "sarah@paypal.example",
+        hasPassword: true,
+        links: [{ url: "https://instantgradient.com/?via=sarah", clicks: 312 }],
+        promoCodes: [],
+        codeToIssue: { suggested: "SARAH20", discountLabel: "20% off for 3 months" },
+        commissions: [{ id: "c1", date: "2 Sept", amount: "$8.70", status: "PAYABLE" }],
+      }}
+      productDomain="affiliates.mokkit.co"
+      programs={[{ id: "p1", name: "Standard" }]}
+      product={{ id: "m1", slug: "mokkit" }}
+      listHref="/dev/kit"
+    />
+  );
+}
+
 function BProgramWarning() {
   return (
     <div className="flex flex-col gap-4 rounded-(--radius) bg-background p-6">
@@ -1249,6 +1295,7 @@ function BProgramWarning() {
           attributionDays={60}
           holdingDays={30}
           affiliateCount={12}
+          discount="20% off for 3 months"
           signupLink="https://affiliates.mokkit.co/affiliates/signup/standard"
           editHref="#"
         />

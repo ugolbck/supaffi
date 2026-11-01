@@ -118,6 +118,12 @@ outside or from Dependabot. No scheduled runs.
   code behind one costs an expanded invoice read on every renewal.
 - Products sharing one Stripe account see the same promotion codes. Giving the
   same code out on both credits an affiliate of each for one sale.
-- Promotion Codes read is needed only to add a code, and an older key says so
-  when the owner tries. Its `rak_promotion_code_read` link token is unchecked
-  like the others above.
+- Promo codes need a key with Coupons read and Promotion Codes write. An
+  older key keeps earning on everything else, and the discount field or the
+  first code action says to replace it. The `rak_coupon_read` and
+  `rak_promotion_code_write` link tokens are unchecked like the others above.
+- Promo codes, left for later: renaming a code once made (Stripe cannot change
+  a code's text, so it means making a new one), a per-program switch to let
+  existing customers use codes, expiry dates and usage caps, moving existing
+  codes to a program's new coupon (they keep the discount they were made
+  with), and telling the owner when an affiliate's claim fails on their key.

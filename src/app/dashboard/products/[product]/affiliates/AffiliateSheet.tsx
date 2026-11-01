@@ -23,13 +23,15 @@ import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { originFor } from "@/lib/url";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import type { CommissionStatus } from "@/lib/commission";
-import { XIcon } from "lucide-react";
+import { promoCodeInput } from "@/lib/promoCodeInput";
 import {
   addPromoCodeAction,
   changeProgramAction,
   createPasswordLinkAction,
-  removePromoCodeAction,
+  issuePromoCodeAction,
   setCustomRateAction,
+  turnOffPromoCodeAction,
+  type PromoCodeActionError,
 } from "./affiliateActions";
 
 /**
@@ -54,8 +56,10 @@ export type SheetAffiliate = {
   payoutDetails: string | null;
   hasPassword: boolean;
   links: { url: string; clicks: number }[];
-  /** `earned` already formatted, like the commission amounts below. */
-  promoCodes: { id: string; code: string; sales: number; earned: string }[];
+  /** The live ones. `earned` already formatted, like the commission amounts below. */
+  promoCodes: { id: string; code: string; discountLabel: string | null; sales: number; earned: string }[];
+  /** Set when the affiliate has no code and their program has a discount to make one from. */
+  codeToIssue: { suggested: string; discountLabel: string } | null;
   commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
 };
 
@@ -176,7 +180,12 @@ export function AffiliateSheet({
             </ul>
           </Field>
 
-          <PromoCodes affiliateId={affiliate.id} codes={affiliate.promoCodes} product={product} />
+          <PromoCodes
+            affiliateId={affiliate.id}
+            codes={affiliate.promoCodes}
+            toIssue={affiliate.codeToIssue}
+            product={product}
+          />
 
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Commissions</p>
@@ -269,91 +278,163 @@ function PasswordLink({
 }
 
 /**
- * Stripe promotion codes that credit this affiliate when a customer uses one,
- * clicked link or not. Typed as the customer types it; Supaffi finds the code
- * in Stripe once, here.
+ * The codes that credit this affiliate, clicked link or not. Making one from
+ * the program's discount is the main way in; linking a code that already
+ * exists in Stripe is there for a deal made outside the program.
  */
 function PromoCodes({
   affiliateId,
   codes,
+  toIssue,
   product,
 }: {
   affiliateId: string;
   codes: SheetAffiliate["promoCodes"];
+  toIssue: SheetAffiliate["codeToIssue"];
   product: { id: string; slug: string };
 }) {
-  const [code, setCode] = useState("");
-  const [error, setError] = useState<{ error: string; keyLacksPermission?: true } | null>(null);
+  const [error, setError] = useState<PromoCodeActionError>(null);
+  const [linking, setLinking] = useState(false);
   const [pending, startTransition] = useTransition();
+  const run = (write: () => Promise<PromoCodeActionError>) =>
+    startTransition(async () => {
+      setError(await write());
+    });
 
   return (
-    <Field title="Promo codes">
+    <Field
+      title="Promo codes"
+      value={toIssue && <span className="truncate text-muted-foreground">{toIssue.discountLabel}</span>}
+    >
       {codes.length > 0 && (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col divide-y divide-neutral-200 rounded-(--radius) border border-neutral-200">
           {codes.map((c) => (
-            <li key={c.id} className="flex items-center gap-3">
-              <code className="min-w-0 flex-1 truncate font-mono text-xs">{c.code}</code>
-              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                {c.sales} {c.sales === 1 ? "sale" : "sales"} · {c.earned}
-              </span>
+            <li key={c.id} className="flex items-center gap-3 py-2 pr-1.5 pl-3">
+              <div className="flex min-w-0 flex-1 flex-col">
+                <code className="truncate font-mono text-[13px] font-medium tracking-wide">{c.code}</code>
+                <span className="truncate text-xs text-muted-foreground tabular-nums">
+                  {[c.discountLabel, `${c.sales} ${c.sales === 1 ? "sale" : "sales"}`, c.earned].filter(Boolean).join(" · ")}
+                </span>
+              </div>
               <Button
                 type="button"
-                size="icon-sm"
+                size="sm"
                 variant="ghost"
-                className="shrink-0 cursor-pointer"
-                aria-label={`Remove ${c.code}`}
+                className="shrink-0 cursor-pointer text-muted-foreground hover:text-status-danger"
                 disabled={pending}
-                onClick={() => startTransition(() => removePromoCodeAction(product, affiliateId, c.id))}
+                onClick={() => run(() => turnOffPromoCodeAction(product, affiliateId, c.id))}
               >
-                <XIcon />
+                Turn off
               </Button>
             </li>
           ))}
         </ul>
       )}
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          startTransition(async () => {
-            const result = await addPromoCodeAction(product, affiliateId, code);
-            setError(result);
-            if (!result) setCode("");
-          });
-        }}
-      >
-        <Input
-          name="code"
-          value={code}
-          onChange={(e) => {
-            setCode(e.target.value);
-            setError(null);
-          }}
-          placeholder="Stripe promo code"
-          aria-label="Stripe promo code"
-          aria-invalid={error ? true : undefined}
-          className="min-w-0 flex-1 font-mono"
+
+      {toIssue && (
+        <CodeForm
+          key={`issue-${codes.length}`}
+          initial={toIssue.suggested}
+          submitLabel="Create code"
+          variant="default"
+          ariaLabel="New promo code"
+          pending={pending}
+          normalize={promoCodeInput}
+          onEdit={() => setError(null)}
+          onSubmit={(code) => run(() => issuePromoCodeAction(product, affiliateId, code))}
         />
-        <Button type="submit" size="lg" variant="secondary" className="cursor-pointer" disabled={pending || code.trim() === ""}>
-          Add
-        </Button>
-      </form>
+      )}
+
+      {/* An empty section with nothing to make a code from: linking one is
+          the only way in, so it is shown as such. */}
+      {linking || (codes.length === 0 && !toIssue) ? (
+        <CodeForm
+          key={`link-${codes.length}`}
+          initial=""
+          placeholder="Existing Stripe code"
+          submitLabel="Add"
+          variant="secondary"
+          ariaLabel="Existing Stripe promo code"
+          pending={pending}
+          onEdit={() => setError(null)}
+          onSubmit={(code) => run(() => addPromoCodeAction(product, affiliateId, code))}
+        />
+      ) : (
+        <button
+          type="button"
+          className="cursor-pointer self-start text-xs text-muted-foreground underline-offset-[3px] hover:text-foreground hover:underline"
+          onClick={() => setLinking(true)}
+        >
+          Use an existing code
+        </button>
+      )}
+
       {error && (
-        <p className="text-xs text-status-danger">
+        <p role="alert" className="text-xs text-status-danger">
           {error.error}
           {error.keyLacksPermission && (
             <>
               {" "}
               <Link
                 href={`/dashboard/products/${product.slug}/settings?replace=stripe-key`}
-                className="cursor-pointer underline"
+                className="cursor-pointer font-medium underline underline-offset-[3px]"
               >
-                Replace it
+                Update key
               </Link>
             </>
           )}
         </p>
       )}
     </Field>
+  );
+}
+
+/** One code field and its button, on the panel's control height. */
+function CodeForm({
+  initial,
+  placeholder,
+  submitLabel,
+  variant,
+  ariaLabel,
+  pending,
+  normalize = (value) => value,
+  onEdit,
+  onSubmit,
+}: {
+  initial: string;
+  placeholder?: string;
+  submitLabel: string;
+  variant: "default" | "secondary";
+  ariaLabel: string;
+  pending: boolean;
+  normalize?: (value: string) => string;
+  onEdit: () => void;
+  onSubmit: (code: string) => void;
+}) {
+  const [code, setCode] = useState(initial);
+  return (
+    <form
+      className="flex gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(code);
+      }}
+    >
+      <Input
+        value={code}
+        onChange={(e) => {
+          setCode(normalize(e.target.value));
+          onEdit();
+        }}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        spellCheck={false}
+        autoComplete="off"
+        className="min-w-0 flex-1 font-mono tracking-wide"
+      />
+      <Button type="submit" size="lg" variant={variant} className="cursor-pointer" disabled={pending || code.trim() === ""}>
+        {submitLabel}
+      </Button>
+    </form>
   );
 }

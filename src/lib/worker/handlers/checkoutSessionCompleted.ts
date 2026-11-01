@@ -451,8 +451,10 @@ async function promoCodeOn(merchant: Merchant, session: Stripe.Checkout.Session)
   // A Checkout Session takes one discount ("only up to one may be
   // specified", Stripe docs, api/checkout/sessions/create), so at most one
   // id can match.
+  // A code turned off credits nobody from then on. An issued one is inactive
+  // in Stripe too; a linked one may still be redeemable there.
   return db.affiliatePromoCode.findFirst({
-    where: { merchantId: merchant.id, stripePromotionCodeId: { in: ids } },
+    where: { merchantId: merchant.id, stripePromotionCodeId: { in: ids }, disabledAt: null },
   });
 }
 
@@ -461,7 +463,7 @@ async function promoCodeOn(merchant: Merchant, session: Stripe.Checkout.Session)
  *
  * An outage throws, so the event is retried rather than a code sale being
  * processed as if no code was used. A key that cannot read Checkout Sessions
- * (a separate permission from Promotion Codes, which adding the code needed)
+ * (a separate permission from Promotion Codes, which making the code needed)
  * fails the same way on every retry, so it is logged and the sale goes on as
  * one without a code: its link, if any, still earns, as it did before codes
  * existed. Only the error's type and code are logged, never Stripe's message,

@@ -25,8 +25,9 @@ A SaaS founder or small team that:
 - A small script on your site remembers the referral. Your checkout code passes it to Stripe Checkout in the session metadata.
 - Stripe Payment Links, buy buttons and pricing tables need no code of yours. The script adds the referral to them on your pages, including ones that appear after the page loads.
 - The last affiliate link a visitor used gets the credit, as long as they buy within the attribution window you set, up to 90 days.
-- **Promo codes.** Give an affiliate one or more of your Stripe promotion codes. A customer who uses one at checkout credits that affiliate, whether or not they clicked a link. A code beats another affiliate's link on the same purchase. Sales with a code follow every rule below, and a subscription keeps earning after the code's discount ends.
-- Adding a code needs a Stripe key that can read promotion codes. Keys made before promo codes existed keep working for everything else. Adding a code with one tells you to replace it.
+- **Promo codes.** Pick one of your Stripe coupons as a program's discount, and each affiliate in it can claim their own code for it, named by them, which Supaffi creates in Stripe. Codes are for new customers only. A customer who uses one at checkout credits that affiliate, whether or not they clicked a link. A code beats another affiliate's link on the same purchase. Sales with a code follow every rule below, and a subscription keeps earning after the code's discount ends.
+- You can also make the code for an affiliate yourself, or give them a promotion code that already exists in Stripe. Turning a code off deactivates it in Stripe if Supaffi made it, and it credits nobody from then on. What it already brought in keeps earning.
+- Promo codes need a Stripe key that can read coupons and create promotion codes. Keys made before promo codes existed keep working for everything else, and the screens that need the permissions tell you to replace the key.
 
 ### Payments that earn a commission
 
@@ -63,7 +64,7 @@ A SaaS founder or small team that:
 
 - Sign up on a public page with an email and password. A forgotten password is reset with a link you copy from their panel and send them. Supaffi sends no email. Replacing a password signs the affiliate out everywhere.
 - See clicks, sales, earnings, what is pending, payable and paid, and their payout history.
-- Create extra links pointing at any page of your site, see the promo codes you gave them, and add their payout details.
+- Create extra links pointing at any page of your site, claim their promo code and see what each one earned, and add their payout details.
 
 ## What it does not handle
 

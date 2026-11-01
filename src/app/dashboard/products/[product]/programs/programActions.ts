@@ -3,8 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { createProgram, updateProgram } from "@/lib/program";
-import { validateProgramInput } from "@/lib/programValidation";
+import { createProgram, programDiscount, updateProgram } from "@/lib/program";
+import { NO_DISCOUNT, validateProgramInput } from "@/lib/programValidation";
 
 /**
  * Creating and editing a program, from the sheet on the list. Both end on the
@@ -25,6 +25,16 @@ function read(formData: FormData) {
   return { error: null, parsed: { ...result.parsed, signupOpen: formData.get("signupOpen") === "on" } };
 }
 
+/**
+ * The discount picked on the form, or nothing to change when the form had no
+ * discount field (Stripe not connected, or its coupons could not be listed).
+ */
+async function discount(ownerId: string, productId: string, programId: string | null, formData: FormData) {
+  if (!formData.has("stripeCouponId")) return { error: null };
+  const picked = String(formData.get("stripeCouponId"));
+  return programDiscount(ownerId, productId, programId, picked === NO_DISCOUNT ? "" : picked);
+}
+
 async function owner(): Promise<string> {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
@@ -39,7 +49,9 @@ export async function createProgramAction(
   const ownerId = await owner();
   const result = read(formData);
   if (result.error !== null) return { error: result.error };
-  await createProgram(ownerId, product.id, result.parsed);
+  const { error, ...coupon } = await discount(ownerId, product.id, null, formData);
+  if (error !== null) return { error };
+  await createProgram(ownerId, product.id, { ...result.parsed, ...coupon });
   // The sidebar counts programs and is rendered by the dashboard layout, which
   // a soft navigation reuses from cache.
   revalidatePath("/dashboard", "layout");
@@ -55,7 +67,9 @@ export async function updateProgramAction(
   const ownerId = await owner();
   const result = read(formData);
   if (result.error !== null) return { error: result.error };
-  await updateProgram(ownerId, product.id, programId, result.parsed);
+  const { error, ...coupon } = await discount(ownerId, product.id, programId, formData);
+  if (error !== null) return { error };
+  await updateProgram(ownerId, product.id, programId, { ...result.parsed, ...coupon });
   revalidatePath("/dashboard", "layout");
   redirect(`/dashboard/products/${product.slug}/programs`);
 }

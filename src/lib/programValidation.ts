@@ -1,5 +1,8 @@
 import type { ProgramInput } from "@/lib/program";
 
+/** The discount select's "None": a Select item needs a value, and "" is none. */
+export const NO_DISCOUNT = "none";
+
 export type ProgramFormValues = {
   name: string;
   defaultCommissionRate: string;

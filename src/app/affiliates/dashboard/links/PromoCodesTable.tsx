@@ -7,13 +7,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { Badge } from "@/components/ui/badge";
 import { money, moneyHint } from "@/lib/format";
 import type { PromoCodeStats } from "@/lib/promoCode";
 
 /**
- * The promo codes the Owner gave this affiliate, on the links table's own
- * treatment and columns, minus clicks: nobody clicks a code. Read only; the
- * Owner adds and removes them.
+ * This affiliate's promo codes, on the links table's own treatment and
+ * columns, minus clicks: nobody clicks a code. A code the Owner turned off
+ * stays, marked, for what it earned, and has nothing left to copy.
  */
 export function PromoCodesTable({ codes }: { codes: PromoCodeStats[] }) {
   return (
@@ -21,7 +22,7 @@ export function PromoCodesTable({ codes }: { codes: PromoCodeStats[] }) {
       <ul className="divide-y divide-neutral-200 md:hidden">
         {codes.map((code) => (
           <li key={code.id} className="flex flex-col gap-2 px-4 py-3">
-            <span className="truncate font-mono font-medium">{code.code}</span>
+            <CodeName code={code} />
             <div className="flex items-baseline justify-between gap-3">
               <span className="min-w-0 truncate text-[13px] text-muted-foreground tabular-nums">
                 {code.conversions} sales
@@ -30,9 +31,11 @@ export function PromoCodesTable({ codes }: { codes: PromoCodeStats[] }) {
                 {money(code.earned)}
               </span>
             </div>
-            <div className="[&_button]:w-full">
-              <CopyLinkButton size="sm" link={code.code} label="Copy code" />
-            </div>
+            {!code.off && (
+              <div className="[&_button]:w-full">
+                <CopyLinkButton size="sm" link={code.code} label="Copy code" />
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -60,7 +63,7 @@ export function PromoCodesTable({ codes }: { codes: PromoCodeStats[] }) {
             return (
               <TableRow key={code.id} className="border-neutral-200 hover:bg-neutral-50">
                 <TableCell className="py-3">
-                  <span className="block truncate font-mono font-medium">{code.code}</span>
+                  <CodeName code={code} />
                 </TableCell>
                 <TableCell className="text-right text-muted-foreground tabular-nums">
                   {code.conversions}
@@ -77,7 +80,7 @@ export function PromoCodesTable({ codes }: { codes: PromoCodeStats[] }) {
                   {/* Where the links table keeps its menu too, so the Copy
                       buttons of both tables line up. */}
                   <span className="flex items-center justify-end gap-1.5 pr-[34px]">
-                    <CopyLinkButton size="sm" link={code.code} label="Copy" />
+                    {!code.off && <CopyLinkButton size="sm" link={code.code} label="Copy" />}
                   </span>
                 </TableCell>
               </TableRow>
@@ -86,5 +89,21 @@ export function PromoCodesTable({ codes }: { codes: PromoCodeStats[] }) {
         </TableBody>
       </Table>
     </>
+  );
+}
+
+function CodeName({ code }: { code: PromoCodeStats }) {
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span className="flex min-w-0 items-center gap-2">
+        <span className={code.off ? "truncate font-mono font-medium text-muted-foreground" : "truncate font-mono font-medium"}>
+          {code.code}
+        </span>
+        {code.off && <Badge className="shrink-0 bg-neutral-100 text-neutral-600">Off</Badge>}
+      </span>
+      {code.discountLabel && (
+        <span className="truncate text-xs text-muted-foreground">{code.discountLabel}</span>
+      )}
+    </span>
   );
 }

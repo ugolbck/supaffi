@@ -1826,17 +1826,30 @@ describe("handleCheckoutSessionCompleted", () => {
       expect((await db.merchant.findUniqueOrThrow({ where: { id: merchant.id } })).trackingVerifiedAt).toBeNull();
     });
 
-    it("keeps crediting renewals, even after the code is removed", async () => {
+    it("keeps crediting renewals, even after the code is turned off", async () => {
       await handleCheckoutSessionCompleted(
         merchant,
         sessionFixture({ invoice: "in_code", subscription: "sub_code", metadataToken: "", promotionCode: "promo_alice" })
       );
-      await db.affiliatePromoCode.delete({ where: { id: code.id } });
+      await db.affiliatePromoCode.update({ where: { id: code.id }, data: { disabledAt: new Date() } });
 
       await handleInvoicePaid(merchant, renewal("in_code_renewal", "sub_code"));
 
       const commissions = await db.commission.findMany({ where: { affiliateId: alice.id }, orderBy: { createdAt: "asc" } });
       expect(commissions.map((c) => c.stripePaymentRef)).toEqual(["in_code", "in_code_renewal"]);
+    });
+
+    it("credits nobody through a code that was turned off, and lets the link earn", async () => {
+      await db.affiliatePromoCode.update({ where: { id: code.id }, data: { disabledAt: new Date() } });
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_off", subscription: "sub_off", promotionCode: "promo_alice" })
+      );
+
+      const commissions = await db.commission.findMany();
+      expect(commissions.map((c) => c.clickId)).toEqual([click.id]);
+      expect(await db.click.count({ where: { promoCodeId: code.id } })).toBe(0);
     });
 
     it("wins over another affiliate's link, which still proves tracking", async () => {

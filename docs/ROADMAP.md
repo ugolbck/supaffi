@@ -10,7 +10,7 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
 | Feature | What you get |
 | --- | --- |
-| **Promo codes** | Give an affiliate a Stripe promotion code. They get the sale when a customer uses it, even without clicking their link. |
+| **Promo codes** | Give a program a discount and every affiliate claims their own code for it in one click. A customer using it credits them, even without clicking their link. |
 | **Stripe Payment Links, buy buttons and pricing tables** | Sales through them earn commissions. The tracking script is all you add. |
 
 ## Up next
