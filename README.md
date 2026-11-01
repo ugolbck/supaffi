@@ -1,11 +1,9 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="public/logo_bgless_white.svg">
-    <img src="public/logo_bgless_black.svg" width="64" height="64" alt="Supaffi">
+    <source media="(prefers-color-scheme: dark)" srcset="public/logomark_white_transparent.svg">
+    <img src="public/logomark_dark_transparent.svg" width="320" alt="Supaffi">
   </picture>
 </p>
-
-<h1 align="center">Supaffi</h1>
 
 <p align="center">
   <b>The simple, self-hostable affiliate software for SaaS.</b><br>
