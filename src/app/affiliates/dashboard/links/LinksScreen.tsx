@@ -3,6 +3,8 @@ import { MAX_LINKS_PER_AFFILIATE, type AffiliateLinkStats } from "@/lib/affiliat
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
+import type { PromoCodeStats } from "@/lib/promoCode";
+import { PromoCodesTable } from "./PromoCodesTable";
 import { LinksTable } from "./LinksTable";
 import { LinkDialog } from "./LinkDialog";
 
@@ -24,9 +26,12 @@ const NEAR_THE_CEILING = 3;
 export function LinksScreen({
   links,
   websiteUrl,
+  promoCodes = [],
 }: {
   links: AffiliateLinkStats[];
   websiteUrl: string;
+  /** Codes the Owner gave them. A customer who uses one credits them, link or not. */
+  promoCodes?: PromoCodeStats[];
 }) {
   const atMax = links.length >= MAX_LINKS_PER_AFFILIATE;
   // Silent until it is nearly a problem. A hard limit nobody is near is a fact
@@ -65,6 +70,12 @@ export function LinksScreen({
       <Section flush className="overflow-hidden">
         <LinksTable links={links} websiteUrl={websiteUrl} />
       </Section>
+
+      {promoCodes.length > 0 && (
+        <Section flush className="overflow-hidden">
+          <PromoCodesTable codes={promoCodes} />
+        </Section>
+      )}
     </Page>
   );
 }

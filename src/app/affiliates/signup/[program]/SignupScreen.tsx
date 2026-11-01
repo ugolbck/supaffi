@@ -19,6 +19,8 @@ export type SignupTerms = {
   rate: number;
   durationType: "ONE_TIME" | "FIXED_MONTHS" | "FOREVER";
   durationMonths: number | null;
+  /** What the affiliate's audience gets with their code. Null: no codes. */
+  discount?: string | null;
 };
 
 /** 20.00 reads as "20%", 12.50 as "12.5%". Nobody writes a rate with trailing zeros. */
@@ -86,9 +88,13 @@ export function SignupScreen({
           </h1>
         </div>
 
-        <div className="grid grid-cols-1 divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-white sm:max-w-[440px] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-          <Tile label="You earn" value={formatRate(terms.rate)} hint="of every sale" />
-          <Tile label="Earn on" value={duration.value} hint={duration.hint} />
+        <div className="flex flex-col divide-y divide-neutral-200 overflow-hidden rounded-(--radius) border border-neutral-300 bg-white sm:max-w-[440px]">
+          <div className="grid grid-cols-1 divide-y divide-neutral-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+            <Tile label="You earn" value={formatRate(terms.rate)} hint="of every sale" />
+            <Tile label="Earn on" value={duration.value} hint={duration.hint} />
+          </div>
+          {/* A reason to join on its own: something to offer an audience. */}
+          {terms.discount && <Tile label="Your audience gets" value={terms.discount} hint="with your own promo code" />}
         </div>
       </div>
 

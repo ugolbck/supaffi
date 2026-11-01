@@ -42,6 +42,7 @@ export default async function AffiliateSignupPage({
           rate: program.defaultCommissionRate,
           durationType: program.commissionDurationType,
           durationMonths: program.commissionDurationMonths,
+          discount: program.discountLabel,
         }}
         linkHost={linkHost}
         action={action}

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { TermsForm } from "@/components/TermsForm";
+import { TermsForm, type DiscountField } from "@/components/TermsForm";
 import type { ProgramFormValues } from "@/lib/programValidation";
 
 /**
@@ -18,12 +18,14 @@ export function ProgramSheet({
   action,
   initial,
   signupOpen,
+  discount,
   listHref,
 }: {
   title: string;
   action: Action;
   initial?: ProgramFormValues;
   signupOpen: boolean;
+  discount?: DiscountField;
   listHref: string;
 }) {
   const router = useRouter();
@@ -40,7 +42,7 @@ export function ProgramSheet({
           <SheetTitle className="truncate">{title}</SheetTitle>
         </SheetHeader>
         <div className="px-4 pb-6">
-          <TermsForm action={action} initial={initial} signupOpen={signupOpen} submitLabel={initial ? "Save" : "Create program"} />
+          <TermsForm action={action} initial={initial} signupOpen={signupOpen} discount={discount} submitLabel={initial ? "Save" : "Create program"} />
         </div>
       </SheetContent>
     </Sheet>

@@ -5,11 +5,11 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { updateAffiliate } from "@/lib/affiliate";
 import { createAffiliateResetLink } from "@/lib/affiliatePassword";
+import { addPromoCode, issuePromoCode, turnOffPromoCode, type PromoCodeResult } from "@/lib/promoCode";
 
 /**
- * The two writes the affiliate sheet makes: which program someone is in, and
- * what they are paid. Both return nothing, so the sheet stays a form on a
- * server-rendered panel rather than a client screen holding state.
+ * The writes the affiliate sheet makes: which program someone is in, what
+ * they are paid, their password link and their promo codes.
  */
 
 async function owner(): Promise<string> {
@@ -68,4 +68,43 @@ export async function createPasswordLinkAction(
   const ownerId = await owner();
   const token = await createAffiliateResetLink(ownerId, product.id, affiliateId);
   return token ? { token } : { error: "Affiliate not found" };
+}
+
+/** Gives the affiliate a Stripe promotion code, looked up by its text. */
+export type PromoCodeActionError = { error: string; keyLacksPermission?: true } | null;
+
+async function promoCodeWrite(
+  product: { id: string; slug: string },
+  write: (ownerId: string) => Promise<PromoCodeResult>
+): Promise<PromoCodeActionError> {
+  const result = await write(await owner());
+  if (!result.ok) return { error: result.error, keyLacksPermission: result.keyLacksPermission };
+  revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
+  return null;
+}
+
+/** Links a code that already exists in Stripe. */
+export async function addPromoCodeAction(
+  product: { id: string; slug: string },
+  affiliateId: string,
+  code: string
+): Promise<PromoCodeActionError> {
+  return promoCodeWrite(product, (ownerId) => addPromoCode(ownerId, product.id, affiliateId, code));
+}
+
+/** Creates the affiliate's code in Stripe from their program's coupon. */
+export async function issuePromoCodeAction(
+  product: { id: string; slug: string },
+  affiliateId: string,
+  code: string
+): Promise<PromoCodeActionError> {
+  return promoCodeWrite(product, (ownerId) => issuePromoCode(ownerId, product.id, affiliateId, code));
+}
+
+export async function turnOffPromoCodeAction(
+  product: { id: string; slug: string },
+  affiliateId: string,
+  promoCodeId: string
+): Promise<PromoCodeActionError> {
+  return promoCodeWrite(product, (ownerId) => turnOffPromoCode(ownerId, product.id, affiliateId, promoCodeId));
 }

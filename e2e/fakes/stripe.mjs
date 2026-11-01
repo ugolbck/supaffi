@@ -10,6 +10,9 @@
 // dispute. They stand in for what a buyer and a bank do on the real Stripe.
 //
 // A Payment Link sale is a checkout with a client_reference_id and no metadata.
+// A promo code sale is a checkout whose discounts name one of the promotion
+// codes below: one that exists from the start as the owner's would in Stripe,
+// or one Supaffi created from the seeded coupon.
 // Only the one-time payment path is modelled. Subscriptions, invoices and
 // taxes are not; their reads answer with empty lists.
 
@@ -27,6 +30,25 @@ const state = {
   charges: new Map(),
   sessions: new Map(),
   disputes: new Map(),
+  coupons: new Map([
+    [
+      "coupon_partner",
+      {
+        id: "coupon_partner",
+        object: "coupon",
+        name: "Partners",
+        percent_off: 20,
+        amount_off: null,
+        currency: null,
+        duration: "repeating",
+        duration_in_months: 3,
+        valid: true,
+      },
+    ],
+  ]),
+  promotionCodes: new Map([
+    ["promo_partner20", { id: "promo_partner20", object: "promotion_code", code: "PARTNER20", active: true, metadata: {} }],
+  ]),
   deliveries: [],
 };
 
@@ -127,6 +149,11 @@ async function testCheckout(body) {
   const amount = Number(body.amount ?? 10000);
   const currency = body.currency ?? "usd";
   const email = body.email ?? "buyer@example.com";
+  // Case-insensitive, as the customer types it at checkout.
+  const promo = body.promotion_code
+    ? [...state.promotionCodes.values()].find((p) => p.code.toLowerCase() === body.promotion_code.toLowerCase())
+    : null;
+  if (body.promotion_code && !promo) return null;
 
   const customer = { id: id("cus"), object: "customer", email, metadata: {}, deleted: undefined };
   state.customers.set(customer.id, customer);
@@ -185,6 +212,7 @@ async function testCheckout(body) {
     invoice: null,
     subscription: null,
     shipping_cost: null,
+    discounts: promo ? [{ coupon: null, promotion_code: promo.id }] : [],
     total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0, breakdown: { discounts: [], taxes: [] } },
   };
   state.sessions.set(s.id, s);
@@ -231,6 +259,40 @@ function api(method, path, params) {
     return list(path, all.slice(0, Number(params.limit ?? 10)));
   }
   if (method === "GET" && (m = path.match(/^\/v1\/customers\/([^/]+)$/))) return state.customers.get(m[1]);
+
+  if (method === "GET" && path === "/v1/promotion_codes") {
+    const all = [...state.promotionCodes.values()].filter(
+      (p) => (!params.code || p.code.toLowerCase() === params.code.toLowerCase()) && (params.active !== "true" || p.active)
+    );
+    return list(path, all.slice(0, Number(params.limit ?? 10)));
+  }
+
+  // Creating a code refuses text an active one already uses, as Stripe does.
+  if (method === "POST" && path === "/v1/promotion_codes") {
+    const taken = [...state.promotionCodes.values()].some(
+      (p) => p.active && p.code.toLowerCase() === String(params.code ?? "").toLowerCase()
+    );
+    if (taken || !state.coupons.has(params.promotion?.coupon)) return false;
+    const code = {
+      id: id("promo"),
+      object: "promotion_code",
+      code: params.code,
+      active: true,
+      promotion: { type: "coupon", coupon: params.promotion.coupon },
+      restrictions: { first_time_transaction: params.restrictions?.first_time_transaction === "true" },
+      metadata: params.metadata ?? {},
+    };
+    state.promotionCodes.set(code.id, code);
+    return code;
+  }
+  if (method === "POST" && (m = path.match(/^\/v1\/promotion_codes\/([^/]+)$/))) {
+    const code = state.promotionCodes.get(m[1]);
+    if (!code) return null;
+    if (params.active !== undefined) code.active = params.active === "true";
+    return code;
+  }
+  if (method === "GET" && path === "/v1/coupons") return list(path, [...state.coupons.values()]);
+  if (method === "GET" && (m = path.match(/^\/v1\/coupons\/([^/]+)$/))) return state.coupons.get(m[1]);
 
   if (method === "POST" && path === "/v1/webhook_endpoints") {
     const endpoint = {
@@ -311,6 +373,9 @@ createServer(async (req, res) => {
   if (result === undefined) {
     console.error(`unhandled ${req.method} ${url.pathname}`);
     return send(res, 404, notFound(url.pathname));
+  }
+  if (result === false) {
+    return send(res, 400, { error: { type: "invalid_request_error", message: "Invalid request" } });
   }
   return result ? send(res, 200, result) : send(res, 404, notFound(url.pathname));
 }).listen(PORT, () => console.log(`fake stripe on :${PORT}`));

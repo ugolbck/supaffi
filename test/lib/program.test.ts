@@ -2,8 +2,19 @@
 // db.program.deleteMany() / db.merchant.deleteMany() / db.owner.deleteMany()
 // before every test. Point DATABASE_URL at a disposable database, never a
 // real deployment's data.
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import type Stripe from "stripe";
 import { db } from "@/lib/db";
+
+// The program's discount: the one coupon read a save can make.
+const stripeStub = vi.hoisted(() => ({
+  coupons: { retrieve: vi.fn(async (_id: string): Promise<unknown> => ({})) },
+}));
+vi.mock("@/lib/stripe", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+  return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
+});
+
 import {
   createProgram,
   listProgramsForMerchant,
@@ -12,6 +23,7 @@ import {
   getProgramForSignup,
   getClosedProgramName,
   getDefaultProgramSlug,
+  programDiscount,
 } from "@/lib/program";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
@@ -266,5 +278,61 @@ describe.skipIf(!hasDatabase)("program", () => {
 
     const result = await getProgramForSignup(merchantId2, slug);
     expect(result).toBeNull();
+  });
+
+  describe("discount", () => {
+    beforeEach(() => {
+      stripeStub.coupons.retrieve.mockReset();
+      stripeStub.coupons.retrieve.mockResolvedValue({
+        valid: true,
+        percent_off: 20,
+        amount_off: null,
+        currency: null,
+        duration: "repeating",
+        duration_in_months: 3,
+      });
+    });
+
+    it("reads a newly picked coupon's label from Stripe", async () => {
+      expect(await programDiscount(ownerId, merchantId, null, "coupon_20")).toEqual({
+        error: null,
+        stripeCouponId: "coupon_20",
+        discountLabel: "20% off for 3 months",
+      });
+      expect(stripeStub.coupons.retrieve).toHaveBeenCalledWith("coupon_20");
+    });
+
+    it("keeps an unchanged coupon's stored label without asking Stripe", async () => {
+      const { id } = await createProgram(ownerId, merchantId, {
+        ...baseInput,
+        stripeCouponId: "coupon_20",
+        discountLabel: "20% off for 3 months",
+      });
+
+      expect(await programDiscount(ownerId, merchantId, id, "coupon_20")).toEqual({
+        error: null,
+        stripeCouponId: "coupon_20",
+        discountLabel: "20% off for 3 months",
+      });
+      expect(stripeStub.coupons.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("takes the discount away on none, and refuses a coupon that can no longer be used", async () => {
+      expect(await programDiscount(ownerId, merchantId, null, "")).toEqual({ error: null, stripeCouponId: null, discountLabel: null });
+      stripeStub.coupons.retrieve.mockResolvedValueOnce({ valid: false });
+      expect(await programDiscount(ownerId, merchantId, null, "coupon_old")).toEqual({ error: "That coupon can no longer be used" });
+    });
+
+    it("shows the discount on the signup page only while a coupon is set", async () => {
+      const { id, slug } = await createProgram(ownerId, merchantId, {
+        ...baseInput,
+        stripeCouponId: "coupon_20",
+        discountLabel: "20% off for 3 months",
+      });
+      expect((await getProgramForSignup(merchantId, slug))?.discountLabel).toBe("20% off for 3 months");
+
+      await updateProgram(ownerId, merchantId, id, { ...baseInput, stripeCouponId: null, discountLabel: null });
+      expect((await getProgramForSignup(merchantId, slug))?.discountLabel).toBeNull();
+    });
   });
 });

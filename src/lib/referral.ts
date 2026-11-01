@@ -57,3 +57,11 @@ export const REFERRAL_CLIENT_REFERENCE_PREFIX = "supaffi_";
  * Rewardful uses, which is the spelling affiliates already recognise.
  */
 export const REFERRAL_QUERY_PARAM = "via";
+
+/**
+ * The clicks a visitor actually made, for every count of clicks. A promo code
+ * sale records a click of its own so it can earn like any other referral, but
+ * nobody clicked anything, and counting it would inflate clicks and flatter
+ * the conversion rate.
+ */
+export const VISITOR_CLICK = { promoCheckoutSessionId: null } as const;

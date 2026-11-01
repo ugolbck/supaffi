@@ -57,6 +57,7 @@ export type LedgerRow = {
   grossAmount: string | null;
   status: AffiliateCommissionStatus;
   linkCode: string | null;
+  promoCode?: string | null;
   /** A refund adjustment row an older version wrote. None are written any more. */
   isAdjustment: boolean;
   /** When the money arrives. The first thing an affiliate asks a row. */
@@ -105,6 +106,7 @@ export function toLedgerRow(row: AffiliateCommissionRow): LedgerRow {
     grossAmount: row.grossAmount ? formatMoney(row.grossAmount, row.currency) : null,
     status: row.status,
     linkCode: row.linkCode,
+    promoCode: row.promoCode ?? null,
     isAdjustment: row.isAdjustment,
     stateLabel: commissionStateLabel(row),
     voidReason: row.voidReason,
@@ -267,7 +269,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
               </TableCell>
               <TableCell className="align-top">
                 <span className="block truncate font-mono text-[13px] text-muted-foreground">
-                  {row.linkCode ?? "Deleted"}
+                  {row.linkCode ?? row.promoCode ?? "Deleted"}
                 </span>
               </TableCell>
               <TableCell className="align-top">

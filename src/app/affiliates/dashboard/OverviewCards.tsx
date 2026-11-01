@@ -11,6 +11,8 @@ import { CurrencyPicker } from "@/components/charts/CurrencyPicker";
 import { CopyField } from "@/components/onboarding/CodeBlock";
 import { Badge } from "@/components/ui/badge";
 import { STATUS_LABELS, STATUS_STYLES, toLedgerRow } from "./commissions/CommissionLedger";
+import type { PromoCodeOffer } from "@/lib/promoCode";
+import { PromoCodeBox } from "./PromoCodeBox";
 
 /**
  * The affiliate's own dashboard: the link they came for, what they have
@@ -29,6 +31,8 @@ export type OverviewView = {
   referralUrl: string | null;
   /** What they earn under, as one line. See `termsLine`. */
   terms: string;
+  /** Their promo code, or the claim for one. Null when the program offers none. */
+  promoCode: PromoCodeOffer;
   recent: AffiliateCommissionRow[];
   series: DayPoint[];
   bucket: Bucket;
@@ -92,6 +96,7 @@ function Referrals({ total, active }: { total: number; active: number }) {
 export function OverviewScreen({
   referralUrl,
   terms,
+  promoCode,
   recent,
   series,
   bucket,
@@ -125,13 +130,20 @@ export function OverviewScreen({
 
       {/* The thing they came for, at the top and on the copy treatment every
           value in the product is copied from. Not a row in a table. */}
-      {referralUrl && (
-        <div className="flex shrink-0 flex-col gap-1.5">
-          <div className="flex items-baseline justify-between gap-4">
-            <span className="text-[13px] font-medium text-neutral-700">Your link</span>
-            <span className="text-[13px] text-muted-foreground tabular-nums">{terms}</span>
-          </div>
-          <CopyField value={referralUrl} />
+      {(referralUrl || promoCode) && (
+        // The code takes the band's rail column, so it sits over the same
+        // third of the page the cards below it do.
+        <div className={cn("grid shrink-0 grid-cols-1 gap-4", promoCode && referralUrl && "lg:grid-cols-[2fr_1fr]")}>
+          {referralUrl && (
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <div className="flex items-baseline justify-between gap-4">
+                <span className="text-[13px] font-medium text-neutral-700">Your link</span>
+                <span className="truncate text-[13px] text-muted-foreground tabular-nums">{terms}</span>
+              </div>
+              <CopyField value={referralUrl} />
+            </div>
+          )}
+          {promoCode && <PromoCodeBox offer={promoCode} />}
         </div>
       )}
 

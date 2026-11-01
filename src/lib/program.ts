@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import type { CommissionDurationType } from "@prisma/client";
 import { uniqueSlug } from "@/lib/slug";
+import { stripeClientFor } from "@/lib/stripe";
+import { couponById, listCoupons, type CouponList } from "@/lib/coupon";
 
 export type ProgramInput = {
   name: string;
@@ -11,7 +13,47 @@ export type ProgramInput = {
   holdingPeriodDays: number;
   /** Left out by onboarding, which keeps the stored value (open by default). */
   signupOpen?: boolean;
+  /** Left out by onboarding too. Null takes the discount away. See `programDiscount`. */
+  stripeCouponId?: string | null;
+  discountLabel?: string | null;
 };
+
+/** The coupons a program's form offers. Null when Stripe is not connected yet. */
+export async function couponsForProgramForm(ownerId: string, merchantId: string): Promise<CouponList | null> {
+  const merchant = await db.merchant.findFirst({ where: { id: merchantId, ownerId }, select: { stripeSecretKeyEnc: true } });
+  if (!merchant?.stripeSecretKeyEnc) return null;
+  return listCoupons(stripeClientFor(merchant));
+}
+
+/**
+ * The coupon a program's form picked, with what it gives a customer, ready to
+ * store. An unchanged pick keeps the label already stored, so saving the rest
+ * of the terms never depends on Stripe answering.
+ */
+export async function programDiscount(
+  ownerId: string,
+  merchantId: string,
+  programId: string | null,
+  couponId: string
+): Promise<{ error: string } | { error: null; stripeCouponId: string | null; discountLabel: string | null }> {
+  if (couponId === "") return { error: null, stripeCouponId: null, discountLabel: null };
+  const merchant = await db.merchant.findFirst({
+    where: { id: merchantId, ownerId },
+    select: {
+      stripeSecretKeyEnc: true,
+      programs: { where: { id: programId ?? "" }, select: { stripeCouponId: true, discountLabel: true } },
+    },
+  });
+  if (!merchant) throw new Error("Merchant not found");
+  const current = merchant.programs[0];
+  if (current?.stripeCouponId === couponId) {
+    return { error: null, stripeCouponId: couponId, discountLabel: current.discountLabel };
+  }
+  if (!merchant.stripeSecretKeyEnc) return { error: "Connect Stripe first" };
+  const coupon = await couponById(stripeClientFor(merchant), couponId);
+  if (!coupon.ok) return { error: coupon.error };
+  return { error: null, stripeCouponId: couponId, discountLabel: coupon.label };
+}
 
 async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
   const merchant = await db.merchant.findFirst({
@@ -59,6 +101,8 @@ export async function listProgramsForMerchant(
     attributionWindowDays: number;
     holdingPeriodDays: number;
     signupOpen: boolean;
+    stripeCouponId: string | null;
+    discountLabel: string | null;
     affiliateCount: number;
   }[]
 > {
@@ -76,6 +120,8 @@ export async function listProgramsForMerchant(
       attributionWindowDays: true,
       holdingPeriodDays: true,
       signupOpen: true,
+      stripeCouponId: true,
+      discountLabel: true,
       _count: { select: { affiliates: true } },
     },
     orderBy: { createdAt: "asc" },
@@ -162,6 +208,8 @@ export type ProgramForSignup = {
   commissionDurationType: CommissionDurationType;
   commissionDurationMonths: number | null;
   attributionWindowDays: number;
+  /** What a customer using one of the affiliate's codes gets. Null: no codes. */
+  discountLabel: string | null;
 };
 
 export async function getProgramForSignup(
@@ -177,10 +225,17 @@ export async function getProgramForSignup(
       commissionDurationType: true,
       commissionDurationMonths: true,
       attributionWindowDays: true,
+      stripeCouponId: true,
+      discountLabel: true,
     },
   });
   if (!program) return null;
-  return { ...program, defaultCommissionRate: Number(program.defaultCommissionRate) };
+  const { stripeCouponId, discountLabel, ...rest } = program;
+  return {
+    ...rest,
+    defaultCommissionRate: Number(program.defaultCommissionRate),
+    discountLabel: stripeCouponId ? discountLabel : null,
+  };
 }
 
 /**

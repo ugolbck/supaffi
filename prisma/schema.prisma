@@ -56,6 +56,7 @@ model Merchant {
   affiliates            Affiliate[]
   webhookEvents         WebhookEvent[]
   referredSubscriptions ReferredSubscription[]
+  promoCodes            AffiliatePromoCode[]
   createdAt             DateTime               @default(now())
 
   @@unique([ownerId, slug])
@@ -85,6 +86,12 @@ model Program {
   // False keeps the public signup page closed, so a higher-paying tier is not
   // open to whoever guesses its slug. The Owner moves Affiliates in instead.
   signupOpen               Boolean                @default(true)
+  // The Stripe coupon behind the promo code each Affiliate in the program can
+  // claim. Null: no codes are offered. `discountLabel` is what it gives a
+  // customer ("20% off for 3 months"), read from Stripe when it was picked, so
+  // no page has to ask Stripe to say it.
+  stripeCouponId           String?
+  discountLabel            String?
 
   affiliates Affiliate[]
   createdAt  DateTime    @default(now())
@@ -115,6 +122,7 @@ model Affiliate {
   clicks      Click[]
   commissions Commission[]
   loginTokens AffiliateLoginToken[]
+  promoCodes  AffiliatePromoCode[]
   createdAt   DateTime              @default(now())
 
   @@unique([merchantId, email])
@@ -204,11 +212,58 @@ model Click {
   // earned again.
   fraudConfirmedAt DateTime?
 
+  // Set only on the click a promo code sale stands in for. No visitor made
+  // it: the checkout that used the Affiliate's code is the whole referral, so
+  // it carries that Session's id, one click per Session, and is left out of
+  // every click count. The code is nullable so removing it from the Affiliate
+  // keeps the history.
+  promoCheckoutSessionId String?
+  promoCodeId            String?
+  promoCode              AffiliatePromoCode? @relation(fields: [promoCodeId], references: [id], onDelete: SetNull)
+
   commissions           Commission[]
   referredSubscriptions ReferredSubscription[]
 
+  @@unique([promoCheckoutSessionId, affiliateId])
   @@index([stripeCustomerId])
   @@index([linkId])
+  @@index([promoCodeId])
+}
+
+/// A Stripe promotion code the Owner gave an Affiliate. A checkout that used it
+/// credits them, with or without a click, and wins over another Affiliate's
+/// link on the same checkout.
+///
+/// Matched on Stripe's id, which is all a Checkout Session says about the code
+/// it used. The text is looked up once, when the Owner adds it, and kept for
+/// display.
+model AffiliatePromoCode {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id])
+  affiliateId           String
+  affiliate             Affiliate @relation(fields: [affiliateId], references: [id])
+  stripePromotionCodeId String // promo_...
+  code                  String // what the customer types, as Stripe spells it
+  // True when Supaffi created the code in Stripe from the program's coupon,
+  // false when the Owner linked a code that already existed. Only an issued
+  // code is deactivated in Stripe when it is turned off.
+  issued                Boolean   @default(false)
+  // What the code gives a customer, as the program's coupon said when the code
+  // was made. Kept on the code: changing the program's coupon later does not
+  // change a code Stripe already holds. Null for a linked code.
+  discountLabel         String?
+  // Turned off: no longer credits anyone, and an issued one is inactive in
+  // Stripe. Kept rather than deleted so its sales stay counted on it.
+  disabledAt            DateTime?
+
+  clicks    Click[]
+  createdAt DateTime @default(now())
+
+  // One Affiliate per code on a product. Not global: products sharing a
+  // Stripe account see the same codes.
+  @@unique([merchantId, stripePromotionCodeId])
+  @@index([affiliateId])
 }
 
 /// A subscription that a referred Checkout Session created. Renewals earn by

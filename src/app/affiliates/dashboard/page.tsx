@@ -4,6 +4,7 @@ import { getAffiliateMetrics, pickCurrency, rangeFromQuery, type CurrencyTotal }
 import { listAffiliateCommissions, referralCounts } from "@/lib/affiliate";
 import { listLinksWithStats, linkUrl } from "@/lib/affiliateLink";
 import { termsLine } from "@/lib/format";
+import { promoCodeOffer } from "@/lib/promoCode";
 import { OverviewScreen } from "./OverviewCards";
 
 /**
@@ -44,7 +45,7 @@ export default async function AffiliateOverviewPage({
   const query = await searchParams;
   const range = rangeFromQuery(query.range);
 
-  const [metrics, links, commissions, referrals, program] = await Promise.all([
+  const [metrics, links, commissions, referrals, program, promoCode] = await Promise.all([
     getAffiliateMetrics(affiliateId, range),
     listLinksWithStats(affiliateId),
     listAffiliateCommissions(affiliateId, { page: 1, pageSize: RECENT_COMMISSIONS }),
@@ -66,6 +67,7 @@ export default async function AffiliateOverviewPage({
         },
       },
     }),
+    promoCodeOffer(affiliateId),
   ]);
 
   // The signup link: the one the merchant's own dashboard shows and the one in
@@ -86,6 +88,7 @@ export default async function AffiliateOverviewPage({
             })
           : ""
       }
+      promoCode={promoCode}
       recent={commissions.rows}
       series={metrics.series}
       bucket={metrics.bucket}
