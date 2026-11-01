@@ -23,16 +23,16 @@ export default async function OnboardingLayout({ children }: { children: React.R
   return (
     <div className="min-h-svh bg-background">
       <header className={`${COLUMN} flex h-14 items-center justify-between`}>
-        <span className="flex items-center gap-2.5 pl-3">
+        <span className="flex items-center pl-3">
+          {/* The file carries padding around the artwork, so negative margins trim it. */}
           <Image
-            src="/logo_bgless_black.svg"
-            alt=""
-            width={22}
-            height={22}
+            src="/logomark_dark_transparent.svg"
+            alt="Supaffi"
+            width={96}
+            height={36}
             priority
-            className="size-[22px]"
+            className="-my-2 -ml-[11px] h-9 w-auto max-w-none"
           />
-          <span className="text-[13.5px] font-medium tracking-[-0.01em] text-foreground">Supaffi</span>
         </span>
         <div className="flex items-center gap-2.5 text-xs">
           <span className="hidden max-w-[28ch] truncate text-muted-foreground sm:block">{session.user.email ?? ""}</span>
