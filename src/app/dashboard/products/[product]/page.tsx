@@ -95,7 +95,7 @@ export default async function ProductOverviewPage({
 
   // What the tiles compare against, said the way the picker says it, so
   // "vs last 30 days" under a figure is the same words as the choice above.
-  const against = range === "all" ? "" : rangeLabel(range).toLowerCase().replace(/^last /, "previous ").replace(/^this /, "previous ").replace(/^today$/, "yesterday").replace(/^yesterday$/, "the day before");
+  const against = range === "all" ? "" : rangeLabel(range).toLowerCase().replace(/^last /, "previous ").replace(/^this /, "previous ").replace(/^yesterday$/, "the day before").replace(/^today$/, "yesterday");
   const revenueNow = currency ? (metrics.current.amounts[currency]?.gross ?? 0) : 0;
   const revenueBefore = currency ? metrics.previous?.amounts[currency]?.gross : null;
   const delta = (now: number, before: number | null | undefined) =>

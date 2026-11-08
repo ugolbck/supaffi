@@ -8,7 +8,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -384,9 +384,24 @@ function ConfirmedForm({
   const id = useId();
   const [open, setOpen] = useState(false);
   const [sent, setSent] = useState(false);
+  // Set by the dialog's button. Anything else that submits, Enter in the
+  // reason field included, opens the dialog instead.
+  const confirmed = useRef(false);
 
   return (
-    <form id={id} action={action} onSubmit={() => setSent(true)} className={className}>
+    <form
+      id={id}
+      action={action}
+      onSubmit={(e) => {
+        if (!confirmed.current) {
+          e.preventDefault();
+          setOpen(true);
+          return;
+        }
+        setSent(true);
+      }}
+      className={className}
+    >
       {layout(
         <Button type="button" size="sm" variant={variant} className="cursor-pointer" disabled={sent} onClick={() => setOpen(true)}>
           {label}
@@ -405,7 +420,11 @@ function ConfirmedForm({
               form={id}
               variant="destructive"
               className="cursor-pointer"
-              onClick={() => setOpen(false)}
+              disabled={sent}
+              onClick={() => {
+                confirmed.current = true;
+                setOpen(false);
+              }}
             >
               {confirmLabel}
             </AlertDialogAction>
