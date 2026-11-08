@@ -248,7 +248,7 @@ function Field({ title, value, children }: { title: string; value?: ReactNode; c
  * existed. With email on, the affiliate resets it from the login page, so the
  * Owner only gets a quiet fallback for an address that does not receive mail.
  * Without it, the Owner makes a one-time link here and sends it themselves.
- * A new link voids the last.
+ * A link made here voids the earlier ones the Owner made.
  */
 function PasswordLink({
   affiliateId,
@@ -293,7 +293,7 @@ function PasswordLink({
           disabled={pending}
           onClick={createLink}
         >
-          Copy a password link
+          Get a password link
         </Button>
       ) : (
         <Button type="button" size="lg" variant="secondary" className="cursor-pointer self-start" disabled={pending} onClick={createLink}>

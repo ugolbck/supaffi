@@ -58,7 +58,7 @@ describe("notifications", () => {
     await db.$disconnect();
   });
 
-  it("queues nothing while the owner has email off", async () => {
+  it("queues nothing while the product has email off", async () => {
     const merchant = await seedMerchant((await seedOwner()).id);
     const { program, affiliate, click } = await seedReferral(merchant);
     await createAffiliate(merchant.id, program.id, { name: "Alice", email: "alice@example.com", passwordHash: "x" });
@@ -83,7 +83,7 @@ describe("notifications", () => {
     expect(emails.every((e) => e.fromName === "Product")).toBe(true);
   });
 
-  it("follows the owner's switches", async () => {
+  it("follows the product's switches", async () => {
     const { merchant } = await productWithMail({ notifyNewAffiliates: false });
     const { program } = await seedReferral(merchant);
     await createAffiliate(merchant.id, program.id, { name: "Alice", email: "alice@example.com", passwordHash: "x" });

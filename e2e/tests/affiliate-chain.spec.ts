@@ -261,7 +261,7 @@ test("an affiliate who forgot their password gets a link by email", async ({ bro
   // With email on, the owner's panel only keeps a copied link as a fallback.
   await owner.goto(`${ADMIN}/dashboard/products/shop/affiliates`);
   await owner.getByRole("link", { name: "Alice" }).first().click();
-  await expect(owner.getByRole("button", { name: "Copy a password link" })).toBeVisible();
+  await expect(owner.getByRole("button", { name: "Get a password link" })).toBeVisible();
   await expect(owner.getByRole("button", { name: "Create password link" })).toHaveCount(0);
 
   const visitor = await newPage(browser);

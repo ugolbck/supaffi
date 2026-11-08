@@ -18,7 +18,7 @@ import { issueResetToken } from "@/lib/affiliatePassword";
 
 /**
  * Queues the emails an event calls for, inside the transaction that records
- * the event. Nothing is queued while the product has email off, so an instance
+ * the event. Nothing is queued while the product has email off, so a product
  * without it behaves exactly as before.
  *
  * Each email has a key unique per product, so an event processed twice (a
@@ -29,7 +29,7 @@ type Tx = Prisma.TransactionClient;
 
 async function queue(tx: Tx, merchantId: string, emails: { key: string; email: OutgoingEmail }[]): Promise<void> {
   // One plain address per email. Signup accepts loose addresses, and a comma
-  // list would otherwise have the Owner's server copy the email to strangers.
+  // list would otherwise have the product's server copy the email to strangers.
   const sendable = emails.filter(({ email }) => isSingleAddress(email.to));
   if (sendable.length === 0) return;
   await tx.email.createMany({
@@ -223,7 +223,7 @@ export async function notifyPaid(
   ]);
 }
 
-export const SELF_SERVE_LINK_TTL_MS = 60 * 60_000;
+const SELF_SERVE_LINK_TTL_MS = 60 * 60_000;
 
 /**
  * Emails a password link to an Affiliate who asked for one. Sent whatever the

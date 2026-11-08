@@ -20,6 +20,7 @@ import {
 import { Section } from "@/components/dashboard/Page";
 import { Term } from "@/components/Term";
 import type { MailStatus, MailSwitch } from "@/lib/mail";
+import type { ProductRef } from "@/lib/merchant";
 import {
   connectMailAction,
   disconnectMailAction,
@@ -82,9 +83,7 @@ function providerFor(host: string): string {
 
 const EMPTY: MailFormState = { error: "", sentTo: "" };
 
-type Product = { id: string; slug: string };
-
-export function MailSettings({ product, status }: { product: Product; status: MailStatus }) {
+export function MailSettings({ product, status }: { product: ProductRef; status: MailStatus }) {
   // Held here rather than in the form: a connect that works brings the saved
   // settings back with it, which swaps the form out for the connected view in
   // the same render, and the form's own state would go with it.
@@ -107,6 +106,7 @@ export function MailSettings({ product, status }: { product: Product; status: Ma
       {status && !editing ? (
         <Connected
           product={product}
+          onTurnedOff={() => setSeen(connectState)}
           status={status}
           notice={notice}
           setNotice={setNotice}
@@ -122,7 +122,14 @@ export function MailSettings({ product, status }: { product: Product; status: Ma
           action={connect}
           pending={connecting}
           error={connectState === seen ? "" : connectState.error}
-          onCancel={status ? () => setEditing(false) : undefined}
+          onCancel={
+            status
+              ? () => {
+                  setSeen(connectState);
+                  setEditing(false);
+                }
+              : undefined
+          }
         />
       )}
     </Section>
@@ -272,12 +279,15 @@ const SWITCHES: { name: MailSwitch; label: string }[] = [
 
 function Connected({
   product,
+  onTurnedOff,
   status,
   notice,
   setNotice,
   onChange,
 }: {
-  product: Product;
+  product: ProductRef;
+  /** The form comes back empty, so nothing from an earlier connect shows on it. */
+  onTurnedOff: () => void;
   status: NonNullable<MailStatus>;
   notice: MailFormState;
   setNotice: (state: MailFormState) => void;
@@ -363,6 +373,7 @@ function Connected({
                 setNotice(EMPTY);
                 startTransition(async () => {
                   await disconnectMailAction(product);
+                  onTurnedOff();
                   setConfirmOff(false);
                 });
               }}
@@ -380,7 +391,7 @@ function Connected({
  * Saves the moment it is ticked. The box shows the new state straight away and
  * goes back if the save fails.
  */
-function MailToggle({ product, name, label, on }: { product: Product; name: MailSwitch; label: string; on: boolean }) {
+function MailToggle({ product, name, label, on }: { product: ProductRef; name: MailSwitch; label: string; on: boolean }) {
   const [checked, setChecked] = useState(on);
   const [, startTransition] = useTransition();
   return (

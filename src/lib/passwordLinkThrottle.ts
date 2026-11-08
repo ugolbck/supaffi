@@ -1,4 +1,4 @@
-// Limit on "Forgot password?": each request sends an email from the Owner's
+// Limit on "Forgot password?": each request sends an email from the product's
 // own server, so an open form would let anyone spend their sending quota or
 // fill an Affiliate's inbox.
 

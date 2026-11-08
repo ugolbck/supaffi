@@ -9,7 +9,7 @@ import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 // Owner copies it from the dashboard and passes it on themselves.
 
 /** How long a link the Owner hands out works: time to send it by hand. */
-export const LINK_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+const LINK_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
 export function hashToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");

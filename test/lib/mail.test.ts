@@ -11,6 +11,7 @@ import {
   mailErrorText,
   mailStatus,
   productHasEmail,
+  setMailSwitch,
   smtpSettings,
   transportFor,
 } from "@/lib/mail";
@@ -72,6 +73,17 @@ describe("mail settings", () => {
     expect(await connectMail(stranger.id, merchant.id, INPUT, test)).toEqual({ error: "Product not found" });
     expect(test).not.toHaveBeenCalled();
     expect(await mailStatus(stranger.id, merchant.id)).toBeNull();
+  });
+
+  it("lets no other owner turn the product's email off or change what it sends", async () => {
+    const { owner, merchant } = await product();
+    await connectMail(owner.id, merchant.id, INPUT, async () => {});
+    const stranger = await seedOwner();
+
+    await disconnectMail(stranger.id, merchant.id);
+    await setMailSwitch(stranger.id, merchant.id, "notifyNewSales", false);
+
+    expect(await mailStatus(owner.id, merchant.id)).toMatchObject({ host: "smtp.resend.com", notifyNewSales: true });
   });
 
   it("saves nothing when the test fails, and says why", async () => {

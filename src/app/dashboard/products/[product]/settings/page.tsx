@@ -23,8 +23,8 @@ import {
 } from "./settingsActions";
 
 /**
- * The three things a product owns that are not affiliates: its details, its
- * credentials and its own existence.
+ * What a product owns that is not affiliates: its details, its credentials,
+ * its mail server and its own existence.
  *
  * The lights are live rather than a stored flag, so a key revoked in Stripe
  * this morning says so here this afternoon. `runProductChecks` serves a

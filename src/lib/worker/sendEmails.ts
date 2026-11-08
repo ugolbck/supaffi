@@ -46,20 +46,23 @@ export async function claimEmails(): Promise<Email[]> {
   `);
 }
 
+// Every write below is updateMany: a product deleted mid-batch takes its rows
+// with it, and a missing row must not stop the rest of the batch.
+//
 // Once an email is sent or given up on, its body goes: a password email holds
 // a live link, and the database is no place to keep one.
 const DONE = { text: "", html: "" };
 
 async function retryLater(email: Email, message: string): Promise<void> {
   const terminal = email.attempts >= MAX_ATTEMPTS;
-  await db.email.update({
+  await db.email.updateMany({
     where: { id: email.id },
     data: terminal
       ? { status: "FAILED", lastError: message, ...DONE }
       : { status: "PENDING", lastError: message, nextAttemptAt: new Date(Date.now() + BASE_BACKOFF_MS * 2 ** (email.attempts - 1)) },
   });
   if (terminal) {
-    await db.merchant.update({ where: { id: email.merchantId }, data: { emailFailure: message, emailFailedAt: new Date() } });
+    await db.merchant.updateMany({ where: { id: email.merchantId }, data: { emailFailure: message, emailFailedAt: new Date() } });
   }
 }
 
@@ -87,7 +90,7 @@ export async function sendDueEmails(send: typeof sendWith = sendWith): Promise<v
     }
     if (!server) {
       // Turned off after this was queued: dropped, as turning off says.
-      await db.email.update({ where: { id: email.id }, data: { status: "FAILED", lastError: "Email is off", ...DONE } });
+      await db.email.updateMany({ where: { id: email.id }, data: { status: "FAILED", lastError: "Email is off", ...DONE } });
       continue;
     }
     const skipped = unreachable.get(email.merchantId);
@@ -97,7 +100,7 @@ export async function sendDueEmails(send: typeof sendWith = sendWith): Promise<v
     }
     try {
       await send(server, email);
-      await db.email.update({ where: { id: email.id }, data: { status: "SENT", sentAt: new Date(), lastError: null, ...DONE } });
+      await db.email.updateMany({ where: { id: email.id }, data: { status: "SENT", sentAt: new Date(), lastError: null, ...DONE } });
       await clearMailFailure(email.merchantId);
     } catch (err) {
       const message = mailErrorText(err, server);

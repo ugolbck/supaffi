@@ -15,6 +15,7 @@ import {
 } from "@/lib/mail";
 import { testEmail } from "@/lib/emails";
 import { db } from "@/lib/db";
+import type { ProductRef } from "@/lib/merchant";
 
 /**
  * The product's mail server: connecting it (which sends a test first), a test
@@ -22,19 +23,17 @@ import { db } from "@/lib/db";
  * belongs to the signed-in Owner.
  */
 
-type Product = { id: string; slug: string };
-
 async function owner(): Promise<string> {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
   return session.user.id;
 }
 
-const settingsPath = (product: Product) => `/dashboard/products/${product.slug}/settings`;
+const settingsPath = (product: ProductRef) => `/dashboard/products/${product.slug}/settings`;
 
 export type MailFormState = { error: string; sentTo: string };
 
-export async function connectMailAction(product: Product, _prev: MailFormState, formData: FormData): Promise<MailFormState> {
+export async function connectMailAction(product: ProductRef, _prev: MailFormState, formData: FormData): Promise<MailFormState> {
   const result = await connectMail(
     await owner(),
     product.id,
@@ -53,7 +52,7 @@ export async function connectMailAction(product: Product, _prev: MailFormState, 
 }
 
 /** Sends a test through the saved settings, straight away rather than queued. */
-export async function sendTestEmailAction(product: Product): Promise<MailFormState> {
+export async function sendTestEmailAction(product: ProductRef): Promise<MailFormState> {
   const ownerId = await owner();
   const merchant = await db.merchant.findFirst({
     where: { id: product.id, ownerId },
@@ -71,12 +70,12 @@ export async function sendTestEmailAction(product: Product): Promise<MailFormSta
   return { error: "", sentTo: merchant.owner.email };
 }
 
-export async function disconnectMailAction(product: Product): Promise<void> {
+export async function disconnectMailAction(product: ProductRef): Promise<void> {
   await disconnectMail(await owner(), product.id);
   revalidatePath(settingsPath(product));
 }
 
-export async function setMailSwitchAction(product: Product, name: MailSwitch, on: boolean): Promise<void> {
+export async function setMailSwitchAction(product: ProductRef, name: MailSwitch, on: boolean): Promise<void> {
   await setMailSwitch(await owner(), product.id, name, on);
   revalidatePath(settingsPath(product));
 }
