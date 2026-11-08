@@ -10,6 +10,7 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
 | Feature | What you get |
 | --- | --- |
+| **Email notifications** | Connect your email provider and hear when someone joins or sells. Affiliates hear when they earn and are paid, and reset their own password. |
 | **Promo codes** | Give a program a discount and every affiliate claims their own code for it in one click. A customer using it credits them, even without clicking their link. |
 | **Stripe Payment Links, buy buttons and pricing tables** | Sales through them earn commissions. The tracking script is all you add. |
 
@@ -24,7 +25,6 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 | Feature | What you get |
 | --- | --- |
 | **Import from Rewardful, Tolt and FirstPromoter** | Bring your affiliates, their links and their history. Nobody's link breaks. |
-| **Affiliate notifications** | Affiliates hear when they earn and when they are paid, and reset their own password. Optional, with your own mail server. |
 | **Bulk payouts** | One file to pay everyone through PayPal or Wise, and a minimum payout amount. |
 | **Applications** | Approve new affiliates before they go live. |
 

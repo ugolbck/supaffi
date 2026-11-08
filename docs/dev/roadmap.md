@@ -21,11 +21,6 @@ written without naming Stripe, so each needs only a fake.
 Affiliates, their links and their commission history from Rewardful, Tolt and
 FirstPromoter, so moving costs nothing and nobody's link breaks.
 
-### Affiliate notifications
-Tell affiliates when they earn and when they are paid, and let them reset their
-own password. Optional: the owner brings a mail server, and without one
-nothing changes.
-
 ### Bulk payouts
 A payout file in the format PayPal and Wise accept for bulk payouts, from the
 Payouts page, and a minimum amount below which an affiliate is not paid yet.

@@ -70,6 +70,8 @@ export type SheetAffiliate = {
   links: { url: string; clicks: number }[];
   /** Live ones first, then turned off ones. `earned` already formatted, like the commission amounts below. */
   promoCodes: { id: string; code: string; issued: boolean; off: boolean; discountLabel: string | null; sales: number; earned: string }[];
+  /** The product has email on, so the affiliate resets their own password. */
+  canEmail: boolean;
   /** Set when the affiliate has no code and their program has a discount to make one from. */
   codeToIssue: { suggested: string; discountLabel: string } | null;
   commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
@@ -179,7 +181,13 @@ export function AffiliateSheet({
             }
           />
 
-          <PasswordLink affiliateId={affiliate.id} hasPassword={affiliate.hasPassword} product={product} domain={productDomain} />
+          <PasswordLink
+            affiliateId={affiliate.id}
+            hasPassword={affiliate.hasPassword}
+            canEmail={affiliate.canEmail}
+            product={product}
+            domain={productDomain}
+          />
 
           <Field title="Links">
             <ul className="flex flex-col gap-1.5 text-sm">
@@ -236,24 +244,35 @@ function Field({ title, value, children }: { title: string; value?: ReactNode; c
 }
 
 /**
- * Supaffi sends no email, so a forgotten password, or an affiliate who signed
- * up before passwords existed, is handled by the Owner: make a one-time link
- * here and send it to them. Making a new one voids the last.
+ * A forgotten password, or an affiliate who signed up before passwords
+ * existed. With email on, the affiliate resets it from the login page, so the
+ * Owner only gets a quiet fallback for an address that does not receive mail.
+ * Without it, the Owner makes a one-time link here and sends it themselves.
+ * A link made here voids the earlier ones the Owner made.
  */
 function PasswordLink({
   affiliateId,
   hasPassword,
+  canEmail,
   product,
   domain,
 }: {
   affiliateId: string;
   hasPassword: boolean;
+  canEmail: boolean;
   product: { id: string };
   domain: string;
 }) {
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
+
+  const createLink = () =>
+    startTransition(async () => {
+      const result = await createPasswordLinkAction(product, affiliateId);
+      if ("error" in result) setError(result.error);
+      else setLink(`${originFor(domain)}/affiliates/password?token=${result.token}`);
+    });
 
   return (
     <Field
@@ -265,21 +284,19 @@ function PasswordLink({
           <Input readOnly value={link} className="min-w-0 flex-1 font-mono text-xs" onFocus={(e) => e.target.select()} />
           <CopyLinkButton link={link} size="lg" label="Copy" />
         </div>
-      ) : (
+      ) : canEmail ? (
         <Button
           type="button"
-          size="lg"
-          variant="secondary"
-          className="cursor-pointer self-start"
+          variant="link"
+          size="sm"
+          className="h-auto cursor-pointer self-start px-0 text-xs text-muted-foreground hover:text-foreground"
           disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              const result = await createPasswordLinkAction(product, affiliateId);
-              if ("error" in result) setError(result.error);
-              else setLink(`${originFor(domain)}/affiliates/password?token=${result.token}`);
-            })
-          }
+          onClick={createLink}
         >
+          Get a password link
+        </Button>
+      ) : (
+        <Button type="button" size="lg" variant="secondary" className="cursor-pointer self-start" disabled={pending} onClick={createLink}>
           Create password link
         </Button>
       )}

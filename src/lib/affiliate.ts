@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { VISITOR_CLICK } from "@/lib/referral";
 import { generateLinkCode } from "@/lib/referralCode";
 import { isCodeRetiredByAnother, lockLinkCodes } from "@/lib/affiliateLink";
+import { notifyAffiliateJoined } from "@/lib/notify";
 import { Prisma } from "@prisma/client";
 import type { CurrencyTotal } from "@/lib/analytics";
 import type { CommissionStatus } from "@/lib/commission";
@@ -68,7 +69,7 @@ export async function createAffiliate(
         meta: { target: ["code"] },
       });
     }
-    return tx.affiliate.create({
+    const created = await tx.affiliate.create({
       data: {
         merchantId,
         programId,
@@ -79,6 +80,8 @@ export async function createAffiliate(
       },
       select: { id: true, email: true },
     });
+    await notifyAffiliateJoined(tx, created.id);
+    return created;
   });
 
   return { id: affiliate.id, email: affiliate.email, referralCode: code };

@@ -1271,6 +1271,7 @@ function BAffiliateSheet() {
         rateIsOverride: false,
         payoutDetails: "sarah@paypal.example",
         hasPassword: true,
+        canEmail: true,
         links: [{ url: "https://instantgradient.com/?via=sarah", clicks: 312 }],
         promoCodes: [],
         codeToIssue: { suggested: "SARAH20", discountLabel: "20% off for 3 months" },

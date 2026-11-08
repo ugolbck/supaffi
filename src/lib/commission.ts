@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { notifyPaid } from "@/lib/notify";
+import { MAX_SHOWN } from "@/lib/payoutLimits";
 
 async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
   const merchant = await db.merchant.findFirst({
@@ -272,8 +274,6 @@ const REFUSED = "The ledger refused that payout.";
 /** Every amount a page renders is `Decimal.toFixed(2)` of a positive commission. */
 const TWO_DECIMALS = /^\d+\.\d{2}$/;
 
-/** No page renders anywhere near this many rows in one payout. */
-export const MAX_SHOWN = 5000;
 
 /**
  * How old a page may be when it records a payout. Long enough to send the
@@ -506,6 +506,20 @@ export async function markCommissionsPaid(
           voidedAt: null,
           voidReason: row.amount.lt(row.ceiling) ? "partial refund" : null,
         },
+      });
+    }
+
+    const stored = new Set(asStored);
+    const paid = [
+      ...rows.filter((row) => stored.has(row.id)).map((row) => row.amount),
+      ...atShownAmount.map((row) => row.amount),
+    ];
+    if (paid.length > 0) {
+      await notifyPaid(tx, {
+        affiliateId: rows[0].affiliateId,
+        paidAt,
+        total: paid.reduce((sum, amount) => sum.add(amount), new Prisma.Decimal(0)).toString(),
+        currency: rows[0].currency,
       });
     }
 

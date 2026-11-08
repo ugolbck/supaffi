@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { setAffiliatePassword } from "./setAffiliatePassword";
 import { CenteredShell } from "@/components/CenteredShell";
+import { getMerchantByDomain } from "@/lib/merchant";
+import { requestHost } from "@/lib/requestHost";
+import { productHasEmail } from "@/lib/mail";
 import { SetPasswordForm } from "./SetPasswordForm";
 
 /**
@@ -15,10 +18,13 @@ export default async function AffiliatePasswordPage({
 }) {
   const { token } = await searchParams;
   if (typeof token !== "string" || !token) redirect("/affiliates/login");
+  const host = await requestHost();
+  const merchant = host ? await getMerchantByDomain(host) : null;
+  const canReset = merchant ? await productHasEmail(merchant.id) : false;
 
   return (
     <CenteredShell>
-      <SetPasswordForm action={setAffiliatePassword.bind(null, token)} />
+      <SetPasswordForm action={setAffiliatePassword.bind(null, token)} canReset={canReset} />
     </CenteredShell>
   );
 }

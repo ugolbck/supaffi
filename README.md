@@ -44,6 +44,7 @@ Everything lives at **[supaffi.com/docs](https://supaffi.com/docs)**. Good place
 - **Self-referral detection** that holds back any sale made with the affiliate's own email or card. [Self-referrals](https://supaffi.com/docs/self-referrals)
 - **An affiliate portal on your domain**, like `affiliates.yourapp.com`, where affiliates sign up and follow their earnings. [The affiliate portal](https://supaffi.com/docs/affiliate-portal)
 - **A payouts page** that lists who you owe and where to send it, with one click to mark them paid. [Paying affiliates](https://supaffi.com/docs/payouts)
+- **Optional email** through your own provider: you hear when someone joins or sells, and affiliates hear when they earn and are paid and reset their own password. [Email](#email)
 
 Stripe is supported today, and more payment providers are on the way. See [what Supaffi does not handle](https://supaffi.com/docs/limits).
 
@@ -65,7 +66,23 @@ Full guide, with server requirements: [Install](https://supaffi.com/docs/self-ho
 2. Add the product in the dashboard with that hostname, your site's address and a Stripe key. [Connect Stripe](https://supaffi.com/docs/stripe)
 3. Paste the tracking snippet into your site. If you create Stripe Checkout Sessions yourself, pass the referral to Stripe when you create them. Payment Links, buy buttons and pricing tables need only the script. [Tracking](https://supaffi.com/docs/tracking), [Checkout Sessions](https://supaffi.com/docs/checkout), [Payment Links](https://supaffi.com/docs/payment-links)
 
-The hostname hosts the affiliate signup and their dashboard, so it must be on the product's own domain. One per product. Supaffi sends no email. If an affiliate forgets their password, you copy them a password link from their panel.
+The hostname hosts the affiliate signup and their dashboard, so it must be on the product's own domain. One per product.
+
+## Email
+
+Optional. Without it, Supaffi sends nothing and you copy an affiliate a password link from their panel when they need one.
+
+Connect your email provider in each product's Settings, under Email, so its affiliates hear from an address on its own domain. Supaffi sends a test email and only saves settings that work. You then hear when someone joins and when a sale comes in, affiliates get a welcome, a note when they earn and when they are paid, and they can reset their own password.
+
+| Provider | Pick | Fill in |
+| --- | --- | --- |
+| Resend | Resend | An API key, and an address on a domain you verified in Resend |
+| Brevo | Brevo | Your SMTP login and key, from SMTP & API |
+| Gmail, Google Workspace | Gmail | Your address and an [app password](https://myaccount.google.com/apppasswords) |
+| Amazon SES | Other | Server `email-smtp.<region>.amazonaws.com`, port 587, your SES SMTP username and password |
+| Postmark and others | Other | The SMTP server, port, username and password from the provider |
+
+Some hosts block the usual email ports (DigitalOcean blocks all of them). Pick Other and use port 2525, which Resend (`smtp.resend.com`, username `resend`), Brevo (`smtp-relay.brevo.com`) and most providers also accept.
 
 Then [test your setup](https://supaffi.com/docs/testing) before you invite affiliates.
 

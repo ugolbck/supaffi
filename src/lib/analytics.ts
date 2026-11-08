@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { VISITOR_CLICK } from "@/lib/referral";
 import { Prisma } from "@prisma/client";
-import { MAX_SHOWN } from "@/lib/commission";
+import { MAX_SHOWN } from "@/lib/payoutLimits";
 
 /**
  * Every aggregate the dashboard cards read.

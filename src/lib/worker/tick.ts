@@ -3,6 +3,7 @@ import { claimBatch, markProcessed, markFailed } from "./claim";
 import { sweepPayableCommissions } from "./sweep";
 import { processWebhookEvent } from "./dispatch";
 import { runDailyCleanup } from "./cleanup";
+import { runEmailSender } from "./sendEmails";
 
 let ticking = false;
 
@@ -37,6 +38,10 @@ export async function runTick(): Promise<void> {
       }
     }
     await sweepPayableCommissions();
+    // Not awaited: emails go out on their own loop (sendEmails.ts), so a slow
+    // or dead mail server never holds up the next event. Started here so the
+    // emails this batch queued leave now rather than at the next poll.
+    void runEmailSender();
   } finally {
     ticking = false;
   }

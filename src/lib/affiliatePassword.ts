@@ -1,14 +1,17 @@
 import { randomBytes, createHash } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ConcurrencyLimitError, hashPassword, verifyAgainstNoAccount, verifyPassword } from "@/lib/password";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
-// Affiliate passwords and the links that set them. Nothing here sends email:
-// the Owner copies a link from the dashboard and passes it on themselves.
+// Affiliate passwords and the links that set them. A link reaches the
+// Affiliate by email when the product has email on (src/lib/notify.ts), or the
+// Owner copies it from the dashboard and passes it on themselves.
 
+/** How long a link the Owner hands out works: time to send it by hand. */
 const LINK_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
-function hashToken(rawToken: string): string {
+export function hashToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
 }
 
@@ -67,14 +70,30 @@ export async function createAffiliateResetLink(
   });
   if (!affiliate) return null;
 
-  const rawToken = randomBytes(32).toString("hex");
-  await db.$transaction([
-    db.affiliateLoginToken.deleteMany({ where: { affiliateId, usedAt: null } }),
-    db.affiliateLoginToken.create({
-      data: { affiliateId, tokenHash: hashToken(rawToken), expiresAt: new Date(Date.now() + LINK_TTL_MS) },
-    }),
-  ]);
+  const { rawToken } = await db.$transaction((tx) => issueResetToken(tx, affiliateId, LINK_TTL_MS, { replace: true }));
   return rawToken;
+}
+
+/**
+ * Writes a new password link. Only its hash is stored; the raw token goes
+ * back to the caller to hand on. `replace` voids the Affiliate's unused links
+ * first: the Owner's newest link is the only one that works. A link the
+ * Affiliate asks for leaves the others alone, so a stranger who knows their
+ * email cannot void a link the Owner just sent.
+ */
+export async function issueResetToken(
+  tx: Prisma.TransactionClient,
+  affiliateId: string,
+  ttlMs: number,
+  { replace }: { replace: boolean }
+): Promise<{ id: string; rawToken: string }> {
+  if (replace) await tx.affiliateLoginToken.deleteMany({ where: { affiliateId, usedAt: null } });
+  const rawToken = randomBytes(32).toString("hex");
+  const token = await tx.affiliateLoginToken.create({
+    data: { affiliateId, tokenHash: hashToken(rawToken), expiresAt: new Date(Date.now() + ttlMs) },
+    select: { id: true },
+  });
+  return { id: token.id, rawToken };
 }
 
 /**
