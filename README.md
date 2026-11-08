@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="public/logomark_white_transparent.svg">
-    <img src="public/logomark_dark_transparent.svg" width="320" alt="Supaffi">
-  </picture>
+  <img src="public/logomark_white_on_dark.svg" width="320" alt="Supaffi">
 </p>
 
 <p align="center">
@@ -44,7 +41,7 @@ Everything lives at **[supaffi.com/docs](https://supaffi.com/docs)**. Good place
 - **Self-referral detection** that holds back any sale made with the affiliate's own email or card. [Self-referrals](https://supaffi.com/docs/self-referrals)
 - **An affiliate portal on your domain**, like `affiliates.yourapp.com`, where affiliates sign up and follow their earnings. [The affiliate portal](https://supaffi.com/docs/affiliate-portal)
 - **A payouts page** that lists who you owe and where to send it, with one click to mark them paid. [Paying affiliates](https://supaffi.com/docs/payouts)
-- **Optional email** through your own provider: you hear when someone joins or sells, and affiliates hear when they earn and are paid and reset their own password. [Email](#email)
+- **Optional email** through your own provider: you hear when someone joins or sells, and affiliates hear when they earn and are paid and reset their own password. [Email](https://supaffi.com/docs/email)
 
 Stripe is supported today, and more payment providers are on the way. See [what Supaffi does not handle](https://supaffi.com/docs/limits).
 
@@ -70,7 +67,7 @@ The hostname hosts the affiliate signup and their dashboard, so it must be on th
 
 ## Email
 
-Optional. Without it, Supaffi sends nothing and you copy an affiliate a password link from their panel when they need one.
+Optional. Without it, Supaffi sends nothing and you copy an affiliate a password link from their panel when they need one. Full guide: [Email](https://supaffi.com/docs/email).
 
 Connect your email provider in each product's Settings, under Email, so its affiliates hear from an address on its own domain. Supaffi sends a test email and only saves settings that work. You then hear when someone joins and when a sale comes in, affiliates get a welcome, a note when they earn and when they are paid, and they can reset their own password.
 
