@@ -44,6 +44,7 @@ Everything lives at **[supaffi.com/docs](https://supaffi.com/docs)**. Good place
 - **Self-referral detection** that holds back any sale made with the affiliate's own email or card. [Self-referrals](https://supaffi.com/docs/self-referrals)
 - **An affiliate portal on your domain**, like `affiliates.yourapp.com`, where affiliates sign up and follow their earnings. [The affiliate portal](https://supaffi.com/docs/affiliate-portal)
 - **A payouts page** that lists who you owe and where to send it, with one click to mark them paid. [Paying affiliates](https://supaffi.com/docs/payouts)
+- **Optional email** through your own provider: you hear when someone joins or sells, and affiliates hear when they earn and are paid and reset their own password. [Email](#email)
 
 Stripe is supported today, and more payment providers are on the way. See [what Supaffi does not handle](https://supaffi.com/docs/limits).
 
