@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { changeOwnerEmail, changeOwnerPassword } from "@/lib/owner";
 import {
+  clearMailFailure,
   connectMail,
   disconnectMail,
   mailErrorText,
@@ -87,6 +88,8 @@ export async function sendTestEmailAction(): Promise<MailFormState> {
   } catch (err) {
     return { error: mailErrorText(err, settings), sentTo: "" };
   }
+  await clearMailFailure(ownerId);
+  revalidatePath("/dashboard/account");
   return { error: "", sentTo: to };
 }
 
@@ -96,7 +99,6 @@ export async function disconnectMailAction(): Promise<void> {
 }
 
 export async function setMailSwitchAction(name: MailSwitch, on: boolean): Promise<void> {
-  if (!["notifyNewAffiliates", "notifyNewSales", "emailAffiliates"].includes(name)) return;
   await setMailSwitch(await owner(), name, on);
   revalidatePath("/dashboard/account");
 }

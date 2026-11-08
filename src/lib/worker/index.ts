@@ -1,4 +1,5 @@
 import { runTick } from "./tick";
+import { runEmailSender } from "./sendEmails";
 import { startListening } from "./listen";
 import { upgradeAllWebhookEvents } from "./webhookEvents";
 import { isDevInstance } from "@/lib/instanceMode";
@@ -12,6 +13,9 @@ export function startWorker(): void {
     runTick().catch((err) => console.error("[worker] tick failed", err));
   }, POLL_INTERVAL_MS);
   interval.unref();
+
+  // Its own loop, so retries come due even when no event arrives.
+  setInterval(() => void runEmailSender(), POLL_INTERVAL_MS).unref();
 
   startListening(() => {
     runTick().catch((err) => console.error("[worker] notified tick failed", err));

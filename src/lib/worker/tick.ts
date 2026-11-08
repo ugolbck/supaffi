@@ -3,23 +3,17 @@ import { claimBatch, markProcessed, markFailed } from "./claim";
 import { sweepPayableCommissions } from "./sweep";
 import { processWebhookEvent } from "./dispatch";
 import { runDailyCleanup } from "./cleanup";
-import { sendDueEmails } from "./sendEmails";
+import { runEmailSender } from "./sendEmails";
 
 let ticking = false;
-let wokenWhileTicking = false;
 
 export async function runTick(): Promise<void> {
-  // An overlapping wake-up (a NOTIFY firing mid-poll) does not start a second
-  // tick. It is remembered instead, and the tick runs once more when this one
-  // ends: an event that arrived while emails were going out is handled then,
-  // not five seconds later at the next poll. A row left PROCESSING by a crash
+  // An overlapping wake-up (a NOTIFY firing mid-poll) is fine to drop —
+  // rows stay PENDING until actually claimed, nothing is lost, the next
+  // tick (interval or NOTIFY) picks it up. A row left PROCESSING by a crash
   // is picked up again once its claim lease runs out (see claim.ts).
-  if (ticking) {
-    wokenWhileTicking = true;
-    return;
-  }
+  if (ticking) return;
   ticking = true;
-  wokenWhileTicking = false;
 
   // Not awaited. A first cleanup on an old install can take a while and must
   // never hold up the queue; it returns at once when it ran less than a day
@@ -44,11 +38,11 @@ export async function runTick(): Promise<void> {
       }
     }
     await sweepPayableCommissions();
-    // After the events, so the emails a batch queued go out on the same tick.
-    // Its own catch: a mail server that is down must not hold up the queue.
-    await sendDueEmails().catch((err) => console.error("[worker] sending email failed", err));
+    // Not awaited: emails go out on their own loop (sendEmails.ts), so a slow
+    // or dead mail server never holds up the next event. Started here so the
+    // emails this batch queued leave now rather than at the next poll.
+    void runEmailSender();
   } finally {
     ticking = false;
   }
-  if (wokenWhileTicking) await runTick();
 }

@@ -1,4 +1,4 @@
-import type { OutgoingEmail } from "@/lib/mail";
+import { headerSafe, type OutgoingEmail } from "@/lib/mail";
 
 /**
  * Every email Supaffi sends, as plain text and as HTML built from the same
@@ -84,8 +84,9 @@ ${paragraphs}${button}${footnote}
   return { to: message.to, fromName: message.product, subject: message.subject, text, html };
 }
 
+/** Cleaned and capped: it goes into subjects and headings. */
 function nameOf(affiliate: { name: string | null; email: string }): string {
-  return affiliate.name?.trim() || affiliate.email;
+  return headerSafe(affiliate.name?.trim() || affiliate.email);
 }
 
 export function newAffiliateEmail(args: {

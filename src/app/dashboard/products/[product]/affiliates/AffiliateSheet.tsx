@@ -311,14 +311,16 @@ function PasswordLink({
           >
             Email password link
           </Button>
-          <button
+          <Button
             type="button"
-            className="cursor-pointer text-xs text-muted-foreground underline-offset-[3px] hover:text-foreground hover:underline"
+            variant="link"
+            size="sm"
+            className="cursor-pointer px-0 text-xs text-muted-foreground hover:text-foreground"
             disabled={pending}
             onClick={createLink}
           >
             Copy a link instead
-          </button>
+          </Button>
         </div>
       ) : (
         <Button type="button" size="lg" variant="secondary" className="cursor-pointer self-start" disabled={pending} onClick={createLink}>

@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { getMerchantByDomain } from "@/lib/merchant";
 import { findAffiliateForLogin } from "@/lib/affiliatePassword";
-import { emailPasswordLink, SELF_SERVE_LINK_TTL_MS } from "@/lib/notify";
+import { emailPasswordLink } from "@/lib/notify";
 import { reservePasswordLink } from "@/lib/passwordLinkThrottle";
 import { clientAddress } from "@/lib/clientAddress";
 
@@ -22,7 +22,7 @@ export async function requestPasswordLink(_prev: { sentTo: string }, formData: F
   const merchant = host ? await getMerchantByDomain(host) : null;
   if (merchant && reservePasswordLink(merchant.id, email, clientAddress(new Headers(requestHeaders)))) {
     const affiliate = await findAffiliateForLogin(merchant.id, email);
-    if (affiliate) await emailPasswordLink(affiliate.id, SELF_SERVE_LINK_TTL_MS);
+    if (affiliate) await emailPasswordLink(affiliate.id, "affiliate");
   }
   return { sentTo: email };
 }

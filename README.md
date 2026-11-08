@@ -70,9 +70,17 @@ The hostname hosts the affiliate signup and their dashboard, so it must be on th
 
 Optional. Without it, Supaffi sends nothing and you copy an affiliate a password link from their panel when they need one.
 
-Connect your own email provider under Account, Notifications: pick Resend, Brevo or Gmail and paste a key, or enter any provider's SMTP server. Supaffi sends a test email and only saves settings that work. You then hear when someone joins and when a sale comes in, affiliates get a welcome, a note when they earn and when they are paid, and they can reset their own password.
+Connect your own email provider under Account, Notifications. Supaffi sends a test email and only saves settings that work. You then hear when someone joins and when a sale comes in, affiliates get a welcome, a note when they earn and when they are paid, and they can reset their own password.
 
-Some hosts block the usual email ports (DigitalOcean blocks all of them). If yours does, use port 2525, which Resend, Brevo and most providers also accept.
+| Provider | Pick | Fill in |
+| --- | --- | --- |
+| Resend | Resend | An API key, and an address on a domain you verified in Resend |
+| Brevo | Brevo | Your SMTP login and key, from SMTP & API |
+| Gmail, Google Workspace | Gmail | Your address and an [app password](https://myaccount.google.com/apppasswords) |
+| Amazon SES | Other | Server `email-smtp.<region>.amazonaws.com`, port 587, your SES SMTP username and password |
+| Postmark and others | Other | The SMTP server, port, username and password from the provider |
+
+Some hosts block the usual email ports (DigitalOcean blocks all of them). Pick Other and use port 2525, which Resend (`smtp.resend.com`, username `resend`), Brevo (`smtp-relay.brevo.com`) and most providers also accept.
 
 Then [test your setup](https://supaffi.com/docs/testing) before you invite affiliates.
 

@@ -509,8 +509,9 @@ export async function markCommissionsPaid(
       });
     }
 
+    const stored = new Set(asStored);
     const paid = [
-      ...rows.filter((row) => asStored.includes(row.id)).map((row) => row.amount),
+      ...rows.filter((row) => stored.has(row.id)).map((row) => row.amount),
       ...atShownAmount.map((row) => row.amount),
     ];
     if (paid.length > 0) {

@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 import { updateAffiliate } from "@/lib/affiliate";
 import { createAffiliateResetLink } from "@/lib/affiliatePassword";
 import { db } from "@/lib/db";
-import { emailPasswordLink, OWNER_SENT_LINK_TTL_MS } from "@/lib/notify";
+import { emailPasswordLink } from "@/lib/notify";
 import { addPromoCode, issuePromoCode, turnOffPromoCode, type PromoCodeResult } from "@/lib/promoCode";
 
 /**
@@ -83,7 +83,7 @@ export async function emailPasswordLinkAction(
     select: { id: true, email: true },
   });
   if (!affiliate) return { error: "Affiliate not found" };
-  if (!(await emailPasswordLink(affiliate.id, OWNER_SENT_LINK_TTL_MS))) return { error: "Email is off" };
+  if (!(await emailPasswordLink(affiliate.id, "owner"))) return { error: "Email is off" };
   return { sentTo: affiliate.email };
 }
 

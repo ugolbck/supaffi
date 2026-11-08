@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { createAffiliate } from "@/lib/affiliate";
 import { markCommissionsPaid } from "@/lib/commission";
-import { emailPasswordLink, SELF_SERVE_LINK_TTL_MS } from "@/lib/notify";
+import { emailPasswordLink } from "@/lib/notify";
 import { createCommissionUnlessSelfReferral } from "@/lib/worker/recordCommission";
 import { clearReferralTables, seedMerchant, seedOwner, seedReferral } from "./worker/referralFixtures";
 
@@ -100,8 +100,8 @@ describe("notifications", () => {
     expect(emails[1].text).toContain("brought a $30.00 sale");
   });
 
-  it("sends a flagged sale to the owner alone, and a voided one to nobody", async () => {
-    const merchant = await seedMerchant((await ownerWithMail()).id);
+  it("sends a flagged sale to the owner alone, even with sale emails off, and a voided one to nobody", async () => {
+    const merchant = await seedMerchant((await ownerWithMail({ notifyNewSales: false })).id);
     const flagged = await seedReferral(merchant);
     await sale(flagged.affiliate.id, flagged.click.id, "in_1", { status: "FLAGGED" });
     const voided = await seedReferral(merchant);
@@ -131,25 +131,37 @@ describe("notifications", () => {
     expect(emails[0].subject).toBe("Product paid you $18.00");
   });
 
-  it("emails a password link that replaces any earlier one", async () => {
+  it("emails a password link: the owner's replaces earlier ones, one asked for keeps them", async () => {
     const merchant = await seedMerchant((await ownerWithMail({ emailAffiliates: false })).id);
     const { affiliate } = await seedReferral(merchant);
 
-    expect(await emailPasswordLink(affiliate.id, SELF_SERVE_LINK_TTL_MS)).toBe(true);
-    expect(await emailPasswordLink(affiliate.id, SELF_SERVE_LINK_TTL_MS)).toBe(true);
-
+    expect(await emailPasswordLink(affiliate.id, "owner")).toBe(true);
+    expect(await emailPasswordLink(affiliate.id, "affiliate")).toBe(true);
+    expect(await db.affiliateLoginToken.count({ where: { affiliateId: affiliate.id, usedAt: null } })).toBe(2);
+    expect(await emailPasswordLink(affiliate.id, "owner")).toBe(true);
     expect(await db.affiliateLoginToken.count({ where: { affiliateId: affiliate.id, usedAt: null } })).toBe(1);
-    const emails = await db.email.findMany();
-    expect(emails).toHaveLength(2);
+
+    const emails = await db.email.findMany({ orderBy: { createdAt: "asc" } });
+    expect(emails).toHaveLength(3);
     expect(emails[0].text).toMatch(/\/affiliates\/password\?token=[0-9a-f]{64}/);
-    expect(emails[0].text).toContain("within 1 hour");
+    expect(emails[0].text).toContain("within 3 days");
+    expect(emails[1].text).toContain("within 1 hour");
+  });
+
+  it("never queues an email to a list of addresses", async () => {
+    const owner = await ownerWithMail();
+    const merchant = await seedMerchant(owner.id);
+    const { program } = await seedReferral(merchant);
+    await createAffiliate(merchant.id, program.id, { name: "Eve", email: "eve@example.com, a@victim.test", passwordHash: "x" });
+
+    expect((await db.email.findMany()).map((e) => e.to)).toEqual([owner.email]);
   });
 
   it("refuses a password link while email is off", async () => {
     const merchant = await seedMerchant((await seedOwner()).id);
     const { affiliate } = await seedReferral(merchant);
 
-    expect(await emailPasswordLink(affiliate.id, SELF_SERVE_LINK_TTL_MS)).toBe(false);
+    expect(await emailPasswordLink(affiliate.id, "affiliate")).toBe(false);
     expect(await db.affiliateLoginToken.count()).toBe(0);
   });
 });

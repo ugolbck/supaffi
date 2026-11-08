@@ -66,6 +66,17 @@ describe("mail settings", () => {
     expect((await smtpSettings(owner.id))?.password).toBe("re_key");
   });
 
+  it("never hands a saved password to a different server", async () => {
+    const owner = await newOwner();
+    await connectMail(owner.id, { ...INPUT, user: "me" }, async () => {});
+    const test = vi.fn(async () => {});
+
+    expect(await connectMail(owner.id, { ...INPUT, host: "smtp.other.com", user: "me", password: "" }, test)).toEqual({
+      error: "Enter the password",
+    });
+    expect(test).not.toHaveBeenCalled();
+  });
+
   it("refuses a malformed server, port or address before trying", async () => {
     const owner = await newOwner();
     const test = vi.fn(async () => {});
@@ -147,7 +158,7 @@ describe("sending", () => {
     expect(row.status).toBe("PENDING");
     expect(row.nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
 
-    await db.email.update({ where: { id: email.id }, data: { attempts: 5, nextAttemptAt: new Date(Date.now() - 60_000) } });
+    await db.email.update({ where: { id: email.id }, data: { attempts: 6, nextAttemptAt: new Date(Date.now() - 60_000) } });
     await sendDueEmails(down);
     row = await db.email.findUniqueOrThrow({ where: { id: email.id } });
     expect(row.status).toBe("FAILED");
@@ -156,6 +167,40 @@ describe("sending", () => {
     await queued(owner.id);
     await sendDueEmails(vi.fn(async () => {}));
     expect((await mailStatus(owner.id))?.failure).toBeNull();
+  });
+
+  it("empties what it sent, so a password link does not sit in the database", async () => {
+    const owner = await connected();
+    const email = await queued(owner.id);
+    await sendDueEmails(vi.fn(async () => {}));
+    expect(await db.email.findUniqueOrThrow({ where: { id: email.id } })).toMatchObject({ text: "", html: "" });
+  });
+
+  it("stops trying an unreachable server for the rest of the batch", async () => {
+    const owner = await connected();
+    await queued(owner.id);
+    await queued(owner.id);
+    const down = vi.fn(async () => Promise.reject(Object.assign(new Error(), { code: "ETIMEDOUT" })));
+
+    await sendDueEmails(down);
+
+    expect(down).toHaveBeenCalledTimes(1);
+    expect(await db.email.count({ where: { status: "PENDING" } })).toBe(2);
+  });
+
+  it("puts off an owner whose settings cannot be read, without failing the rest", async () => {
+    const owner = await connected();
+    await db.owner.update({ where: { id: owner.id }, data: { smtpPasswordEnc: "not:a:ciphertext" } });
+    const other = await connected();
+    await queued(owner.id);
+    await queued(other.id);
+    const send = vi.fn(async () => {});
+
+    await sendDueEmails(send);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(await db.email.count({ where: { status: "SENT" } })).toBe(1);
+    expect(await db.email.count({ where: { status: "PENDING", lastError: { not: null } } })).toBe(1);
   });
 
   it("drops what was queued before email was turned off", async () => {
@@ -168,5 +213,16 @@ describe("sending", () => {
 
     expect(send).not.toHaveBeenCalled();
     expect((await db.email.findUniqueOrThrow({ where: { id: email.id } })).status).toBe("FAILED");
+  });
+});
+
+describe("transport", () => {
+  it("refuses to send a password over an unencrypted connection", async () => {
+    const { transportFor } = await import("@/lib/mail");
+    const options = (t: ReturnType<typeof transportFor>) => (t as unknown as { options: { secure?: boolean; requireTLS?: boolean } }).options;
+    expect(options(transportFor({ host: "h", port: 587, user: "u", password: "p", from: "a@b.co" })).requireTLS).toBe(true);
+    expect(options(transportFor({ host: "h", port: 465, user: "u", password: "p", from: "a@b.co" })).secure).toBe(true);
+    // No account, nothing to protect: a local relay without TLS still works.
+    expect(options(transportFor({ host: "h", port: 1025, user: "", password: "", from: "a@b.co" })).requireTLS).toBe(false);
   });
 });

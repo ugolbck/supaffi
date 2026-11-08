@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/crypto";
 
@@ -35,17 +36,7 @@ const MAIL_SELECT = {
   emailAffiliates: true,
 } as const;
 
-type MailRow = {
-  email: string;
-  smtpHost: string | null;
-  smtpPort: number | null;
-  smtpUser: string | null;
-  smtpPasswordEnc: string | null;
-  mailFrom: string | null;
-  notifyNewAffiliates: boolean;
-  notifyNewSales: boolean;
-  emailAffiliates: boolean;
-};
+type MailRow = Prisma.OwnerGetPayload<{ select: typeof MAIL_SELECT }>;
 
 function toOwnerMail(row: MailRow | null): OwnerMail | null {
   if (!row?.smtpHost || !row.smtpPort || !row.mailFrom) return null;
@@ -96,6 +87,10 @@ export function transportFor(settings: SmtpSettings) {
     // and upgrades with STARTTLS, which nodemailer does whenever the server
     // offers it.
     secure: settings.port === 465,
+    // A password never crosses the network in the clear: with one to send,
+    // a server that does not offer STARTTLS, or someone stripping it on the
+    // way, is refused rather than sent to.
+    requireTLS: settings.port !== 465 && Boolean(settings.user),
     auth: settings.user ? { user: settings.user, pass: settings.password } : undefined,
     // Messages are built here from text, never from a path or a URL.
     disableFileAccess: true,
@@ -111,7 +106,15 @@ export function headerSafe(value: string): string {
 
 export type OutgoingEmail = { to: string; fromName: string; subject: string; text: string; html: string };
 
+const EMAIL = /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/;
+
+/** One plain address, nothing nodemailer could read as a list. */
+export function isSingleAddress(value: string): boolean {
+  return value.length <= 254 && EMAIL.test(value);
+}
+
 export async function sendWith(settings: SmtpSettings, email: OutgoingEmail): Promise<void> {
+  if (!isSingleAddress(email.to)) throw Object.assign(new Error("Not a single address"), { code: "EENVELOPE" });
   await transportFor(settings).sendMail({
     from: { name: headerSafe(email.fromName), address: settings.from },
     to: email.to,
@@ -143,7 +146,6 @@ export function mailErrorText(err: unknown, settings: Pick<SmtpSettings, "host" 
 export type MailSettingsInput = { host: string; port: string; user: string; password: string; from: string };
 
 const HOST = /^[a-z0-9.-]{1,253}$/i;
-const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 
 /**
  * Checks the settings by sending a test email to the Owner, and saves them
@@ -162,11 +164,18 @@ export async function connectMail(
   const from = input.from.trim().toLowerCase();
   if (!HOST.test(host)) return { error: "Enter the server's address, like smtp.resend.com" };
   if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: "Enter a port between 1 and 65535" };
-  if (!EMAIL.test(from) || from.length > 254) return { error: "Enter the address emails come from" };
+  if (!isSingleAddress(from)) return { error: "Enter the address emails come from" };
 
-  const owner = await db.owner.findUnique({ where: { id: ownerId }, select: { email: true, smtpPasswordEnc: true } });
+  const owner = await db.owner.findUnique({
+    where: { id: ownerId },
+    select: { email: true, smtpHost: true, smtpUser: true, smtpPasswordEnc: true },
+  });
   if (!owner) return { error: "Account not found" };
-  const password = input.password || (owner.smtpPasswordEnc ? decrypt(owner.smtpPasswordEnc) : "");
+  // The stored password is only kept for the server and account it belongs
+  // to, never handed to a different one.
+  const sameAccount = owner.smtpHost === host && (owner.smtpUser ?? "") === user;
+  if (!input.password && user && !(sameAccount && owner.smtpPasswordEnc)) return { error: "Enter the password" };
+  const password = input.password || (sameAccount && owner.smtpPasswordEnc ? decrypt(owner.smtpPasswordEnc) : "");
   const settings = { host, port, user, password, from };
 
   try {
@@ -198,10 +207,17 @@ export async function disconnectMail(ownerId: string): Promise<void> {
   });
 }
 
-export type MailSwitch = "notifyNewAffiliates" | "notifyNewSales" | "emailAffiliates";
+export const MAIL_SWITCHES = ["notifyNewAffiliates", "notifyNewSales", "emailAffiliates"] as const;
+export type MailSwitch = (typeof MAIL_SWITCHES)[number];
 
 export async function setMailSwitch(ownerId: string, name: MailSwitch, on: boolean): Promise<void> {
+  if (!MAIL_SWITCHES.includes(name)) return;
   await db.owner.update({ where: { id: ownerId }, data: { [name]: on } });
+}
+
+/** A send that went through: whatever failed before works again. */
+export async function clearMailFailure(ownerId: string): Promise<void> {
+  await db.owner.updateMany({ where: { id: ownerId, emailFailure: { not: null } }, data: { emailFailure: null, emailFailedAt: null } });
 }
 
 export type MailStatus = {

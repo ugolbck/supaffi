@@ -88,6 +88,9 @@ export function MailSettings({ status }: { status: MailStatus }) {
   // the same render, and the form's own state would go with it.
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState<MailFormState>(EMPTY);
+  // The result on screen when the form last opened: an error from before a
+  // Cancel is not shown again when it reopens.
+  const [seen, setSeen] = useState<MailFormState | null>(null);
   const [connectState, connect, connecting] = useActionState(async (prev: MailFormState, formData: FormData) => {
     const result = await connectMailAction(prev, formData);
     if (result.sentTo) {
@@ -106,6 +109,7 @@ export function MailSettings({ status }: { status: MailStatus }) {
           setNotice={setNotice}
           onChange={() => {
             setNotice(EMPTY);
+            setSeen(connectState);
             setEditing(true);
           }}
         />
@@ -114,7 +118,7 @@ export function MailSettings({ status }: { status: MailStatus }) {
           initial={status}
           action={connect}
           pending={connecting}
-          error={connectState.error}
+          error={connectState === seen ? "" : connectState.error}
           onCancel={status ? () => setEditing(false) : undefined}
         />
       )}
@@ -332,7 +336,7 @@ function Connected({
 
       <div className="flex flex-col gap-3 border-t border-border pt-4">
         {SWITCHES.map((s) => (
-          <Switch key={s.name} name={s.name} label={s.label} on={status[s.name]} />
+          <MailToggle key={s.name} name={s.name} label={s.label} on={status[s.name]} />
         ))}
       </div>
 
@@ -343,10 +347,13 @@ function Connected({
             <AlertDialogDescription>Nothing is sent until you connect again.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="cursor-pointer">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="cursor-pointer" disabled={pending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               className="cursor-pointer"
+              disabled={pending}
               onClick={() => {
                 setNotice(EMPTY);
                 startTransition(async () => {
@@ -355,7 +362,7 @@ function Connected({
                 });
               }}
             >
-              Turn off
+              {pending ? "Turning off" : "Turn off"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -364,8 +371,11 @@ function Connected({
   );
 }
 
-/** Saves the moment it is ticked; the box shows the new state straight away. */
-function Switch({ name, label, on }: { name: MailSwitch; label: string; on: boolean }) {
+/**
+ * Saves the moment it is ticked. The box shows the new state straight away and
+ * goes back if the save fails.
+ */
+function MailToggle({ name, label, on }: { name: MailSwitch; label: string; on: boolean }) {
   const [checked, setChecked] = useState(on);
   const [, startTransition] = useTransition();
   return (
@@ -374,7 +384,13 @@ function Switch({ name, label, on }: { name: MailSwitch; label: string; on: bool
         checked={checked}
         onCheckedChange={(next) => {
           setChecked(next);
-          startTransition(() => setMailSwitchAction(name, next));
+          startTransition(async () => {
+            try {
+              await setMailSwitchAction(name, next);
+            } catch {
+              setChecked(!next);
+            }
+          });
         }}
         className="cursor-pointer"
       />

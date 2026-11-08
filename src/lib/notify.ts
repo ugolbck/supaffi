@@ -1,7 +1,6 @@
-import { randomBytes } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ownerMail, type OutgoingEmail } from "@/lib/mail";
+import { isSingleAddress, ownerMail, type OutgoingEmail } from "@/lib/mail";
 import {
   earnedEmail,
   flaggedSaleEmail,
@@ -15,7 +14,7 @@ import { formatDate, formatMoney, termsLine } from "@/lib/format";
 import { linkUrl } from "@/lib/affiliateLink";
 import { dashboardOrigin } from "@/lib/instance";
 import { originFor } from "@/lib/url";
-import { hashToken } from "@/lib/affiliatePassword";
+import { issueResetToken, LINK_TTL_MS } from "@/lib/affiliatePassword";
 
 /**
  * Queues the emails an event calls for, inside the transaction that records
@@ -29,9 +28,12 @@ import { hashToken } from "@/lib/affiliatePassword";
 type Tx = Prisma.TransactionClient;
 
 async function queue(tx: Tx, ownerId: string, emails: { key: string; email: OutgoingEmail }[]): Promise<void> {
-  if (emails.length === 0) return;
+  // One plain address per email. Signup accepts loose addresses, and a comma
+  // list would otherwise have the Owner's server copy the email to strangers.
+  const sendable = emails.filter(({ email }) => isSingleAddress(email.to));
+  if (sendable.length === 0) return;
   await tx.email.createMany({
-    data: emails.map(({ key, email }) => ({ ownerId, dedupeKey: key, ...email })),
+    data: sendable.map(({ key, email }) => ({ ownerId, dedupeKey: key, ...email })),
     skipDuplicates: true,
   });
 }
@@ -112,7 +114,8 @@ export async function notifyAffiliateJoined(tx: Tx, affiliateId: string): Promis
  * A commission just written. Only a referred customer's first one is
  * announced: renewals arrive every month for every subscriber and would bury
  * the one email that matters. A flagged sale goes to the Owner alone, since
- * the Affiliate may not earn it. A sale refunded before it was recorded is
+ * the Affiliate may not earn it, and whatever the sales switch says, since it
+ * needs their decision. A sale refunded before it was recorded is
  * not news.
  */
 export async function notifyCommission(tx: Tx, commissionId: string): Promise<void> {
@@ -153,18 +156,17 @@ export async function notifyCommission(tx: Tx, commissionId: string): Promise<vo
   const emails: { key: string; email: OutgoingEmail }[] = [];
 
   if (commission.status === "FLAGGED") {
-    if (mail.notifyNewSales) {
-      emails.push({
-        key: `flagged:${commission.id}`,
-        email: flaggedSaleEmail({
-          to: mail.ownerEmail,
-          product: merchant.name,
-          affiliate,
-          commission: amount,
-          href: ownerLink(`/dashboard/products/${merchant.slug}/commissions?status=FLAGGED&commission=${commission.id}`),
-        }),
-      });
-    }
+    // Not behind the sales switch: it asks the Owner for a decision.
+    emails.push({
+      key: `flagged:${commission.id}`,
+      email: flaggedSaleEmail({
+        to: mail.ownerEmail,
+        product: merchant.name,
+        affiliate,
+        commission: amount,
+        href: ownerLink(`/dashboard/products/${merchant.slug}/commissions?status=FLAGGED&commission=${commission.id}`),
+      }),
+    });
   } else {
     if (mail.notifyNewSales) {
       emails.push({
@@ -222,14 +224,15 @@ export async function notifyPaid(
 }
 
 export const SELF_SERVE_LINK_TTL_MS = 60 * 60_000;
-export const OWNER_SENT_LINK_TTL_MS = 3 * 24 * 60 * 60_000;
 
 /**
  * Emails an Affiliate a password link. Sent whatever the Owner's switches say:
- * it is asked for, not announced. Replaces any unused link, like a copied one.
- * Answers false when the Owner has email off.
+ * it is asked for, not announced. One the Owner sends replaces any unused
+ * link, like a copied one, and lasts as long; one the Affiliate asks for lasts
+ * an hour and replaces nothing (see issueResetToken). Answers false when the
+ * Owner has email off.
  */
-export async function emailPasswordLink(affiliateId: string, ttlMs: number): Promise<boolean> {
+export async function emailPasswordLink(affiliateId: string, from: "owner" | "affiliate"): Promise<boolean> {
   const affiliate = await db.affiliate.findUnique({
     where: { id: affiliateId },
     select: { id: true, email: true, merchant: { select: { ownerId: true, name: true, domain: true } } },
@@ -238,21 +241,17 @@ export async function emailPasswordLink(affiliateId: string, ttlMs: number): Pro
   const mail = await ownerMail(affiliate.merchant.ownerId);
   if (!mail) return false;
 
-  const rawToken = randomBytes(32).toString("hex");
+  const owner = from === "owner";
   await db.$transaction(async (tx) => {
-    await tx.affiliateLoginToken.deleteMany({ where: { affiliateId, usedAt: null } });
-    const token = await tx.affiliateLoginToken.create({
-      data: { affiliateId, tokenHash: hashToken(rawToken), expiresAt: new Date(Date.now() + ttlMs) },
-      select: { id: true },
-    });
+    const token = await issueResetToken(tx, affiliateId, owner ? LINK_TTL_MS : SELF_SERVE_LINK_TTL_MS, { replace: owner });
     await queue(tx, affiliate.merchant.ownerId, [
       {
         key: `password:${token.id}`,
         email: passwordLinkEmail({
           to: affiliate.email,
           product: affiliate.merchant.name,
-          href: `${originFor(affiliate.merchant.domain)}/affiliates/password?token=${rawToken}`,
-          validFor: ttlMs <= SELF_SERVE_LINK_TTL_MS ? "1 hour" : "3 days",
+          href: `${originFor(affiliate.merchant.domain)}/affiliates/password?token=${token.rawToken}`,
+          validFor: owner ? "3 days" : "1 hour",
         }),
       },
     ]);

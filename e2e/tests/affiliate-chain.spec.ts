@@ -164,12 +164,14 @@ test("a dispute holds the commission", async ({ browser, request }) => {
   const result = await sale(buyer, { via: AFFILIATE.code, email: "disputer@example.com" });
   const res = await request.post("http://127.0.0.1:12111/_test/dispute", { data: { payment_intent: result.paymentIntent } });
   expect(res.ok()).toBe(true);
-  await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
   // The hold shows in the commission's panel; the list row does not say it.
-  await eventually(owner, async () => {
+  // Each try starts from the list, since a panel opened before the dispute
+  // arrived covers the row the next try clicks.
+  await expect(async () => {
+    await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
     await owner.getByRole("row").nth(1).getByRole("link").click();
     await expect(owner.getByText("Disputed", { exact: true })).toBeVisible({ timeout: 3_000 });
-  });
+  }).toPass({ timeout: 60_000, intervals: [1_000, 2_000, 5_000] });
 });
 
 test("an affiliate buying through their own link is flagged", async ({ browser }) => {
