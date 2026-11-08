@@ -59,9 +59,13 @@ export async function recordReferredSubscription(
 ): Promise<ReferredSubscription> {
   const where = { merchantId_stripeSubscriptionId: { merchantId, stripeSubscriptionId } };
   try {
-    return await db.referredSubscription.create({
+    const created = await db.referredSubscription.create({
       data: { merchantId, clickId, stripeSubscriptionId, stripeProductIds },
     });
+    // A customer who cancelled and subscribed again through the same
+    // referral is paying again, so the referral is no longer counted as gone.
+    await db.click.updateMany({ where: { id: clickId, subscriptionCancelledAt: { not: null } }, data: { subscriptionCancelledAt: null } });
+    return created;
   } catch (err) {
     if (!isUniqueConstraintError(err)) throw err;
     const existing = await db.referredSubscription.findUniqueOrThrow({ where });

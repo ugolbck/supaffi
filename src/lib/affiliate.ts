@@ -481,12 +481,12 @@ export async function listAffiliatesForMerchant(
       where: { affiliateId: { in: ids }, ...VISITOR_CLICK },
       _count: { _all: true },
     }),
-    // Every commission counts as a conversion, voided ones included, which is
-    // what getProductMetrics counts for the rate on the same screen. Money is
-    // the thing a void takes away, not the sale having happened.
+    // Sales as the Overview and Top affiliates count them: a refunded or
+    // voided sale is not one, and neither is an adjustment row an older
+    // version wrote to correct another.
     db.commission.groupBy({
       by: ["affiliateId"],
-      where: { affiliateId: { in: ids } },
+      where: { affiliateId: { in: ids }, status: { not: "VOIDED" }, adjustsCommissionId: null, amount: { gt: 0 } },
       _count: { _all: true },
     }),
     // An unpaid adjustment row an older version left behind counts nowhere; a

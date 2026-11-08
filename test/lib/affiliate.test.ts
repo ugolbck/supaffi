@@ -453,6 +453,8 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         { currency: "eur", total: "7.00" },
         { currency: "usd", total: "15.00" },
       ]);
+      // Counted the way the Overview counts sales: the voided one is not one.
+      expect(rows[0].conversions).toBe(3);
     });
 
     it("keeps a legacy PAID adjustment in Earned but leaves an unpaid one out", async () => {
