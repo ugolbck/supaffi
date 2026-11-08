@@ -69,7 +69,7 @@ export type SheetAffiliate = {
   hasPassword: boolean;
   links: { url: string; clicks: number }[];
   /** Live ones first, then turned off ones. `earned` already formatted, like the commission amounts below. */
-  promoCodes: { id: string; code: string; off: boolean; discountLabel: string | null; sales: number; earned: string }[];
+  promoCodes: { id: string; code: string; issued: boolean; off: boolean; discountLabel: string | null; sales: number; earned: string }[];
   /** Set when the affiliate has no code and their program has a discount to make one from. */
   codeToIssue: { suggested: string; discountLabel: string } | null;
   commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
@@ -269,6 +269,7 @@ function PasswordLink({
         <Button
           type="button"
           size="lg"
+          variant="secondary"
           className="cursor-pointer self-start"
           disabled={pending}
           onClick={() =>
@@ -306,13 +307,13 @@ function PromoCodes({
 }) {
   const [error, setError] = useState<PromoCodeActionError>(null);
   const [linking, setLinking] = useState(false);
-  const [turningOff, setTurningOff] = useState<{ id: string; code: string } | null>(null);
+  const [turningOff, setTurningOff] = useState<{ id: string; code: string; issued: boolean } | null>(null);
   const [pending, startTransition] = useTransition();
   const run = (write: () => Promise<PromoCodeActionError>) =>
     startTransition(async () => {
       setError(await write());
     });
-  const live = codes.filter((c) => !c.off).length;
+  const liveCount = codes.filter((c) => !c.off).length;
 
   return (
     <Field
@@ -341,7 +342,7 @@ function PromoCodes({
                   variant="ghost"
                   className="shrink-0 cursor-pointer text-muted-foreground hover:text-status-danger"
                   disabled={pending}
-                  onClick={() => setTurningOff({ id: c.id, code: c.code })}
+                  onClick={() => setTurningOff({ id: c.id, code: c.code, issued: c.issued })}
                 >
                   Turn off
                 </Button>
@@ -366,7 +367,7 @@ function PromoCodes({
 
       {/* An empty section with nothing to make a code from: linking one is
           the only way in, so it is shown as such. */}
-      {linking || (live === 0 && !toIssue) ? (
+      {linking || (liveCount === 0 && !toIssue) ? (
         <CodeForm
           key={`link-${codes.length}`}
           initial=""
@@ -413,7 +414,10 @@ function PromoCodes({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Turn off {turningOff?.code}?</AlertDialogTitle>
-            <AlertDialogDescription>Customers can no longer use it. Its sales stay counted.</AlertDialogDescription>
+            <AlertDialogDescription>
+              {turningOff?.issued ? "Customers can no longer use it." : "It stops earning. It stays active in Stripe."} Its sales stay
+              counted.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="cursor-pointer" disabled={pending}>
@@ -426,8 +430,11 @@ function PromoCodes({
               onClick={() => {
                 const target = turningOff;
                 if (!target) return;
-                setTurningOff(null);
-                run(() => turnOffPromoCodeAction(product, affiliateId, target.id));
+                startTransition(async () => {
+                  const result = await turnOffPromoCodeAction(product, affiliateId, target.id);
+                  setError(result);
+                  setTurningOff(null);
+                });
               }}
             >
               Turn off

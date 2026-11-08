@@ -292,6 +292,7 @@ describe("promo codes", () => {
         id: first.id,
         code: "ALICE20",
         discountLabel: null,
+        issued: false,
         off: false,
         conversions: 2,
         earned: [
@@ -299,7 +300,7 @@ describe("promo codes", () => {
           { currency: "usd", total: "10.00" },
         ],
       },
-      { id: second.id, code: "ALICE50", discountLabel: null, off: false, conversions: 0, earned: [] },
+      { id: second.id, code: "ALICE50", discountLabel: null, issued: false, off: false, conversions: 0, earned: [] },
     ]);
 
     // Turned off: still listed with what it earned, after the live ones.
@@ -418,7 +419,7 @@ describe("promo codes", () => {
       const code = await db.affiliatePromoCode.findFirstOrThrow();
       await turnOffPromoCode(ownerId, merchantId, aliceId, code.id);
 
-      expect(await promoCodeOffer(aliceId)).toMatchObject({ kind: "claim", suggested: first.suggested.replace(/20$/, "") });
+      expect(await promoCodeOffer(aliceId)).toMatchObject({ kind: "claim", suggested: first.suggested.slice(0, -"20".length) });
       expect(await claimPromoCode(aliceId, first.suggested.toLowerCase())).toEqual({ ok: false, error: "That code is taken" });
     });
 

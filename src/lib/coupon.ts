@@ -43,9 +43,9 @@ export function discountLabel(
 
 /**
  * The codes an Affiliate may be offered before they type their own, best
- * first: their link code in capitals, with the percentage when the discount is one (ALICE20), the way
- * creators name theirs. Read off the label so no second copy of the coupon has
- * to be stored for it.
+ * first: their link code in capitals, with the percentage when the discount
+ * is one (ALICE20), the way creators name theirs. Read off the label so no
+ * second copy of the coupon has to be stored for it.
  */
 export function suggestedCodes(linkCode: string, label: string | null): string[] {
   const percent = label?.match(/^(\d+)% off/)?.[1] ?? "";

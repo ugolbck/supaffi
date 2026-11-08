@@ -269,7 +269,9 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
               </TableCell>
               <TableCell className="align-top">
                 <span className="flex min-w-0 items-center gap-1.5 font-mono text-[13px] text-muted-foreground">
-                  {!row.linkCode && row.promoCode && <TicketPercent aria-label="Promo code" className="size-3.5 shrink-0" />}
+                  {!row.linkCode && row.promoCode && (
+                    <TicketPercent role="img" aria-label="Promo code" className="size-3.5 shrink-0" />
+                  )}
                   <span className="truncate">{row.linkCode ?? row.promoCode ?? "Deleted"}</span>
                 </span>
               </TableCell>

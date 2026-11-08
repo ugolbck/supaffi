@@ -139,7 +139,7 @@ async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeRes
     where: { id: affiliateId },
     select: {
       merchantId: true,
-      merchant: { select: { stripeSecretKeyEnc: true } },
+      merchant: { select: { ownerId: true, stripeSecretKeyEnc: true } },
       program: { select: { stripeCouponId: true, discountLabel: true } },
       promoCodes: { where: { issued: true, ...ACTIVE }, select: { id: true } },
       _count: { select: { promoCodes: { where: { issued: true } } } },
@@ -152,7 +152,7 @@ async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeRes
   if (!affiliate.merchant.stripeSecretKeyEnc) return { ok: false, error: "Connect Stripe first" };
   // A turned off code is inactive in Stripe, which would let its text be used
   // again. Refused here, so a code that leaked stays dead.
-  if ((await usedBefore(affiliate.merchantId, [code])).length > 0) return { ok: false, error: "That code is taken" };
+  if ((await usedBefore(affiliate.merchant.ownerId, [code])).length > 0) return { ok: false, error: "That code is taken" };
 
   const stripe = stripeClientFor(affiliate.merchant);
   // Stripe refuses a code another active one already uses ("must be unique
@@ -275,7 +275,7 @@ export async function promoCodeOffer(affiliateId: string): Promise<PromoCodeOffe
   const affiliate = await db.affiliate.findUnique({
     where: { id: affiliateId },
     select: {
-      merchantId: true,
+      merchant: { select: { ownerId: true } },
       program: { select: { stripeCouponId: true, discountLabel: true } },
       links: { where: { isPrimary: true }, select: { code: true }, take: 1 },
       // An issued code first: it is the one made for this program.
@@ -287,22 +287,26 @@ export async function promoCodeOffer(affiliateId: string): Promise<PromoCodeOffe
   if (live) return { kind: "code", code: live.code, discountLabel: live.discountLabel };
   const { stripeCouponId, discountLabel } = affiliate.program;
   if (!stripeCouponId || !discountLabel) return null;
-  const candidates = suggestedCodes(affiliate.links[0]?.code ?? "", discountLabel);
-  const used = new Set((await usedBefore(affiliate.merchantId, candidates)).map((c) => c.toUpperCase()));
+  const candidates = suggestedCodes(affiliate.links[0]?.code ?? "", discountLabel).filter((c) => CODE_PATTERN.test(c));
+  const used = new Set((await usedBefore(affiliate.merchant.ownerId, candidates)).map((c) => c.toUpperCase()));
   const suggested = candidates.find((c) => !used.has(c)) ?? "";
   return { kind: "claim", suggested, discountLabel };
 }
 
-/** The texts among `codes` this product has had a code under, live or off. */
-async function usedBefore(merchantId: string, codes: string[]): Promise<string[]> {
+/**
+ * The texts among `codes` any of this Owner's products has had a code under,
+ * live or off. Across products, because products can share a Stripe account.
+ */
+async function usedBefore(ownerId: string, codes: string[]): Promise<string[]> {
+  if (codes.length === 0) return [];
   const rows = await db.affiliatePromoCode.findMany({
-    where: { merchantId, OR: codes.map((code) => ({ code: { equals: code, mode: "insensitive" as const } })) },
+    where: { merchant: { ownerId }, OR: codes.map((code) => ({ code: { equals: code, mode: "insensitive" as const } })) },
     select: { code: true },
   });
   return rows.map((r) => r.code);
 }
 
-export type PromoCodeStats = PromoCodeRow & { off: boolean; conversions: number; earned: CurrencyTotal[] };
+export type PromoCodeStats = PromoCodeRow & { issued: boolean; off: boolean; conversions: number; earned: CurrencyTotal[] };
 
 /**
  * Every code with what it has brought in, counted the way a link's sales are
@@ -314,7 +318,7 @@ export async function listPromoCodesWithStats(affiliateId: string): Promise<Prom
   const codes = (
     await db.affiliatePromoCode.findMany({
       where: { affiliateId },
-      select: { id: true, code: true, discountLabel: true, disabledAt: true },
+      select: { id: true, code: true, discountLabel: true, issued: true, disabledAt: true },
       orderBy: [{ disabledAt: { sort: "desc", nulls: "first" } }, { createdAt: "asc" }],
     })
   ).map(({ disabledAt, ...code }) => ({ ...code, off: disabledAt !== null }));

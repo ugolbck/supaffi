@@ -1048,8 +1048,8 @@ function ELinks() {
       links={E_LINKS}
       websiteUrl="https://instantgradient.com"
       promoCodes={[
-        { id: "pc1", code: "SARAH20", discountLabel: "20% off for 3 months", off: false, conversions: 14, earned: [{ currency: "usd", total: "336.00" }] },
-        { id: "pc2", code: "SARAHVIP", discountLabel: null, off: true, conversions: 3, earned: [{ currency: "usd", total: "72.00" }] },
+        { id: "pc1", code: "SARAH20", discountLabel: "20% off for 3 months", issued: true, off: false, conversions: 14, earned: [{ currency: "usd", total: "336.00" }] },
+        { id: "pc2", code: "SARAHVIP", discountLabel: null, issued: false, off: true, conversions: 3, earned: [{ currency: "usd", total: "72.00" }] },
       ]}
     />
   );

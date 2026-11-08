@@ -178,6 +178,7 @@ export default async function AffiliatesPage({
       promoCodes: promoCodes.map((c) => ({
         id: c.id,
         code: c.code,
+        issued: c.issued,
         off: c.off,
         discountLabel: c.discountLabel,
         sales: c.conversions,

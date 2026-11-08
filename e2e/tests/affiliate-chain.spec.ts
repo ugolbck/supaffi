@@ -225,7 +225,8 @@ test("a promo code earns for its affiliate with no click", async ({ browser }) =
   await sheet.getByRole("button", { name: "Turn off" }).click();
   await owner.getByRole("alertdialog").getByRole("button", { name: "Turn off" }).click();
   await expect(sheet.getByRole("button", { name: "Create code" })).toBeVisible();
-  await expect(sheet.getByLabel("New promo code")).not.toHaveValue("ALICE20");
+  await expect(sheet.getByLabel("New promo code")).toHaveValue("ALICE");
+  await expect(sheet.getByRole("listitem").filter({ hasText: "ALICE20" })).toContainText("Off");
 
   await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard/links`);
   await expect(affiliate.getByRole("cell", { name: /ALICE20/ })).toContainText("Off");
