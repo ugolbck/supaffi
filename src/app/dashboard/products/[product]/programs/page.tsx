@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import type { CommissionDurationType } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
-import { listProgramsForMerchant } from "@/lib/program";
+import { couponsForProgramForm, listProgramsForMerchant } from "@/lib/program";
 import type { ProgramFormValues } from "@/lib/programValidation";
 import { signupLinkFor } from "@/lib/url";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,8 @@ type Program = {
   attributionWindowDays: number;
   holdingPeriodDays: number;
   signupOpen: boolean;
+  stripeCouponId: string | null;
+  discountLabel: string | null;
   affiliateCount: number;
 };
 
@@ -78,6 +80,12 @@ export default async function ProgramsPage({
 
   // An id that names nothing opens nothing, rather than an empty form.
   const editing = query.edit ? programs.find((p) => p.id === query.edit) ?? null : null;
+  // Asked of Stripe only while a form is open, never for the list itself.
+  const coupons = query.new || editing ? await couponsForProgramForm(ownerId, merchant.id) : null;
+  const discountFor = (p: Program | null) =>
+    coupons
+      ? { coupons, value: p?.stripeCouponId ?? null, replaceKeyHref: `/dashboard/products/${merchant.slug}/settings?replace=stripe-key` }
+      : undefined;
 
   return (
     <Page>
@@ -102,6 +110,7 @@ export default async function ProgramsPage({
             attributionDays={p.attributionWindowDays}
             holdingDays={p.holdingPeriodDays}
             affiliateCount={p.affiliateCount}
+            discount={p.stripeCouponId ? p.discountLabel : null}
             signupLink={p.signupOpen ? signupLinkFor(merchant.domain, p.slug, defaultSlug) : null}
             editHref={`${base}?edit=${p.id}`}
           />
@@ -113,6 +122,7 @@ export default async function ProgramsPage({
           title="New program"
           action={createProgramAction.bind(null, productRef)}
           signupOpen
+          discount={discountFor(null)}
           listHref={base}
         />
       )}
@@ -122,6 +132,7 @@ export default async function ProgramsPage({
           action={updateProgramAction.bind(null, productRef, editing.id)}
           initial={toFormValues(editing)}
           signupOpen={editing.signupOpen}
+          discount={discountFor(editing)}
           listHref={base}
         />
       )}

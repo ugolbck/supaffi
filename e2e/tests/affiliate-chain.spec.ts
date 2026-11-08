@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { paymentLinkSale, sale } from "./provider";
+import { paymentLinkSale, promoCodeSale, sale } from "./provider";
 
 // One owner, one product, one affiliate, driven through the real screens:
 // setup, onboarding, signup, the affiliate link landing on the merchant's
@@ -174,4 +174,60 @@ test("a Payment Link on the merchant's page earns a commission", async ({ browse
     await expect(row).toBeVisible();
     await expect(row.getByRole("cell", { name: "Flagged" })).toHaveCount(0);
   });
+});
+
+test("a promo code earns for its affiliate with no click", async ({ browser }) => {
+  // The owner gives the program a discount, picked from their Stripe coupons.
+  await owner.goto(`${ADMIN}/dashboard/products/shop/programs`);
+  await owner.getByRole("button", { name: "Edit" }).first().click();
+  await owner.locator("#program-discount").click();
+  await owner.getByRole("option", { name: "Partners · 20% off for 3 months" }).click();
+  await owner.getByRole("button", { name: "Save" }).click();
+  // Saved: the sheet closes onto the card, which now shows the discount.
+  await expect(owner.getByRole("dialog")).toHaveCount(0);
+  await expect(owner.getByText("20% off for 3 months")).toBeVisible();
+
+  // The affiliate claims their code from the overview, named for them already.
+  await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard`);
+  const field = affiliate.getByLabel("Your promo code");
+  await expect(field).toHaveValue("ALICE20");
+  // A name Stripe already has is refused before anything is created.
+  await field.fill("partner20");
+  await affiliate.getByRole("button", { name: "Create code" }).click();
+  await expect(affiliate.getByRole("alert").filter({ hasText: "That code is taken" })).toBeVisible();
+  await field.fill("alice20");
+  await affiliate.getByRole("button", { name: "Create code" }).click();
+  await expect(affiliate.getByText("ALICE20", { exact: true })).toBeVisible();
+  await expect(affiliate.getByRole("button", { name: "Create code" })).toHaveCount(0);
+
+  const buyer = await newPage(browser);
+  const result = await promoCodeSale(buyer, {
+    code: "ALICE20",
+    email: "codebuyer@example.com",
+    amount: 7000,
+    cardFingerprint: "fp_code_buyer_card",
+  });
+  expect(result.delivered).toEqual([200]);
+
+  // A different amount from every other sale, so this commission is its own.
+  await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
+  await eventually(owner, async () => {
+    const row = owner.getByRole("row").filter({ has: owner.getByRole("cell", { name: "$21.00" }) });
+    await expect(row).toBeVisible();
+    await expect(row.getByRole("cell", { name: "Flagged" })).toHaveCount(0);
+  });
+
+  // The owner turns it off; the affiliate can claim a new one.
+  await owner.goto(`${ADMIN}/dashboard/products/shop/affiliates`);
+  await owner.getByRole("link", { name: AFFILIATE.name }).first().click();
+  const sheet = owner.getByRole("dialog");
+  await expect(sheet.getByText("ALICE20")).toBeVisible();
+  await sheet.getByRole("button", { name: "Turn off" }).click();
+  await owner.getByRole("alertdialog").getByRole("button", { name: "Turn off" }).click();
+  await expect(sheet.getByRole("button", { name: "Create code" })).toBeVisible();
+  await expect(sheet.getByLabel("New promo code")).toHaveValue("ALICE");
+  await expect(sheet.getByRole("listitem").filter({ hasText: "ALICE20" })).toContainText("Off");
+
+  await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard/links`);
+  await expect(affiliate.getByRole("cell", { name: /ALICE20/ })).toContainText("Off");
 });

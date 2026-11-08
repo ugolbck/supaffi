@@ -56,8 +56,10 @@ export type SheetCommission = {
   flagReason: string | null;
   /** What it is waiting on, or what happened to it. */
   stateLabel: string;
-  /** When the click this sale was attributed to happened. */
-  clickLabel: string;
+  /** When the click this sale was attributed to happened. Null for a promo code sale. */
+  clickLabel: string | null;
+  /** The promo code that earned the sale, when no click did. */
+  promoCodeLabel?: string | null;
   /** The link that click came through, when it still has one. */
   linkLabel: string | null;
   reference: { text: string; href: string | null } | null;
@@ -263,7 +265,12 @@ export function CommissionSheet({
                 <span className="text-muted-foreground">No reference</span>
               )}
             </Line>
-            <Line label="Click">{commission.clickLabel}</Line>
+            {commission.clickLabel && <Line label="Click">{commission.clickLabel}</Line>}
+            {commission.promoCodeLabel && (
+              <Line label="Promo code">
+                <span className="font-mono text-xs">{commission.promoCodeLabel}</span>
+              </Line>
+            )}
             {commission.linkLabel && (
               <Line label="Link">
                 <span className="font-mono text-xs">{commission.linkLabel}</span>

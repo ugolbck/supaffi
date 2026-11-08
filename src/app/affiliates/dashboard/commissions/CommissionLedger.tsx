@@ -1,5 +1,5 @@
 import { formatMoney, formatDate } from "@/lib/format";
-import { Coins } from "lucide-react";
+import { Coins, TicketPercent } from "lucide-react";
 import type { AffiliateCommissionRow, AffiliateCommissionStatus } from "@/lib/affiliate";
 import { voidReasonText } from "@/lib/commissionReason";
 import { cn } from "@/lib/utils";
@@ -57,6 +57,7 @@ export type LedgerRow = {
   grossAmount: string | null;
   status: AffiliateCommissionStatus;
   linkCode: string | null;
+  promoCode?: string | null;
   /** A refund adjustment row an older version wrote. None are written any more. */
   isAdjustment: boolean;
   /** When the money arrives. The first thing an affiliate asks a row. */
@@ -105,6 +106,7 @@ export function toLedgerRow(row: AffiliateCommissionRow): LedgerRow {
     grossAmount: row.grossAmount ? formatMoney(row.grossAmount, row.currency) : null,
     status: row.status,
     linkCode: row.linkCode,
+    promoCode: row.promoCode ?? null,
     isAdjustment: row.isAdjustment,
     stateLabel: commissionStateLabel(row),
     voidReason: row.voidReason,
@@ -216,7 +218,7 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
               Status
             </TableHead>
             <TableHead className="h-9 w-[16%] text-[13px] font-medium text-neutral-700">
-              Link
+              Source
             </TableHead>
             <TableHead className="h-9 w-[40%] text-[13px] font-medium text-neutral-700">
               Detail
@@ -266,8 +268,11 @@ export function CommissionLedger({ rows, filtered }: { rows: LedgerRow[]; filter
                 <Badge className={STATUS_STYLES[row.status]}>{STATUS_LABELS[row.status]}</Badge>
               </TableCell>
               <TableCell className="align-top">
-                <span className="block truncate font-mono text-[13px] text-muted-foreground">
-                  {row.linkCode ?? "Deleted"}
+                <span className="flex min-w-0 items-center gap-1.5 font-mono text-[13px] text-muted-foreground">
+                  {!row.linkCode && row.promoCode && (
+                    <TicketPercent role="img" aria-label="Promo code" className="size-3.5 shrink-0" />
+                  )}
+                  <span className="truncate">{row.linkCode ?? row.promoCode ?? "Deleted"}</span>
                 </span>
               </TableCell>
               <TableCell className="align-top">

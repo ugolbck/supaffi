@@ -38,6 +38,19 @@ export async function paymentLinkSale(buyer: Page, input: { via: string; email: 
   return { href, referral, delivered: (await res.json()).deliveries.map((d: { status: number }) => d.status) };
 }
 
+// A buyer who never clicked a link and types an affiliate's promo code at the
+// provider's checkout, which this suite does not load.
+export async function promoCodeSale(
+  buyer: Page,
+  input: { code: string; email: string; amount: number; cardFingerprint?: string }
+): Promise<{ delivered: number[] }> {
+  const res = await buyer.request.post("http://127.0.0.1:12111/_test/checkout", {
+    data: { amount: input.amount, email: input.email, promotion_code: input.code, cardFingerprint: input.cardFingerprint },
+  });
+  expect(res.ok()).toBe(true);
+  return { delivered: (await res.json()).deliveries.map((d: { status: number }) => d.status) };
+}
+
 export async function sale(buyer: Page, input: { via?: string; email: string }): Promise<SaleResult> {
   const landing = input.via ? `https://shop.test/?via=${input.via}` : "https://shop.test/";
   await buyer.goto(landing);

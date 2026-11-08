@@ -14,6 +14,7 @@ import { getProductMetrics } from "@/lib/analytics";
 import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { signupLinkFor } from "@/lib/url";
 import { linkUrl, listLinksWithStats } from "@/lib/affiliateLink";
+import { listPromoCodesWithStats, promoCodeOffer } from "@/lib/promoCode";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { TablePagination } from "@/components/dashboard/TablePagination";
@@ -152,9 +153,11 @@ export default async function AffiliatesPage({
 
   let sheetAffiliate: SheetAffiliate | null = null;
   if (selected) {
-    const [details, links] = await Promise.all([
+    const [details, links, promoCodes, offer] = await Promise.all([
       getAffiliateDetails(ownerId, merchant.id, [selected.id]),
       listLinksWithStats(selected.id),
+      listPromoCodesWithStats(selected.id),
+      promoCodeOffer(selected.id),
     ]);
     const detail = details[selected.id];
     sheetAffiliate = {
@@ -172,6 +175,16 @@ export default async function AffiliatesPage({
         url: linkUrl(merchant.websiteUrl, l),
         clicks: l.clicks,
       })),
+      promoCodes: promoCodes.map((c) => ({
+        id: c.id,
+        code: c.code,
+        issued: c.issued,
+        off: c.off,
+        discountLabel: c.discountLabel,
+        sales: c.conversions,
+        earned: [money(c.earned, fallbackCurrency), moneyHint(c.earned)].filter(Boolean).join(" · "),
+      })),
+      codeToIssue: offer?.kind === "claim" ? { suggested: offer.suggested, discountLabel: offer.discountLabel } : null,
       commissions: (detail?.commissions ?? []).map((c) => ({
         id: c.id,
         date: formatDate(c.createdAt),

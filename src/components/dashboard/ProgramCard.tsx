@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, Clock, Link2, Pencil, Users } from "lucide-react";
+import { CalendarDays, Clock, Pencil, TicketPercent, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 
@@ -19,6 +19,7 @@ export function ProgramCard({
   attributionDays,
   holdingDays,
   affiliateCount,
+  discount,
   signupLink,
   editHref,
 }: {
@@ -29,6 +30,8 @@ export function ProgramCard({
   attributionDays: number;
   holdingDays: number;
   affiliateCount: number;
+  /** What a customer gets with an affiliate's code, "20% off for 3 months". Null: no codes. */
+  discount?: string | null;
   /** Null when the program's signup is closed. */
   signupLink: string | null;
   editHref: string;
@@ -52,11 +55,19 @@ export function ProgramCard({
         </div>
       </div>
       <div className="flex items-center justify-between gap-4 px-5 py-3">
-        <span className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Users className="size-4" />
-          <span className="tabular-nums">{affiliateCount === 1 ? "1 affiliate" : `${affiliateCount} affiliates`}</span>
+        <span className="flex min-w-0 items-center gap-4 text-sm text-muted-foreground">
+          <span className="flex shrink-0 items-center gap-2">
+            <Users className="size-4" />
+            <span className="tabular-nums">{affiliateCount === 1 ? "1 affiliate" : `${affiliateCount} affiliates`}</span>
+          </span>
+          {discount && (
+            <span className="flex min-w-0 items-center gap-2">
+              <TicketPercent className="size-4 shrink-0" />
+              <span className="truncate">{discount}</span>
+            </span>
+          )}
         </span>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           {signupLink ? (
             <CopyLinkButton link={signupLink} size="sm" label="Copy signup link" />
           ) : (

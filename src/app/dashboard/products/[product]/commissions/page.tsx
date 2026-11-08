@@ -211,7 +211,8 @@ export default async function CommissionsPage({
         flagReason: selected.flagReason,
         stateLabel: stateLabel(selected),
         reference: referenceFor(selected.stripePaymentRef),
-        clickLabel: formatDate(selected.click.at),
+        clickLabel: selected.promoCode ? null : formatDate(selected.click.at),
+        promoCodeLabel: selected.promoCode ? (selected.promoCode.code ?? "Removed") : null,
         linkLabel: selected.click.linkCode
           ? `${selected.click.linkCode} · ${selected.click.destinationPath ?? "/"}`
           : null,

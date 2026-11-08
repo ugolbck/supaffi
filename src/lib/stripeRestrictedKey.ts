@@ -50,6 +50,14 @@ export const KEY_PERMISSIONS = [
     row: "Checkout Sessions",
     why: "reads the tax on a one-time sale, so no commission is earned on it",
   },
+  // Coupons arrived with promo codes, to list the ones a program's discount
+  // can be ("GET /v1/coupons | coupon_read", keys/permissions-reference.md).
+  {
+    token: "rak_coupon_read",
+    access: "Read",
+    row: "Coupons",
+    why: "lists your coupons, to pick the discount a program's codes give",
+  },
   {
     token: "rak_customer_read",
     access: "Read",
@@ -80,13 +88,27 @@ export const KEY_PERMISSIONS = [
     row: "Payment Methods",
     why: "spots an affiliate buying through their own link",
   },
+  // Promotion Codes arrived with promo codes: Supaffi creates each
+  // affiliate's code from the program's coupon and deactivates it when the
+  // Owner turns it off ("POST /v1/promotion_codes | promotion_code_write",
+  // Stripe docs, keys/permissions-reference.md). Write covers reading too
+  // (keys/restricted-api-keys.md), which linking an existing code needs. No
+  // sale needs it, so a key made before then keeps earning on everything it
+  // did; the first promo code action with it says so and sends the Owner to
+  // replace the key.
+  {
+    token: "rak_promotion_code_write",
+    access: "Write",
+    row: "Promotion Codes",
+    why: "creates each affiliate's promo code and turns it off when you ask",
+  },
   {
     token: "rak_subscription_read",
     access: "Read",
     row: "Subscriptions",
     why: "reads the products a referred subscription bills and whether it is excluded",
   },
-  // The only write in the list, and the reason the webhook step no longer
+  // One of the two writes in the list, and the reason the webhook step no longer
   // exists: with it Supaffi creates its own endpoint and reads back the
   // signing secret, instead of walking the owner through Stripe's three-step
   // wizard and asking them to copy a secret across by hand.
