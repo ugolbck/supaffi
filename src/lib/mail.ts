@@ -4,20 +4,22 @@ import { db } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/crypto";
 
 /**
- * The Owner's own mail server, reached over SMTP. One transport covers every
- * provider an Owner is likely to use (Resend, Brevo, Amazon SES, Postmark,
- * Gmail Workspace all take SMTP), so there is no second way of sending to keep
- * working. Supaffi never sends from the host itself: a VPS sending direct is
- * blocked or lands in spam.
+ * A product's own mail server, reached over SMTP. Per product, like its
+ * Stripe key: each one has its own domain, and its affiliates should hear
+ * from an address on it, which providers only send from once that domain is
+ * verified with them. One transport covers every provider an Owner is likely
+ * to use (Resend, Brevo, Amazon SES, Postmark, Gmail Workspace all take SMTP),
+ * so there is no second way of sending to keep working. Supaffi never sends
+ * from the host itself: a VPS sending direct is blocked or lands in spam.
  *
- * Email is off until an Owner saves settings that pass a test send, and
+ * Email is off until the Owner saves settings that pass a test send, and
  * nothing is queued while it is off.
  */
 
 export type SmtpSettings = { host: string; port: number; user: string; password: string; from: string };
 
 /** What queueing needs to know. No password: that is read only to send. */
-export type OwnerMail = {
+export type ProductMail = {
   ownerEmail: string;
   notifyNewAffiliates: boolean;
   notifyNewSales: boolean;
@@ -25,7 +27,6 @@ export type OwnerMail = {
 };
 
 const MAIL_SELECT = {
-  email: true,
   smtpHost: true,
   smtpPort: true,
   smtpUser: true,
@@ -34,32 +35,33 @@ const MAIL_SELECT = {
   notifyNewAffiliates: true,
   notifyNewSales: true,
   emailAffiliates: true,
+  owner: { select: { email: true } },
 } as const;
 
-type MailRow = Prisma.OwnerGetPayload<{ select: typeof MAIL_SELECT }>;
+type MailRow = Prisma.MerchantGetPayload<{ select: typeof MAIL_SELECT }>;
 
-function toOwnerMail(row: MailRow | null): OwnerMail | null {
-  if (!row?.smtpHost || !row.smtpPort || !row.mailFrom) return null;
+function isOn(row: MailRow | null): row is MailRow & { smtpHost: string; smtpPort: number; mailFrom: string } {
+  return Boolean(row?.smtpHost && row.smtpPort && row.mailFrom);
+}
+
+type MerchantReader = { merchant: { findUnique: typeof db.merchant.findUnique } };
+
+/** The product's mail switches and the Owner's address, or null while email is off. */
+export async function productMail(merchantId: string, client: MerchantReader = db): Promise<ProductMail | null> {
+  const row = await client.merchant.findUnique({ where: { id: merchantId }, select: MAIL_SELECT });
+  if (!isOn(row)) return null;
   return {
-    ownerEmail: row.email,
+    ownerEmail: row.owner.email,
     notifyNewAffiliates: row.notifyNewAffiliates,
     notifyNewSales: row.notifyNewSales,
     emailAffiliates: row.emailAffiliates,
   };
 }
 
-type OwnerReader = { owner: { findUnique: typeof db.owner.findUnique } };
-
-/** The Owner's mail settings, or null while email is off. */
-export async function ownerMail(ownerId: string, client: OwnerReader = db): Promise<OwnerMail | null> {
-  const row = await client.owner.findUnique({ where: { id: ownerId }, select: MAIL_SELECT });
-  return toOwnerMail(row);
-}
-
 /** The server to send through, password decrypted, or null while email is off. */
-export async function smtpSettings(ownerId: string): Promise<SmtpSettings | null> {
-  const row = await db.owner.findUnique({ where: { id: ownerId }, select: MAIL_SELECT });
-  if (!row?.smtpHost || !row.smtpPort || !row.mailFrom) return null;
+export async function smtpSettings(merchantId: string): Promise<SmtpSettings | null> {
+  const row = await db.merchant.findUnique({ where: { id: merchantId }, select: MAIL_SELECT });
+  if (!isOn(row)) return null;
   return {
     host: row.smtpHost,
     port: row.smtpPort,
@@ -69,14 +71,13 @@ export async function smtpSettings(ownerId: string): Promise<SmtpSettings | null
   };
 }
 
-/** Whether a product's Owner can email its affiliates, for the screens that offer it. */
-export async function merchantCanEmailAffiliates(merchantId: string): Promise<boolean> {
-  const merchant = await db.merchant.findUnique({ where: { id: merchantId }, select: { owner: { select: MAIL_SELECT } } });
-  return toOwnerMail(merchant?.owner ?? null) !== null;
+/** Whether the product has email on, for the screens that change with it. */
+export async function productHasEmail(merchantId: string): Promise<boolean> {
+  return isOn(await db.merchant.findUnique({ where: { id: merchantId }, select: MAIL_SELECT }));
 }
 
-// Short enough that a test send on the Account page answers while the Owner
-// is still looking at it, long enough for a slow provider's greeting.
+// Short enough that a test send in the settings answers while the Owner is
+// still looking at it, long enough for a slow provider's greeting.
 const TIMEOUTS = { connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000 };
 
 export function transportFor(settings: SmtpSettings) {
@@ -147,16 +148,26 @@ export type MailSettingsInput = { host: string; port: string; user: string; pass
 
 const HOST = /^[a-z0-9.-]{1,253}$/i;
 
+/** The product, if this Owner has it. Every write below goes through it. */
+async function ownedProduct(ownerId: string, merchantId: string) {
+  return db.merchant.findFirst({
+    where: { id: merchantId, ownerId },
+    select: { id: true, name: true, smtpHost: true, smtpUser: true, smtpPasswordEnc: true, owner: { select: { email: true } } },
+  });
+}
+
 /**
  * Checks the settings by sending a test email to the Owner, and saves them
  * only when it arrives at the server. Settings that cannot send are never
  * saved, so email is either working or off. A blank password keeps the
- * stored one, so editing the server does not mean typing it again.
+ * stored one for the same server and account, so editing the address does not
+ * mean typing it again.
  */
 export async function connectMail(
   ownerId: string,
+  merchantId: string,
   input: MailSettingsInput,
-  test: (settings: SmtpSettings, to: string) => Promise<void>
+  test: (settings: SmtpSettings, to: string, product: string) => Promise<void>
 ): Promise<{ error: string } | { sentTo: string }> {
   const host = input.host.trim().toLowerCase();
   const port = Number(input.port.trim() || "587");
@@ -166,26 +177,23 @@ export async function connectMail(
   if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: "Enter a port between 1 and 65535" };
   if (!isSingleAddress(from)) return { error: "Enter the address emails come from" };
 
-  const owner = await db.owner.findUnique({
-    where: { id: ownerId },
-    select: { email: true, smtpHost: true, smtpUser: true, smtpPasswordEnc: true },
-  });
-  if (!owner) return { error: "Account not found" };
+  const product = await ownedProduct(ownerId, merchantId);
+  if (!product) return { error: "Product not found" };
   // The stored password is only kept for the server and account it belongs
   // to, never handed to a different one.
-  const sameAccount = owner.smtpHost === host && (owner.smtpUser ?? "") === user;
-  if (!input.password && user && !(sameAccount && owner.smtpPasswordEnc)) return { error: "Enter the password" };
-  const password = input.password || (sameAccount && owner.smtpPasswordEnc ? decrypt(owner.smtpPasswordEnc) : "");
+  const sameAccount = product.smtpHost === host && (product.smtpUser ?? "") === user;
+  if (!input.password && user && !(sameAccount && product.smtpPasswordEnc)) return { error: "Enter the password" };
+  const password = input.password || (sameAccount && product.smtpPasswordEnc ? decrypt(product.smtpPasswordEnc) : "");
   const settings = { host, port, user, password, from };
 
   try {
-    await test(settings, owner.email);
+    await test(settings, product.owner.email, product.name);
   } catch (err) {
     return { error: mailErrorText(err, settings) };
   }
 
-  await db.owner.update({
-    where: { id: ownerId },
+  await db.merchant.update({
+    where: { id: product.id },
     data: {
       smtpHost: host,
       smtpPort: port,
@@ -196,13 +204,13 @@ export async function connectMail(
       emailFailedAt: null,
     },
   });
-  return { sentTo: owner.email };
+  return { sentTo: product.owner.email };
 }
 
 /** Turns email off. Anything still queued is dropped by the worker unsent. */
-export async function disconnectMail(ownerId: string): Promise<void> {
-  await db.owner.update({
-    where: { id: ownerId },
+export async function disconnectMail(ownerId: string, merchantId: string): Promise<void> {
+  await db.merchant.updateMany({
+    where: { id: merchantId, ownerId },
     data: { smtpHost: null, smtpPort: null, smtpUser: null, smtpPasswordEnc: null, mailFrom: null, emailFailure: null, emailFailedAt: null },
   });
 }
@@ -210,14 +218,14 @@ export async function disconnectMail(ownerId: string): Promise<void> {
 export const MAIL_SWITCHES = ["notifyNewAffiliates", "notifyNewSales", "emailAffiliates"] as const;
 export type MailSwitch = (typeof MAIL_SWITCHES)[number];
 
-export async function setMailSwitch(ownerId: string, name: MailSwitch, on: boolean): Promise<void> {
+export async function setMailSwitch(ownerId: string, merchantId: string, name: MailSwitch, on: boolean): Promise<void> {
   if (!MAIL_SWITCHES.includes(name)) return;
-  await db.owner.update({ where: { id: ownerId }, data: { [name]: on } });
+  await db.merchant.updateMany({ where: { id: merchantId, ownerId }, data: { [name]: on } });
 }
 
 /** A send that went through: whatever failed before works again. */
-export async function clearMailFailure(ownerId: string): Promise<void> {
-  await db.owner.updateMany({ where: { id: ownerId, emailFailure: { not: null } }, data: { emailFailure: null, emailFailedAt: null } });
+export async function clearMailFailure(merchantId: string): Promise<void> {
+  await db.merchant.updateMany({ where: { id: merchantId, emailFailure: { not: null } }, data: { emailFailure: null, emailFailedAt: null } });
 }
 
 export type MailStatus = {
@@ -231,11 +239,21 @@ export type MailStatus = {
   failure: { message: string; at: Date } | null;
 } | null;
 
-/** What the Account page shows: no password, ever. */
-export async function mailStatus(ownerId: string): Promise<MailStatus> {
-  const row = await db.owner.findUnique({
-    where: { id: ownerId },
-    select: { ...MAIL_SELECT, smtpPasswordEnc: false, emailFailure: true, emailFailedAt: true },
+/** What the product's settings show: no password, ever. */
+export async function mailStatus(ownerId: string, merchantId: string): Promise<MailStatus> {
+  const row = await db.merchant.findFirst({
+    where: { id: merchantId, ownerId },
+    select: {
+      smtpHost: true,
+      smtpPort: true,
+      smtpUser: true,
+      mailFrom: true,
+      notifyNewAffiliates: true,
+      notifyNewSales: true,
+      emailAffiliates: true,
+      emailFailure: true,
+      emailFailedAt: true,
+    },
   });
   if (!row?.smtpHost || !row.smtpPort || !row.mailFrom) return null;
   return {

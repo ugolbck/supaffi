@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { createAffiliate } from "@/lib/affiliate";
+import { createAffiliateResetLink } from "@/lib/affiliatePassword";
 import { markCommissionsPaid } from "@/lib/commission";
 import { emailPasswordLink } from "@/lib/notify";
 import { createCommissionUnlessSelfReferral } from "@/lib/worker/recordCommission";
@@ -20,12 +21,16 @@ async function clearAll() {
   await clearReferralTables();
 }
 
-async function ownerWithMail(switches: { notifyNewAffiliates?: boolean; notifyNewSales?: boolean; emailAffiliates?: boolean } = {}) {
+type Switches = { notifyNewAffiliates?: boolean; notifyNewSales?: boolean; emailAffiliates?: boolean };
+
+/** A product with email on, and its owner. */
+async function productWithMail(switches: Switches = {}) {
   const owner = await seedOwner();
-  return db.owner.update({
-    where: { id: owner.id },
+  const merchant = await db.merchant.update({
+    where: { id: (await seedMerchant(owner.id)).id },
     data: { smtpHost: "smtp.example.com", smtpPort: 587, smtpUser: "u", smtpPasswordEnc: encrypt("p"), mailFrom: "hi@example.com", ...switches },
   });
+  return { owner, merchant };
 }
 
 function sale(affiliateId: string, clickId: string, ref: string, extra: { status?: "PENDING" | "FLAGGED" | "VOIDED" } = {}) {
@@ -63,8 +68,7 @@ describe("notifications", () => {
   });
 
   it("tells the owner who joined, and welcomes the affiliate with their link and terms", async () => {
-    const owner = await ownerWithMail();
-    const merchant = await seedMerchant(owner.id);
+    const { owner, merchant } = await productWithMail();
     const { program } = await seedReferral(merchant);
     await createAffiliate(merchant.id, program.id, { name: "Alice", email: "alice@example.com", passwordHash: "x", code: "alice" });
 
@@ -80,7 +84,7 @@ describe("notifications", () => {
   });
 
   it("follows the owner's switches", async () => {
-    const merchant = await seedMerchant((await ownerWithMail({ notifyNewAffiliates: false })).id);
+    const { merchant } = await productWithMail({ notifyNewAffiliates: false });
     const { program } = await seedReferral(merchant);
     await createAffiliate(merchant.id, program.id, { name: "Alice", email: "alice@example.com", passwordHash: "x" });
 
@@ -88,7 +92,7 @@ describe("notifications", () => {
   });
 
   it("announces a referred customer's first sale to both, and not the renewals after it", async () => {
-    const merchant = await seedMerchant((await ownerWithMail()).id);
+    const { merchant } = await productWithMail();
     const { affiliate, click } = await seedReferral(merchant);
     await sale(affiliate.id, click.id, "in_1");
     await sale(affiliate.id, click.id, "in_2");
@@ -101,7 +105,7 @@ describe("notifications", () => {
   });
 
   it("sends a flagged sale to the owner alone, even with sale emails off, and a voided one to nobody", async () => {
-    const merchant = await seedMerchant((await ownerWithMail({ notifyNewSales: false })).id);
+    const { merchant } = await productWithMail({ notifyNewSales: false });
     const flagged = await seedReferral(merchant);
     await sale(flagged.affiliate.id, flagged.click.id, "in_1", { status: "FLAGGED" });
     const voided = await seedReferral(merchant);
@@ -111,7 +115,7 @@ describe("notifications", () => {
   });
 
   it("sends one email for a payout, with its total", async () => {
-    const merchant = await seedMerchant((await ownerWithMail({ notifyNewSales: false })).id);
+    const { merchant } = await productWithMail({ notifyNewSales: false });
     const { affiliate, click } = await seedReferral(merchant);
     await sale(affiliate.id, click.id, "in_1");
     await sale(affiliate.id, click.id, "in_2");
@@ -131,26 +135,21 @@ describe("notifications", () => {
     expect(emails[0].subject).toBe("Product paid you $18.00");
   });
 
-  it("emails a password link: the owner's replaces earlier ones, one asked for keeps them", async () => {
-    const merchant = await seedMerchant((await ownerWithMail({ emailAffiliates: false })).id);
+  it("emails a password link that leaves the owner's copied one working", async () => {
+    const { merchant } = await productWithMail({ emailAffiliates: false });
     const { affiliate } = await seedReferral(merchant);
+    await createAffiliateResetLink(merchant.ownerId, merchant.id, affiliate.id);
 
-    expect(await emailPasswordLink(affiliate.id, "owner")).toBe(true);
-    expect(await emailPasswordLink(affiliate.id, "affiliate")).toBe(true);
+    expect(await emailPasswordLink(affiliate.id)).toBe(true);
+
     expect(await db.affiliateLoginToken.count({ where: { affiliateId: affiliate.id, usedAt: null } })).toBe(2);
-    expect(await emailPasswordLink(affiliate.id, "owner")).toBe(true);
-    expect(await db.affiliateLoginToken.count({ where: { affiliateId: affiliate.id, usedAt: null } })).toBe(1);
-
-    const emails = await db.email.findMany({ orderBy: { createdAt: "asc" } });
-    expect(emails).toHaveLength(3);
-    expect(emails[0].text).toMatch(/\/affiliates\/password\?token=[0-9a-f]{64}/);
-    expect(emails[0].text).toContain("within 3 days");
-    expect(emails[1].text).toContain("within 1 hour");
+    const [email] = await db.email.findMany();
+    expect(email.text).toMatch(/\/affiliates\/password\?token=[0-9a-f]{64}/);
+    expect(email.text).toContain("within 1 hour");
   });
 
   it("never queues an email to a list of addresses", async () => {
-    const owner = await ownerWithMail();
-    const merchant = await seedMerchant(owner.id);
+    const { owner, merchant } = await productWithMail();
     const { program } = await seedReferral(merchant);
     await createAffiliate(merchant.id, program.id, { name: "Eve", email: "eve@example.com, a@victim.test", passwordHash: "x" });
 
@@ -161,7 +160,7 @@ describe("notifications", () => {
     const merchant = await seedMerchant((await seedOwner()).id);
     const { affiliate } = await seedReferral(merchant);
 
-    expect(await emailPasswordLink(affiliate.id, "affiliate")).toBe(false);
+    expect(await emailPasswordLink(affiliate.id)).toBe(false);
     expect(await db.affiliateLoginToken.count()).toBe(0);
   });
 });

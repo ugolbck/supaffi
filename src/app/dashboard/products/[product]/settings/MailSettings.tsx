@@ -26,10 +26,10 @@ import {
   sendTestEmailAction,
   setMailSwitchAction,
   type MailFormState,
-} from "./accountActions";
+} from "./emailActions";
 
 /**
- * The mail server notifications go out through, on the Account page.
+ * The mail server a product's emails go out through, in its settings.
  *
  * Picking a provider fills in its server, so most owners type a key and an
  * address and nothing else. Connecting sends a test email first and saves only
@@ -82,7 +82,9 @@ function providerFor(host: string): string {
 
 const EMPTY: MailFormState = { error: "", sentTo: "" };
 
-export function MailSettings({ status }: { status: MailStatus }) {
+type Product = { id: string; slug: string };
+
+export function MailSettings({ product, status }: { product: Product; status: MailStatus }) {
   // Held here rather than in the form: a connect that works brings the saved
   // settings back with it, which swaps the form out for the connected view in
   // the same render, and the form's own state would go with it.
@@ -92,7 +94,7 @@ export function MailSettings({ status }: { status: MailStatus }) {
   // Cancel is not shown again when it reopens.
   const [seen, setSeen] = useState<MailFormState | null>(null);
   const [connectState, connect, connecting] = useActionState(async (prev: MailFormState, formData: FormData) => {
-    const result = await connectMailAction(prev, formData);
+    const result = await connectMailAction(product, prev, formData);
     if (result.sentTo) {
       setNotice(result);
       setEditing(false);
@@ -101,9 +103,10 @@ export function MailSettings({ status }: { status: MailStatus }) {
   }, EMPTY);
 
   return (
-    <Section title="Notifications">
+    <Section title="Email">
       {status && !editing ? (
         <Connected
+          product={product}
           status={status}
           notice={notice}
           setNotice={setNotice}
@@ -128,7 +131,7 @@ export function MailSettings({ status }: { status: MailStatus }) {
 
 function Row({ label, htmlFor, children }: { label: React.ReactNode; htmlFor?: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[9rem_1fr] sm:items-center sm:gap-4">
+    <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[7rem_1fr] sm:items-center sm:gap-4">
       <Label htmlFor={htmlFor} className="text-muted-foreground">
         {label}
       </Label>
@@ -268,11 +271,13 @@ const SWITCHES: { name: MailSwitch; label: string }[] = [
 ];
 
 function Connected({
+  product,
   status,
   notice,
   setNotice,
   onChange,
 }: {
+  product: Product;
   status: NonNullable<MailStatus>;
   notice: MailFormState;
   setNotice: (state: MailFormState) => void;
@@ -297,7 +302,7 @@ function Connected({
               variant="secondary"
               className="cursor-pointer"
               disabled={pending}
-              onClick={() => startTransition(async () => setNotice(await sendTestEmailAction()))}
+              onClick={() => startTransition(async () => setNotice(await sendTestEmailAction(product)))}
             >
               {pending ? "Sending" : "Send test"}
             </Button>
@@ -336,7 +341,7 @@ function Connected({
 
       <div className="flex flex-col gap-3 border-t border-border pt-4">
         {SWITCHES.map((s) => (
-          <MailToggle key={s.name} name={s.name} label={s.label} on={status[s.name]} />
+          <MailToggle key={s.name} product={product} name={s.name} label={s.label} on={status[s.name]} />
         ))}
       </div>
 
@@ -357,7 +362,7 @@ function Connected({
               onClick={() => {
                 setNotice(EMPTY);
                 startTransition(async () => {
-                  await disconnectMailAction();
+                  await disconnectMailAction(product);
                   setConfirmOff(false);
                 });
               }}
@@ -375,7 +380,7 @@ function Connected({
  * Saves the moment it is ticked. The box shows the new state straight away and
  * goes back if the save fails.
  */
-function MailToggle({ name, label, on }: { name: MailSwitch; label: string; on: boolean }) {
+function MailToggle({ product, name, label, on }: { product: Product; name: MailSwitch; label: string; on: boolean }) {
   const [checked, setChecked] = useState(on);
   const [, startTransition] = useTransition();
   return (
@@ -386,7 +391,7 @@ function MailToggle({ name, label, on }: { name: MailSwitch; label: string; on: 
           setChecked(next);
           startTransition(async () => {
             try {
-              await setMailSwitchAction(name, next);
+              await setMailSwitchAction(product, name, next);
             } catch {
               setChecked(!next);
             }

@@ -15,7 +15,7 @@ import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { signupLinkFor } from "@/lib/url";
 import { linkUrl, listLinksWithStats } from "@/lib/affiliateLink";
 import { listPromoCodesWithStats, promoCodeOffer } from "@/lib/promoCode";
-import { merchantCanEmailAffiliates } from "@/lib/mail";
+import { productHasEmail } from "@/lib/mail";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { TablePagination } from "@/components/dashboard/TablePagination";
@@ -159,7 +159,7 @@ export default async function AffiliatesPage({
       listLinksWithStats(selected.id),
       listPromoCodesWithStats(selected.id),
       promoCodeOffer(selected.id),
-      merchantCanEmailAffiliates(merchant.id),
+      productHasEmail(merchant.id),
     ]);
     const detail = details[selected.id];
     sheetAffiliate = {

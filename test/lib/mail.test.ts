@@ -1,11 +1,22 @@
-// Destructive: clears Email and Owner. Runs against the scratch DATABASE_URL
-// that test/setup.ts enforces, never the dev one.
+// Destructive: clears Email / Commission / Click / AffiliateLink / Affiliate /
+// Program / Merchant / Owner. Runs against the scratch DATABASE_URL that
+// test/setup.ts enforces, never the dev one.
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { db } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/crypto";
-import { connectMail, disconnectMail, headerSafe, mailErrorText, mailStatus, smtpSettings } from "@/lib/mail";
+import {
+  connectMail,
+  disconnectMail,
+  headerSafe,
+  mailErrorText,
+  mailStatus,
+  productHasEmail,
+  smtpSettings,
+  transportFor,
+} from "@/lib/mail";
 import { escape, welcomeEmail } from "@/lib/emails";
 import { sendDueEmails } from "@/lib/worker/sendEmails";
+import { clearReferralTables, seedMerchant, seedOwner } from "./worker/referralFixtures";
 
 process.env.MASTER_ENCRYPTION_KEY ??= "0".repeat(64);
 
@@ -13,19 +24,13 @@ const INPUT = { host: "SMTP.Resend.com ", port: "465", user: "resend", password:
 
 async function clearAll() {
   await db.email.deleteMany();
-  await db.affiliateLoginToken.deleteMany();
-  await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
-  await db.commission.deleteMany();
-  await db.referredSubscription.deleteMany();
-  await db.click.deleteMany();
-  await db.affiliateLink.deleteMany();
-  await db.affiliate.deleteMany();
-  await db.program.deleteMany();
-  await db.merchant.deleteMany();
-  await db.owner.deleteMany();
+  await clearReferralTables();
 }
 
-const newOwner = () => db.owner.create({ data: { email: `o-${crypto.randomUUID()}@example.com`, passwordHash: "x" } });
+async function product() {
+  const owner = await seedOwner();
+  return { owner, merchant: await seedMerchant(owner.id) };
+}
 
 describe("mail settings", () => {
   beforeEach(clearAll);
@@ -34,64 +39,88 @@ describe("mail settings", () => {
     await db.$disconnect();
   });
 
-  it("saves settings only once a test email went through, password encrypted", async () => {
-    const owner = await newOwner();
+  it("saves settings on the product only once a test email went through, password encrypted", async () => {
+    const { owner, merchant } = await product();
     const test = vi.fn(async () => {});
 
-    expect(await connectMail(owner.id, INPUT, test)).toEqual({ sentTo: owner.email });
-    expect(test).toHaveBeenCalledWith({ host: "smtp.resend.com", port: 465, user: "resend", password: "re_key", from: "hi@example.com" }, owner.email);
-    const row = await db.owner.findUniqueOrThrow({ where: { id: owner.id } });
+    expect(await connectMail(owner.id, merchant.id, INPUT, test)).toEqual({ sentTo: owner.email });
+    expect(test).toHaveBeenCalledWith(
+      { host: "smtp.resend.com", port: 465, user: "resend", password: "re_key", from: "hi@example.com" },
+      owner.email,
+      "Product"
+    );
+    const row = await db.merchant.findUniqueOrThrow({ where: { id: merchant.id } });
     expect(row.smtpPasswordEnc).not.toContain("re_key");
     expect(decrypt(row.smtpPasswordEnc!)).toBe("re_key");
+    expect(await productHasEmail(merchant.id)).toBe(true);
+  });
+
+  it("keeps each product's email apart", async () => {
+    const { owner, merchant } = await product();
+    const other = await seedMerchant(owner.id);
+    await connectMail(owner.id, merchant.id, INPUT, async () => {});
+
+    expect(await productHasEmail(other.id)).toBe(false);
+    expect(await mailStatus(owner.id, other.id)).toBeNull();
+  });
+
+  it("refuses a product the owner does not have", async () => {
+    const { merchant } = await product();
+    const stranger = await seedOwner();
+    const test = vi.fn(async () => {});
+
+    expect(await connectMail(stranger.id, merchant.id, INPUT, test)).toEqual({ error: "Product not found" });
+    expect(test).not.toHaveBeenCalled();
+    expect(await mailStatus(stranger.id, merchant.id)).toBeNull();
   });
 
   it("saves nothing when the test fails, and says why", async () => {
-    const owner = await newOwner();
+    const { owner, merchant } = await product();
     const refused = Object.assign(new Error("Invalid login"), { code: "EAUTH", responseCode: 535 });
 
-    expect(await connectMail(owner.id, INPUT, async () => Promise.reject(refused))).toEqual({
+    expect(await connectMail(owner.id, merchant.id, INPUT, async () => Promise.reject(refused))).toEqual({
       error: "The server refused the username or password.",
     });
-    expect(await mailStatus(owner.id)).toBeNull();
+    expect(await mailStatus(owner.id, merchant.id)).toBeNull();
   });
 
   it("keeps the stored password when the field is left blank", async () => {
-    const owner = await newOwner();
-    await connectMail(owner.id, INPUT, async () => {});
+    const { owner, merchant } = await product();
+    await connectMail(owner.id, merchant.id, INPUT, async () => {});
     const test = vi.fn(async () => {});
 
-    await connectMail(owner.id, { ...INPUT, from: "new@example.com", password: "" }, test);
+    await connectMail(owner.id, merchant.id, { ...INPUT, from: "new@example.com", password: "" }, test);
 
-    expect(test).toHaveBeenCalledWith(expect.objectContaining({ password: "re_key", from: "new@example.com" }), owner.email);
-    expect((await smtpSettings(owner.id))?.password).toBe("re_key");
+    expect(test).toHaveBeenCalledWith(expect.objectContaining({ password: "re_key", from: "new@example.com" }), owner.email, "Product");
+    expect((await smtpSettings(merchant.id))?.password).toBe("re_key");
   });
 
   it("never hands a saved password to a different server", async () => {
-    const owner = await newOwner();
-    await connectMail(owner.id, { ...INPUT, user: "me" }, async () => {});
+    const { owner, merchant } = await product();
+    await connectMail(owner.id, merchant.id, { ...INPUT, user: "me" }, async () => {});
     const test = vi.fn(async () => {});
 
-    expect(await connectMail(owner.id, { ...INPUT, host: "smtp.other.com", user: "me", password: "" }, test)).toEqual({
+    expect(await connectMail(owner.id, merchant.id, { ...INPUT, host: "smtp.other.com", user: "me", password: "" }, test)).toEqual({
       error: "Enter the password",
     });
     expect(test).not.toHaveBeenCalled();
   });
 
   it("refuses a malformed server, port or address before trying", async () => {
-    const owner = await newOwner();
+    const { owner, merchant } = await product();
     const test = vi.fn(async () => {});
 
-    expect(await connectMail(owner.id, { ...INPUT, host: "smtp example" }, test)).toMatchObject({ error: expect.any(String) });
-    expect(await connectMail(owner.id, { ...INPUT, port: "70000" }, test)).toMatchObject({ error: expect.any(String) });
-    expect(await connectMail(owner.id, { ...INPUT, from: "nobody" }, test)).toMatchObject({ error: expect.any(String) });
+    expect(await connectMail(owner.id, merchant.id, { ...INPUT, host: "smtp example" }, test)).toMatchObject({ error: expect.any(String) });
+    expect(await connectMail(owner.id, merchant.id, { ...INPUT, port: "70000" }, test)).toMatchObject({ error: expect.any(String) });
+    expect(await connectMail(owner.id, merchant.id, { ...INPUT, from: "a@b.co, c@d.co" }, test)).toMatchObject({ error: expect.any(String) });
     expect(test).not.toHaveBeenCalled();
   });
 
   it("turns off completely", async () => {
-    const owner = await newOwner();
-    await connectMail(owner.id, INPUT, async () => {});
-    await disconnectMail(owner.id);
-    expect(await smtpSettings(owner.id)).toBeNull();
+    const { owner, merchant } = await product();
+    await connectMail(owner.id, merchant.id, INPUT, async () => {});
+    await disconnectMail(owner.id, merchant.id);
+    expect(await smtpSettings(merchant.id)).toBeNull();
   });
 
   it("puts errors in words an owner can act on", () => {
@@ -107,16 +136,24 @@ describe("mail settings", () => {
     expect(email.html).not.toContain("<b>Shop</b>");
     expect(email.text).toContain("<b>Shop</b>");
   });
+
+  it("refuses to send a password over an unencrypted connection", () => {
+    const options = (t: ReturnType<typeof transportFor>) => (t as unknown as { options: { secure?: boolean; requireTLS?: boolean } }).options;
+    expect(options(transportFor({ host: "h", port: 587, user: "u", password: "p", from: "a@b.co" })).requireTLS).toBe(true);
+    expect(options(transportFor({ host: "h", port: 465, user: "u", password: "p", from: "a@b.co" })).secure).toBe(true);
+    // No account, nothing to protect: a local relay without TLS still works.
+    expect(options(transportFor({ host: "h", port: 1025, user: "", password: "", from: "a@b.co" })).requireTLS).toBe(false);
+  });
 });
 
 describe("sending", () => {
   beforeEach(clearAll);
 
-  async function queued(ownerId: string) {
+  async function queued(merchantId: string) {
     return db.email.create({
       // Due a minute ago: the database's clock can run a little behind this one.
       data: {
-        ownerId,
+        merchantId,
         dedupeKey: crypto.randomUUID(),
         to: "a@example.com",
         fromName: "Shop",
@@ -129,28 +166,27 @@ describe("sending", () => {
   }
 
   async function connected() {
-    const owner = await newOwner();
-    await db.owner.update({
-      where: { id: owner.id },
+    const { merchant } = await product();
+    return db.merchant.update({
+      where: { id: merchant.id },
       data: { smtpHost: "smtp.x.com", smtpPort: 587, smtpPasswordEnc: encrypt("p"), mailFrom: "hi@x.com" },
     });
-    return owner;
   }
 
-  it("sends what is due and marks it sent", async () => {
-    const owner = await connected();
-    const email = await queued(owner.id);
+  it("sends what is due, then empties it so a password link does not sit in the database", async () => {
+    const merchant = await connected();
+    const email = await queued(merchant.id);
     const send = vi.fn(async () => {});
 
     await sendDueEmails(send);
 
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ host: "smtp.x.com", password: "p" }), expect.objectContaining({ to: "a@example.com" }));
-    expect((await db.email.findUniqueOrThrow({ where: { id: email.id } })).status).toBe("SENT");
+    expect(await db.email.findUniqueOrThrow({ where: { id: email.id } })).toMatchObject({ status: "SENT", text: "", html: "" });
   });
 
-  it("retries later, then gives up and tells the owner; one that gets through clears it", async () => {
-    const owner = await connected();
-    const email = await queued(owner.id);
+  it("retries later, then gives up and says so in the settings; one that gets through clears it", async () => {
+    const merchant = await connected();
+    const email = await queued(merchant.id);
     const down = vi.fn(async () => Promise.reject(Object.assign(new Error(), { code: "ECONNECTION" })));
 
     await sendDueEmails(down);
@@ -162,24 +198,17 @@ describe("sending", () => {
     await sendDueEmails(down);
     row = await db.email.findUniqueOrThrow({ where: { id: email.id } });
     expect(row.status).toBe("FAILED");
-    expect((await mailStatus(owner.id))?.failure?.message).toBe("Could not reach smtp.x.com on port 587.");
+    expect((await mailStatus(merchant.ownerId, merchant.id))?.failure?.message).toBe("Could not reach smtp.x.com on port 587.");
 
-    await queued(owner.id);
+    await queued(merchant.id);
     await sendDueEmails(vi.fn(async () => {}));
-    expect((await mailStatus(owner.id))?.failure).toBeNull();
-  });
-
-  it("empties what it sent, so a password link does not sit in the database", async () => {
-    const owner = await connected();
-    const email = await queued(owner.id);
-    await sendDueEmails(vi.fn(async () => {}));
-    expect(await db.email.findUniqueOrThrow({ where: { id: email.id } })).toMatchObject({ text: "", html: "" });
+    expect((await mailStatus(merchant.ownerId, merchant.id))?.failure).toBeNull();
   });
 
   it("stops trying an unreachable server for the rest of the batch", async () => {
-    const owner = await connected();
-    await queued(owner.id);
-    await queued(owner.id);
+    const merchant = await connected();
+    await queued(merchant.id);
+    await queued(merchant.id);
     const down = vi.fn(async () => Promise.reject(Object.assign(new Error(), { code: "ETIMEDOUT" })));
 
     await sendDueEmails(down);
@@ -188,11 +217,11 @@ describe("sending", () => {
     expect(await db.email.count({ where: { status: "PENDING" } })).toBe(2);
   });
 
-  it("puts off an owner whose settings cannot be read, without failing the rest", async () => {
-    const owner = await connected();
-    await db.owner.update({ where: { id: owner.id }, data: { smtpPasswordEnc: "not:a:ciphertext" } });
+  it("puts off a product whose settings cannot be read, without failing the rest", async () => {
+    const broken = await connected();
+    await db.merchant.update({ where: { id: broken.id }, data: { smtpPasswordEnc: "not:a:ciphertext" } });
     const other = await connected();
-    await queued(owner.id);
+    await queued(broken.id);
     await queued(other.id);
     const send = vi.fn(async () => {});
 
@@ -204,25 +233,14 @@ describe("sending", () => {
   });
 
   it("drops what was queued before email was turned off", async () => {
-    const owner = await connected();
-    const email = await queued(owner.id);
-    await disconnectMail(owner.id);
+    const merchant = await connected();
+    const email = await queued(merchant.id);
+    await disconnectMail(merchant.ownerId, merchant.id);
     const send = vi.fn(async () => {});
 
     await sendDueEmails(send);
 
     expect(send).not.toHaveBeenCalled();
     expect((await db.email.findUniqueOrThrow({ where: { id: email.id } })).status).toBe("FAILED");
-  });
-});
-
-describe("transport", () => {
-  it("refuses to send a password over an unencrypted connection", async () => {
-    const { transportFor } = await import("@/lib/mail");
-    const options = (t: ReturnType<typeof transportFor>) => (t as unknown as { options: { secure?: boolean; requireTLS?: boolean } }).options;
-    expect(options(transportFor({ host: "h", port: 587, user: "u", password: "p", from: "a@b.co" })).requireTLS).toBe(true);
-    expect(options(transportFor({ host: "h", port: 465, user: "u", password: "p", from: "a@b.co" })).secure).toBe(true);
-    // No account, nothing to protect: a local relay without TLS still works.
-    expect(options(transportFor({ host: "h", port: 1025, user: "", password: "", from: "a@b.co" })).requireTLS).toBe(false);
   });
 });

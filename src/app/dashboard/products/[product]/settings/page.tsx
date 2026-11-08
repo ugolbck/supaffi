@@ -15,6 +15,8 @@ import { isLocalDomain } from "@/lib/url";
 import { ProductForm } from "./ProductForm";
 import { ConnectionSheet } from "./ConnectionSheet";
 import { DeleteProduct } from "./DeleteProduct";
+import { MailSettings } from "./MailSettings";
+import { mailStatus } from "@/lib/mail";
 import {
   replaceStripeKeyAction,
   replaceWebhookSecretAction,
@@ -65,10 +67,11 @@ export default async function SettingsPage({
   if (!merchant) notFound();
 
   const fresh = freshSection(query.fresh);
-  const [checks, keyKind, setup] = await Promise.all([
+  const [checks, keyKind, setup, mail] = await Promise.all([
     runProductChecks(ownerId, merchant.id, fresh ? { fresh: new Set([fresh]) } : {}),
     getStripeKeyKind(ownerId, merchant.id),
     getProductSetup(ownerId, merchant.id),
+    mailStatus(ownerId, merchant.id),
   ]);
   const local = isDevInstance() || isLocalDomain(merchant.domain);
 
@@ -167,6 +170,8 @@ export default async function SettingsPage({
           )}
         </div>
       </Section>
+
+      <MailSettings product={productRef} status={mail} />
 
       <Section title="Danger">
         <DeleteProduct product={productRef} name={merchant.name} />

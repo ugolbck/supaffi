@@ -62,10 +62,10 @@ A SaaS founder or small team that:
 
 ### Email
 
-- Optional, through your own email provider over SMTP. Nothing is sent until you connect one, and settings are only saved once a test email goes through.
+- Optional, through your own email provider over SMTP, set up per product in its settings. Nothing is sent until you connect one, and settings are only saved once a test email goes through.
 - You hear when someone joins and when a referred customer first buys. A sale that looks like a self-referral is always emailed. Renewals are not.
 - Affiliates get a welcome with their link, a note when a referred customer first buys and when they are paid, and password links. Each kind can be turned off.
-- Emails are sent in the background and retried for about an hour. If they keep failing, the Account page says why.
+- Emails are sent in the background and retried for about an hour. If they keep failing, the product's settings say why.
 
 ### Affiliates
 

@@ -2,9 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { availableUpdate, installedVersion, updateCheckEnabled } from "@/lib/version";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
-import { mailStatus } from "@/lib/mail";
 import { EmailForm, PasswordForm } from "./AccountForms";
-import { MailSettings } from "./MailSettings";
 
 /**
  * The account itself, and the instance it runs on.
@@ -22,13 +20,11 @@ export default async function AccountPage() {
   // Answers from the cache and starts a refresh it does not wait for, so a
   // server with no outbound access does not pay for this on every visit.
   const update = availableUpdate();
-  const mail = await mailStatus(session.user.id);
 
   return (
     <Page>
       <PageTitle title="Account" />
 
-      <MailSettings status={mail} />
       <EmailForm email={session.user.email ?? ""} />
       <PasswordForm />
 

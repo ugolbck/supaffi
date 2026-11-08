@@ -5,8 +5,6 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { updateAffiliate } from "@/lib/affiliate";
 import { createAffiliateResetLink } from "@/lib/affiliatePassword";
-import { db } from "@/lib/db";
-import { emailPasswordLink } from "@/lib/notify";
 import { addPromoCode, issuePromoCode, turnOffPromoCode, type PromoCodeResult } from "@/lib/promoCode";
 
 /**
@@ -70,21 +68,6 @@ export async function createPasswordLinkAction(
   const ownerId = await owner();
   const token = await createAffiliateResetLink(ownerId, product.id, affiliateId);
   return token ? { token } : { error: "Affiliate not found" };
-}
-
-/** Emails the affiliate a password link from the owner's own mail server. */
-export async function emailPasswordLinkAction(
-  product: { id: string },
-  affiliateId: string
-): Promise<{ sentTo: string } | { error: string }> {
-  const ownerId = await owner();
-  const affiliate = await db.affiliate.findFirst({
-    where: { id: affiliateId, merchantId: product.id, merchant: { ownerId } },
-    select: { id: true, email: true },
-  });
-  if (!affiliate) return { error: "Affiliate not found" };
-  if (!(await emailPasswordLink(affiliate.id, "owner"))) return { error: "Email is off" };
-  return { sentTo: affiliate.email };
 }
 
 /** Gives the affiliate a Stripe promotion code, looked up by its text. */

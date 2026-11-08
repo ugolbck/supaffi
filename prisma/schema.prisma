@@ -17,24 +17,6 @@ model Owner {
   passwordChangedAt DateTime?
   createdAt         DateTime   @default(now())
   merchants         Merchant[]
-
-  // The Owner's own mail server, for notifications. Email is off while
-  // smtpHost is null, and nothing is queued. The password is encrypted at rest
-  // like the Stripe credentials (ADR 0003).
-  smtpHost            String?
-  smtpPort            Int?
-  smtpUser            String?
-  smtpPasswordEnc     String?
-  mailFrom            String? // the address emails are sent from; the name shown is the product's
-  // What is sent once email is on. All on by default.
-  notifyNewAffiliates Boolean   @default(true)
-  notifyNewSales      Boolean   @default(true) // a referred customer's first sale, and a flagged one
-  emailAffiliates     Boolean   @default(true) // welcome, earned, paid; password links go out regardless
-  // The last email that could not be sent after every retry, shown on the
-  // Account page until one is sent again.
-  emailFailure        String?
-  emailFailedAt       DateTime?
-  emails              Email[]
 }
 
 model Merchant {
@@ -75,7 +57,26 @@ model Merchant {
   webhookEvents         WebhookEvent[]
   referredSubscriptions ReferredSubscription[]
   promoCodes            AffiliatePromoCode[]
+  emails                Email[]
   createdAt             DateTime               @default(now())
+
+  // The product's own mail server, for its notifications, so its affiliates
+  // hear from an address on its own domain. Email is off while smtpHost is
+  // null, and nothing is queued. The password is encrypted at rest like the
+  // Stripe credentials (ADR 0003).
+  smtpHost            String?
+  smtpPort            Int?
+  smtpUser            String?
+  smtpPasswordEnc     String?
+  mailFrom            String? // the address emails are sent from; the name shown is the product's
+  // What is sent once email is on. All on by default.
+  notifyNewAffiliates Boolean   @default(true)
+  notifyNewSales      Boolean   @default(true) // a referred customer's first sale; a flagged one is sent regardless
+  emailAffiliates     Boolean   @default(true) // welcome, earned, paid; password links go out regardless
+  // The last email that could not be sent after every retry, shown in the
+  // product's settings until one is sent again.
+  emailFailure        String?
+  emailFailedAt       DateTime?
 
   @@unique([ownerId, slug])
 }
@@ -396,18 +397,18 @@ model Commission {
 /// the same transaction as what it tells, so a sale never goes unannounced
 /// and a rolled back one is never announced.
 model Email {
-  id        String @id @default(cuid())
-  ownerId   String
-  // Goes with its Owner: an email nobody can send is nothing to keep.
-  owner     Owner  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  // Unique per Owner so a redelivered event or a retried action queues one
+  id         String   @id @default(cuid())
+  merchantId String
+  // Goes with its product: an email nobody can send is nothing to keep.
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  // Unique per product so a redelivered event or a retried action queues one
   // email, never two, e.g. "sale:<commissionId>".
-  dedupeKey String
-  to        String
-  fromName  String
-  subject   String
-  text      String
-  html      String
+  dedupeKey  String
+  to         String
+  fromName   String
+  subject    String
+  text       String
+  html       String
 
   status        EmailStatus @default(PENDING)
   attempts      Int         @default(0)
@@ -416,7 +417,7 @@ model Email {
   sentAt        DateTime?
   createdAt     DateTime    @default(now())
 
-  @@unique([ownerId, dedupeKey])
+  @@unique([merchantId, dedupeKey])
   @@index([status, nextAttemptAt])
 }
 

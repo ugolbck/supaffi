@@ -22,7 +22,7 @@ export async function requestPasswordLink(_prev: { sentTo: string }, formData: F
   const merchant = host ? await getMerchantByDomain(host) : null;
   if (merchant && reservePasswordLink(merchant.id, email, clientAddress(new Headers(requestHeaders)))) {
     const affiliate = await findAffiliateForLogin(merchant.id, email);
-    if (affiliate) await emailPasswordLink(affiliate.id, "affiliate");
+    if (affiliate) await emailPasswordLink(affiliate.id);
   }
   return { sentTo: email };
 }

@@ -3,7 +3,6 @@
 import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MailCheck } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -41,7 +40,6 @@ import {
   addPromoCodeAction,
   changeProgramAction,
   createPasswordLinkAction,
-  emailPasswordLinkAction,
   issuePromoCodeAction,
   setCustomRateAction,
   turnOffPromoCodeAction,
@@ -72,7 +70,7 @@ export type SheetAffiliate = {
   links: { url: string; clicks: number }[];
   /** Live ones first, then turned off ones. `earned` already formatted, like the commission amounts below. */
   promoCodes: { id: string; code: string; issued: boolean; off: boolean; discountLabel: string | null; sales: number; earned: string }[];
-  /** The owner has email on, so a password link can be emailed. */
+  /** The product has email on, so the affiliate resets their own password. */
   canEmail: boolean;
   /** Set when the affiliate has no code and their program has a discount to make one from. */
   codeToIssue: { suggested: string; discountLabel: string } | null;
@@ -247,8 +245,10 @@ function Field({ title, value, children }: { title: string; value?: ReactNode; c
 
 /**
  * A forgotten password, or an affiliate who signed up before passwords
- * existed, handled by the Owner: a one-time link, emailed when the Owner has
- * email on, or made here to send themselves. A new one voids the last.
+ * existed. With email on, the affiliate resets it from the login page, so the
+ * Owner only gets a quiet fallback for an address that does not receive mail.
+ * Without it, the Owner makes a one-time link here and sends it themselves.
+ * A new link voids the last.
  */
 function PasswordLink({
   affiliateId,
@@ -264,7 +264,6 @@ function PasswordLink({
   domain: string;
 }) {
   const [link, setLink] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -272,10 +271,7 @@ function PasswordLink({
     startTransition(async () => {
       const result = await createPasswordLinkAction(product, affiliateId);
       if ("error" in result) setError(result.error);
-      else {
-        setSentTo(null);
-        setLink(`${originFor(domain)}/affiliates/password?token=${result.token}`);
-      }
+      else setLink(`${originFor(domain)}/affiliates/password?token=${result.token}`);
     });
 
   return (
@@ -288,40 +284,17 @@ function PasswordLink({
           <Input readOnly value={link} className="min-w-0 flex-1 font-mono text-xs" onFocus={(e) => e.target.select()} />
           <CopyLinkButton link={link} size="lg" label="Copy" />
         </div>
-      ) : sentTo ? (
-        <p className="flex animate-in items-center gap-1.5 text-sm duration-300 fade-in-0">
-          <MailCheck aria-hidden className="size-4 text-status-success" />
-          Password link sent to {sentTo}
-        </p>
       ) : canEmail ? (
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            size="lg"
-            variant="secondary"
-            className="cursor-pointer"
-            disabled={pending}
-            onClick={() =>
-              startTransition(async () => {
-                const result = await emailPasswordLinkAction(product, affiliateId);
-                if ("error" in result) setError(result.error);
-                else setSentTo(result.sentTo);
-              })
-            }
-          >
-            Email password link
-          </Button>
-          <Button
-            type="button"
-            variant="link"
-            size="sm"
-            className="cursor-pointer px-0 text-xs text-muted-foreground hover:text-foreground"
-            disabled={pending}
-            onClick={createLink}
-          >
-            Copy a link instead
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          className="h-auto cursor-pointer self-start px-0 text-xs text-muted-foreground hover:text-foreground"
+          disabled={pending}
+          onClick={createLink}
+        >
+          Copy a password link
+        </Button>
       ) : (
         <Button type="button" size="lg" variant="secondary" className="cursor-pointer self-start" disabled={pending} onClick={createLink}>
           Create password link

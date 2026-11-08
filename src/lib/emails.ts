@@ -199,7 +199,7 @@ export function paidEmail(args: { to: string; product: string; amount: string; h
   });
 }
 
-export function passwordLinkEmail(args: { to: string; product: string; href: string; validFor: string }): OutgoingEmail {
+export function passwordLinkEmail(args: { to: string; product: string; href: string }): OutgoingEmail {
   return render({
     to: args.to,
     product: args.product,
@@ -207,16 +207,16 @@ export function passwordLinkEmail(args: { to: string; product: string; href: str
     heading: "Set your password",
     lines: [{ text: `Use this button to set a password for your ${args.product} affiliate account.` }],
     button: { label: "Set password", href: args.href },
-    footnote: `The link works once, within ${args.validFor}. If you didn't ask for it, ignore this email.`,
+    footnote: "The link works once, within 1 hour. If you didn't ask for it, ignore this email.",
   });
 }
 
-export function testEmail(args: { to: string }): OutgoingEmail {
+export function testEmail(args: { to: string; product: string }): OutgoingEmail {
   return render({
     to: args.to,
-    product: "Supaffi",
-    subject: "Supaffi can send email",
+    product: args.product,
+    subject: `${args.product} can send email`,
     heading: "Email works",
-    lines: [{ text: "This is the test email from your Supaffi account settings." }],
+    lines: [{ text: `This is the test email from ${args.product}'s settings in Supaffi.` }],
   });
 }

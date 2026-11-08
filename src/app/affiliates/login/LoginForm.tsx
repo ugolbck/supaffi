@@ -15,7 +15,7 @@ export function LoginForm({
 }: {
   merchantName: string | null;
   canJoin: boolean;
-  /** The Owner has email on, so a forgotten password can be reset here. */
+  /** The product has email on, so a forgotten password can be reset here. */
   canReset: boolean;
 }) {
   const [state, formAction, pending] = useActionState(loginAffiliate, { error: "" });

@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { isSingleAddress, ownerMail, type OutgoingEmail } from "@/lib/mail";
+import { isSingleAddress, productMail, type OutgoingEmail } from "@/lib/mail";
 import {
   earnedEmail,
   flaggedSaleEmail,
@@ -14,26 +14,26 @@ import { formatDate, formatMoney, termsLine } from "@/lib/format";
 import { linkUrl } from "@/lib/affiliateLink";
 import { dashboardOrigin } from "@/lib/instance";
 import { originFor } from "@/lib/url";
-import { issueResetToken, LINK_TTL_MS } from "@/lib/affiliatePassword";
+import { issueResetToken } from "@/lib/affiliatePassword";
 
 /**
  * Queues the emails an event calls for, inside the transaction that records
- * the event. Nothing is queued while the Owner has email off, so an instance
+ * the event. Nothing is queued while the product has email off, so an instance
  * without it behaves exactly as before.
  *
- * Each email has a key unique per Owner, so an event processed twice (a
+ * Each email has a key unique per product, so an event processed twice (a
  * redelivered webhook, a retried action) queues it once.
  */
 
 type Tx = Prisma.TransactionClient;
 
-async function queue(tx: Tx, ownerId: string, emails: { key: string; email: OutgoingEmail }[]): Promise<void> {
+async function queue(tx: Tx, merchantId: string, emails: { key: string; email: OutgoingEmail }[]): Promise<void> {
   // One plain address per email. Signup accepts loose addresses, and a comma
   // list would otherwise have the Owner's server copy the email to strangers.
   const sendable = emails.filter(({ email }) => isSingleAddress(email.to));
   if (sendable.length === 0) return;
   await tx.email.createMany({
-    data: sendable.map(({ key, email }) => ({ ownerId, dedupeKey: key, ...email })),
+    data: sendable.map(({ key, email }) => ({ merchantId, dedupeKey: key, ...email })),
     skipDuplicates: true,
   });
 }
@@ -65,12 +65,12 @@ export async function notifyAffiliateJoined(tx: Tx, affiliateId: string): Promis
           discountLabel: true,
         },
       },
-      merchant: { select: { ownerId: true, name: true, slug: true, domain: true, websiteUrl: true } },
+      merchant: { select: { id: true, name: true, slug: true, domain: true, websiteUrl: true } },
     },
   });
   if (!affiliate) return;
   const { merchant, program } = affiliate;
-  const mail = await ownerMail(merchant.ownerId, tx);
+  const mail = await productMail(merchant.id, tx);
   if (!mail) return;
 
   const emails: { key: string; email: OutgoingEmail }[] = [];
@@ -107,7 +107,7 @@ export async function notifyAffiliateJoined(tx: Tx, affiliateId: string): Promis
       }),
     });
   }
-  await queue(tx, merchant.ownerId, emails);
+  await queue(tx, merchant.id, emails);
 }
 
 /**
@@ -134,7 +134,7 @@ export async function notifyCommission(tx: Tx, commissionId: string): Promise<vo
         select: {
           email: true,
           name: true,
-          merchant: { select: { ownerId: true, name: true, slug: true, domain: true } },
+          merchant: { select: { id: true, name: true, slug: true, domain: true } },
         },
       },
     },
@@ -147,7 +147,7 @@ export async function notifyCommission(tx: Tx, commissionId: string): Promise<vo
 
   const { affiliate } = commission;
   const { merchant } = affiliate;
-  const mail = await ownerMail(merchant.ownerId, tx);
+  const mail = await productMail(merchant.id, tx);
   if (!mail) return;
 
   const amount = formatMoney(commission.amount.toString(), commission.currency);
@@ -195,7 +195,7 @@ export async function notifyCommission(tx: Tx, commissionId: string): Promise<vo
       });
     }
   }
-  await queue(tx, merchant.ownerId, emails);
+  await queue(tx, merchant.id, emails);
 }
 
 /** A payout marked paid: one email for the whole of it. */
@@ -205,12 +205,12 @@ export async function notifyPaid(
 ): Promise<void> {
   const affiliate = await tx.affiliate.findUnique({
     where: { id: args.affiliateId },
-    select: { email: true, merchant: { select: { ownerId: true, name: true, domain: true } } },
+    select: { email: true, merchant: { select: { id: true, name: true, domain: true } } },
   });
   if (!affiliate) return;
-  const mail = await ownerMail(affiliate.merchant.ownerId, tx);
+  const mail = await productMail(affiliate.merchant.id, tx);
   if (!mail?.emailAffiliates) return;
-  await queue(tx, affiliate.merchant.ownerId, [
+  await queue(tx, affiliate.merchant.id, [
     {
       key: `paid:${args.affiliateId}:${args.paidAt.getTime()}`,
       email: paidEmail({
@@ -226,32 +226,29 @@ export async function notifyPaid(
 export const SELF_SERVE_LINK_TTL_MS = 60 * 60_000;
 
 /**
- * Emails an Affiliate a password link. Sent whatever the Owner's switches say:
- * it is asked for, not announced. One the Owner sends replaces any unused
- * link, like a copied one, and lasts as long; one the Affiliate asks for lasts
- * an hour and replaces nothing (see issueResetToken). Answers false when the
- * Owner has email off.
+ * Emails a password link to an Affiliate who asked for one. Sent whatever the
+ * switches say: it is asked for, not announced. It lasts an hour and replaces
+ * no other link (see issueResetToken), so a stranger who knows the email
+ * cannot void one the Owner copied for them. Answers false while the product
+ * has email off.
  */
-export async function emailPasswordLink(affiliateId: string, from: "owner" | "affiliate"): Promise<boolean> {
+export async function emailPasswordLink(affiliateId: string): Promise<boolean> {
   const affiliate = await db.affiliate.findUnique({
     where: { id: affiliateId },
-    select: { id: true, email: true, merchant: { select: { ownerId: true, name: true, domain: true } } },
+    select: { id: true, email: true, merchant: { select: { id: true, name: true, domain: true } } },
   });
   if (!affiliate) return false;
-  const mail = await ownerMail(affiliate.merchant.ownerId);
-  if (!mail) return false;
+  if (!(await productMail(affiliate.merchant.id))) return false;
 
-  const owner = from === "owner";
   await db.$transaction(async (tx) => {
-    const token = await issueResetToken(tx, affiliateId, owner ? LINK_TTL_MS : SELF_SERVE_LINK_TTL_MS, { replace: owner });
-    await queue(tx, affiliate.merchant.ownerId, [
+    const token = await issueResetToken(tx, affiliateId, SELF_SERVE_LINK_TTL_MS, { replace: false });
+    await queue(tx, affiliate.merchant.id, [
       {
         key: `password:${token.id}`,
         email: passwordLinkEmail({
           to: affiliate.email,
           product: affiliate.merchant.name,
           href: `${originFor(affiliate.merchant.domain)}/affiliates/password?token=${token.rawToken}`,
-          validFor: owner ? "3 days" : "1 hour",
         }),
       },
     ]);

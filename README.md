@@ -72,7 +72,7 @@ The hostname hosts the affiliate signup and their dashboard, so it must be on th
 
 Optional. Without it, Supaffi sends nothing and you copy an affiliate a password link from their panel when they need one.
 
-Connect your own email provider under Account, Notifications. Supaffi sends a test email and only saves settings that work. You then hear when someone joins and when a sale comes in, affiliates get a welcome, a note when they earn and when they are paid, and they can reset their own password.
+Connect your email provider in each product's Settings, under Email, so its affiliates hear from an address on its own domain. Supaffi sends a test email and only saves settings that work. You then hear when someone joins and when a sale comes in, affiliates get a welcome, a note when they earn and when they are paid, and they can reset their own password.
 
 | Provider | Pick | Fill in |
 | --- | --- | --- |

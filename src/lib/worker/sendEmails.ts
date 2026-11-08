@@ -7,7 +7,7 @@ const BATCH_SIZE = 20;
 // Retries double from a minute; the seventh failure is the last, about an
 // hour in. An email is news: a day late it is worth less than the noise of
 // retrying, and a server that refuses for an hour needs the Owner, who sees
-// the failure on the Account page.
+// the failure in the product's settings.
 const MAX_ATTEMPTS = 7;
 const BASE_BACKOFF_MS = 60_000;
 const CLAIM_LEASE_SECONDS = 5 * 60;
@@ -59,28 +59,28 @@ async function retryLater(email: Email, message: string): Promise<void> {
       : { status: "PENDING", lastError: message, nextAttemptAt: new Date(Date.now() + BASE_BACKOFF_MS * 2 ** (email.attempts - 1)) },
   });
   if (terminal) {
-    await db.owner.update({ where: { id: email.ownerId }, data: { emailFailure: message, emailFailedAt: new Date() } });
+    await db.merchant.update({ where: { id: email.merchantId }, data: { emailFailure: message, emailFailedAt: new Date() } });
   }
 }
 
 export async function sendDueEmails(send: typeof sendWith = sendWith): Promise<void> {
   const batch = await claimEmails();
-  // Read once per Owner per batch: most batches are one Owner.
+  // Read once per product per batch: most batches are one product.
   const servers = new Map<string, SmtpSettings | null | "unreadable">();
-  // An Owner whose server could not be reached: the rest of their batch waits
+  // A product whose server could not be reached: the rest of its batch waits
   // for the next try instead of each one waiting out the same timeout.
   const unreachable = new Map<string, string>();
 
   for (const email of batch) {
-    if (!servers.has(email.ownerId)) {
+    if (!servers.has(email.merchantId)) {
       try {
-        servers.set(email.ownerId, await smtpSettings(email.ownerId));
+        servers.set(email.merchantId, await smtpSettings(email.merchantId));
       } catch (err) {
-        console.error(`[worker] could not read the mail settings of owner ${email.ownerId}`, err);
-        servers.set(email.ownerId, "unreadable");
+        console.error(`[worker] could not read the mail settings of product ${email.merchantId}`, err);
+        servers.set(email.merchantId, "unreadable");
       }
     }
-    const server = servers.get(email.ownerId);
+    const server = servers.get(email.merchantId);
     if (server === "unreadable") {
       await retryLater(email, "The saved mail settings could not be read. Connect again.");
       continue;
@@ -90,7 +90,7 @@ export async function sendDueEmails(send: typeof sendWith = sendWith): Promise<v
       await db.email.update({ where: { id: email.id }, data: { status: "FAILED", lastError: "Email is off", ...DONE } });
       continue;
     }
-    const skipped = unreachable.get(email.ownerId);
+    const skipped = unreachable.get(email.merchantId);
     if (skipped) {
       await retryLater(email, skipped);
       continue;
@@ -98,12 +98,12 @@ export async function sendDueEmails(send: typeof sendWith = sendWith): Promise<v
     try {
       await send(server, email);
       await db.email.update({ where: { id: email.id }, data: { status: "SENT", sentAt: new Date(), lastError: null, ...DONE } });
-      await clearMailFailure(email.ownerId);
+      await clearMailFailure(email.merchantId);
     } catch (err) {
       const message = mailErrorText(err, server);
       const code = (err as { code?: string }).code ?? "";
       console.error(`[worker] email ${email.id} failed: ${message}`, code);
-      if (["ECONNECTION", "ETIMEDOUT", "ESOCKET", "EDNS", "EAUTH"].includes(code)) unreachable.set(email.ownerId, message);
+      if (["ECONNECTION", "ETIMEDOUT", "ESOCKET", "EDNS", "EAUTH"].includes(code)) unreachable.set(email.merchantId, message);
       await retryLater(email, message);
     }
   }

@@ -5,7 +5,7 @@ import { ConcurrencyLimitError, hashPassword, verifyAgainstNoAccount, verifyPass
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
 // Affiliate passwords and the links that set them. A link reaches the
-// Affiliate by email when the Owner has email on (src/lib/notify.ts), or the
+// Affiliate by email when the product has email on (src/lib/notify.ts), or the
 // Owner copies it from the dashboard and passes it on themselves.
 
 /** How long a link the Owner hands out works: time to send it by hand. */

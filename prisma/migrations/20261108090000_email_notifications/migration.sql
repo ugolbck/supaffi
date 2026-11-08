@@ -2,7 +2,7 @@
 CREATE TYPE "EmailStatus" AS ENUM ('PENDING', 'SENDING', 'SENT', 'FAILED');
 
 -- AlterTable
-ALTER TABLE "Owner" ADD COLUMN     "emailAffiliates" BOOLEAN NOT NULL DEFAULT true,
+ALTER TABLE "Merchant" ADD COLUMN     "emailAffiliates" BOOLEAN NOT NULL DEFAULT true,
 ADD COLUMN     "emailFailedAt" TIMESTAMP(3),
 ADD COLUMN     "emailFailure" TEXT,
 ADD COLUMN     "mailFrom" TEXT,
@@ -16,7 +16,7 @@ ADD COLUMN     "smtpUser" TEXT;
 -- CreateTable
 CREATE TABLE "Email" (
     "id" TEXT NOT NULL,
-    "ownerId" TEXT NOT NULL,
+    "merchantId" TEXT NOT NULL,
     "dedupeKey" TEXT NOT NULL,
     "to" TEXT NOT NULL,
     "fromName" TEXT NOT NULL,
@@ -37,8 +37,8 @@ CREATE TABLE "Email" (
 CREATE INDEX "Email_status_nextAttemptAt_idx" ON "Email"("status", "nextAttemptAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Email_ownerId_dedupeKey_key" ON "Email"("ownerId", "dedupeKey");
+CREATE UNIQUE INDEX "Email_merchantId_dedupeKey_key" ON "Email"("merchantId", "dedupeKey");
 
 -- AddForeignKey
-ALTER TABLE "Email" ADD CONSTRAINT "Email_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "Owner"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Email" ADD CONSTRAINT "Email_merchantId_fkey" FOREIGN KEY ("merchantId") REFERENCES "Merchant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

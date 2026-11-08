@@ -86,8 +86,8 @@ test("owner onboards a product", async () => {
   await owner.waitForURL(/\/dashboard\/products\/shop/);
 });
 
-test("owner connects their mail server", async () => {
-  await owner.goto(`${ADMIN}/dashboard/account`);
+test("owner connects the product's mail server", async () => {
+  await owner.goto(`${ADMIN}/dashboard/products/shop/settings`);
   await owner.getByLabel("Provider").click();
   await owner.getByRole("option", { name: "Other" }).click();
   await owner.getByLabel("Server").fill("mailpit");
@@ -96,7 +96,7 @@ test("owner connects their mail server", async () => {
   await owner.getByRole("button", { name: "Connect" }).click();
   await expect(owner.getByText(`Test email sent to ${OWNER.email}.`)).toBeVisible();
   await expect(owner.getByText("affiliates@shop.test")).toBeVisible();
-  await email(OWNER.email, "Supaffi can send email");
+  await email(OWNER.email, "Shop can send email");
 });
 
 test("affiliate signs up on the product domain", async () => {
@@ -258,14 +258,12 @@ test("a promo code earns for its affiliate with no click", async ({ browser }) =
 
 // Last: setting a password ends every session the affiliate had.
 test("an affiliate who forgot their password gets a link by email", async ({ browser }) => {
-  // The owner can send one from the affiliate's panel.
+  // With email on, the owner's panel only keeps a copied link as a fallback.
   await owner.goto(`${ADMIN}/dashboard/products/shop/affiliates`);
   await owner.getByRole("link", { name: "Alice" }).first().click();
-  await owner.getByRole("button", { name: "Email password link" }).click();
-  await expect(owner.getByText(`Password link sent to ${AFFILIATE.email}`)).toBeVisible();
-  expect((await email(AFFILIATE.email, "Set your Shop password")).text).toContain("within 3 days");
+  await expect(owner.getByRole("button", { name: "Copy a password link" })).toBeVisible();
+  await expect(owner.getByRole("button", { name: "Create password link" })).toHaveCount(0);
 
-  // And the affiliate can ask for one themselves.
   const visitor = await newPage(browser);
   await visitor.goto(`${PRODUCT_DOMAIN}/affiliates/login`);
   await visitor.getByRole("link", { name: "Forgot password?" }).click();
@@ -274,12 +272,9 @@ test("an affiliate who forgot their password gets a link by email", async ({ bro
   await visitor.getByRole("button", { name: "Email me a link" }).click();
   await expect(visitor.getByText("Check your email")).toBeVisible();
 
-  let link = "";
-  await expect(async () => {
-    const reset = await email(AFFILIATE.email, "Set your Shop password");
-    expect(reset.text).toContain("within 1 hour");
-    link = linkIn(reset.text, `${PRODUCT_DOMAIN}/affiliates/password?token=`);
-  }).toPass({ timeout: 60_000 });
+  const reset = await email(AFFILIATE.email, "Set your Shop password");
+  expect(reset.text).toContain("within 1 hour");
+  const link = linkIn(reset.text, `${PRODUCT_DOMAIN}/affiliates/password?token=`);
   await visitor.goto(link);
   await visitor.getByLabel("New password").fill("alice-new-password-456");
   await visitor.getByRole("button", { name: "Save and log in" }).click();
