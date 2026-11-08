@@ -8,6 +8,25 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.0
+
+### Added
+
+- Promo codes. Pick one of your Stripe coupons as a program's discount, and
+  each affiliate claims their own code for it from their dashboard. A
+  customer who uses the code credits the affiliate, even without clicking
+  their link. You can also create a code for an affiliate, link a code you
+  already have in Stripe, or turn a code off.
+
+### Changed
+
+- Promo codes need a Stripe key that can read coupons and create promotion
+  codes. Your current key keeps working for everything else. The screens
+  that need the new permissions link to replacing the key, with them
+  already ticked.
+- New products propose `affiliates.` as the affiliate subdomain instead of
+  `go.`. Existing products keep theirs.
+
 ## 0.4.0
 
 ### Security
