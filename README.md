@@ -39,6 +39,7 @@ Everything lives at **[supaffi.com/docs](https://supaffi.com/docs)**. Good place
 - **Unlimited apps on one install**, each with its own affiliate program, domain, affiliates and payment account, fully separate from the others. [Products](https://supaffi.com/docs/products)
 - **Recurring commissions** paid once, for a set number of months, or for as long as the customer keeps paying. [What earns a commission](https://supaffi.com/docs/what-earns)
 - **Several programs per app** for different tiers, plus a custom rate for any affiliate. [Programs and rates](https://supaffi.com/docs/programs)
+- **Promo codes** on your Stripe coupons. Each affiliate claims their own code, and a customer who uses it at checkout credits them, link or no link. [Promo codes](https://supaffi.com/docs/promo-codes)
 - **Refund-safe payouts**, because commissions wait out a holding period and an open chargeback freezes its commission until the dispute closes. [Refunds and disputes](https://supaffi.com/docs/refunds-and-disputes)
 - **Self-referral detection** that holds back any sale made with the affiliate's own email or card. [Self-referrals](https://supaffi.com/docs/self-referrals)
 - **An affiliate portal on your domain**, like `affiliates.yourapp.com`, where affiliates sign up and follow their earnings. [The affiliate portal](https://supaffi.com/docs/affiliate-portal)
