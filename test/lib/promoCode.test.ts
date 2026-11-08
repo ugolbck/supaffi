@@ -411,6 +411,17 @@ describe("promo codes", () => {
       });
     });
 
+    it("never brings a turned off code's text back", async () => {
+      const first = await promoCodeOffer(aliceId);
+      if (first?.kind !== "claim") throw new Error("expected a claim");
+      await claimPromoCode(aliceId, first.suggested);
+      const code = await db.affiliatePromoCode.findFirstOrThrow();
+      await turnOffPromoCode(ownerId, merchantId, aliceId, code.id);
+
+      expect(await promoCodeOffer(aliceId)).toMatchObject({ kind: "claim", suggested: first.suggested.replace(/20$/, "") });
+      expect(await claimPromoCode(aliceId, first.suggested.toLowerCase())).toEqual({ ok: false, error: "That code is taken" });
+    });
+
     it("leaves an issued code on when Stripe cannot turn it off", async () => {
       await claimPromoCode(aliceId, "ALICE20");
       const code = await db.affiliatePromoCode.findFirstOrThrow();

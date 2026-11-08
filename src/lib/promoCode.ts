@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import type { CurrencyTotal } from "@/lib/analytics";
 import { stripeClientFor } from "@/lib/stripe";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import { stripeKeyLacksPermission, suggestedCode } from "@/lib/coupon";
+import { stripeKeyLacksPermission, suggestedCodes } from "@/lib/coupon";
 
 /**
  * Stripe promotion codes that credit an Affiliate.
@@ -150,6 +150,9 @@ async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeRes
   if (!stripeCouponId) return { ok: false, error: "This program has no discount" };
   if (affiliate.promoCodes.length > 0) return { ok: false, error: "There is already a code" };
   if (!affiliate.merchant.stripeSecretKeyEnc) return { ok: false, error: "Connect Stripe first" };
+  // A turned off code is inactive in Stripe, which would let its text be used
+  // again. Refused here, so a code that leaked stays dead.
+  if ((await usedBefore(affiliate.merchantId, [code])).length > 0) return { ok: false, error: "That code is taken" };
 
   const stripe = stripeClientFor(affiliate.merchant);
   // Stripe refuses a code another active one already uses ("must be unique
@@ -272,6 +275,7 @@ export async function promoCodeOffer(affiliateId: string): Promise<PromoCodeOffe
   const affiliate = await db.affiliate.findUnique({
     where: { id: affiliateId },
     select: {
+      merchantId: true,
       program: { select: { stripeCouponId: true, discountLabel: true } },
       links: { where: { isPrimary: true }, select: { code: true }, take: 1 },
       // An issued code first: it is the one made for this program.
@@ -283,7 +287,19 @@ export async function promoCodeOffer(affiliateId: string): Promise<PromoCodeOffe
   if (live) return { kind: "code", code: live.code, discountLabel: live.discountLabel };
   const { stripeCouponId, discountLabel } = affiliate.program;
   if (!stripeCouponId || !discountLabel) return null;
-  return { kind: "claim", suggested: suggestedCode(affiliate.links[0]?.code ?? "", discountLabel), discountLabel };
+  const candidates = suggestedCodes(affiliate.links[0]?.code ?? "", discountLabel);
+  const used = new Set((await usedBefore(affiliate.merchantId, candidates)).map((c) => c.toUpperCase()));
+  const suggested = candidates.find((c) => !used.has(c)) ?? "";
+  return { kind: "claim", suggested, discountLabel };
+}
+
+/** The texts among `codes` this product has had a code under, live or off. */
+async function usedBefore(merchantId: string, codes: string[]): Promise<string[]> {
+  const rows = await db.affiliatePromoCode.findMany({
+    where: { merchantId, OR: codes.map((code) => ({ code: { equals: code, mode: "insensitive" as const } })) },
+    select: { code: true },
+  });
+  return rows.map((r) => r.code);
 }
 
 export type PromoCodeStats = PromoCodeRow & { off: boolean; conversions: number; earned: CurrencyTotal[] };

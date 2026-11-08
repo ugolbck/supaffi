@@ -175,10 +175,10 @@ export default async function AffiliatesPage({
         url: linkUrl(merchant.websiteUrl, l),
         clicks: l.clicks,
       })),
-      // The live ones: a turned off code's sales stay in the commissions.
-      promoCodes: promoCodes.filter((c) => !c.off).map((c) => ({
+      promoCodes: promoCodes.map((c) => ({
         id: c.id,
         code: c.code,
+        off: c.off,
         discountLabel: c.discountLabel,
         sales: c.conversions,
         earned: [money(c.earned, fallbackCurrency), moneyHint(c.earned)].filter(Boolean).join(" · "),

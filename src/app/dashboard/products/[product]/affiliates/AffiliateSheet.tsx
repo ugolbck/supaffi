@@ -11,7 +11,18 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -23,6 +34,7 @@ import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { originFor } from "@/lib/url";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import type { CommissionStatus } from "@/lib/commission";
+import { cn } from "@/lib/utils";
 import { promoCodeInput } from "@/lib/promoCodeInput";
 import {
   addPromoCodeAction,
@@ -56,8 +68,8 @@ export type SheetAffiliate = {
   payoutDetails: string | null;
   hasPassword: boolean;
   links: { url: string; clicks: number }[];
-  /** The live ones. `earned` already formatted, like the commission amounts below. */
-  promoCodes: { id: string; code: string; discountLabel: string | null; sales: number; earned: string }[];
+  /** Live ones first, then turned off ones. `earned` already formatted, like the commission amounts below. */
+  promoCodes: { id: string; code: string; off: boolean; discountLabel: string | null; sales: number; earned: string }[];
   /** Set when the affiliate has no code and their program has a discount to make one from. */
   codeToIssue: { suggested: string; discountLabel: string } | null;
   commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
@@ -257,7 +269,6 @@ function PasswordLink({
         <Button
           type="button"
           size="lg"
-          variant="secondary"
           className="cursor-pointer self-start"
           disabled={pending}
           onClick={() =>
@@ -295,11 +306,13 @@ function PromoCodes({
 }) {
   const [error, setError] = useState<PromoCodeActionError>(null);
   const [linking, setLinking] = useState(false);
+  const [turningOff, setTurningOff] = useState<{ id: string; code: string } | null>(null);
   const [pending, startTransition] = useTransition();
   const run = (write: () => Promise<PromoCodeActionError>) =>
     startTransition(async () => {
       setError(await write());
     });
+  const live = codes.filter((c) => !c.off).length;
 
   return (
     <Field
@@ -309,23 +322,30 @@ function PromoCodes({
       {codes.length > 0 && (
         <ul className="flex flex-col divide-y divide-neutral-200 rounded-(--radius) border border-neutral-200">
           {codes.map((c) => (
-            <li key={c.id} className="flex items-center gap-3 py-2 pr-1.5 pl-3">
+            <li key={c.id} className="flex min-h-12 items-center gap-3 py-2 pr-1.5 pl-3">
               <div className="flex min-w-0 flex-1 flex-col">
-                <code className="truncate font-mono text-[13px] font-medium tracking-wide">{c.code}</code>
+                <span className="flex min-w-0 items-center gap-2">
+                  <code className={cn("truncate font-mono text-[13px] font-medium tracking-wide", c.off && "text-muted-foreground")}>
+                    {c.code}
+                  </code>
+                  {c.off && <Badge className="shrink-0 bg-neutral-100 text-neutral-600">Off</Badge>}
+                </span>
                 <span className="truncate text-xs text-muted-foreground tabular-nums">
                   {[c.discountLabel, `${c.sales} ${c.sales === 1 ? "sale" : "sales"}`, c.earned].filter(Boolean).join(" · ")}
                 </span>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="shrink-0 cursor-pointer text-muted-foreground hover:text-status-danger"
-                disabled={pending}
-                onClick={() => run(() => turnOffPromoCodeAction(product, affiliateId, c.id))}
-              >
-                Turn off
-              </Button>
+              {!c.off && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="shrink-0 cursor-pointer text-muted-foreground hover:text-status-danger"
+                  disabled={pending}
+                  onClick={() => setTurningOff({ id: c.id, code: c.code })}
+                >
+                  Turn off
+                </Button>
+              )}
             </li>
           ))}
         </ul>
@@ -333,10 +353,9 @@ function PromoCodes({
 
       {toIssue && (
         <CodeForm
-          key={`issue-${codes.length}`}
+          key={`issue-${codes.length}-${toIssue.suggested}`}
           initial={toIssue.suggested}
           submitLabel="Create code"
-          variant="default"
           ariaLabel="New promo code"
           pending={pending}
           normalize={promoCodeInput}
@@ -347,13 +366,12 @@ function PromoCodes({
 
       {/* An empty section with nothing to make a code from: linking one is
           the only way in, so it is shown as such. */}
-      {linking || (codes.length === 0 && !toIssue) ? (
+      {linking || (live === 0 && !toIssue) ? (
         <CodeForm
           key={`link-${codes.length}`}
           initial=""
           placeholder="Existing Stripe code"
           submitLabel="Add"
-          variant="secondary"
           ariaLabel="Existing Stripe promo code"
           pending={pending}
           onEdit={() => setError(null)}
@@ -385,6 +403,38 @@ function PromoCodes({
           )}
         </p>
       )}
+
+      <AlertDialog
+        open={turningOff !== null}
+        onOpenChange={(next) => {
+          if (!next) setTurningOff(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Turn off {turningOff?.code}?</AlertDialogTitle>
+            <AlertDialogDescription>Customers can no longer use it. Its sales stay counted.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer" disabled={pending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              className="cursor-pointer"
+              disabled={pending}
+              onClick={() => {
+                const target = turningOff;
+                if (!target) return;
+                setTurningOff(null);
+                run(() => turnOffPromoCodeAction(product, affiliateId, target.id));
+              }}
+            >
+              Turn off
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Field>
   );
 }
@@ -394,7 +444,6 @@ function CodeForm({
   initial,
   placeholder,
   submitLabel,
-  variant,
   ariaLabel,
   pending,
   normalize = (value) => value,
@@ -404,7 +453,6 @@ function CodeForm({
   initial: string;
   placeholder?: string;
   submitLabel: string;
-  variant: "default" | "secondary";
   ariaLabel: string;
   pending: boolean;
   normalize?: (value: string) => string;
@@ -432,7 +480,7 @@ function CodeForm({
         autoComplete="off"
         className="min-w-0 flex-1 font-mono tracking-wide"
       />
-      <Button type="submit" size="lg" variant={variant} className="cursor-pointer" disabled={pending || code.trim() === ""}>
+      <Button type="submit" size="lg" variant="secondary" className="cursor-pointer" disabled={pending || code.trim() === ""}>
         {submitLabel}
       </Button>
     </form>

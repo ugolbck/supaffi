@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type Stripe from "stripe";
 
-import { discountLabel, listCoupons, suggestedCode } from "@/lib/coupon";
+import { discountLabel, listCoupons, suggestedCodes } from "@/lib/coupon";
 
 const coupon = (fields: Partial<Stripe.Coupon>) =>
   ({ percent_off: null, amount_off: null, currency: null, duration: "forever", duration_in_months: null, ...fields }) as Stripe.Coupon;
@@ -16,9 +16,14 @@ describe("coupon", () => {
   });
 
   it("suggests the link code in capitals, with the percentage", () => {
-    expect(suggestedCode("alice", "20% off for 3 months")).toBe("ALICE20");
-    expect(suggestedCode("sarah-jones", "$10 off the first payment")).toBe("SARAHJONES");
-    expect(suggestedCode("a-very-long-creator-name", "15% off forever")).toBe("AVERYLONGCREATORNA15");
+    expect(suggestedCodes("alice", "20% off for 3 months")[0]).toBe("ALICE20");
+    expect(suggestedCodes("sarah-jones", "$10 off the first payment")[0]).toBe("SARAHJONES");
+    expect(suggestedCodes("a-very-long-creator-name", "15% off forever")[0]).toBe("AVERYLONGCREATORNA15");
+  });
+
+  it("falls back to the name alone, then numbered", () => {
+    expect(suggestedCodes("alice", "20% off for 3 months").slice(0, 3)).toEqual(["ALICE20", "ALICE", "ALICE2"]);
+    expect(suggestedCodes("sarah-jones", "$10 off the first payment").slice(0, 2)).toEqual(["SARAHJONES", "SARAHJONES2"]);
   });
 
   it("lists only coupons that can still be applied", async () => {

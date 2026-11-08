@@ -42,15 +42,18 @@ export function discountLabel(
 }
 
 /**
- * The code an Affiliate is offered before they type their own: their link code
- * in capitals, with the percentage when the discount is one (ALICE20), the way
+ * The codes an Affiliate may be offered before they type their own, best
+ * first: their link code in capitals, with the percentage when the discount is one (ALICE20), the way
  * creators name theirs. Read off the label so no second copy of the coupon has
  * to be stored for it.
  */
-export function suggestedCode(linkCode: string, label: string | null): string {
+export function suggestedCodes(linkCode: string, label: string | null): string[] {
   const percent = label?.match(/^(\d+)% off/)?.[1] ?? "";
-  const base = promoCodeInput(linkCode).slice(0, 20 - percent.length);
-  return `${base}${percent}`;
+  const name = promoCodeInput(linkCode);
+  // After the first: the name alone, then numbered, for when the first was
+  // used before and turned off.
+  const numbered = [2, 3, 4, 5, 6, 7, 8, 9].map((n) => `${name.slice(0, 19)}${n}`);
+  return [...new Set([`${name.slice(0, 20 - percent.length)}${percent}`, name, ...numbered])];
 }
 
 /** How Stripe answers a restricted key that lacks the permission a call needs. */
