@@ -1,5 +1,5 @@
-# The end-to-end stack: the production image behind Caddy, a merchant site
-# and a fake Stripe. The .test names exist only on this network (aliases on
+# The end-to-end stack: the production image behind Caddy, a merchant site,
+# a fake Stripe and a mail catcher. The .test names exist only on this network (aliases on
 # caddy) and in the browser (host resolver rules in playwright.config.ts).
 #
 # Every container that speaks TLS to another trusts Caddy's local root through
@@ -79,6 +79,13 @@ services:
     depends_on:
       caddy:
         condition: service_healthy
+
+  # The owner's mail server: catches every email the app sends, and shows it
+  # to the tests over its API.
+  mailpit:
+    image: axllent/mailpit:v1.27.10
+    ports:
+      - "127.0.0.1:8025:8025"
 
 volumes:
   caddy_data:

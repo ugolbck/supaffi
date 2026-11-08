@@ -17,6 +17,24 @@ model Owner {
   passwordChangedAt DateTime?
   createdAt         DateTime   @default(now())
   merchants         Merchant[]
+
+  // The Owner's own mail server, for notifications. Email is off while
+  // smtpHost is null, and nothing is queued. The password is encrypted at rest
+  // like the Stripe credentials (ADR 0003).
+  smtpHost            String?
+  smtpPort            Int?
+  smtpUser            String?
+  smtpPasswordEnc     String?
+  mailFrom            String? // the address emails are sent from; the name shown is the product's
+  // What is sent once email is on. All on by default.
+  notifyNewAffiliates Boolean   @default(true)
+  notifyNewSales      Boolean   @default(true) // a referred customer's first sale, and a flagged one
+  emailAffiliates     Boolean   @default(true) // welcome, earned, paid; password links go out regardless
+  // The last email that could not be sent after every retry, shown on the
+  // Account page until one is sent again.
+  emailFailure        String?
+  emailFailedAt       DateTime?
+  emails              Email[]
 }
 
 model Merchant {
@@ -115,7 +133,7 @@ model Affiliate {
   // before it are refused, like the Owner's (see affiliateSessionIsCurrent).
   // Left null at signup: the session that signup starts is the one to keep.
   passwordChangedAt    DateTime?
-  customCommissionRate Decimal? @db.Decimal(5, 2) // overrides the current Program's default when set
+  customCommissionRate Decimal?  @db.Decimal(5, 2) // overrides the current Program's default when set
   payoutDetails        String? // freeform for v1 (PayPal email, IBAN, etc.), Merchant reads it manually
 
   links       AffiliateLink[]
@@ -372,6 +390,41 @@ model Commission {
   // The sale handlers read a click's earlier commissions on every sale of a
   // program with a limited duration (src/lib/worker/referralDuration.ts).
   @@index([clickId, createdAt])
+}
+
+/// One email to send, rendered when queued and sent by the worker. Queued in
+/// the same transaction as what it tells, so a sale never goes unannounced
+/// and a rolled back one is never announced.
+model Email {
+  id        String @id @default(cuid())
+  ownerId   String
+  // Goes with its Owner: an email nobody can send is nothing to keep.
+  owner     Owner  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Unique per Owner so a redelivered event or a retried action queues one
+  // email, never two, e.g. "sale:<commissionId>".
+  dedupeKey String
+  to        String
+  fromName  String
+  subject   String
+  text      String
+  html      String
+
+  status        EmailStatus @default(PENDING)
+  attempts      Int         @default(0)
+  lastError     String?
+  nextAttemptAt DateTime    @default(now()) // backoff and, while SENDING, the claim lease
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@unique([ownerId, dedupeKey])
+  @@index([status, nextAttemptAt])
+}
+
+enum EmailStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
 }
 
 // Postgres-only webhook queue (ADR 0007). Drained via SELECT ... FOR UPDATE SKIP LOCKED.

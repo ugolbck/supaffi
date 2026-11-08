@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { paymentLinkSale, promoCodeSale, sale } from "./provider";
+import { email, linkIn } from "./inbox";
 
 // One owner, one product, one affiliate, driven through the real screens:
 // setup, onboarding, signup, the affiliate link landing on the merchant's
@@ -85,6 +86,19 @@ test("owner onboards a product", async () => {
   await owner.waitForURL(/\/dashboard\/products\/shop/);
 });
 
+test("owner connects their mail server", async () => {
+  await owner.goto(`${ADMIN}/dashboard/account`);
+  await owner.getByLabel("Provider").click();
+  await owner.getByRole("option", { name: "Other" }).click();
+  await owner.getByLabel("Server").fill("mailpit");
+  await owner.getByLabel("Port").fill("1025");
+  await owner.getByLabel("Send from").fill("affiliates@shop.test");
+  await owner.getByRole("button", { name: "Connect" }).click();
+  await expect(owner.getByText(`Test email sent to ${OWNER.email}.`)).toBeVisible();
+  await expect(owner.getByText("affiliates@shop.test")).toBeVisible();
+  await email(OWNER.email, "Supaffi can send email");
+});
+
 test("affiliate signs up on the product domain", async () => {
   await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/signup/shop`);
   await expect(affiliate.getByText("30%")).toBeVisible();
@@ -95,6 +109,11 @@ test("affiliate signs up on the product domain", async () => {
   await affiliate.getByRole("button", { name: "Get my link" }).click();
   await affiliate.waitForURL(/\/affiliates\/dashboard/);
   await expect(affiliate.getByText(`https://shop.test?via=${AFFILIATE.code}`)).toBeVisible();
+
+  await email(OWNER.email, "Alice joined your affiliate program");
+  const welcome = await email(AFFILIATE.email, "Welcome to the Shop affiliate program");
+  expect(welcome.text).toContain(`https://shop.test?via=${AFFILIATE.code}`);
+  expect(welcome.text).toContain("You earn 30% of every payment.");
 });
 
 test("owner pages are not served on the product domain", async ({ browser }) => {
@@ -113,6 +132,8 @@ test("a referred sale earns a commission", async ({ browser }) => {
   await eventually(owner, () => expect(owner.getByRole("cell", { name: "$30.00" })).toBeVisible());
   await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard`);
   await eventually(affiliate, () => expect(affiliate.getByText(/30\.00/).first()).toBeVisible());
+  await email(OWNER.email, "New sale from Alice");
+  await email(AFFILIATE.email, "You earned $30.00");
 
   saleRefs.referred = result.paymentIntent;
 });
@@ -156,6 +177,7 @@ test("an affiliate buying through their own link is flagged", async ({ browser }
   await sale(buyer, { via: AFFILIATE.code, email: AFFILIATE.email });
   await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
   await eventually(owner, () => expect(owner.getByRole("cell", { name: "Flagged" })).toBeVisible());
+  await email(OWNER.email, "Check a sale from Alice");
 });
 
 test("a Payment Link on the merchant's page earns a commission", async ({ browser }) => {
@@ -230,4 +252,34 @@ test("a promo code earns for its affiliate with no click", async ({ browser }) =
 
   await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard/links`);
   await expect(affiliate.getByRole("cell", { name: /ALICE20/ })).toContainText("Off");
+});
+
+// Last: setting a password ends every session the affiliate had.
+test("an affiliate who forgot their password gets a link by email", async ({ browser }) => {
+  // The owner can send one from the affiliate's panel.
+  await owner.goto(`${ADMIN}/dashboard/products/shop/affiliates`);
+  await owner.getByRole("link", { name: "Alice" }).first().click();
+  await owner.getByRole("button", { name: "Email password link" }).click();
+  await expect(owner.getByText(`Password link sent to ${AFFILIATE.email}`)).toBeVisible();
+  expect((await email(AFFILIATE.email, "Set your Shop password")).text).toContain("within 3 days");
+
+  // And the affiliate can ask for one themselves.
+  const visitor = await newPage(browser);
+  await visitor.goto(`${PRODUCT_DOMAIN}/affiliates/login`);
+  await visitor.getByRole("link", { name: "Forgot password?" }).click();
+  await visitor.getByText("Reset your password").waitFor();
+  await visitor.getByLabel("Email").fill(AFFILIATE.email);
+  await visitor.getByRole("button", { name: "Email me a link" }).click();
+  await expect(visitor.getByText("Check your email")).toBeVisible();
+
+  let link = "";
+  await expect(async () => {
+    const reset = await email(AFFILIATE.email, "Set your Shop password");
+    expect(reset.text).toContain("within 1 hour");
+    link = linkIn(reset.text, `${PRODUCT_DOMAIN}/affiliates/password?token=`);
+  }).toPass({ timeout: 60_000 });
+  await visitor.goto(link);
+  await visitor.getByLabel("New password").fill("alice-new-password-456");
+  await visitor.getByRole("button", { name: "Save and log in" }).click();
+  await visitor.waitForURL(/\/affiliates\/dashboard/);
 });

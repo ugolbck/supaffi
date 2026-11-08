@@ -8,7 +8,7 @@ import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
 const LINK_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
-function hashToken(rawToken: string): string {
+export function hashToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
 }
 

@@ -64,7 +64,15 @@ Full guide, with server requirements: [Install](https://supaffi.com/docs/self-ho
 2. Add the product in the dashboard with that hostname, your site's address and a Stripe key. [Connect Stripe](https://supaffi.com/docs/stripe)
 3. Paste the tracking snippet into your site. If you create Stripe Checkout Sessions yourself, pass the referral to Stripe when you create them. Payment Links, buy buttons and pricing tables need only the script. [Tracking](https://supaffi.com/docs/tracking), [Checkout Sessions](https://supaffi.com/docs/checkout), [Payment Links](https://supaffi.com/docs/payment-links)
 
-The hostname hosts the affiliate signup and their dashboard, so it must be on the product's own domain. One per product. Supaffi sends no email. If an affiliate forgets their password, you copy them a password link from their panel.
+The hostname hosts the affiliate signup and their dashboard, so it must be on the product's own domain. One per product.
+
+## Email
+
+Optional. Without it, Supaffi sends nothing and you copy an affiliate a password link from their panel when they need one.
+
+Connect your own email provider under Account, Notifications: pick Resend, Brevo or Gmail and paste a key, or enter any provider's SMTP server. Supaffi sends a test email and only saves settings that work. You then hear when someone joins and when a sale comes in, affiliates get a welcome, a note when they earn and when they are paid, and they can reset their own password.
+
+Some hosts block the usual email ports (DigitalOcean blocks all of them). If yours does, use port 2525, which Resend, Brevo and most providers also accept.
 
 Then [test your setup](https://supaffi.com/docs/testing) before you invite affiliates.
 

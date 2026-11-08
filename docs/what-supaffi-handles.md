@@ -60,9 +60,16 @@ A SaaS founder or small team that:
 - **Marking a payout paid.** You pay one affiliate in one currency at a time. Supaffi records exactly the commissions and amounts you saw, even if one was refunded after you opened the page, since you already sent that money. A page over an hour old has to be reloaded first. If some of those commissions were already marked paid, Supaffi tells you. Sales that arrive meanwhile stay unpaid.
 - **Stripe delivery problems.** Duplicate, late or out-of-order Stripe events never create a second commission. Failed processing is retried for about two days.
 
+### Email
+
+- Optional, through your own email provider over SMTP. Nothing is sent until you connect one, and settings are only saved once a test email goes through.
+- You hear when someone joins and when a referred customer first buys, or when a sale looks like a self-referral. Renewals are not emailed.
+- Affiliates get a welcome with their link, a note when a referred customer first buys and when they are paid, and password links. Each kind can be turned off.
+- Emails are sent in the background and retried for about an hour. If they keep failing, the Account page says why.
+
 ### Affiliates
 
-- Sign up on a public page with an email and password. A forgotten password is reset with a link you copy from their panel and send them. Supaffi sends no email. Replacing a password signs the affiliate out everywhere.
+- Sign up on a public page with an email and password. With email connected they reset a forgotten password themselves; without it you copy them a password link from their panel. Replacing a password signs the affiliate out everywhere.
 - See clicks, sales, earnings, what is pending, payable and paid, and their payout history.
 - Create extra links pointing at any page of your site, claim their promo code and see what each one earned, and add their payout details.
 

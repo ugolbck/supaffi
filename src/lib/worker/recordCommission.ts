@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { notifyCommission } from "@/lib/notify";
 
 /**
  * Writes a commission unless the Owner has confirmed its referral as a self
@@ -23,7 +24,8 @@ export async function createCommissionUnlessSelfReferral(args: {
     const [click] = await tx.$queryRaw<{ fraudConfirmedAt: Date | null }[]>`
       SELECT "fraudConfirmedAt" FROM "Click" WHERE id = ${args.data.clickId} FOR SHARE`;
     if (!click || click.fraudConfirmedAt !== null) return false;
-    await tx.commission.create(args);
+    const created = await tx.commission.create({ ...args, select: { id: true } });
+    await notifyCommission(tx, created.id);
     return true;
   });
 }

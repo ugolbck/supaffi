@@ -7,7 +7,7 @@ import { getMerchantByDomain } from "@/lib/merchant";
 import { affiliatePasswordError, redeemAffiliateResetLink } from "@/lib/affiliatePassword";
 import { ConcurrencyLimitError } from "@/lib/password";
 
-const INVALID_LINK = "This link has expired or was already used. Ask for a new one.";
+const INVALID_LINK = "This link has expired or was already used.";
 
 export async function setAffiliatePassword(
   token: string,

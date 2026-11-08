@@ -51,6 +51,18 @@ export async function cleanupProcessedEvents(
   return total;
 }
 
+/**
+ * Deletes emails sent or given up on more than 30 days ago. Each one holds
+ * somebody's address and earnings, and nothing reads it once it has gone.
+ */
+const EMAIL_RETENTION_DAYS = 30;
+
+export async function cleanupOldEmails(now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - EMAIL_RETENTION_DAYS * 24 * 60 * 60_000);
+  const { count } = await db.email.deleteMany({ where: { status: { in: ["SENT", "FAILED"] }, createdAt: { lt: cutoff } } });
+  return count;
+}
+
 // Started from the worker tick, so there is still one loop and one process.
 // The time is held in memory, so a restart runs it again on the first tick,
 // which is harmless: a second run the same day finds nothing to delete.
@@ -58,7 +70,10 @@ const CLEANUP_EVERY_MS = 24 * 60 * 60_000;
 
 export type CleanupDeps = { cleanup: () => Promise<number>; now: () => number };
 
-const defaults: CleanupDeps = { cleanup: () => cleanupProcessedEvents(), now: Date.now };
+const defaults: CleanupDeps = {
+  cleanup: async () => (await cleanupProcessedEvents()) + (await cleanupOldEmails()),
+  now: Date.now,
+};
 
 const schedule: { running: boolean; lastRunAt: number | null } = { running: false, lastRunAt: null };
 
@@ -84,10 +99,10 @@ export async function runDailyCleanup(deps: CleanupDeps = defaults): Promise<voi
   try {
     const deleted = await deps.cleanup();
     if (deleted > 0) {
-      console.log(`[cleanup] removed ${deleted} processed webhook events older than 90 days`);
+      console.log(`[cleanup] removed ${deleted} old webhook events and emails`);
     }
   } catch (err) {
-    console.error("[cleanup] could not remove old webhook events", err);
+    console.error("[cleanup] could not remove old webhook events and emails", err);
   } finally {
     schedule.running = false;
   }

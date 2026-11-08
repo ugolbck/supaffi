@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,9 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
+// The refusal setAffiliatePassword gives an expired or used link.
+const INVALID_LINK = "This link has expired or was already used.";
+
 type Action = (prevState: { error: string }, formData: FormData) => Promise<{ error: string }>;
 
-export function SetPasswordForm({ action }: { action: Action }) {
+export function SetPasswordForm({ action, canReset }: { action: Action; canReset: boolean }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
 
   return (
@@ -22,6 +26,17 @@ export function SetPasswordForm({ action }: { action: Action }) {
           {state.error && (
             <p role="alert" className="text-[13px] text-status-danger">
               {state.error}
+              {state.error === INVALID_LINK &&
+                (canReset ? (
+                  <>
+                    {" "}
+                    <Link href="/affiliates/forgot-password" className="cursor-pointer font-medium underline underline-offset-2">
+                      Get a new link
+                    </Link>
+                  </>
+                ) : (
+                  " Ask for a new one."
+                ))}
             </p>
           )}
           <div className="flex flex-col gap-1.5">
