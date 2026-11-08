@@ -8,6 +8,23 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.0
+
+### Added
+
+- Optional email, through your own provider. Connect it in a product's
+  Settings, under Email: pick Resend, Brevo or Gmail and paste a key, or
+  enter any SMTP server. Supaffi sends a test email and only saves settings
+  that work. Each product has its own, so its affiliates hear from its own
+  domain.
+- With email on, you hear when someone joins, when a referred customer
+  first buys, and when a sale looks like a self-referral. Affiliates get a
+  welcome with their link, a note on a referred customer's first sale and
+  when they are paid. Joins, sales and affiliate emails each have a switch.
+- Affiliates reset a forgotten password themselves from the login page when
+  the product has email on. Without email, nothing changes: you still copy
+  them a password link from their panel.
+
 ## 0.5.0
 
 ### Added
