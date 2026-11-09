@@ -8,7 +8,9 @@ const findMany = vi.fn();
 vi.mock("@/lib/db", () => ({ db: { merchant: { findUnique, findMany } } }));
 vi.mock("@/lib/crypto", () => ({ decrypt: (value: string) => `plain:${value}` }));
 
-const { upgradeAllWebhookEvents, upgradeMerchantWebhookEvents } = await import("@/lib/worker/webhookEvents");
+const { upgradeAllWebhookEvents, upgradeMerchantWebhookEvents, moveMerchantWebhookEndpoint } = await import(
+  "@/lib/worker/webhookEvents"
+);
 
 const OLD_EVENTS = ["checkout.session.completed", "invoice.paid", "charge.refunded", "customer.subscription.deleted"];
 
@@ -104,5 +106,77 @@ describe("upgradeAllWebhookEvents", () => {
       },
     }));
     expect(console.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("moveMerchantWebhookEndpoint", () => {
+  beforeEach(() => {
+    findUnique.mockReset();
+    vi.restoreAllMocks();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  function client(update: (id: string, params: { url?: string }) => Promise<unknown>) {
+    return {
+      webhookEndpoints: {
+        retrieve: async () => {
+          throw new Error("not called");
+        },
+        list: async () => ({ data: [] }),
+        update: vi.fn(update),
+      },
+    };
+  }
+
+  it("moves the endpoint Supaffi created to the product's new address, with the product's own key", async () => {
+    findUnique.mockResolvedValue(merchant("a", { domain: "partners.example.com" }));
+    const fake = client(async () => ({}));
+    const keys: string[] = [];
+    const result = await moveMerchantWebhookEndpoint("a", (key) => {
+      keys.push(key);
+      return fake;
+    });
+    expect(result).toBe("moved");
+    expect(keys).toEqual(["plain:key-a"]);
+    expect(fake.webhookEndpoints.update).toHaveBeenCalledWith("we_a", {
+      url: "https://partners.example.com/api/webhooks/stripe",
+    });
+  });
+
+  it("asks the owner to move it when Stripe refuses, and logs why", async () => {
+    findUnique.mockResolvedValue(merchant("a"));
+    const result = await moveMerchantWebhookEndpoint("a", () =>
+      client(async () => {
+        throw Object.assign(new Error("no"), { type: "StripePermissionError", statusCode: 403 });
+      })
+    );
+    expect(result).toBe("manual");
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("merchant a"));
+  });
+
+  it("asks the owner to move an endpoint Supaffi did not create, without touching it", async () => {
+    findUnique.mockResolvedValue(merchant("a", { stripeWebhookEndpointId: null }));
+    const makeClient = vi.fn();
+    expect(await moveMerchantWebhookEndpoint("a", makeClient)).toBe("manual");
+    expect(makeClient).not.toHaveBeenCalled();
+  });
+
+  it("asks the owner when the key cannot be read", async () => {
+    findUnique.mockResolvedValue(merchant("a"));
+    const result = await moveMerchantWebhookEndpoint("a", () => {
+      throw new Error("bad key");
+    });
+    expect(result).toBe("manual");
+  });
+
+  it("has nothing to move without a webhook, or on a local address", async () => {
+    const makeClient = vi.fn();
+    findUnique.mockResolvedValue(merchant("a", { stripeWebhookSecretEnc: null, stripeWebhookEndpointId: null }));
+    expect(await moveMerchantWebhookEndpoint("a", makeClient)).toBe("none");
+    findUnique.mockResolvedValue(merchant("a", { domain: "shop.localhost:3000" }));
+    expect(await moveMerchantWebhookEndpoint("a", makeClient)).toBe("none");
+    expect(makeClient).not.toHaveBeenCalled();
   });
 });

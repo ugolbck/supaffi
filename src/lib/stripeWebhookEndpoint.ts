@@ -63,7 +63,7 @@ export type WebhookEndpointsClient = {
   webhookEndpoints: {
     retrieve: (id: string) => Promise<EndpointShape>;
     list: (params: { limit: number }) => Promise<{ data: EndpointShape[] }>;
-    update: (id: string, params: { enabled_events: string[] }) => Promise<unknown>;
+    update: (id: string, params: { enabled_events?: string[]; url?: string }) => Promise<unknown>;
   };
 };
 
@@ -136,6 +136,45 @@ export async function ensureRequiredWebhookEvents(
       return { status: "permission", detail: "The key cannot change webhook endpoints." };
     }
     return { status: "error", detail: `Stripe error ${stripeErrorLabel(err)}` };
+  }
+}
+
+export type EndpointMoveResult =
+  | { ok: true }
+  | { ok: false; reason: "missing" | "permission" | "rejected" | "error"; detail: string };
+
+/**
+ * Points an existing endpoint at a new address, after the product's
+ * subdomain changed. The webhook route finds the product by the Host a
+ * delivery arrives on, so an endpoint left on the old address delivers to a
+ * product that no longer exists there and every sale is lost.
+ *
+ * Only the url is sent. Stripe's update takes `url` as an optional parameter
+ * ("You may edit the url, the list of enabled_events, and the status of your
+ * endpoint", docs.stripe.com/api/webhook_endpoints/update), so the events and
+ * status stay as they are, and the signing secret, which has no update
+ * parameter at all, keeps verifying what arrives at the new address.
+ */
+export async function moveWebhookEndpoint(
+  client: WebhookEndpointsClient,
+  endpointId: string,
+  url: string
+): Promise<EndpointMoveResult> {
+  try {
+    await client.webhookEndpoints.update(endpointId, { url });
+    return { ok: true };
+  } catch (err) {
+    // Gone, or made with a key for another account than the one on file now.
+    if (isMissing(err)) {
+      return { ok: false, reason: "missing", detail: "The webhook endpoint was not found in Stripe." };
+    }
+    if (isPermission(err)) {
+      return { ok: false, reason: "permission", detail: "The key cannot change webhook endpoints." };
+    }
+    if ((err as Stripe.errors.StripeError)?.type === "StripeInvalidRequestError") {
+      return { ok: false, reason: "rejected", detail: "Stripe rejected the new address." };
+    }
+    return { ok: false, reason: "error", detail: `Stripe error ${stripeErrorLabel(err)}` };
   }
 }
 

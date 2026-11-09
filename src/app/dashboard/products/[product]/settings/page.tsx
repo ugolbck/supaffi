@@ -2,17 +2,19 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { auth } from "@/lib/auth";
-import { getMerchantForOwnerBySlug, getStripeKeyKind } from "@/lib/merchant";
+import { getMerchantForOwnerBySlug, getStripeKeyKind, getStripeWebhookEndpointId } from "@/lib/merchant";
 import { getProductSetup } from "@/lib/productSetup";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
+import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
+import { CopyValue } from "@/components/CopyValue";
 import { Button } from "@/components/ui/button";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { CheckList } from "@/components/onboarding/CheckList";
 import { dnsCheckRows, type CheckRow } from "@/components/onboarding/checkRows";
 import { isDevInstance } from "@/lib/instanceMode";
 import { isLocalDomain } from "@/lib/url";
-import { ProductForm } from "./ProductForm";
+import { ProductForm, type SubdomainStripe } from "./ProductForm";
 import { ConnectionSheet } from "./ConnectionSheet";
 import { DeleteProduct } from "./DeleteProduct";
 import { MailSettings } from "./MailSettings";
@@ -36,6 +38,9 @@ import {
  * Replacing a credential opens the matching sheet from `?replace=`, which is
  * where the two connect screens and the four routes that used to lead to them
  * ended up.
+ *
+ * `?webhook=manual` is a subdomain change Supaffi could not carry into
+ * Stripe, and says what to change there.
  */
 
 const SECTIONS: CheckSection[] = ["dns", "stripe", "tracking"];
@@ -55,7 +60,7 @@ export default async function SettingsPage({
   searchParams,
 }: {
   params: Promise<{ product: string }>;
-  searchParams: Promise<{ replace?: string; fresh?: string }>;
+  searchParams: Promise<{ replace?: string; fresh?: string; webhook?: string }>;
 }) {
   const { product } = await params;
   const query = await searchParams;
@@ -67,13 +72,21 @@ export default async function SettingsPage({
   if (!merchant) notFound();
 
   const fresh = freshSection(query.fresh);
-  const [checks, keyKind, setup, mail] = await Promise.all([
+  const [checks, keyKind, setup, mail, endpointId] = await Promise.all([
     runProductChecks(ownerId, merchant.id, fresh ? { fresh: new Set([fresh]) } : {}),
     getStripeKeyKind(ownerId, merchant.id),
     getProductSetup(ownerId, merchant.id),
     mailStatus(ownerId, merchant.id),
+    getStripeWebhookEndpointId(ownerId, merchant.id),
   ]);
   const local = isDevInstance() || isLocalDomain(merchant.domain);
+  // The same rules the save follows (moveMerchantWebhookEndpoint).
+  const subdomainStripe: SubdomainStripe =
+    !setup.stripeWebhookStored || isLocalDomain(merchant.domain)
+      ? null
+      : setup.stripeKeyStored && endpointId
+        ? "moves"
+        : "manual";
 
   const productRef = { id: merchant.id, slug: merchant.slug };
   const settingsHref = `/dashboard/products/${merchant.slug}/settings`;
@@ -146,7 +159,25 @@ export default async function SettingsPage({
             websiteUrl: merchant.websiteUrl,
           }}
           lights={dnsRows.length > 0 ? <CheckList rows={dnsRows} /> : null}
+          stripe={subdomainStripe}
         />
+        {query.webhook === "manual" && setup.stripeWebhookStored && (
+          <div
+            role="alert"
+            className="mt-4 flex flex-col gap-3 rounded-(--radius) border border-status-warning/30 bg-status-warning-bg px-4 py-3 text-sm"
+          >
+            <p>Stripe is not sending sales to the new address yet. Set the webhook address in Stripe to:</p>
+            <CopyValue value={webhookEndpointUrl(merchant.domain)} className="font-mono text-xs" />
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-fit cursor-pointer"
+              render={<a href="https://dashboard.stripe.com/webhooks" target="_blank" rel="noreferrer" />}
+            >
+              Open Stripe webhooks
+            </Button>
+          </div>
+        )}
       </Section>
 
       <Section title="Connections" flush>

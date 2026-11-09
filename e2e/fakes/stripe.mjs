@@ -319,6 +319,7 @@ function api(method, path, params) {
       return { id: m[1], object: "webhook_endpoint", deleted: true };
     }
     if (method === "POST" && params.enabled_events) endpoint.enabled_events = params.enabled_events;
+    if (method === "POST" && params.url) endpoint.url = params.url;
     const { secret, ...rest } = endpoint;
     return rest;
   }
