@@ -25,6 +25,7 @@ vi.mock("@/lib/stripe", async () => {
 });
 
 import { handleSubscriptionDeleted } from "@/lib/worker/handlers/subscriptionDeleted";
+import { recordReferredSubscription } from "@/lib/worker/referredSubscription";
 import { referralCounts } from "@/lib/affiliate";
 import {
   retrievedInvoice,
@@ -116,6 +117,15 @@ describe("handleSubscriptionDeleted", () => {
     const referred = await db.referredSubscription.findFirstOrThrow({ where: { clickId } });
     expect(referred.cancelledAt).toBeInstanceOf(Date);
     expect((await db.click.findUniqueOrThrow({ where: { id: clickId } })).subscriptionCancelledAt).toBeInstanceOf(Date);
+  });
+
+  it("counts the referral as paying again when the customer subscribes again through it", async () => {
+    await seedReferredSubscription(merchant.id, clickId, "sub_1");
+    await handleSubscriptionDeleted(merchant, deleted("sub_1"));
+
+    await recordReferredSubscription(merchant.id, clickId, "sub_2");
+
+    expect((await db.click.findUniqueOrThrow({ where: { id: clickId } })).subscriptionCancelledAt).toBeNull();
   });
 
   it("keeps the click paying while another subscription it brought is still active", async () => {

@@ -180,6 +180,14 @@ test("an affiliate buying through their own link is flagged", async ({ browser }
   await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
   await eventually(owner, () => expect(owner.getByRole("cell", { name: "Flagged" })).toBeVisible());
   await email(OWNER.email, "Check a sale from Alice");
+
+  // Confirming it voids the referral's commissions, so it asks first.
+  await owner.getByRole("row").filter({ has: owner.getByRole("cell", { name: "Flagged" }) }).getByRole("link").first().click();
+  await owner.getByRole("button", { name: "Confirm self referral and stop its commissions" }).click();
+  const confirm = owner.getByRole("alertdialog");
+  await expect(confirm.getByText("Confirm self referral?")).toBeVisible();
+  await confirm.getByRole("button", { name: "Confirm self referral" }).click();
+  await expect(owner.getByRole("cell", { name: "Flagged" })).toHaveCount(0);
 });
 
 test("a Payment Link on the merchant's page earns a commission", async ({ browser }) => {

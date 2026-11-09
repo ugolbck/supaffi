@@ -8,8 +8,19 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import type { CommissionStatus } from "@/lib/commission";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
@@ -158,11 +169,14 @@ export function CommissionSheet({
     !(commission.status === "VOIDED" && commission.voidReason === "confirmed self-referral");
 
   const confirmForm = (
-    <form action={confirmFraudAction.bind(null, listHref, product, commission.id)}>
-      <Button type="submit" size="sm" variant="destructive" className="cursor-pointer">
-        Confirm self referral and stop its commissions
-      </Button>
-    </form>
+    <ConfirmedForm
+      action={confirmFraudAction.bind(null, listHref, product, commission.id)}
+      label="Confirm self referral and stop its commissions"
+      variant="destructive"
+      title="Confirm self referral?"
+      description="Every unpaid commission from this referral is voided, and it earns nothing more."
+      confirmLabel="Confirm self referral"
+    />
   );
 
   return (
@@ -297,18 +311,24 @@ export function CommissionSheet({
           {commission.status === "PENDING" && (
             // A reason, because a voided commission is read months later by
             // somebody asking why an affiliate was not paid for a sale.
-            <form
+            <ConfirmedForm
               action={voidAction.bind(null, listHref, product, commission.id)}
               className="flex flex-col gap-2"
-            >
-              <span className="text-sm font-medium">Void this commission</span>
-              <div className="flex gap-2">
-                <Input name="reason" placeholder="Reason" maxLength={200} className="flex-1" />
-                <Button type="submit" size="sm" variant="secondary" className="cursor-pointer">
-                  Void
-                </Button>
-              </div>
-            </form>
+              label="Void"
+              variant="secondary"
+              title="Void this commission?"
+              description="The affiliate is not paid for this sale."
+              confirmLabel="Void"
+              layout={(button) => (
+                <>
+                  <span className="text-sm font-medium">Void this commission</span>
+                  <div className="flex gap-2">
+                    <Input name="reason" placeholder="Reason" aria-label="Reason" maxLength={200} className="flex-1" />
+                    {button}
+                  </div>
+                </>
+              )}
+            />
           )}
 
           {commission.status === "FLAGGED" && (
@@ -332,5 +352,85 @@ export function CommissionSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * A form whose button asks first. For the two writes in this panel that cannot
+ * be taken back: voiding a commission, and confirming a self referral. The
+ * dialog's button submits the form by its id, so what was typed in it goes
+ * along.
+ */
+function ConfirmedForm({
+  action,
+  label,
+  variant,
+  title,
+  description,
+  confirmLabel,
+  layout = (button) => button,
+  className,
+}: {
+  action: (formData: FormData) => void | Promise<void>;
+  label: string;
+  variant: "secondary" | "destructive";
+  title: string;
+  description: string;
+  confirmLabel: string;
+  /** Where the button goes among the form's own fields. */
+  layout?: (button: React.ReactNode) => React.ReactNode;
+  className?: string;
+}) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const [sent, setSent] = useState(false);
+  // Set by the dialog's button. Anything else that submits, Enter in the
+  // reason field included, opens the dialog instead.
+  const confirmed = useRef(false);
+
+  return (
+    <form
+      id={id}
+      action={action}
+      onSubmit={(e) => {
+        if (!confirmed.current) {
+          e.preventDefault();
+          setOpen(true);
+          return;
+        }
+        setSent(true);
+      }}
+      className={className}
+    >
+      {layout(
+        <Button type="button" size="sm" variant={variant} className="cursor-pointer" disabled={sent} onClick={() => setOpen(true)}>
+          {label}
+        </Button>
+      )}
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{title}</AlertDialogTitle>
+            <AlertDialogDescription>{description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              type="submit"
+              form={id}
+              variant="destructive"
+              className="cursor-pointer"
+              disabled={sent}
+              onClick={() => {
+                confirmed.current = true;
+                setOpen(false);
+              }}
+            >
+              {confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </form>
   );
 }

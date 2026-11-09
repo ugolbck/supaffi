@@ -463,9 +463,11 @@ export async function listAffiliatesForMerchant(
           select: { id: true, name: true, slug: true, defaultCommissionRate: true },
         },
       },
-      // Most sales first, so the people worth looking at lead the list. Money
-      // cannot be ranked across currencies and would mean aggregating every
-      // affiliate before paging any of them; a count is one indexed join.
+      // Most commissions first, so the people worth looking at lead the list.
+      // Money cannot be ranked across currencies and would mean aggregating
+      // every affiliate before paging any of them; a count is one indexed
+      // join. It counts every commission, voided ones too, since a relation
+      // count cannot be filtered: close to the Sales column, not equal to it.
       orderBy: [{ commissions: { _count: "desc" } }, { createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -481,12 +483,12 @@ export async function listAffiliatesForMerchant(
       where: { affiliateId: { in: ids }, ...VISITOR_CLICK },
       _count: { _all: true },
     }),
-    // Every commission counts as a conversion, voided ones included, which is
-    // what getProductMetrics counts for the rate on the same screen. Money is
-    // the thing a void takes away, not the sale having happened.
+    // Sales as the Overview and Top affiliates count them: a refunded or
+    // voided sale is not one, and neither is an adjustment row an older
+    // version wrote to correct another.
     db.commission.groupBy({
       by: ["affiliateId"],
-      where: { affiliateId: { in: ids } },
+      where: { affiliateId: { in: ids }, status: { not: "VOIDED" }, adjustsCommissionId: null, amount: { gt: 0 } },
       _count: { _all: true },
     }),
     // An unpaid adjustment row an older version left behind counts nowhere; a

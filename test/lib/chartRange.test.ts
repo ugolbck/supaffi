@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bucketKey, currenciesByUse, isChartRange, pickCurrency, rangeLabel, resolveRange } from "@/lib/analytics";
+import { bucketKey, currenciesByUse, isChartRange, pickCurrency, previousWindow, rangeLabel, resolveRange } from "@/lib/analytics";
 
 // Pure, no database: the windows the range picker offers, in UTC.
 const NOW = new Date("2026-09-12T14:35:00Z"); // a Saturday
@@ -108,5 +108,32 @@ describe("currency choice", () => {
     expect(pickCurrency(["usd", "eur"], undefined)).toBe("usd");
     expect(pickCurrency(["usd", "eur"], "eur")).toBe("eur");
     expect(pickCurrency(["usd", "eur"], "gbp")).toBe("usd");
+  });
+});
+
+describe("previousWindow", () => {
+  const before = (range: Parameters<typeof resolveRange>[0], now = NOW) => {
+    const w = previousWindow(resolveRange(range, now, STARTED), range)!;
+    return [w.since.toISOString(), w.until.toISOString()];
+  };
+
+  it("compares today so far with yesterday up to the same time", () => {
+    expect(before("today")).toEqual(["2026-09-11T00:00:00.000Z", "2026-09-11T14:35:00.000Z"]);
+  });
+
+  it("compares this week so far with last week up to the same point", () => {
+    expect(before("this-week")).toEqual(["2026-08-31T00:00:00.000Z", "2026-09-05T14:35:00.000Z"]);
+  });
+
+  it("compares this month so far with last month up to the same day, or all of a shorter one", () => {
+    expect(before("this-month")).toEqual(["2026-08-01T00:00:00.000Z", "2026-08-12T14:35:00.000Z"]);
+    expect(before("this-month", new Date("2026-03-31T10:00:00Z"))).toEqual(["2026-02-01T00:00:00.000Z", "2026-02-28T23:59:59.999Z"]);
+  });
+
+  it("compares a rolling range with the same length just before it", () => {
+    const window = resolveRange("7d", NOW, STARTED);
+    const w = previousWindow(window, "7d")!;
+    expect(w.until.getTime()).toBe(window.since.getTime() - 1);
+    expect(w.until.getTime() - w.since.getTime()).toBe(window.until.getTime() - window.since.getTime());
   });
 });

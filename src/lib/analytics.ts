@@ -144,11 +144,31 @@ export function resolveRange(range: ChartRange | number, now: Date, startedAt: D
 }
 
 /**
- * The window of the same length immediately before this one, so a figure can
- * say how it compares. Null for "all time", which has nothing before it.
+ * What this window compares with, so a figure can say how it did. Null for
+ * "all time", which has nothing before it.
+ *
+ * A range that runs from the start of a day, week or month up to now compares
+ * with the same stretch of the one before: today until 10:00 against
+ * yesterday until 10:00, not against yesterday's last ten hours. Every other
+ * range compares with the window of the same length just before it.
  */
 export function previousWindow(window: Window, range: ChartRange | number): Window | null {
   if (range === "all") return null;
+  if (range === "today" || range === "this-week") {
+    const shift = (range === "today" ? 1 : 7) * 86_400_000;
+    return {
+      since: new Date(window.since.getTime() - shift),
+      until: new Date(window.until.getTime() - shift),
+      bucket: window.bucket,
+    };
+  }
+  if (range === "this-month") {
+    const since = new Date(Date.UTC(window.since.getUTCFullYear(), window.since.getUTCMonth() - 1, 1));
+    // As far into last month as this one has run, or all of it when last
+    // month was shorter: 31 March compares with the whole of February.
+    const until = Math.min(since.getTime() + (window.until.getTime() - window.since.getTime()), window.since.getTime() - 1);
+    return { since, until: new Date(until), bucket: window.bucket };
+  }
   if (window.bucket === "month") {
     const months = (window.until.getUTCFullYear() - window.since.getUTCFullYear()) * 12
       + (window.until.getUTCMonth() - window.since.getUTCMonth()) + 1;
