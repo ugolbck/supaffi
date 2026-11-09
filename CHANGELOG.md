@@ -8,6 +8,23 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.1
+
+### Fixed
+
+- Changing a product's subdomain in Settings no longer stops sales from
+  being tracked. Supaffi asks before saving, then moves its Stripe webhook to
+  the new address. If the webhook was not made by Supaffi, or Stripe refuses
+  the change, Settings shows the address to set in Stripe.
+- Voiding a commission and confirming a self-referral now ask first, since
+  neither can be undone.
+- Today, This week and This month on the overview compare with the same
+  stretch of the previous day, week or month.
+- The Sales column on the Affiliates list no longer counts refunded or
+  voided sales, so it matches the overview.
+- A referred customer who cancels and then subscribes again through the
+  same referral counts as still paying.
+
 ## 0.6.0
 
 ### Added
