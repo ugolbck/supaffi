@@ -14,7 +14,7 @@ import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/li
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stripeKeyWorks } from "@/lib/checks/stripe";
-import { upgradeMerchantWebhookEvents } from "@/lib/worker/webhookEvents";
+import { moveMerchantWebhookEndpoint, upgradeMerchantWebhookEvents } from "@/lib/worker/webhookEvents";
 
 /**
  * Everything the settings page can change: the product's own details, the
@@ -59,16 +59,22 @@ export async function updateProductAction(
   // of resetting to the saved values.
   const error = validateProductInput(input, instanceDomain());
   if (error) return { error, values: input };
+  const before = await getMerchantForOwner(ownerId, product.id);
+  if (!before) redirect("/dashboard");
   try {
     await updateMerchant(ownerId, product.id, input);
   } catch (err) {
     if (isUniqueConstraintError(err)) return { error: "Another product already uses that subdomain", values: input };
     throw err;
   }
+  // Stripe finds the product by the address it delivers to, so a new
+  // subdomain has to reach the endpoint too, or every sale after this is lost.
+  const moved = input.domain === before.domain ? "none" : await moveMerchantWebhookEndpoint(product.id);
   // The sidebar and the product switcher are rendered by the dashboard layout,
   // which a soft navigation reuses from cache.
   revalidatePath("/dashboard", "layout");
-  redirect(settings(product.slug, "dns"));
+  const target = settings(product.slug, "dns");
+  redirect(moved === "manual" ? `${target}&webhook=manual` : target);
 }
 
 export async function replaceStripeKeyAction(
@@ -96,7 +102,10 @@ export async function replaceWebhookSecretAction(
   const ownerId = await owner();
   const secret = String(formData.get("value") ?? "").trim();
   if (!secret.startsWith("whsec_")) return { error: "The signing secret starts with whsec_" };
-  await connectStripe(ownerId, product.id, { webhookSecret: secret });
+  // A pasted secret may belong to an endpoint the owner made by hand, so the
+  // stored id is cleared, as onboarding does: a later subdomain change must
+  // not move Supaffi's old endpoint while this one keeps the old address.
+  await connectStripe(ownerId, product.id, { webhookSecret: secret, webhookEndpointId: null });
   // Same reason as the key: a recreated endpoint is the fix for a missing one.
   await upgradeMerchantWebhookEvents(product.id);
   redirect(settings(product.slug, "stripe"));

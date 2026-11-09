@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, type Mock } from "vitest";
 import {
   ensureRequiredWebhookEvents,
+  moveWebhookEndpoint,
   type WebhookEndpointsClient,
 } from "@/lib/stripeWebhookEndpoint";
 import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/stripeWebhookEvents";
@@ -112,5 +113,31 @@ describe("ensureRequiredWebhookEvents", () => {
     const result = await ensureRequiredWebhookEvents(client, { endpointId: "we_1", url: URL });
     expect(result.status).toBe("error");
     expect(client.webhookEndpoints.list).not.toHaveBeenCalled();
+  });
+});
+
+describe("moveWebhookEndpoint", () => {
+  const NEW_URL = "https://partners.example.com/api/webhooks/stripe";
+
+  it("sends only the new address, so the events and the signing secret stay", async () => {
+    const client = fakeClient();
+    expect(await moveWebhookEndpoint(client, "we_1", NEW_URL)).toEqual({ ok: true });
+    expect(client.webhookEndpoints.update).toHaveBeenCalledTimes(1);
+    expect(client.webhookEndpoints.update).toHaveBeenCalledWith("we_1", { url: NEW_URL });
+  });
+
+  it.each([
+    ["missing", stripeError("StripeInvalidRequestError", { code: "resource_missing", statusCode: 404 })],
+    ["permission", stripeError("StripePermissionError", { statusCode: 403 })],
+    ["rejected", stripeError("StripeInvalidRequestError", { statusCode: 400 })],
+    ["error", stripeError("StripeConnectionError")],
+  ])("reports %s without throwing", async (reason, error) => {
+    const client = fakeClient({
+      update: vi.fn(async () => {
+        throw error;
+      }),
+    });
+    const result = await moveWebhookEndpoint(client, "we_1", NEW_URL);
+    expect(result).toMatchObject({ ok: false, reason });
   });
 });

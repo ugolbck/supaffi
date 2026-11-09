@@ -7,6 +7,7 @@ import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
 import { stripeApiLocation } from "@/lib/stripeApi";
 import {
   ensureRequiredWebhookEvents,
+  moveWebhookEndpoint,
   type WebhookEndpointsClient,
 } from "@/lib/stripeWebhookEndpoint";
 
@@ -78,6 +79,54 @@ export async function upgradeMerchantWebhookEvents(
     }
   } catch (err) {
     console.error(`[webhook-events] could not check the Stripe endpoint for merchant ${merchantId}: ${loggableError(err)}`);
+  }
+}
+
+/**
+ * What a subdomain change did to the product's Stripe endpoint. "manual"
+ * means Stripe still delivers to the old address and only the owner can fix
+ * that, in Stripe.
+ */
+export type WebhookMove = "moved" | "manual" | "none";
+
+/**
+ * Follows a subdomain change into Stripe, called once the new domain is
+ * saved. Never throws.
+ *
+ * Saved first, moved second: a subdomain another product already uses is
+ * refused by the database before anything in Stripe changes, and an endpoint
+ * moved ahead of a refused save would deliver to an address that answers for
+ * no product.
+ *
+ * Only an endpoint Supaffi created is moved. One the owner made by hand may
+ * be shared with something else of theirs, and changing it is their call.
+ */
+export async function moveMerchantWebhookEndpoint(
+  merchantId: string,
+  makeClient: MakeClient = defaultClient
+): Promise<WebhookMove> {
+  try {
+    const merchant = await db.merchant.findUnique({ where: { id: merchantId }, select: merchantSelect });
+    // No webhook means nothing in Stripe delivers to this product yet. A
+    // local address has no endpoint Stripe could reach: its events come
+    // from the CLI, which is pointed at the new address by hand.
+    if (!merchant?.stripeWebhookSecretEnc || isLocalDomain(merchant.domain)) return "none";
+    if (!merchant.stripeSecretKeyEnc || !merchant.stripeWebhookEndpointId) return "manual";
+
+    const result = await moveWebhookEndpoint(
+      makeClient(decrypt(merchant.stripeSecretKeyEnc)),
+      merchant.stripeWebhookEndpointId,
+      webhookEndpointUrl(merchant.domain)
+    );
+    if (result.ok) {
+      console.log(`[webhook-move] moved the Stripe endpoint for merchant ${merchantId} to its new subdomain`);
+      return "moved";
+    }
+    console.warn(`[webhook-move] could not move the Stripe endpoint for merchant ${merchantId}: ${result.detail}`);
+    return "manual";
+  } catch (err) {
+    console.error(`[webhook-move] could not move the Stripe endpoint for merchant ${merchantId}: ${loggableError(err)}`);
+    return "manual";
   }
 }
 

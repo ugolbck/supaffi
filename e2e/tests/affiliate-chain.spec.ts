@@ -288,3 +288,35 @@ test("an affiliate who forgot their password gets a link by email", async ({ bro
   await visitor.getByRole("button", { name: "Save and log in" }).click();
   await visitor.waitForURL(/\/affiliates\/dashboard/);
 });
+
+// After the last step that uses the product domain: the affiliate pages move
+// with it.
+test("a new subdomain takes the Stripe webhook with it", async ({ request }) => {
+  await owner.goto(`${ADMIN}/dashboard/products/shop/settings`);
+  await owner.getByLabel("Subdomain").fill("partners.shop.test");
+  await owner.getByRole("button", { name: "Save" }).click();
+  const confirm = owner.getByRole("alertdialog");
+  // Cancelling saves nothing, and the next save asks again.
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(owner).toHaveURL(/\/settings$/);
+  await owner.getByRole("button", { name: "Save" }).click();
+  await expect(confirm).toContainText("affiliates.shop.test will stop working");
+  await expect(confirm).toContainText("Supaffi will point Stripe at the new address.");
+  await confirm.getByRole("button", { name: "Change subdomain" }).click();
+  await owner.waitForURL(/\/settings\?fresh=dns$/);
+  await expect(owner.getByLabel("Subdomain")).toHaveValue("partners.shop.test");
+
+  const state = await (await request.get("http://127.0.0.1:12111/_test/state")).json();
+  expect(state.endpoints.map((e: { url: string }) => e.url)).toEqual([
+    "https://partners.shop.test/api/webhooks/stripe",
+  ]);
+
+  // A sale arrives at the new address and is accepted with the same secret.
+  const res = await request.post("http://127.0.0.1:12111/_test/checkout", {
+    data: { amount: 9000, email: "after-move@example.com", cardFingerprint: "fp_after_move" },
+  });
+  expect((await res.json()).deliveries).toEqual([
+    { url: "https://partners.shop.test/api/webhooks/stripe", status: 200 },
+  ]);
+});
