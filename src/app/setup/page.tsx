@@ -1,6 +1,7 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ownerExists } from "@/lib/owner";
 import { setupTokenExists } from "@/lib/setupToken";
+import { staticExt } from "@/extensions/static";
 import { CenteredShell } from "@/components/CenteredShell";
 import { SetupForm } from "./SetupForm";
 import { SetupClosed } from "./SetupClosed";
@@ -13,6 +14,8 @@ import { SetupClosed } from "./SetupClosed";
 export const dynamic = "force-dynamic";
 
 export default async function SetupPage() {
+  // Owners sign up instead (see owners.signupPath).
+  if (staticExt.owners.signupPath !== null) notFound();
   if (await ownerExists()) {
     redirect("/login"); // setup is a one-time, first-run-only flow
   }

@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { resolveLoginRedirect, resolveProductDomainRoute } from "@/lib/middlewareLogic";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { proxyReadsSession, resolveLoginRedirect, resolveProductDomainRoute } from "@/lib/middlewareLogic";
 
 describe("resolveLoginRedirect", () => {
   it("redirects an unauthenticated request to the Owner dashboard", () => {
@@ -59,6 +59,43 @@ describe("resolveProductDomainRoute", () => {
   it("leaves affiliate pages and look-alike paths alone", () => {
     for (const path of ["/affiliates", "/affiliates/login", "/affiliates/dashboard", "/affiliates/signup/standard", "/loginx", "/dashboards"]) {
       expect(resolveProductDomainRoute(path), path).toBeNull();
+    }
+  });
+});
+
+describe("with an Owner signup path installed", () => {
+  afterEach(() => {
+    vi.doUnmock("@/extensions/installed-static");
+    vi.resetModules();
+  });
+
+  async function logicWith(signupPath: string | null) {
+    vi.resetModules();
+    vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { owners: { signupPath } } }));
+    return import("@/lib/middlewareLogic");
+  }
+
+  it("answers not found for the signup page on a product's domain", async () => {
+    const logic = await logicWith("/signup");
+    expect(logic.resolveProductDomainRoute("/signup")).toEqual({ notFound: true });
+    expect(logic.resolveProductDomainRoute("/signup/verify")).toEqual({ notFound: true });
+    expect(logic.resolveProductDomainRoute("/signups")).toBeNull();
+    expect(logic.resolveProductDomainRoute("/login")).toEqual({ notFound: true });
+  });
+
+  it("leaves the same path alone when none is installed", async () => {
+    const logic = await logicWith(null);
+    expect(logic.resolveProductDomainRoute("/signup")).toBeNull();
+  });
+});
+
+describe("proxyReadsSession", () => {
+  it("covers the root and the paths that redirect by session, and nothing else", () => {
+    for (const path of ["/", "/login", "/setup", "/dashboard/products", "/onboarding/acme", "/affiliates/dashboard/payouts"]) {
+      expect(proxyReadsSession(path), path).toBe(true);
+    }
+    for (const path of ["/affiliates", "/affiliates/login", "/signup", "/dashboards", "/r/abc"]) {
+      expect(proxyReadsSession(path), path).toBe(false);
     }
   });
 });

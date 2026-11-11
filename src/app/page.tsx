@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { ownerExists } from "@/lib/owner";
+import { staticExt } from "@/extensions/static";
 
 // Routes by live Owner/session state on every request. Without this, Next.js
 // statically prerenders the page at build time (no cookies()/searchParams
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   if (!(await ownerExists())) {
-    redirect("/setup");
+    redirect(staticExt.owners.signupPath ?? "/setup");
   }
   const session = await auth();
   if (session?.user?.role === "affiliate") {

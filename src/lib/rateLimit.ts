@@ -40,11 +40,24 @@ export function windowLimit(options: {
    * order Map iterates in, so dropping from the front drops the oldest. Every
    * caller must stay safe when one of its keys is evicted early, which is why
    * each limit keyed by something an attacker can vary freely sits next to one
-   * they cannot.
+   * they cannot, or uses the "fewestHits" eviction below.
    */
   maxTracked: number;
+  /**
+   * What gives way when the map is full. "oldest" (the default) drops the
+   * first-seen key. "fewestHits" is for a limit whose keys an attacker can
+   * also supply, in numbers, while still needing the limit to hold for one
+   * key: it drops an expired key if there is one, else the key with the
+   * fewest hits, never one already at the limit. Pushing a key out then takes
+   * more hits on every other key than that key has, and a key that is
+   * limiting stays limited until its window ends. When every key is at the
+   * limit there is nothing safe to drop, and a new key is refused until one
+   * expires. Each insert past the cap scans the map, so keep maxTracked to a
+   * few thousand.
+   */
+  eviction?: "oldest" | "fewestHits";
 }): WindowLimit {
-  const { name, windowMs, max, maxTracked } = options;
+  const { name, windowMs, max, maxTracked, eviction = "oldest" } = options;
   let entries = stores.get(name);
   if (!entries) {
     entries = new Map<string, Window>();
@@ -62,10 +75,28 @@ export function windowLimit(options: {
     return entry;
   }
 
+  // The key "fewestHits" would drop to make room, or null when every key is
+  // at the limit. An expired key is the best choice and ends the scan.
+  function evictable(now: number): string | null {
+    let choice: string | null = null;
+    let fewest = max;
+    for (const [key, entry] of windows) {
+      if (now - entry.startedAt >= windowMs) return key;
+      // Strictly fewer, so a tie keeps the first seen, which is the oldest.
+      if (entry.count < fewest) {
+        choice = key;
+        fewest = entry.count;
+      }
+    }
+    return choice;
+  }
+
   return {
     allows(key, now) {
       const entry = current(key, now);
-      return !entry || entry.count < max;
+      if (entry) return entry.count < max;
+      if (eviction === "fewestHits" && windows.size >= maxTracked) return evictable(now) !== null;
+      return true;
     },
     hit(key, now) {
       const entry = current(key, now);
@@ -76,6 +107,17 @@ export function windowLimit(options: {
       // An expired entry was deleted by current(), so this lands at the end
       // of the iteration order and the eviction below keeps dropping
       // genuinely stale keys.
+      if (eviction === "fewestHits") {
+        while (windows.size >= maxTracked) {
+          const victim = evictable(now);
+          // allows() said no in this case; a caller that hits anyway is not
+          // tracked rather than pushing out a key that is limiting.
+          if (victim === null) return;
+          windows.delete(victim);
+        }
+        windows.set(key, { count: 1, startedAt: now });
+        return;
+      }
       windows.set(key, { count: 1, startedAt: now });
       while (windows.size > maxTracked) {
         const oldest = windows.keys().next();

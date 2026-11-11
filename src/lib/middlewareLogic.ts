@@ -6,6 +6,8 @@
 // bundler, so any test that imports @/lib/auth fails at import time
 // regardless of AUTH_SECRET. See src/proxy.ts for where this is used.
 
+import { staticExt } from "@/extensions/static";
+
 type SessionRole = "owner" | "affiliate" | null;
 
 const PROTECTED_ROUTES: ReadonlyArray<{
@@ -34,11 +36,25 @@ export function resolveLoginRedirect(pathname: string, role: SessionRole): strin
 // The Owner's pages, which belong on the dashboard address only. A product's
 // affiliate domain serves its affiliates, so these answer not found there:
 // otherwise an affiliate could land on the Owner's login under the product's
-// name.
+// name. The Owner signup page, when there is one, is one of them.
 const OWNER_PREFIXES = ["/login", "/dashboard", "/onboarding", "/setup"];
 
+function underPrefix(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
 function isOwnerPath(pathname: string): boolean {
-  return OWNER_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  const { signupPath } = staticExt.owners;
+  return OWNER_PREFIXES.some((prefix) => underPrefix(pathname, prefix)) || (signupPath !== null && underPrefix(pathname, signupPath));
+}
+
+// The paths whose answer depends on the session. The proxy's matcher has to
+// be a constant, so it covers every page and reads the session for these only,
+// which keeps every other page exactly as it was before the proxy saw it.
+const SESSION_PREFIXES = [...OWNER_PREFIXES, "/affiliates/dashboard"];
+
+export function proxyReadsSession(pathname: string): boolean {
+  return pathname === "/" || SESSION_PREFIXES.some((prefix) => underPrefix(pathname, prefix));
 }
 
 /**

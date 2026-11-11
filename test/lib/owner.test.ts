@@ -1,6 +1,8 @@
 // Destructive: runs db.owner.deleteMany() before/after every test. Point
 // DATABASE_URL at a disposable database, never a real deployment's data.
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import type { Session } from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import { db } from "@/lib/db";
 import {
   createOwner,
@@ -10,6 +12,8 @@ import {
   changeOwnerPassword,
 } from "@/lib/owner";
 import { ownerSessionIsCurrent } from "@/lib/ownerExists";
+import { authConfig } from "@/lib/auth.config";
+import { dropSessionIfStale } from "@/lib/sessionGuard";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
 // letting Prisma throw an opaque connection error mid-run. Checked once,
@@ -107,6 +111,22 @@ describe.skipIf(!hasDatabase)("owner", () => {
       );
     });
 
+    it("answers a form error when another Owner already has the email", async () => {
+      const owner = await createOwner("first@example.com", "correct horse battery");
+      // Straight to the table: the default allows one Owner through createOwner.
+      await db.owner.create({ data: { email: "taken@example.com", passwordHash: "x" } });
+      const result = await changeOwnerEmail(owner.id, "correct horse battery", "Taken@Example.com");
+      expect(result?.error).toBeTruthy();
+      expect((await db.owner.findUnique({ where: { id: owner.id } }))?.email).toBe("first@example.com");
+    });
+
+    it("refuses an email that is not shaped like one", async () => {
+      const owner = await createOwner("first@example.com", "correct horse battery");
+      for (const email of ["no-at-sign", "a@b", "a b@example.com"]) {
+        expect((await changeOwnerEmail(owner.id, "correct horse battery", email))?.error, email).toBeTruthy();
+      }
+    });
+
     it("refuses an email change with the wrong password", async () => {
       const owner = await createOwner("first@example.com", "correct horse battery");
       const result = await changeOwnerEmail(owner.id, "wrong", "second@example.com");
@@ -137,6 +157,36 @@ describe.skipIf(!hasDatabase)("owner", () => {
       expect(Date.now() - stamped!.getTime()).toBeLessThan(60_000);
     });
 
+    it("drops a session signed in earlier in the same second as the change, and keeps one signed in after", async () => {
+      const owner = await createOwner("first@example.com", "correct horse battery");
+      const jwt = authConfig.callbacks!.jwt!;
+      const signIn = async () =>
+        (await jwt({
+          token: { sub: owner.id },
+          user: { id: owner.id, role: "owner" },
+        } as Parameters<typeof jwt>[0])) as JWT;
+      const session = () =>
+        ({ user: { id: owner.id, role: "owner" }, expires: "2099-01-01T00:00:00.000Z" }) as Session;
+
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(new Date("2026-03-01T12:00:00.100Z"));
+        const before = await signIn();
+        vi.setSystemTime(new Date("2026-03-01T12:00:00.500Z"));
+        await changeOwnerPassword(owner.id, "correct horse battery", "a much longer new one");
+        vi.setSystemTime(new Date("2026-03-01T12:00:00.900Z"));
+        const after = await signIn();
+
+        expect((await dropSessionIfStale(session(), before)).user).not.toHaveProperty("id");
+        expect((await dropSessionIfStale(session(), after)).user.id).toBe(owner.id);
+        // A cookie from before the millisecond claim, signed in that same second.
+        const { authAtMs: _ms, ...legacy } = before;
+        expect((await dropSessionIfStale(session(), legacy as JWT)).user).not.toHaveProperty("id");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("refuses a short new password", async () => {
       const owner = await createOwner("first@example.com", "correct horse battery");
       const result = await changeOwnerPassword(owner.id, "correct horse battery", "short");
@@ -150,11 +200,9 @@ describe.skipIf(!hasDatabase)("ownerSessionIsCurrent", () => {
     await db.owner.deleteMany();
   });
 
-  const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
-
   it("accepts any session when the password has never been changed", async () => {
     const owner = await createOwner("first@example.com", "correct horse battery");
-    expect(await ownerSessionIsCurrent(owner.id, seconds(new Date(Date.now() - 86_400_000)))).toBe(
+    expect(await ownerSessionIsCurrent(owner.id, Date.now() - 86_400_000)).toBe(
       true
     );
   });
@@ -164,15 +212,15 @@ describe.skipIf(!hasDatabase)("ownerSessionIsCurrent", () => {
     const changedAt = new Date(Date.now() - 60_000);
     await db.owner.update({ where: { id: owner.id }, data: { passwordChangedAt: changedAt } });
 
-    expect(await ownerSessionIsCurrent(owner.id, seconds(new Date(changedAt.getTime() + 1000)))).toBe(
+    expect(await ownerSessionIsCurrent(owner.id, changedAt.getTime() + 1)).toBe(
       true
     );
     expect(
-      await ownerSessionIsCurrent(owner.id, seconds(new Date(changedAt.getTime() - 1000)))
+      await ownerSessionIsCurrent(owner.id, changedAt.getTime() - 1)
     ).toBe(false);
   });
 
   it("refuses a session for an owner that no longer exists", async () => {
-    expect(await ownerSessionIsCurrent("no-such-owner", seconds(new Date()))).toBe(false);
+    expect(await ownerSessionIsCurrent("no-such-owner", Date.now())).toBe(false);
   });
 });

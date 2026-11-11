@@ -5,9 +5,9 @@
 // that scans the internet rather than only by whoever knew the instance
 // domain.
 //
-// Only the real Owner's email is ever counted (see authorize in auth.ts). An
-// attempt on any other email has no password to guess, and counting it would
-// let a flood of made-up emails push the Owner's own entry out of the map.
+// Only real accounts are ever counted (see authorize in auth.ts). An attempt
+// on any other email has no password to guess, and counting it would let a
+// flood of made-up emails push a real account's entry out of the map.
 //
 // Two limits, both counted before the password hash runs rather than after a
 // failure, so a burst of concurrent requests cannot all slip past the check
@@ -20,8 +20,12 @@
 //   header through, the address can be made up, and without this a new
 //   address per ten guesses would be unlimited guessing.
 //
-// The pair limit can have entries evicted by address rotation; the email limit
-// cannot, because only Owner emails ever reach it.
+// The pair limit can have entries evicted by address rotation. The email limit
+// holds even where anyone can create accounts and so feed it as many real
+// emails as they like: it evicts the email with the fewest attempts and never
+// one that is at its limit (see "fewestHits" in rateLimit.ts). Pushing out an
+// email that has taken n guesses costs n attempts on each of thousands of
+// other accounts.
 //
 // Separately, every login request of any email is counted per client address
 // before anything else happens (reserveLoginRequest). An unknown email still
@@ -57,8 +61,9 @@ const perEmail = windowLimit({
   name: "owner-login-email",
   windowMs: WINDOW_MS,
   max: 100,
-  // The Owner and every product's affiliates, keyed by product and email.
+  // Every Owner and every product's affiliates, keyed by product and email.
   maxTracked: 5000,
+  eviction: "fewestHits",
 });
 
 // Matches verifyOwnerCredentials, or `Bob@x.com` and `bob@x.com` would be two
@@ -82,7 +87,7 @@ export function reserveLoginRequest(address: string | null, now: number = Date.n
 }
 
 /**
- * Counts an attempt on the Owner's email and says whether it may go on to the
+ * Counts an attempt on an account's email and says whether it may go on to the
  * password hash. A refused attempt is not counted.
  *
  * `now` is injectable so the window can be tested without sleeping through

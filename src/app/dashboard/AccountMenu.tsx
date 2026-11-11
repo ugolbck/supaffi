@@ -30,7 +30,8 @@ export function AccountMenu({
   update,
 }: {
   email: string;
-  version: string;
+  /** null hides which Supaffi this is. */
+  version: string | null;
   update: UpdateInfo | null;
 }) {
   const [updateOpen, setUpdateOpen] = useState(false);
@@ -80,12 +81,16 @@ export function AccountMenu({
               Log out
             </DropdownMenuItem>
           </form>
-          <DropdownMenuSeparator />
-          <p className="px-2 pt-1 pb-1.5 text-[11px] text-muted-foreground tabular-nums">Supaffi {version}</p>
+          {version && (
+            <>
+              <DropdownMenuSeparator />
+              <p className="px-2 pt-1 pb-1.5 text-[11px] text-muted-foreground tabular-nums">Supaffi {version}</p>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {update && (
+      {update && version && (
         <UpdateDialog installed={version} update={update} open={updateOpen} onOpenChange={setUpdateOpen} />
       )}
     </>
