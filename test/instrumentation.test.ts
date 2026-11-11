@@ -14,7 +14,15 @@ import path from "node:path";
 // and to the rest of this suite, neither of which builds the app. This test is
 // what stands in for the build.
 const SOURCE = path.join(__dirname, "..", "src", "instrumentation.ts");
-const FORBIDDEN = ["@/lib/owner", "@/lib/password"];
+const FORBIDDEN = [
+  "@/lib/owner",
+  "@/lib/password",
+  "@/extensions",
+  "@/extensions/index",
+  "@/extensions/installed",
+  "@/extensions/defaults",
+  "@/extensions/core-api",
+];
 
 // Comments discuss these modules by name on purpose, and a dynamic import is
 // exactly what the file is supposed to use, so neither counts as a violation.
@@ -54,5 +62,8 @@ describe("the Edge bundling boundary in src/instrumentation.ts", () => {
     expect(staticImportsIn(`// this comment names @/lib/password and is not an import`)).toEqual([]);
     // The safe module whose name the forbidden one is a prefix of.
     expect(staticImportsIn(`import { ownerExists } from "@/lib/ownerExists";`)).toEqual([]);
+    // Server hooks may pull a build's whole server graph; the static ones are plain data.
+    expect(staticImportsIn(`import { ext } from "@/extensions";`)).toEqual(["@/extensions"]);
+    expect(staticImportsIn(`import { staticExt } from "@/extensions/static";`)).toEqual([]);
   });
 });

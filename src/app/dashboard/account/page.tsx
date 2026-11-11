@@ -1,8 +1,11 @@
+import { Fragment } from "react";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { availableUpdate, installedVersion, updateCheckEnabled } from "@/lib/version";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { EmailForm, PasswordForm } from "./AccountForms";
+import { ext } from "@/extensions";
+import { staticExt } from "@/extensions/static";
 
 /**
  * The account itself, and the instance it runs on.
@@ -20,6 +23,7 @@ export default async function AccountPage() {
   // Answers from the cache and starts a refresh it does not wait for, so a
   // server with no outbound access does not pay for this on every visit.
   const update = availableUpdate();
+  const sections = await ext.account.sections(session.user.id);
 
   return (
     <Page>
@@ -28,33 +32,39 @@ export default async function AccountPage() {
       <EmailForm email={session.user.email ?? ""} />
       <PasswordForm />
 
-      <Section title="This instance">
-        <div className="flex flex-col gap-2 text-sm">
-          <div className="flex justify-between">
-            <span>Supaffi {installedVersion()}</span>
-            <span className="text-muted-foreground">
-              {update ? (
-                <a
-                  className="cursor-pointer underline"
-                  href={update.url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {update.version} is out
-                </a>
-              ) : (
-                "up to date"
-              )}
-            </span>
+      {sections.map((section, i) => (
+        <Fragment key={i}>{section}</Fragment>
+      ))}
+
+      {staticExt.instance.showInfo && (
+        <Section title="This instance">
+          <div className="flex flex-col gap-2 text-sm">
+            <div className="flex justify-between">
+              <span>Supaffi {installedVersion()}</span>
+              <span className="text-muted-foreground">
+                {update ? (
+                  <a
+                    className="cursor-pointer underline"
+                    href={update.url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {update.version} is out
+                  </a>
+                ) : (
+                  "up to date"
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Update check</span>
+              <span className="text-muted-foreground">
+                {updateCheckEnabled() ? "on. Set SUPAFFI_UPDATE_CHECK=off on the server to turn it off." : "off"}
+              </span>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span>Update check</span>
-            <span className="text-muted-foreground">
-              {updateCheckEnabled() ? "on. Set SUPAFFI_UPDATE_CHECK=off on the server to turn it off." : "off"}
-            </span>
-          </div>
-        </div>
-      </Section>
+        </Section>
+      )}
     </Page>
   );
 }

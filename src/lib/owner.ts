@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { staticExt } from "@/extensions/static";
 import { ConcurrencyLimitError, hashPassword, verifyAgainstNoAccount, verifyPassword } from "@/lib/password";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
@@ -29,8 +30,8 @@ export async function createOwner(
     // thing (the single-Owner invariant).
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(72583)`;
 
-    const count = await tx.owner.count();
-    if (count > 0) {
+    // One Owner per instance, unless a build has opened Owner signup.
+    if (staticExt.owners.signupPath === null && (await tx.owner.count()) > 0) {
       throw new Error("An Owner already exists on this Instance");
     }
 

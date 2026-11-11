@@ -14,5 +14,17 @@ export default defineConfig([
       ],
     },
   },
+  {
+    // A build's installed.ts can import anything, so the server hooks are read
+    // from pages, layouts and actions, never from code those builds may call
+    // back into, nor from the proxy or the startup hook.
+    files: ["src/lib/**", "src/proxy.ts", "src/instrumentation.ts", "src/extensions/static.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { paths: ["@/extensions", "@/extensions/index", "@/extensions/defaults", "@/extensions/installed", "@/extensions/core-api"] },
+      ],
+    },
+  },
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", ".superpowers/**"]),
 ]);

@@ -7,6 +7,8 @@ import { getCommissionTotals } from "@/lib/commission";
 import { getTrackingStatus } from "@/lib/tracking";
 import { countPayouts } from "@/lib/analytics";
 import { availableUpdate, installedVersion } from "@/lib/version";
+import { ext } from "@/extensions";
+import { staticExt } from "@/extensions/static";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar, type Counts } from "./AppSidebar";
 
@@ -18,6 +20,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
   const ownerId = session.user.id;
+
+  const gate = await ext.dashboard.gate(ownerId);
+  if (gate.redirect) redirect(gate.redirect);
 
   const merchants = await listMerchantsForOwner(ownerId);
 
@@ -59,6 +64,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // cache refreshes in the background and the notice appears on the next
   // navigation.
   const update = availableUpdate();
+  const banner = await ext.dashboard.banner(ownerId);
 
   return (
     <SidebarProvider style={{ "--sidebar-width": "264px" } as React.CSSProperties}>
@@ -66,7 +72,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         merchants={merchants}
         counts={counts}
         email={session.user.email ?? ""}
-        version={installedVersion()}
+        version={staticExt.instance.showInfo ? installedVersion() : null}
         update={update && { version: update.version, url: update.url, security: update.security }}
       />
       <SidebarInset>
@@ -77,6 +83,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {/* The sidebar is a sheet below md, so it needs something to open
               it. Above md it is always on screen and this would be noise. */}
           <SidebarTrigger className="-mt-2 mb-2 self-start md:hidden" />
+          {banner}
           {children}
         </div>
       </SidebarInset>
