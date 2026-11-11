@@ -53,6 +53,12 @@ describe("an installed build", () => {
       instance: { showInfo: false },
     });
   });
+
+  it("reads an empty signup path as none", async () => {
+    vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { owners: { signupPath: "" } } }));
+    const { staticExt } = await import("@/extensions/static");
+    expect(staticExt.owners.signupPath).toBeNull();
+  });
 });
 
 it("keeps the API version on one line a build can read", () => {

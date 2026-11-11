@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { auth, signIn } from "@/lib/auth";
-import { createOwner, MIN_PASSWORD_LENGTH } from "@/lib/owner";
+import { createOwner, looksLikeOwnerEmail, MIN_PASSWORD_LENGTH } from "@/lib/owner";
 import { hashPassword } from "@/lib/password";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { isMerchantDomain as hostIsMerchantDomain } from "@/lib/merchantDomain";
@@ -17,9 +17,14 @@ function assertPassword(password: string): void {
 /**
  * Creates an Owner. Throws on a malformed email or short password, when the
  * email is taken, or when Owner signup is closed and an Owner exists.
+ *
+ * It does neither of two things a public form in front of it needs: it does
+ * not rate-limit, and every call runs a full Argon2 hash, so an unthrottled
+ * caller is a way to exhaust CPU and memory; and it does not check that the
+ * person owns the email. Both are the caller's job.
  */
 export async function createOwnerAccount(input: { email: string; password: string }): Promise<{ ownerId: string }> {
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) throw new Error("That email does not look right");
+  if (!looksLikeOwnerEmail(input.email)) throw new Error("That email does not look right");
   assertPassword(input.password);
   const owner = await createOwner(input.email, input.password);
   return { ownerId: owner.id };
@@ -35,9 +40,9 @@ export async function setOwnerPassword(ownerId: string, password: string): Promi
   assertPassword(password);
   await db.owner.update({
     where: { id: ownerId },
-    // Whole seconds, like the session's own issued-at, so signing in straight
-    // after a reset does not produce a session already older than the reset.
-    data: { passwordHash: await hashPassword(password), passwordChangedAt: new Date(Math.floor(Date.now() / 1000) * 1000) },
+    // Compared in milliseconds against when each session signed in (see
+    // ownerSessionIsCurrent).
+    data: { passwordHash: await hashPassword(password), passwordChangedAt: new Date() },
   });
 }
 

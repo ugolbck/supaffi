@@ -10,7 +10,10 @@ vi.mock("@/extensions/installed-static", () => ({ installedStatic: { owners: { s
 
 import { auth, signIn } from "@/lib/auth";
 import { verifyOwnerCredentials } from "@/lib/owner";
-import { ownerSessionIsCurrent } from "@/lib/ownerExists";
+import { authConfig } from "@/lib/auth.config";
+import { dropSessionIfStale } from "@/lib/sessionGuard";
+import type { Session } from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import {
   createOwnerAccount,
   currentOwnerId,
@@ -37,6 +40,17 @@ async function merchantFor(ownerId: string, name: string) {
   return db.merchant.create({
     data: { ownerId, name, slug: name.toLowerCase(), domain: `affiliates.${name.toLowerCase()}.com`, websiteUrl: `https://${name.toLowerCase()}.com` },
   });
+}
+
+// What the sign-in callback writes into the cookie, and the session the
+// session callback then checks against the database.
+async function signedInToken(ownerId: string): Promise<JWT> {
+  const jwt = authConfig.callbacks!.jwt!;
+  return (await jwt({ token: { sub: ownerId }, user: { id: ownerId, role: "owner" } } as Parameters<typeof jwt>[0])) as JWT;
+}
+
+function ownerSession(ownerId: string): Session {
+  return { user: { id: ownerId, role: "owner", email: "ann@example.com" }, expires: "2099-01-01T00:00:00.000Z" } as Session;
 }
 
 describe.skipIf(!hasDatabase)("core API", () => {
@@ -70,12 +84,22 @@ describe.skipIf(!hasDatabase)("core API", () => {
     expect(await verifyOwnerCredentials("bob@example.com", PASSWORD)).not.toBeNull();
   });
 
-  it("ends sessions from before the reset, and keeps one signed in the same second", async () => {
+  it("ends a session signed in earlier in the same second as the reset, and keeps one signed in after", async () => {
     const { ownerId } = await createOwnerAccount({ email: "ann@example.com", password: PASSWORD });
-    const before = Math.floor(Date.now() / 1000) - 60;
-    await setOwnerPassword(ownerId, "a brand new passphrase");
-    expect(await ownerSessionIsCurrent(ownerId, before)).toBe(false);
-    expect(await ownerSessionIsCurrent(ownerId, Math.floor(Date.now() / 1000))).toBe(true);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-03-01T12:00:00.100Z"));
+      const before = await signedInToken(ownerId);
+      vi.setSystemTime(new Date("2026-03-01T12:00:00.500Z"));
+      await setOwnerPassword(ownerId, "a brand new passphrase");
+      vi.setSystemTime(new Date("2026-03-01T12:00:00.900Z"));
+      const after = await signedInToken(ownerId);
+
+      expect((await dropSessionIfStale(ownerSession(ownerId), before)).user).not.toHaveProperty("id");
+      expect((await dropSessionIfStale(ownerSession(ownerId), after)).user.id).toBe(ownerId);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("lists only the Owner's own merchants", async () => {
