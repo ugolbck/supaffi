@@ -8,7 +8,7 @@ import { ProductForm } from "./ProductForm";
 
 export default async function OnboardingStart() {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
   const existing = await listMerchantsForOwner(session.user.id);
   const ids = stepIds();
 

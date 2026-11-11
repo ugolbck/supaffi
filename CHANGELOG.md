@@ -8,6 +8,13 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- An Owner only reaches their own products and data, on every screen and
+  action.
+
 ## 0.6.1
 
 ### Fixed

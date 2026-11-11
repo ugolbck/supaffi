@@ -68,8 +68,13 @@ type SectionCache = {
   tracking?: Timed<ProductChecks["tracking"]>;
 };
 
+// Keyed by Owner and product, never the product alone. Only a run that found
+// the product under this Owner writes here, so a cached answer is only ever
+// served back to that Owner, without a database round trip to re-check it.
 const recent = new Map<string, SectionCache>();
 const MAX_AGE_MS = 60_000;
+
+const cacheKey = (ownerId: string, merchantId: string) => `${ownerId}:${merchantId}`;
 
 export type RunOptions = {
   /** Sections to run no matter how recent the last result is. */
@@ -133,7 +138,7 @@ function refresh(
   deps: CheckDeps,
   now: () => number
 ): Promise<Partial<ProductChecks>> {
-  const key = `${merchantId}:${[...sections].sort().join(",")}`;
+  const key = `${cacheKey(ownerId, merchantId)}:${[...sections].sort().join(",")}`;
   const existing = inFlight.get(key);
   if (existing) return existing;
 
@@ -177,7 +182,7 @@ function refresh(
     ]);
 
     const at = now();
-    const cached = recent.get(merchantId) ?? {};
+    const cached = recent.get(cacheKey(ownerId, merchantId)) ?? {};
     const next: SectionCache = { ...cached };
     for (const section of sections) {
       const value = result[section];
@@ -188,7 +193,7 @@ function refresh(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (next as any)[section] = { value, at };
     }
-    recent.set(merchantId, next);
+    recent.set(cacheKey(ownerId, merchantId), next);
     return result;
   })();
 
@@ -220,7 +225,7 @@ export async function runProductChecks(
   const deps = { ...defaults, ...options.overrides };
   const now = options.now ?? Date.now;
   const stamp = now();
-  const cached = recent.get(merchantId) ?? {};
+  const cached = recent.get(cacheKey(ownerId, merchantId)) ?? {};
   const usable = <T>(entry: Timed<T> | undefined, section: CheckSection): T | null => {
     if (!entry || options.fresh?.has(section)) return null;
     return stamp - entry.at < MAX_AGE_MS ? entry.value : null;

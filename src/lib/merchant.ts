@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { assertOwnsMerchant } from "@/lib/ownership";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { uniqueSlug } from "@/lib/slug";
 
@@ -37,20 +38,6 @@ export async function createMerchant(
   });
 }
 
-// Ownership check shared by every mutation below. findFirst scoped by both
-// id and ownerId, not a bare findUnique(id) — this is what actually enforces
-// ownership; an update scoped only by id would happily write to another
-// Owner's Merchant.
-async function assertOwns(ownerId: string, merchantId: string): Promise<void> {
-  const existing = await db.merchant.findFirst({
-    where: { id: merchantId, ownerId },
-    select: { id: true },
-  });
-  if (!existing) {
-    throw new Error("Merchant not found");
-  }
-}
-
 // Fields are individually optional so re-connecting can rotate one secret
 // without the caller having to re-send the other. An empty string is treated
 // as "not provided", never encrypted over the top of a live credential.
@@ -59,7 +46,7 @@ export async function connectStripe(
   merchantId: string,
   input: { secretKey?: string; webhookSecret?: string; webhookEndpointId?: string | null }
 ): Promise<void> {
-  await assertOwns(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
   await db.merchant.update({
     where: { id: merchantId },
     data: {
@@ -217,7 +204,7 @@ export async function updateMerchant(
   merchantId: string,
   input: MerchantDetailsInput
 ): Promise<void> {
-  await assertOwns(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
   await db.merchant.update({
     where: { id: merchantId },
     data: {
@@ -245,7 +232,7 @@ export async function getMerchantByDomain(
  * check, is the only place that should be able to do this.
  */
 export async function deleteMerchant(ownerId: string, merchantId: string): Promise<void> {
-  await assertOwns(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
   const affiliates = { affiliate: { merchantId } };
   await db.$transaction([
     db.commission.deleteMany({ where: affiliates }),
@@ -277,7 +264,7 @@ export async function getOnboardingState(
 // Set once. Re-running onboarding to reconnect something must not make the
 // product look freshly finished again.
 export async function markOnboardingComplete(ownerId: string, merchantId: string): Promise<void> {
-  await assertOwns(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
   await db.merchant.updateMany({
     where: { id: merchantId, onboardingCompletedAt: null },
     data: { onboardingCompletedAt: new Date() },
@@ -285,7 +272,7 @@ export async function markOnboardingComplete(ownerId: string, merchantId: string
 }
 
 export async function dismissWelcome(ownerId: string, merchantId: string): Promise<void> {
-  await assertOwns(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
   await db.merchant.updateMany({
     where: { id: merchantId, welcomeDismissedAt: null },
     data: { welcomeDismissedAt: new Date() },
