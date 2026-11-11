@@ -618,7 +618,7 @@ const D_LEDGER: LedgerRow[] = [
     affiliateEmail: "marguerite@vandenbroucke-delacroix.example",
     isAdjustment: false,
     createdLabel: "28 Aug 2026",
-    stateLabel: "Refunded in Stripe · 1 Sept 2026",
+    stateLabel: "Refunded to the customer · 1 Sept 2026",
     sale: "€592.00",
     href: "#",
   },
@@ -705,7 +705,7 @@ const D_SHEETS: Record<string, SheetCommission> = {
     voidedLabel: "1 Sept 2026",
     voidReason: "refund",
     flagReason: null,
-    stateLabel: "Refunded in Stripe · 1 Sept 2026",
+    stateLabel: "Refunded to the customer · 1 Sept 2026",
     clickLabel: "26 Aug 2026",
     linkLabel: "margue · /",
     reference: {
@@ -1275,6 +1275,7 @@ function BAffiliateSheet() {
         links: [{ url: "https://instantgradient.com/?via=sarah", clicks: 312 }],
         promoCodes: [],
         codeToIssue: { suggested: "SARAH20", discountLabel: "20% off for 3 months" },
+        promoCodesOn: true,
         commissions: [{ id: "c1", date: "2 Sept", amount: "$8.70", status: "PAYABLE" }],
       }}
       productDomain="affiliates.mokkit.co"

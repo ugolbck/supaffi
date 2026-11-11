@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { paymentLinkSale, promoCodeSale, sale } from "./provider";
+import { paymentLinkSale, polarLinkSale, promoCodeSale, sale } from "./provider";
 import { email, linkIn } from "./inbox";
 
 // One owner, one product, one affiliate, driven through the real screens:
@@ -68,7 +68,7 @@ test("owner onboards a product", async () => {
 
   // The key is checked against Stripe and the webhook endpoint is created
   // there, at the product domain's production URL.
-  await owner.waitForURL(/\/stripe-key$/);
+  await owner.waitForURL(/\/payments$/);
   await owner.getByLabel("Paste the key here").fill("rk_test_e2e");
   await owner.getByLabel("Paste the key here").press("Enter");
 
@@ -320,3 +320,64 @@ test("a new subdomain takes the Stripe webhook with it", async ({ request }) => 
     { url: "https://partners.shop.test/api/webhooks/stripe", status: 200 },
   ]);
 });
+
+// A second product on the same install, selling through Polar: its own
+// provider, token, webhook and checkout link, next to the Stripe one above.
+const POLAR_DOMAIN = "https://affiliates.polarshop.test";
+
+test("owner onboards a product that sells through Polar", async ({ request }) => {
+  await owner.goto(`${ADMIN}/dashboard/products/new`);
+  await owner.getByLabel("Name").fill("Polar Shop");
+  await owner.getByLabel("Website").fill("polarshop.test");
+  await owner.getByLabel("Payments").click();
+  await owner.getByRole("option", { name: "Polar" }).click();
+  await owner.getByRole("button", { name: "Continue" }).click();
+
+  await owner.waitForURL(/\/subdomain$/);
+  await expect(owner.getByText("Secured with HTTPS")).toBeVisible();
+  await owner.getByRole("button", { name: "Continue" }).click();
+
+  // The token is checked against Polar and the webhook endpoint is created
+  // there, at the product domain's address.
+  await owner.waitForURL(/\/payments$/);
+  await owner.getByLabel("Paste the token here").fill("polar_oat_e2e");
+  await owner.getByLabel("Paste the token here").press("Enter");
+  await owner.waitForURL(/\/terms$/);
+  const state = await (await request.get("http://127.0.0.1:12112/_test/state")).json();
+  expect(state.endpoints.map((e: { url: string; events: string[] }) => [e.url, e.events])).toEqual([
+    [`${POLAR_DOMAIN}/api/webhooks/polar`, ["order.paid", "order.refunded", "subscription.revoked"]],
+  ]);
+
+  await owner.getByRole("spinbutton", { name: "Commission" }).fill("30");
+  await owner.getByRole("button", { name: "Continue" }).click();
+  await owner.waitForURL(/\/tracking$/);
+  await expect(owner.getByText("Polar checkout links need nothing more.")).toBeVisible();
+  await expect(owner.getByText("Script is live on polarshop.test")).toBeVisible({ timeout: 90_000 });
+  await owner.getByRole("button", { name: "Finish" }).click();
+  const live = owner.getByRole("dialog", { name: "Your affiliate program is live" });
+  await expect(live.getByText(`${POLAR_DOMAIN}/affiliates/signup/polar-shop`)).toBeVisible();
+  await live.getByRole("button", { name: "Go to dashboard" }).click();
+  await owner.waitForURL(/\/dashboard\/products\/polar-shop/);
+});
+
+test("a Polar checkout link sale earns, and its refund takes it back", async ({ browser, request }) => {
+  const bob = await newPage(browser);
+  await bob.goto(`${POLAR_DOMAIN}/affiliates/signup/polar-shop`);
+  await bob.getByLabel("Name").fill("Bob");
+  await bob.getByLabel("Email").fill("bob@example.com");
+  await bob.getByLabel("Password").fill("bob-password-123");
+  await bob.getByLabel("Your referral link").fill("bob");
+  await bob.getByRole("button", { name: "Get my link" }).click();
+  await bob.waitForURL(/\/affiliates\/dashboard/);
+
+  const buyer = await newPage(browser);
+  const result = await polarLinkSale(buyer, { via: "bob", email: "polar-buyer@example.com", amount: 10000 });
+  expect(result.delivered).toEqual([200]);
+  await owner.goto(`${ADMIN}/dashboard/products/polar-shop/commissions`);
+  await eventually(owner, () => expect(owner.getByRole("cell", { name: "$30.00" })).toBeVisible());
+
+  const refund = await request.post("http://127.0.0.1:12112/_test/refund", { data: { order: result.order } });
+  expect((await refund.json()).deliveries.map((d: { status: number }) => d.status)).toEqual([200]);
+  await eventually(owner, () => expect(owner.getByRole("cell", { name: "Voided" })).toBeVisible());
+});
+

@@ -68,7 +68,7 @@ const UNREACHABLE = { ok: false, error: "Stripe could not be reached. Try again.
 async function ownedAffiliate(ownerId: string, merchantId: string, affiliateId: string) {
   return db.affiliate.findFirst({
     where: { id: affiliateId, merchantId, merchant: { ownerId } },
-    select: { id: true, merchant: { select: { id: true, paymentKeyEnc: true } } },
+    select: { id: true, merchant: { select: { id: true, paymentProvider: true, paymentKeyEnc: true } } },
   });
 }
 
@@ -84,6 +84,7 @@ export async function addPromoCode(
 
   const affiliate = await ownedAffiliate(ownerId, merchantId, affiliateId);
   if (!affiliate) return { ok: false, error: "Affiliate not found" };
+  if (affiliate.merchant.paymentProvider !== "STRIPE") return { ok: false, error: "Promo codes need Stripe" };
   if (!affiliate.merchant.paymentKeyEnc) return { ok: false, error: "Connect Stripe first" };
 
   const count = await db.affiliatePromoCode.count({ where: { affiliateId, ...ACTIVE } });
@@ -139,7 +140,7 @@ async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeRes
     where: { id: affiliateId },
     select: {
       merchantId: true,
-      merchant: { select: { ownerId: true, paymentKeyEnc: true } },
+      merchant: { select: { ownerId: true, paymentProvider: true, paymentKeyEnc: true } },
       program: { select: { discountRef: true, discountLabel: true } },
       promoCodes: { where: { issued: true, ...ACTIVE }, select: { id: true } },
       _count: { select: { promoCodes: { where: { issued: true } } } },
@@ -149,6 +150,7 @@ async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeRes
   const { discountRef, discountLabel } = affiliate.program;
   if (!discountRef) return { ok: false, error: "This program has no discount" };
   if (affiliate.promoCodes.length > 0) return { ok: false, error: "There is already a code" };
+  if (affiliate.merchant.paymentProvider !== "STRIPE") return { ok: false, error: "Promo codes need Stripe" };
   if (!affiliate.merchant.paymentKeyEnc) return { ok: false, error: "Connect Stripe first" };
   // A turned off code is inactive in Stripe, which would let its text be used
   // again. Refused here, so a code that leaked stays dead.

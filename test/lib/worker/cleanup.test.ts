@@ -8,7 +8,7 @@ import {
   resetCleanupSchedule,
   type CleanupDeps,
 } from "@/lib/worker/cleanup";
-import { webhookEventReceived } from "@/lib/payments/stripe/keyCheck";
+import { webhookEventReceived } from "@/lib/checks/webhook";
 import { getTrackingStatus } from "@/lib/tracking";
 
 const DAY = 24 * 60 * 60_000;

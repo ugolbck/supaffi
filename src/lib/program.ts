@@ -20,8 +20,13 @@ export type ProgramInput = {
 
 /** The coupons a program's form offers. Null when Stripe is not connected yet. */
 export async function couponsForProgramForm(ownerId: string, merchantId: string): Promise<CouponList | null> {
-  const merchant = await db.merchant.findFirst({ where: { id: merchantId, ownerId }, select: { paymentKeyEnc: true } });
-  if (!merchant?.paymentKeyEnc) return null;
+  const merchant = await db.merchant.findFirst({
+    where: { id: merchantId, ownerId },
+    select: { paymentProvider: true, paymentKeyEnc: true },
+  });
+  // Promo codes are built on Stripe coupons, so other providers have no
+  // discount to pick yet.
+  if (merchant?.paymentProvider !== "STRIPE" || !merchant.paymentKeyEnc) return null;
   return listCoupons(stripeClientFor(merchant));
 }
 
@@ -40,6 +45,7 @@ export async function programDiscount(
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
     select: {
+      paymentProvider: true,
       paymentKeyEnc: true,
       programs: { where: { id: programId ?? "" }, select: { discountRef: true, discountLabel: true } },
     },
@@ -49,6 +55,7 @@ export async function programDiscount(
   if (current?.discountRef === couponId) {
     return { error: null, discountRef: couponId, discountLabel: current.discountLabel };
   }
+  if (merchant.paymentProvider !== "STRIPE") return { error: "Promo codes need Stripe" };
   if (!merchant.paymentKeyEnc) return { error: "Connect Stripe first" };
   const coupon = await couponById(stripeClientFor(merchant), couponId);
   if (!coupon.ok) return { error: coupon.error };

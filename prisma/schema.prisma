@@ -37,6 +37,10 @@ model Merchant {
   // creating the Merchant: a Merchant exists first, then gets integrations
   // attached. Anything that spends these must handle the unconnected case.
   paymentProvider   PaymentProvider @default(STRIPE)
+  // Polar keeps its sandbox apart from production, each with its own API
+  // address, and a token works on only one of them. Found when the token is
+  // first connected.
+  paymentSandbox    Boolean         @default(false)
   paymentKeyEnc     String?         @map("stripeSecretKeyEnc")
   webhookSecretEnc  String?         @map("stripeWebhookSecretEnc")
   // Set only when Supaffi created the endpoint itself, which it does as soon
@@ -86,6 +90,7 @@ model Merchant {
 // every stored payment reference belong to this provider.
 enum PaymentProvider {
   STRIPE
+  POLAR
 }
 
 enum CommissionDurationType {

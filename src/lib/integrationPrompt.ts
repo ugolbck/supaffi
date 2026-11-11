@@ -1,3 +1,5 @@
+import type { CheckoutGuide } from "@/lib/checkoutGuide";
+
 /**
  * The text behind "Copy AI prompt", one per snippet.
  *
@@ -19,17 +21,18 @@ export function trackingScriptPrompt(input: { websiteUrl: string; scriptTag: str
   ].join("\n");
 }
 
-export function checkoutPrompt(input: { checkoutSnippet: string }): string {
+export function checkoutPrompt(input: { guide: CheckoutGuide }): string {
+  const { snippet, prompt } = input.guide;
   return [
-    "Update my Stripe Checkout code so affiliate referrals are attributed.",
+    `Update my ${prompt.provider} code so affiliate referrals are attributed.`,
     "",
-    "Wherever the Checkout Session is created server side, read the referral",
+    "Wherever the checkout session is created server side, read the referral",
     "cookie and pass it through in the session metadata, like this:",
     "",
-    input.checkoutSnippet,
+    snippet,
     "",
     "Keep any metadata that is already being set.",
     "",
-    "If the site only uses Stripe Payment Links, buy buttons or pricing tables, change nothing here. The tracking script already covers them.",
+    `If the site only uses ${prompt.hosted}, change nothing here. The tracking script already covers them.`,
   ].join("\n");
 }

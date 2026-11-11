@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 import {
   updateMerchant,
   deleteMerchant,
-  connectStripe,
+  connectPaymentProvider,
   getMerchantForOwner,
   type ProductRef,
 } from "@/lib/merchant";
@@ -14,6 +14,7 @@ import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/li
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stripeKeyWorks } from "@/lib/payments/stripe/keyCheck";
+import { connectPolarToken } from "@/lib/payments/polar/connectToken";
 import { upgradeMerchantWebhookEvents } from "@/lib/payments/stripe/endpointUpkeep";
 import { paymentProviderFor } from "@/lib/payments";
 
@@ -40,7 +41,7 @@ async function owner(): Promise<string> {
 }
 
 /** The settings URL, optionally asking for one section of checks to be re-run. */
-const settings = (slug: string, fresh?: "dns" | "stripe") =>
+const settings = (slug: string, fresh?: "dns" | "payments") =>
   `/dashboard/products/${slug}/settings${fresh ? `?fresh=${fresh}` : ""}`;
 
 type ProductFormState = { error: string; values?: { name: string; domain: string; websiteUrl: string } };
@@ -89,12 +90,26 @@ export async function replaceStripeKeyAction(
   const key = String(formData.get("value") ?? "").trim();
   const check = await stripeKeyWorks(key);
   if (!check.ok) return { error: check.detail };
-  await connectStripe(ownerId, product.id, { secretKey: key });
+  await connectPaymentProvider(ownerId, product.id, { secretKey: key });
   // A new key is the fix for a key that could not update the endpoint, so
   // the upgrade runs again now rather than leaving the light red until the
   // next start. It never throws.
   await upgradeMerchantWebhookEvents(product.id);
-  redirect(settings(product.slug, "stripe"));
+  redirect(settings(product.slug, "payments"));
+}
+
+export async function replacePolarTokenAction(
+  product: ProductRef,
+  _prev: { error: string },
+  formData: FormData
+): Promise<{ error: string }> {
+  const ownerId = await owner();
+  const token = String(formData.get("value") ?? "").trim();
+  // A token for another Polar organization or environment gets its own
+  // webhook, see connectPolarToken.
+  const result = await connectPolarToken(ownerId, product.id, token);
+  if (result.error !== null) return { error: result.error };
+  redirect(settings(product.slug, "payments"));
 }
 
 export async function replaceWebhookSecretAction(
@@ -108,10 +123,11 @@ export async function replaceWebhookSecretAction(
   // A pasted secret may belong to an endpoint the owner made by hand, so the
   // stored id is cleared, as onboarding does: a later subdomain change must
   // not move Supaffi's old endpoint while this one keeps the old address.
-  await connectStripe(ownerId, product.id, { webhookSecret: secret, webhookEndpointId: null });
+  await connectPaymentProvider(ownerId, product.id, { webhookSecret: secret, webhookEndpointId: null });
   // Same reason as the key: a recreated endpoint is the fix for a missing one.
+  // Only Stripe's endpoint is upgraded here; it skips any other product.
   await upgradeMerchantWebhookEvents(product.id);
-  redirect(settings(product.slug, "stripe"));
+  redirect(settings(product.slug, "payments"));
 }
 
 export async function deleteProductAction(product: ProductRef, formData: FormData): Promise<void> {

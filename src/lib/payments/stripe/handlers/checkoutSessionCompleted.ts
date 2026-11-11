@@ -21,6 +21,7 @@ import { claimFirstPayment, recordReferredSubscription } from "@/lib/worker/refe
 import { idOf, subscriptionProductIds } from "@/lib/payments/stripe/subscriptions";
 import { referralStillEarns } from "@/lib/worker/referralDuration";
 import { createCommissionUnlessSelfReferral } from "@/lib/worker/recordCommission";
+import { linkClickFor, REFERRAL_INCLUDE, type ReferralClick } from "@/lib/worker/attribution";
 
 export async function handleCheckoutSessionCompleted(merchant: Merchant, session: Stripe.Checkout.Session): Promise<void> {
   const completedAt = new Date(session.created * 1000);
@@ -334,9 +335,6 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   }
 }
 
-const REFERRAL_INCLUDE = { affiliate: { include: { program: true } } } as const;
-type ReferralClick = Prisma.ClickGetPayload<{ include: typeof REFERRAL_INCLUDE }>;
-
 /**
  * The visitor's click this Session carries the token of, if it is still inside
  * its Attribution Window.
@@ -346,29 +344,14 @@ type ReferralClick = Prisma.ClickGetPayload<{ include: typeof REFERRAL_INCLUDE }
  * client_reference_id, behind a prefix so a Merchant's own value in that field
  * is never read as one.
  */
-async function linkClickOn(merchant: Merchant, session: Stripe.Checkout.Session, completedAt: Date): Promise<ReferralClick | null> {
+function linkClickOn(merchant: Merchant, session: Stripe.Checkout.Session, completedAt: Date): Promise<ReferralClick | null> {
   const clientReferenceId = session.client_reference_id;
   const referralToken =
     session.metadata?.[REFERRAL_METADATA_KEY] ||
     (clientReferenceId?.startsWith(REFERRAL_CLIENT_REFERENCE_PREFIX)
       ? clientReferenceId.slice(REFERRAL_CLIENT_REFERENCE_PREFIX.length)
       : undefined);
-  if (!referralToken) return null;
-
-  // Scoped to the Merchant whose webhook this is. A token is just a string in
-  // Session metadata, so one minted for another Merchant's affiliate must not
-  // earn a commission on this Merchant's sale. A promo code sale's click is
-  // never one a token can name.
-  const click = await db.click.findUnique({
-    where: { referralToken, affiliate: { merchantId: merchant.id }, promoCheckoutRef: null },
-    include: REFERRAL_INCLUDE,
-  });
-  if (!click) return null;
-
-  // A stale/reused token past its Attribution Window doesn't count, even on
-  // the very first purchase.
-  if (click.expiresAt < completedAt) return null;
-  return click;
+  return linkClickFor(merchant.id, referralToken, completedAt);
 }
 
 /**

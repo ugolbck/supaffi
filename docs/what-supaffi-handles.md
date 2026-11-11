@@ -6,7 +6,7 @@ Describes what Supaffi does today. This is the source for the docs site and the 
 
 A SaaS founder or small team that:
 
-- sells subscriptions, and optionally one-time purchases, through **Stripe Checkout** started from their own site or app, or through **Stripe Payment Links**, buy buttons and pricing tables embedded on it;
+- sells subscriptions, and optionally one-time purchases, through **Stripe Checkout** started from their own site or app, or through **Stripe Payment Links**, buy buttons and pricing tables embedded on it, or through **Polar** (see [Polar](#polar));
 - wants to reward affiliates with a **percentage of what customers actually pay**;
 - pays affiliates **themselves**, by bank transfer, PayPal or similar, and records it in Supaffi;
 - is comfortable running a server, or following a one-command install.
@@ -18,6 +18,18 @@ A SaaS founder or small team that:
 - One install runs several products, each with its own affiliate domain, Stripe account connection, program and affiliates.
 - Stripe is connected with a restricted key, or a full secret key if you prefer. Supaffi creates the Stripe webhook itself and subscribes to exactly the events it needs.
 - Several products can share one Stripe account without paying the wrong affiliate, as long as each runs on its own site, neither site links to the other's Payment Links, buy buttons or pricing tables, and they never give out the same promo code.
+
+### Polar
+
+A product can sell through Polar instead of Stripe. It is picked when the product is created.
+
+- Polar is connected with an organization access token that has the `webhooks:read` and `webhooks:write` scopes. Supaffi creates the Polar webhook itself. Tokens from Polar's sandbox work too.
+- Polar checkout links on your pages need no code of yours. The script adds the referral to them. A checkout your code creates passes the referral in its metadata, as with Stripe.
+- One-time purchases, a subscription's first payment and every renewal of that subscription earn, plan changes included, after discounts and before tax. A free trial starts earning at its first paid order.
+- Refunds, partial or full, lower or cancel the commission, including refunds Polar makes on its own to head off a chargeback.
+- Self-referrals are flagged by email only. Polar does not share the card used.
+- Polar sends no event for chargebacks, so an open chargeback does not hold its commission. The holding period is the protection.
+- Promo codes are Stripe only for now.
 
 ### Tracking a referral
 

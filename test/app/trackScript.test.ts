@@ -25,7 +25,7 @@ async function clear() {
   await db.owner.deleteMany();
 }
 
-async function seedMerchant(domain = DOMAIN) {
+async function seedMerchant(domain = DOMAIN, paymentProvider: "STRIPE" | "POLAR" = "STRIPE") {
   const owner = await db.owner.create({
     data: { email: `track-script-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
   });
@@ -36,6 +36,7 @@ async function seedMerchant(domain = DOMAIN) {
       name: "Acme",
       domain,
       websiteUrl: "https://acme.test",
+      paymentProvider,
     },
   });
 }
@@ -44,8 +45,8 @@ function serve(host: string, headers: Record<string, string> = {}) {
   return GET(new NextRequest("http://c0ffee1234ab:3000/track.js", { headers: { host, ...headers } }));
 }
 
-async function script(): Promise<string> {
-  await seedMerchant();
+async function script(paymentProvider: "STRIPE" | "POLAR" = "STRIPE"): Promise<string> {
+  await seedMerchant(DOMAIN, paymentProvider);
   return (await serve(DOMAIN)).text();
 }
 
@@ -293,7 +294,37 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     // The fake DOM only understands this selector, so a typo in the script's
     // selector fails the other tests; this pins what it is meant to match.
     const code = await script();
-    expect(code).toContain(`'a[href*="buy.stripe.com"], stripe-buy-button, stripe-pricing-table'`);
+    expect(code).toContain(JSON.stringify('a[href*="buy.stripe.com"], stripe-buy-button, stripe-pricing-table'));
+  });
+
+  describe("on a Polar product", () => {
+    const polarLink = (href: string) => new FakeEl("a", { href });
+
+    it("tags a checkout link with the referral in reference_id", async () => {
+      const link = polarLink("https://buy.polar.sh/polar_cl_abc");
+      await runOn(await script("POLAR"), { cookie: HELD, build: (b) => b.appendChild(link) });
+      expect(new URL(link.href).searchParams.get("reference_id")).toBe(`${REF}held_token`);
+    });
+
+    it("tags a sandbox checkout link", async () => {
+      const link = polarLink("https://sandbox-api.polar.sh/v1/checkout-links/polar_cl_abc/redirect");
+      await runOn(await script("POLAR"), { cookie: HELD, build: (b) => b.appendChild(link) });
+      expect(new URL(link.href).searchParams.get("reference_id")).toBe(`${REF}held_token`);
+    });
+
+    it("keeps a reference_id the Merchant already set, and leaves Stripe links alone", async () => {
+      const own = polarLink("https://buy.polar.sh/polar_cl_abc?reference_id=user_42");
+      const stripe = stripeLink();
+      await runOn(await script("POLAR"), {
+        cookie: HELD,
+        build: (b) => {
+          b.appendChild(own);
+          b.appendChild(stripe);
+        },
+      });
+      expect(new URL(own.href).searchParams.get("reference_id")).toBe("user_42");
+      expect(stripe.getAttribute("href")).toBe("https://buy.stripe.com/test_abc");
+    });
   });
 
   it("tags elements added after the script ran", async () => {

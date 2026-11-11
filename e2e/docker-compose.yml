@@ -1,5 +1,5 @@
 # The end-to-end stack: the production image behind Caddy, a merchant site,
-# a fake Stripe and a mail catcher. The .test names exist only on this network (aliases on
+# a fake Stripe, a fake Polar and a mail catcher. The .test names exist only on this network (aliases on
 # caddy) and in the browser (host resolver rules in playwright.config.ts).
 #
 # Every container that speaks TLS to another trusts Caddy's local root through
@@ -38,7 +38,7 @@ services:
       retries: 30
     networks:
       default:
-        aliases: [admin.test, shop.test, affiliates.shop.test, partners.shop.test]
+        aliases: [admin.test, shop.test, affiliates.shop.test, partners.shop.test, polarshop.test, affiliates.polarshop.test]
 
   app:
     image: ${SUPAFFI_E2E_IMAGE:-supaffi:e2e}
@@ -52,6 +52,7 @@ services:
       SUPAFFI_PROXY_HOST: caddy
       SUPAFFI_UPDATE_CHECK: "off"
       SUPAFFI_STRIPE_API_BASE: http://fake-stripe:12111
+      SUPAFFI_POLAR_API_BASE: http://fake-polar:12112
     volumes:
       - caddy_data:/caddy:ro
     depends_on:
@@ -73,6 +74,20 @@ services:
       <<: *caddy-root
     ports:
       - "127.0.0.1:12111:12111"
+    volumes:
+      - ./fakes:/fakes:ro
+      - caddy_data:/caddy:ro
+    depends_on:
+      caddy:
+        condition: service_healthy
+
+  fake-polar:
+    image: node:24-alpine
+    command: ["node", "/fakes/polar.mjs"]
+    environment:
+      <<: *caddy-root
+    ports:
+      - "127.0.0.1:12112:12112"
     volumes:
       - ./fakes:/fakes:ro
       - caddy_data:/caddy:ro

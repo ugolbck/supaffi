@@ -43,7 +43,7 @@ Everything lives at **[supaffi.com/docs](https://supaffi.com/docs)**. Good place
 - **A payouts page** that lists who you owe and where to send it, with one click to mark them paid. [Paying affiliates](https://supaffi.com/docs/payouts)
 - **Optional email** through your own provider: you hear when someone joins or sells, and affiliates hear when they earn and are paid and reset their own password. [Email](https://supaffi.com/docs/email)
 
-Stripe is supported today, and more payment providers are on the way. See [what Supaffi does not handle](https://supaffi.com/docs/limits).
+Stripe and Polar are supported today, and more payment providers are on the way. See [what Supaffi does not handle](https://supaffi.com/docs/limits).
 
 ## Install
 

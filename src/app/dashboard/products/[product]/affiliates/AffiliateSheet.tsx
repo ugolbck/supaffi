@@ -74,6 +74,8 @@ export type SheetAffiliate = {
   canEmail: boolean;
   /** Set when the affiliate has no code and their program has a discount to make one from. */
   codeToIssue: { suggested: string; discountLabel: string } | null;
+  /** Promo codes are built on Stripe coupons, so a product on another provider has none. */
+  promoCodesOn: boolean;
   commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
 };
 
@@ -200,12 +202,14 @@ export function AffiliateSheet({
             </ul>
           </Field>
 
-          <PromoCodes
-            affiliateId={affiliate.id}
-            codes={affiliate.promoCodes}
-            toIssue={affiliate.codeToIssue}
-            product={product}
-          />
+          {affiliate.promoCodesOn && (
+            <PromoCodes
+              affiliateId={affiliate.id}
+              codes={affiliate.promoCodes}
+              toIssue={affiliate.codeToIssue}
+              product={product}
+            />
+          )}
 
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Commissions</p>
@@ -412,7 +416,7 @@ function PromoCodes({
             <>
               {" "}
               <Link
-                href={`/dashboard/products/${product.slug}/settings?replace=stripe-key`}
+                href={`/dashboard/products/${product.slug}/settings?replace=payment-key`}
                 className="cursor-pointer font-medium underline underline-offset-[3px]"
               >
                 Update key
