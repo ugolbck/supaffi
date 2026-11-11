@@ -16,6 +16,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   few behaviours, with defaults that keep Supaffi exactly as it ships.
   Extensions API version 1.
 
+### Fixed
+
+- The account page refuses a new email with no domain ending, such as
+  `name@host`, instead of saving it.
+
 ## 0.6.1
 
 ### Fixed

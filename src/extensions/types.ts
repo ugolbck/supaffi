@@ -19,7 +19,8 @@ export type StaticExtensions = {
      * Where a new Owner creates an account. null keeps the first-run setup
      * wizard and its single Owner. A path opens the instance to several
      * Owners: the wizard and its token go away, an empty instance sends
-     * visitors here, and the login page links to it.
+     * visitors here, the login page links to it, and a product's affiliate
+     * domain answers not found for it. An empty string counts as null.
      */
     signupPath: string | null;
   };
@@ -33,9 +34,13 @@ export type StaticExtensions = {
 export type SupaffiExtensions = {
   dashboard: {
     /**
-     * Runs on every dashboard and onboarding page after the Owner check. A
-     * redirect sends the Owner elsewhere. Navigation only, not an access
-     * check: server actions and API routes do not run layouts.
+     * Called from the dashboard and onboarding layouts after the Owner check.
+     * A redirect sends the Owner elsewhere. Navigation only, never an access
+     * check: a layout does not run again on client-side navigation between
+     * pages it wraps, does not stop the page segment's own server work, and
+     * does not run for server actions or API routes. It is not told which page
+     * is open and the onboarding layout calls it too, so a redirect to a page
+     * under /dashboard or /onboarding loops: send the Owner outside both.
      */
     gate(ownerId: string): Promise<{ redirect?: string }>;
     /** Rendered above every dashboard page's content. */

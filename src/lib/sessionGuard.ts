@@ -12,11 +12,19 @@ import { affiliateSessionIsCurrent } from "@/lib/affiliateSession";
 // record to delete when the password changes; without this a stolen cookie
 // would keep working for its full 30 days. The lookups are Prisma, so they
 // live outside auth.config.ts, which Edge Middleware imports.
+// A session from before `authAtMs` existed carries whole seconds only. Rounded
+// down, it can only look older than it is, so at worst it is dropped by a
+// change made in the same second, never kept past one.
+function signedInAtMs(token: JWT): number | undefined {
+  if (typeof token.authAtMs === "number") return token.authAtMs;
+  return typeof token.authAt === "number" ? token.authAt * 1000 : undefined;
+}
+
 export async function dropSessionIfStale(session: Session, token: JWT): Promise<Session> {
   if (!token?.sub) return session;
   const current =
     token.role === "owner"
-      ? await ownerSessionIsCurrent(token.sub, token.authAt)
+      ? await ownerSessionIsCurrent(token.sub, signedInAtMs(token))
       : token.role === "affiliate"
         ? await affiliateSessionIsCurrent(token.sub, token.authAt)
         : true;

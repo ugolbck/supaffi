@@ -83,6 +83,37 @@ describe("lockout", () => {
   });
 });
 
+describe("many accounts churning the email limit", () => {
+  // Where anyone can create accounts, an attacker can feed the email limit as
+  // many real emails as they like, each attempt from a fresh address.
+  function churn(count: number, at = T0): void {
+    for (let i = 0; i < count; i += 1) reserveLoginAttempt(`churn-${i}@example.com`, `churn-${i}`, at);
+  }
+
+  it("keeps an email at its limit refused", () => {
+    for (let i = 0; i < PER_EMAIL; i += 1) reserveLoginAttempt(OWNER, `10.1.${Math.floor(i / 10)}.1`, T0);
+    churn(10_000);
+    expect(reserveLoginAttempt(OWNER, "192.0.2.99", T0)).toBe(false);
+  });
+
+  it("does not hand a partly spent email a fresh budget", () => {
+    const spent = PER_EMAIL / 2;
+    for (let i = 0; i < spent; i += 1) reserveLoginAttempt(OWNER, `10.2.${Math.floor(i / 10)}.1`, T0);
+    churn(10_000);
+    let allowed = 0;
+    for (let i = 0; i < PER_EMAIL; i += 1) {
+      if (reserveLoginAttempt(OWNER, `10.3.${Math.floor(i / 10)}.1`, T0)) allowed += 1;
+    }
+    expect(allowed).toBe(PER_EMAIL - spent);
+  });
+
+  it("frees the email once its window has passed", () => {
+    for (let i = 0; i < PER_EMAIL; i += 1) reserveLoginAttempt(OWNER, `10.1.${Math.floor(i / 10)}.1`, T0);
+    churn(10_000);
+    expect(reserveLoginAttempt(OWNER, "192.0.2.99", T0 + WINDOW_MS)).toBe(true);
+  });
+});
+
 describe("keying", () => {
   it("treats case and surrounding space as the same email", () => {
     attempt(PER_ADDRESS, "203.0.113.1", T0, "Owner@Example.com");
