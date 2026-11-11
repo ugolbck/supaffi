@@ -22,6 +22,8 @@ export type StaticExtensions = {
      * visitors here, and the login page links to it.
      */
     signupPath: string | null;
+    /** Where an Owner who forgot their password goes. A path adds a link to it on the login page. */
+    passwordResetPath: string | null;
   };
   instance: {
     /** Whether the Owner sees the running version, update notices and the "This instance" panel. */

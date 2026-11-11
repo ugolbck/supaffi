@@ -15,6 +15,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Extensions: `src/extensions/` lets a build that extends Supaffi replace a
   few behaviours, with defaults that keep Supaffi exactly as it ships.
   Extensions API version 1.
+- Extensions: `owners.passwordResetPath`, a static hook that adds a link to
+  the given path on the login page. Defaults to none.
 
 ## 0.6.1
 

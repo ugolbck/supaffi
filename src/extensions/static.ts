@@ -5,7 +5,7 @@ import type { StaticExtensions } from "./types";
 // Imports nothing that does work, so the proxy, the startup hook and anything
 // under src/lib can read it without pulling a build's server code along.
 export const staticDefaults: StaticExtensions = {
-  owners: { signupPath: null },
+  owners: { signupPath: null, passwordResetPath: null },
   instance: { showInfo: true },
 };
 

@@ -73,6 +73,22 @@ describe("owners.signupPath", () => {
   });
 });
 
+describe("owners.passwordResetPath", () => {
+  it("links the login page to it when set, and not by default", async () => {
+    vi.doMock("@/lib/owner", () => ({ ownerExists: async () => true }));
+    vi.doMock("@/app/login/LoginForm", () => ({ LoginForm: () => null }));
+    const { default: Login } = await import("@/app/login/page");
+    expect(renderToStaticMarkup((await Login()) as ReactElement)).not.toContain("Forgot password?");
+
+    vi.resetModules();
+    install({}, { owners: { passwordResetPath: "/reset" } });
+    const { default: LinkedLogin } = await import("@/app/login/page");
+    const html = renderToStaticMarkup((await LinkedLogin()) as ReactElement);
+    expect(html).toContain('href="/reset"');
+    expect(html).toContain("Forgot password?");
+  });
+});
+
 describe("dashboard.gate", () => {
   it("redirects the dashboard and onboarding before anything else loads", async () => {
     const listMerchantsForOwner = vi.fn();
