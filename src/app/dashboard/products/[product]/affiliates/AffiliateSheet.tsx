@@ -74,8 +74,8 @@ export type SheetAffiliate = {
   canEmail: boolean;
   /** Set when the affiliate has no code and their program has a discount to make one from. */
   codeToIssue: { suggested: string; discountLabel: string } | null;
-  /** Promo codes are built on Stripe coupons, so a product on another provider has none. */
-  promoCodesOn: boolean;
+  /** The payment provider the codes live in, or null when it has no promo codes. */
+  promoProvider: string | null;
   commissions: { id: string; date: string; amount: string; status: CommissionStatus }[];
 };
 
@@ -202,8 +202,9 @@ export function AffiliateSheet({
             </ul>
           </Field>
 
-          {affiliate.promoCodesOn && (
+          {affiliate.promoProvider && (
             <PromoCodes
+              provider={affiliate.promoProvider}
               affiliateId={affiliate.id}
               codes={affiliate.promoCodes}
               toIssue={affiliate.codeToIssue}
@@ -313,14 +314,16 @@ function PasswordLink({
 /**
  * The codes that credit this affiliate, clicked link or not. Making one from
  * the program's discount is the main way in; linking a code that already
- * exists in Stripe is there for a deal made outside the program.
+ * exists in the payment provider is there for a deal made outside the program.
  */
 function PromoCodes({
+  provider,
   affiliateId,
   codes,
   toIssue,
   product,
 }: {
+  provider: string;
   affiliateId: string;
   codes: SheetAffiliate["promoCodes"];
   toIssue: SheetAffiliate["codeToIssue"];
@@ -392,9 +395,9 @@ function PromoCodes({
         <CodeForm
           key={`link-${codes.length}`}
           initial=""
-          placeholder="Existing Stripe code"
+          placeholder={`Existing ${provider} code`}
           submitLabel="Add"
-          ariaLabel="Existing Stripe promo code"
+          ariaLabel={`Existing ${provider} promo code`}
           pending={pending}
           onEdit={() => setError(null)}
           onSubmit={(code) => run(() => addPromoCodeAction(product, affiliateId, code))}
@@ -436,7 +439,7 @@ function PromoCodes({
           <AlertDialogHeader>
             <AlertDialogTitle>Turn off {turningOff?.code}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {turningOff?.issued ? "Customers can no longer use it." : "It stops earning. It stays active in Stripe."} Its sales stay
+              {turningOff?.issued ? "Customers can no longer use it." : `It stops earning. It stays active in ${provider}.`} Its sales stay
               counted.
             </AlertDialogDescription>
           </AlertDialogHeader>

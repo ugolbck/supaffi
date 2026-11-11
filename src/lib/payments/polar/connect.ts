@@ -4,12 +4,6 @@ import { POLAR_WEBHOOK_EVENTS } from "@/lib/payments/polar/webhookEvents";
 
 type Endpoint = { id: string; url: string; events: string[]; secret?: string };
 
-/**
- * The scopes the token needs, all of them for the webhook endpoint. Sales
- * arrive whole on the webhook, so the token never reads an order.
- */
-export const POLAR_TOKEN_SCOPES = ["webhooks:read", "webhooks:write"] as const;
-
 export type TokenCheck = (CheckResult & { ok: false }) | { ok: true; detail: string; sandbox: boolean };
 
 /**
