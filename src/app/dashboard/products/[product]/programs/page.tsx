@@ -30,7 +30,7 @@ type Program = {
   attributionWindowDays: number;
   holdingPeriodDays: number;
   signupOpen: boolean;
-  stripeCouponId: string | null;
+  discountRef: string | null;
   discountLabel: string | null;
   affiliateCount: number;
 };
@@ -84,7 +84,7 @@ export default async function ProgramsPage({
   const coupons = query.new || editing ? await couponsForProgramForm(ownerId, merchant.id) : null;
   const discountFor = (p: Program | null) =>
     coupons
-      ? { coupons, value: p?.stripeCouponId ?? null, replaceKeyHref: `/dashboard/products/${merchant.slug}/settings?replace=stripe-key` }
+      ? { coupons, value: p?.discountRef ?? null, replaceKeyHref: `/dashboard/products/${merchant.slug}/settings?replace=stripe-key` }
       : undefined;
 
   return (
@@ -110,7 +110,7 @@ export default async function ProgramsPage({
             attributionDays={p.attributionWindowDays}
             holdingDays={p.holdingPeriodDays}
             affiliateCount={p.affiliateCount}
-            discount={p.stripeCouponId ? p.discountLabel : null}
+            discount={p.discountRef ? p.discountLabel : null}
             signupLink={p.signupOpen ? signupLinkFor(merchant.domain, p.slug, defaultSlug) : null}
             editHref={`${base}?edit=${p.id}`}
           />

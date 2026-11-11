@@ -2,25 +2,25 @@ import { randomUUID } from "node:crypto";
 import type { AffiliatePromoCode, Merchant, Prisma, ReferredSubscription } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
-import { stripeClientFor } from "@/lib/stripe";
-import { commissionRateFor, computeCommissionAmount, computePayableAt, isExcluded, saleAmountFor } from "../commission";
-import {
-  commissionFieldsAtCreation,
-  disputeStateAtCreation,
-  latestChargeFor,
-  paymentIntentForInvoice,
-} from "../paymentState";
-import { checkoutSessionBaseMinor } from "../saleBase";
-import { exclusionSourcesOf, retrieveInvoiceForEarning } from "../referredRevenue";
-import { referredEarningOn, storableReferredShare } from "../referredEarning";
-import { checkSelfReferralEmail, checkPaymentMethodOverlap, resolveBuyerFingerprint } from "../selfReferral";
+import { stripeClientFor } from "@/lib/payments/stripe/client";
+import { commissionRateFor, computeCommissionAmount, computePayableAt, saleAmountFor } from "@/lib/worker/commission";
+import { isExcluded } from "@/lib/payments/stripe/exclusion";
+import { commissionFieldsAtCreation } from "@/lib/worker/paymentState";
+import { disputeStateAtCreation, latestChargeFor, paymentIntentForInvoice } from "@/lib/payments/stripe/paymentState";
+import { checkoutSessionBaseMinor } from "@/lib/payments/stripe/saleBase";
+import { exclusionSourcesOf, retrieveInvoiceForEarning } from "@/lib/payments/stripe/referredRevenue";
+import { referredEarningOn } from "@/lib/payments/stripe/referredEarning";
+import { storableReferredShare } from "@/lib/worker/referredShare";
+import { checkSelfReferralEmail } from "@/lib/worker/selfReferral";
+import { checkPaymentMethodOverlap, resolveBuyerFingerprint } from "@/lib/payments/stripe/selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import { isTransientStripeError, stripeErrorLabel } from "@/lib/stripeErrors";
+import { isTransientStripeError, stripeErrorLabel } from "@/lib/payments/stripe/errors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_METADATA_KEY } from "@/lib/referral";
-import { claimFirstPayment, idOf, recordReferredSubscription, subscriptionProductIds } from "../referredSubscription";
-import { referralStillEarns } from "../referralDuration";
-import { createCommissionUnlessSelfReferral } from "../recordCommission";
+import { claimFirstPayment, recordReferredSubscription } from "@/lib/worker/referredSubscription";
+import { idOf, subscriptionProductIds } from "@/lib/payments/stripe/subscriptions";
+import { referralStillEarns } from "@/lib/worker/referralDuration";
+import { createCommissionUnlessSelfReferral } from "@/lib/worker/recordCommission";
 
 export async function handleCheckoutSessionCompleted(merchant: Merchant, session: Stripe.Checkout.Session): Promise<void> {
   const completedAt = new Date(session.created * 1000);
@@ -63,12 +63,12 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // dispute always carries the PaymentIntent, while Stripe does not document
   // linking that invoice back to it. chargeRefunded.ts tries the invoice and
   // then the PaymentIntent, so rows stored under either are found.
-  const stripePaymentRef =
+  const paymentRef =
     session.mode === "payment" ? (paymentIntentId ?? invoiceId) : (invoiceId ?? paymentIntentId);
   // Before 0.2.7 a one-time purchase with a post-purchase invoice was stored
   // under that invoice. Remembered so a redelivered event for such a sale finds
   // the row already there instead of writing a second one.
-  const earlierPaymentRef = invoiceId && invoiceId !== stripePaymentRef ? invoiceId : null;
+  const earlierPaymentRef = invoiceId && invoiceId !== paymentRef ? invoiceId : null;
 
   const stripe = stripeClientFor(merchant);
 
@@ -109,11 +109,11 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     // data safe either way, but there is no reason to spend the Stripe call
     // or retry a redelivery on a transient failure that changes nothing.
     const existing = await db.referredSubscription.findUnique({
-      where: { merchantId_stripeSubscriptionId: { merchantId: merchant.id, stripeSubscriptionId: subscriptionId } },
+      where: { merchantId_subscriptionRef: { merchantId: merchant.id, subscriptionRef: subscriptionId } },
     });
     const products =
-      existing && existing.stripeProductIds.length > 0
-        ? existing.stripeProductIds
+      existing && existing.productRefs.length > 0
+        ? existing.productRefs
         : await subscriptionProductIds(stripeClientFor(merchant), subscriptionId);
     referred = await recordReferredSubscription(
       merchant.id,
@@ -128,7 +128,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
       click = await db.click.findUniqueOrThrow({ where: { id: referred.clickId }, include: REFERRAL_INCLUDE });
       if (click.fraudConfirmedAt) return;
     }
-    if (moneyPaid && stripePaymentRef) {
+    if (moneyPaid && paymentRef) {
       // A delayed payment method's Session is created unpaid, and
       // checkout.session.async_payment_succeeded brings it back, paid, once
       // the debit clears days later. The first payment is still dated from
@@ -136,7 +136,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
       // the subscription, and schedules every renewal, from the Session, so a
       // FIXED_MONTHS window measured from the settlement date would end one
       // renewal late and let the month N+1 invoice earn.
-      await claimFirstPayment(referred, { ref: stripePaymentRef, at: completedAt });
+      await claimFirstPayment(referred, { ref: paymentRef, at: completedAt });
     }
   }
 
@@ -153,10 +153,10 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // Paid entirely from credit balance: nothing moved, so nothing earns.
   if (firstInvoice && !moneyPaid) return;
 
-  // Idempotency rides on Commission.stripePaymentRef being unique. A session
+  // Idempotency rides on Commission.paymentRef being unique. A session
   // with neither an invoice nor a payment intent gives us no key, and a
   // redelivery would duplicate. Nothing was paid on such a session anyway.
-  if (!stripePaymentRef) return;
+  if (!paymentRef) return;
 
   // The unique key cannot catch this one: the row was written under the
   // invoice and this event now computes the PaymentIntent. Checked the same way
@@ -164,7 +164,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // read and any Stripe call, which is where a dedupe would have ended too.
   if (earlierPaymentRef) {
     const earlier = await db.commission.findUnique({
-      where: { stripePaymentRef: earlierPaymentRef },
+      where: { paymentRef: earlierPaymentRef },
       select: { id: true },
     });
     if (earlier) return;
@@ -179,7 +179,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // tax and exclusion reads below, so a sale that cannot earn costs none of
   // them. A subscription's first invoice is read above it, because whether
   // money moved decides whether its first payment is claimed.
-  const sale = { ref: stripePaymentRef, at: completedAt };
+  const sale = { ref: paymentRef, at: completedAt };
   if (
     !(await referralStillEarns(
       merchant.id,
@@ -226,7 +226,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     // listed, which an excluded sale does not need. A subscription or customer
     // Stripe left unexpanded is read, and a failed read throws, so the event
     // is retried rather than earning on a sale the merchant may have excluded.
-    if (await isExcluded(stripe, exclusionSourcesOf(firstInvoice, subscriptionId, stripeCustomerId), stripePaymentRef)) return;
+    if (await isExcluded(stripe, exclusionSourcesOf(firstInvoice, subscriptionId, stripeCustomerId), paymentRef)) return;
     if (typeof firstInvoice.amount_paid_off_stripe !== "number") {
       // Asked for and not answered, which this pinned API version is not
       // documented to do. Scaling on amount_paid alone could pay on money
@@ -275,7 +275,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     const excluded = await isExcluded(
       stripe,
       { invoice: sessionRead.invoice ?? invoiceId, customer: sessionRead.customer ?? stripeCustomerId },
-      stripePaymentRef
+      paymentRef
     );
     if (excluded) return;
   }
@@ -303,7 +303,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
       data: {
         affiliateId: affiliate.id,
         clickId: click.id,
-        stripePaymentRef,
+        paymentRef,
         currency: session.currency,
         saleAmount: saleAmountFor(baseMinor, session.currency),
         payableAt: computePayableAt(program),
@@ -320,13 +320,13 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     if (written && dispute === "unknown") {
       // The write only reports whether it happened, not the row: looked up by
       // its unique payment reference so the log still names the commission.
-      const commission = await db.commission.findFirst({ where: { stripePaymentRef }, select: { id: true } });
+      const commission = await db.commission.findFirst({ where: { paymentRef }, select: { id: true } });
       console.warn(
         `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event arrives or the owner cancels it.`
       );
     }
   } catch (err) {
-    // Unique constraint on stripePaymentRef. checkout.session.completed and
+    // Unique constraint on paymentRef. checkout.session.completed and
     // checkout.session.async_payment_succeeded can both land on the same
     // paid Session; whichever arrives second finds the Commission the first
     // one already created, not an error.
@@ -360,7 +360,7 @@ async function linkClickOn(merchant: Merchant, session: Stripe.Checkout.Session,
   // earn a commission on this Merchant's sale. A promo code sale's click is
   // never one a token can name.
   const click = await db.click.findUnique({
-    where: { referralToken, affiliate: { merchantId: merchant.id }, promoCheckoutSessionId: null },
+    where: { referralToken, affiliate: { merchantId: merchant.id }, promoCheckoutRef: null },
     include: REFERRAL_INCLUDE,
   });
   if (!click) return null;
@@ -391,7 +391,7 @@ async function referralOn(
 ): Promise<ReferralClick | null> {
   const recordedOn = (tx: Prisma.TransactionClient) =>
     tx.click.findFirst({
-      where: { promoCheckoutSessionId: session.id, affiliate: { merchantId: merchant.id } },
+      where: { promoCheckoutRef: session.id, affiliate: { merchantId: merchant.id } },
       include: REFERRAL_INCLUDE,
     });
   const recorded = await recordedOn(db);
@@ -413,7 +413,7 @@ async function referralOn(
       data: {
         affiliateId: promoCode.affiliateId,
         promoCodeId: promoCode.id,
-        promoCheckoutSessionId: session.id,
+        promoCheckoutRef: session.id,
         // Required and unique, and never handed to anyone: no browser holds
         // it, so no checkout can ever carry it back.
         referralToken: randomUUID(),
@@ -454,7 +454,7 @@ async function promoCodeOn(merchant: Merchant, session: Stripe.Checkout.Session)
   // A code turned off credits nobody from then on. An issued one is inactive
   // in Stripe too; a linked one may still be redeemable there.
   return db.affiliatePromoCode.findFirst({
-    where: { merchantId: merchant.id, stripePromotionCodeId: { in: ids }, disabledAt: null },
+    where: { merchantId: merchant.id, promoCodeRef: { in: ids }, disabledAt: null },
   });
 }
 

@@ -15,20 +15,14 @@ const stripeStub = vi.hoisted(() => ({
   subscriptions: { retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined) },
   subscriptionItems: { list: vi.fn(async (_params: unknown): Promise<unknown> => undefined) },
 }));
-vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+vi.mock("@/lib/payments/stripe/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/payments/stripe/client")>("@/lib/payments/stripe/client");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
 import { deleteMerchant } from "@/lib/merchant";
-import {
-  claimFirstPayment,
-  fillStripeProductIds,
-  findReferredSubscription,
-  recordReferredSubscription,
-  subscriptionIdOf,
-  subscriptionProductIds,
-} from "@/lib/worker/referredSubscription";
+import { claimFirstPayment, fillProductRefs, recordReferredSubscription } from "@/lib/worker/referredSubscription";
+import { findReferredSubscription, subscriptionIdOf, subscriptionProductIds } from "@/lib/payments/stripe/subscriptions";
 import {
   clearReferralTables,
   retrievedInvoice,
@@ -206,7 +200,7 @@ describe("referred subscriptions", () => {
     it("records the products with the subscription", async () => {
       const { click } = await seedReferral(merchant);
       const row = await recordReferredSubscription(merchant.id, click.id, "sub_1", ["prod_basic"]);
-      expect(row.stripeProductIds).toEqual(["prod_basic"]);
+      expect(row.productRefs).toEqual(["prod_basic"]);
     });
 
     it("fills an empty row on a redelivery, and never replaces products already stored", async () => {
@@ -216,19 +210,19 @@ describe("referred subscriptions", () => {
       const filled = await recordReferredSubscription(merchant.id, click.id, "sub_1", ["prod_basic"]);
       const kept = await recordReferredSubscription(merchant.id, click.id, "sub_1", ["prod_other"]);
 
-      expect(filled.stripeProductIds).toEqual(["prod_basic"]);
-      expect(kept.stripeProductIds).toEqual(["prod_basic"]);
+      expect(filled.productRefs).toEqual(["prod_basic"]);
+      expect(kept.productRefs).toEqual(["prod_basic"]);
       expect(await db.referredSubscription.count()).toBe(1);
     });
 
     it("fills products only while none are stored, and returns what is stored", async () => {
       const { click } = await seedReferral(merchant);
       const row = await seedReferredSubscription(merchant.id, click.id, "sub_1");
-      expect(row.stripeProductIds).toEqual([]);
+      expect(row.productRefs).toEqual([]);
 
-      expect(await fillStripeProductIds(row.id, ["prod_basic"])).toEqual(["prod_basic"]);
-      expect(await fillStripeProductIds(row.id, ["prod_other"])).toEqual(["prod_basic"]);
-      expect(await fillStripeProductIds(row.id, [])).toEqual(["prod_basic"]);
+      expect(await fillProductRefs(row.id, ["prod_basic"])).toEqual(["prod_basic"]);
+      expect(await fillProductRefs(row.id, ["prod_other"])).toEqual(["prod_basic"]);
+      expect(await fillProductRefs(row.id, [])).toEqual(["prod_basic"]);
     });
   });
 
@@ -260,7 +254,7 @@ describe("referred subscriptions", () => {
       const found = await findReferredSubscription(merchant, "sub_1", "cus_1");
 
       expect(stripeStub.subscriptions.retrieve).toHaveBeenCalledWith("sub_1");
-      expect(found?.stripeProductIds).toEqual(["prod_pro"]);
+      expect(found?.productRefs).toEqual(["prod_pro"]);
     });
 
     it("adopts with no products, warning once, when the key cannot read subscriptions", async () => {
@@ -274,7 +268,7 @@ describe("referred subscriptions", () => {
       });
       try {
         const found = await findReferredSubscription(merchant, "sub_1", "cus_1");
-        expect(found?.stripeProductIds).toEqual([]);
+        expect(found?.productRefs).toEqual([]);
         expect(warnings).toHaveBeenCalledTimes(1);
       } finally {
         warnings.mockRestore();

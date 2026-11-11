@@ -18,8 +18,8 @@ async function seedMerchant(stripeConnected: boolean) {
       name: "InstantGradient",
       domain: `${crypto.randomUUID()}.example.com`,
       websiteUrl: "https://instantgradient.com",
-      stripeSecretKeyEnc: stripeConnected ? "enc" : null,
-      stripeWebhookSecretEnc: stripeConnected ? "enc" : null,
+      paymentKeyEnc: stripeConnected ? "enc" : null,
+      webhookSecretEnc: stripeConnected ? "enc" : null,
     },
   });
   return { owner, merchant };

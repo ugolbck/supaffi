@@ -66,7 +66,7 @@ describe("Commission money columns", () => {
       data: {
         affiliateId,
         clickId,
-        stripePaymentRef: "pi_vnd_large",
+        paymentRef: "pi_vnd_large",
         amount: "50000000000.00",
         grossAmount: "50000000000.00",
         saleAmount: "250000000000.00",

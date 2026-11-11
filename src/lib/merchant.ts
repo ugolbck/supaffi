@@ -1,3 +1,4 @@
+import type { PaymentProvider } from "@prisma/client";
 import { db } from "@/lib/db";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { uniqueSlug } from "@/lib/slug";
@@ -63,12 +64,12 @@ export async function connectStripe(
   await db.merchant.update({
     where: { id: merchantId },
     data: {
-      ...(input.secretKey ? { stripeSecretKeyEnc: encrypt(input.secretKey) } : {}),
-      ...(input.webhookSecret ? { stripeWebhookSecretEnc: encrypt(input.webhookSecret) } : {}),
+      ...(input.secretKey ? { paymentKeyEnc: encrypt(input.secretKey) } : {}),
+      ...(input.webhookSecret ? { webhookSecretEnc: encrypt(input.webhookSecret) } : {}),
       // Explicit null clears it, which is what a manually pasted secret means:
       // the endpoint on the other end is one Supaffi did not create and must
       // not later delete.
-      ...(input.webhookEndpointId !== undefined ? { stripeWebhookEndpointId: input.webhookEndpointId } : {}),
+      ...(input.webhookEndpointId !== undefined ? { webhookEndpointId: input.webhookEndpointId } : {}),
     },
   });
 }
@@ -86,10 +87,10 @@ export async function getIntegrationStatus(
 ): Promise<{ stripe: boolean; stripeKey: boolean; stripeWebhook: boolean }> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
-    select: { stripeSecretKeyEnc: true, stripeWebhookSecretEnc: true },
+    select: { paymentKeyEnc: true, webhookSecretEnc: true },
   });
-  const stripeKey = Boolean(merchant?.stripeSecretKeyEnc);
-  const stripeWebhook = Boolean(merchant?.stripeWebhookSecretEnc);
+  const stripeKey = Boolean(merchant?.paymentKeyEnc);
+  const stripeWebhook = Boolean(merchant?.webhookSecretEnc);
   return {
     stripe: stripeKey && stripeWebhook,
     stripeKey,
@@ -114,9 +115,9 @@ export async function getStripeKeyKind(
 ): Promise<StripeKeyKind> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
-    select: { stripeSecretKeyEnc: true },
+    select: { paymentKeyEnc: true },
   });
-  if (!merchant?.stripeSecretKeyEnc) return null;
+  if (!merchant?.paymentKeyEnc) return null;
 
   // A rotated or lost MASTER_ENCRYPTION_KEY makes decrypt throw. Integrations
   // is the one screen that exists to tell an Owner their Stripe connection is
@@ -124,7 +125,7 @@ export async function getStripeKeyKind(
   // decrypt failure prompts a reconnect).
   let key: string;
   try {
-    key = decrypt(merchant.stripeSecretKeyEnc);
+    key = decrypt(merchant.paymentKeyEnc);
   } catch {
     return null;
   }
@@ -161,6 +162,7 @@ export type OwnedMerchant = {
   name: string;
   domain: string;
   websiteUrl: string;
+  paymentProvider: PaymentProvider;
   createdAt: Date;
 };
 
@@ -176,9 +178,9 @@ export async function getStripeWebhookEndpointId(
 ): Promise<string | null> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
-    select: { stripeWebhookEndpointId: true },
+    select: { webhookEndpointId: true },
   });
-  return merchant?.stripeWebhookEndpointId ?? null;
+  return merchant?.webhookEndpointId ?? null;
 }
 
 export async function getMerchantForOwner(
@@ -209,6 +211,7 @@ const MERCHANT_FIELDS = {
   name: true,
   domain: true,
   websiteUrl: true,
+  paymentProvider: true,
   createdAt: true,
 } as const;
 

@@ -36,7 +36,7 @@ describe("sweepPayableCommissions", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     const program = await db.program.create({
@@ -75,7 +75,7 @@ describe("sweepPayableCommissions", () => {
       data: {
         affiliateId,
         clickId,
-        stripePaymentRef: crypto.randomUUID(),
+        paymentRef: crypto.randomUUID(),
         amount: "10.00",
         grossAmount: "10.00",
         currency: "usd",

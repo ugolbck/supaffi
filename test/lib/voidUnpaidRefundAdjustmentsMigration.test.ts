@@ -64,10 +64,10 @@ describe("void unpaid refund adjustments migration", () => {
     const base = { affiliateId: affiliate.id, clickId: click.id, currency: "usd", payableAt: new Date() };
 
     const paidSale = await db.commission.create({
-      data: { ...base, amount: "30.00", status: "PAID", paidAt: new Date(), stripePaymentRef: "in_paid" },
+      data: { ...base, amount: "30.00", status: "PAID", paidAt: new Date(), paymentRef: "in_paid" },
     });
     const payableSale = await db.commission.create({
-      data: { ...base, amount: "12.00", status: "PAYABLE", stripePaymentRef: "in_payable" },
+      data: { ...base, amount: "12.00", status: "PAYABLE", paymentRef: "in_payable" },
     });
     const payableAdjustment = await db.commission.create({
       data: { ...base, amount: "-10.00", status: "PAYABLE", adjustsCommissionId: paidSale.id },

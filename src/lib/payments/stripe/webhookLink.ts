@@ -1,4 +1,4 @@
-import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/stripeWebhookEvents";
+import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/payments/stripe/webhookEvents";
 
 /**
  * The pre-filled webhook link, the sibling of stripeRestrictedKey.ts.
@@ -10,7 +10,7 @@ import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/stripeWebhookEvents";
  * the events to copy, which it does anyway underneath the button.
  *
  * The event list itself is not duplicated here: it is
- * `REQUIRED_STRIPE_WEBHOOK_EVENTS`, the same list `src/lib/worker/dispatch.ts`
+ * `REQUIRED_STRIPE_WEBHOOK_EVENTS`, the same list `src/lib/payments/stripe/dispatch.ts`
  * handles.
  */
 export const WEBHOOK_EVENTS = REQUIRED_STRIPE_WEBHOOK_EVENTS;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { webhookCreateUrl, webhookEndpointUrl, WEBHOOK_EVENTS } from "@/lib/stripeWebhookLink";
+import { webhookCreateUrl, webhookEndpointUrl, WEBHOOK_EVENTS } from "@/lib/payments/stripe/webhookLink";
 
 describe("webhook link", () => {
   it("points Stripe at this product's endpoint", () => {

@@ -1,4 +1,4 @@
-import { isStripeError, loggableError } from "@/lib/stripeErrors";
+import { providerErrorLabel } from "@/lib/payments";
 import { claimBatch, markProcessed, markFailed } from "./claim";
 import { sweepPayableCommissions } from "./sweep";
 import { processWebhookEvent } from "./dispatch";
@@ -26,13 +26,14 @@ export async function runTick(): Promise<void> {
         await processWebhookEvent(event);
         await markProcessed(event.id);
       } catch (err) {
-        // A Stripe error is logged by type and code only, since its message
-        // names the masked key and the account. Anything else is a bug here
-        // and keeps its stack.
-        if (isStripeError(err)) {
-          console.error(`[worker] event ${event.id} (${event.stripeEventId}) failed: ${loggableError(err)}`);
+        // A provider's error is logged by its label only, since its message
+        // can name the masked key and the account. Anything else is a bug
+        // here and keeps its stack.
+        const label = providerErrorLabel(err);
+        if (label) {
+          console.error(`[worker] event ${event.id} (${event.providerEventId}) failed: ${label}`);
         } else {
-          console.error(`[worker] event ${event.id} (${event.stripeEventId}) failed`, err);
+          console.error(`[worker] event ${event.id} (${event.providerEventId}) failed`, err);
         }
         await markFailed(event.id, event.attempts, err);
       }

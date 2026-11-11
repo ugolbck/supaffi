@@ -61,7 +61,7 @@ export async function notifyAffiliateJoined(tx: Tx, affiliateId: string): Promis
           commissionDurationMonths: true,
           attributionWindowDays: true,
           holdingPeriodDays: true,
-          stripeCouponId: true,
+          discountRef: true,
           discountLabel: true,
         },
       },
@@ -102,7 +102,7 @@ export async function notifyAffiliateJoined(tx: Tx, affiliateId: string): Promis
         product: merchant.name,
         link: linkUrl(merchant.websiteUrl, link),
         terms,
-        discount: program.stripeCouponId ? program.discountLabel : null,
+        discount: program.discountRef ? program.discountLabel : null,
         href: `${originFor(merchant.domain)}/affiliates/dashboard`,
       }),
     });

@@ -7,7 +7,7 @@ import { CodeBlock } from "@/components/onboarding/CodeBlock";
 import { StepShell } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { PasteField } from "@/components/PasteField";
-import { restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
+import { restrictedKeyUrl } from "@/lib/payments/stripe/restrictedKey";
 import { displayStep, nextStep, stepPath } from "@/lib/onboarding";
 import { isLocalDomain } from "@/lib/url";
 import { saveStripeKeyAction, saveWebhookSecretAction } from "../actions";

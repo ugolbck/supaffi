@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { db } from "@/lib/db";
 import type { CheckResult } from "@/lib/checks/dns";
-import { stripeApiLocation } from "@/lib/stripeApi";
+import { stripeApiLocation } from "@/lib/payments/stripe/apiLocation";
 
 type MinimalStripe = { customers: { list: (params: { limit: number }) => Promise<unknown> } };
 

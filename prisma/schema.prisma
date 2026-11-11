@@ -36,12 +36,13 @@ model Merchant {
   // Nullable because connecting Stripe is a separate onboarding step from
   // creating the Merchant: a Merchant exists first, then gets integrations
   // attached. Anything that spends these must handle the unconnected case.
-  stripeSecretKeyEnc      String?
-  stripeWebhookSecretEnc  String?
+  paymentProvider   PaymentProvider @default(STRIPE)
+  paymentKeyEnc     String?         @map("stripeSecretKeyEnc")
+  webhookSecretEnc  String?         @map("stripeWebhookSecretEnc")
   // Set only when Supaffi created the endpoint itself, which it does as soon
   // as the restricted key carries write access to webhook endpoints. Used to
   // avoid creating a second endpoint on a repeat connect.
-  stripeWebhookEndpointId String?
+  webhookEndpointId String?         @map("stripeWebhookEndpointId")
 
   // The tracking integration is the one part of setup Supaffi cannot do for
   // the Merchant: the script goes on their site and client_reference_id goes
@@ -81,6 +82,12 @@ model Merchant {
   @@unique([ownerId, slug])
 }
 
+// Where a product takes its payments. One per product: its key, webhook and
+// every stored payment reference belong to this provider.
+enum PaymentProvider {
+  STRIPE
+}
+
 enum CommissionDurationType {
   ONE_TIME
   FIXED_MONTHS
@@ -109,7 +116,7 @@ model Program {
   // claim. Null: no codes are offered. `discountLabel` is what it gives a
   // customer ("20% off for 3 months"), read from Stripe when it was picked, so
   // no page has to ask Stripe to say it.
-  stripeCouponId           String?
+  discountRef              String?                @map("stripeCouponId")
   discountLabel            String?
 
   affiliates Affiliate[]
@@ -236,14 +243,14 @@ model Click {
   // it carries that Session's id, one click per Session, and is left out of
   // every click count. The code is nullable so removing it from the Affiliate
   // keeps the history.
-  promoCheckoutSessionId String?
-  promoCodeId            String?
-  promoCode              AffiliatePromoCode? @relation(fields: [promoCodeId], references: [id], onDelete: SetNull)
+  promoCheckoutRef String?             @map("promoCheckoutSessionId")
+  promoCodeId      String?
+  promoCode        AffiliatePromoCode? @relation(fields: [promoCodeId], references: [id], onDelete: SetNull)
 
   commissions           Commission[]
   referredSubscriptions ReferredSubscription[]
 
-  @@unique([promoCheckoutSessionId, affiliateId])
+  @@unique([promoCheckoutRef, affiliateId])
   @@index([stripeCustomerId])
   @@index([linkId])
   @@index([promoCodeId])
@@ -257,31 +264,31 @@ model Click {
 /// it used. The text is looked up once, when the Owner adds it, and kept for
 /// display.
 model AffiliatePromoCode {
-  id                    String    @id @default(cuid())
-  merchantId            String
-  merchant              Merchant  @relation(fields: [merchantId], references: [id])
-  affiliateId           String
-  affiliate             Affiliate @relation(fields: [affiliateId], references: [id])
-  stripePromotionCodeId String // promo_...
-  code                  String // what the customer types, as Stripe spells it
+  id            String    @id @default(cuid())
+  merchantId    String
+  merchant      Merchant  @relation(fields: [merchantId], references: [id])
+  affiliateId   String
+  affiliate     Affiliate @relation(fields: [affiliateId], references: [id])
+  promoCodeRef  String    @map("stripePromotionCodeId") // promo_... on Stripe
+  code          String // what the customer types, as Stripe spells it
   // True when Supaffi created the code in Stripe from the program's coupon,
   // false when the Owner linked a code that already existed. Only an issued
   // code is deactivated in Stripe when it is turned off.
-  issued                Boolean   @default(false)
+  issued        Boolean   @default(false)
   // What the code gives a customer, as the program's coupon said when the code
   // was made. Kept on the code: changing the program's coupon later does not
   // change a code Stripe already holds. Null for a linked code.
-  discountLabel         String?
+  discountLabel String?
   // Turned off: no longer credits anyone, and an issued one is inactive in
   // Stripe. Kept rather than deleted so its sales stay counted on it.
-  disabledAt            DateTime?
+  disabledAt    DateTime?
 
   clicks    Click[]
   createdAt DateTime @default(now())
 
   // One Affiliate per code on a product. Not global: products sharing a
   // Stripe account see the same codes.
-  @@unique([merchantId, stripePromotionCodeId])
+  @@unique([merchantId, promoCodeRef])
   @@index([affiliateId])
 }
 
@@ -293,12 +300,12 @@ model AffiliatePromoCode {
 /// Unique per Merchant, not globally, because every product on a shared
 /// account receives its own copy of each event.
 model ReferredSubscription {
-  id                   String   @id @default(cuid())
-  merchantId           String
-  merchant             Merchant @relation(fields: [merchantId], references: [id])
-  clickId              String
-  click                Click    @relation(fields: [clickId], references: [id])
-  stripeSubscriptionId String
+  id              String   @id @default(cuid())
+  merchantId      String
+  merchant        Merchant @relation(fields: [merchantId], references: [id])
+  clickId         String
+  click           Click    @relation(fields: [clickId], references: [id])
+  subscriptionRef String   @map("stripeSubscriptionId")
 
   // The first time money moved on this subscription: the paid checkout's
   // Invoice (or PaymentIntent) id, or after a free trial the first invoice
@@ -316,11 +323,11 @@ model ReferredSubscription {
   // subscription's items. Renewals earn only on this subscription's lines for
   // these products. Empty on rows recorded before 0.2.7, or when Stripe could
   // not say, until the next renewal fills it.
-  stripeProductIds String[] @default([])
+  productRefs String[] @default([]) @map("stripeProductIds")
 
   createdAt DateTime @default(now())
 
-  @@unique([merchantId, stripeSubscriptionId])
+  @@unique([merchantId, subscriptionRef])
   @@index([clickId])
 }
 
@@ -346,15 +353,15 @@ model Commission {
   adjustsCommission   Commission?  @relation("Adjustment", fields: [adjustsCommissionId], references: [id])
   adjustments         Commission[] @relation("Adjustment")
 
-  stripePaymentRef String?  @unique // an Invoice ID for subscriptions, a PaymentIntent ID for one-time purchases (no Invoice exists for those) — null for adjustment rows, which aren't tied to a new payment
+  paymentRef String?  @unique @map("stripePaymentRef") // on Stripe, an Invoice ID for subscriptions, a PaymentIntent ID for one-time purchases (no Invoice exists for those) — null for adjustment rows, which aren't tied to a new payment
   // Eighteen digits because a single sale in a currency like VND or IDR can
   // pass the eight integer digits Decimal(10,2) allowed.
-  amount           Decimal  @db.Decimal(18, 2) // negative for adjustment rows
-  currency         String // ISO code, e.g. "usd", "eur" — never converted (see CONTEXT.md)
+  amount     Decimal  @db.Decimal(18, 2) // negative for adjustment rows
+  currency   String // ISO code, e.g. "usd", "eur" — never converted (see CONTEXT.md)
   // The sale the commission was earned on, major units, same currency: after
   // discounts, before tax and shipping. Rows written before 0.2.4 hold what
   // the customer paid including tax. Null for adjustments and older rows.
-  saleAmount       Decimal? @db.Decimal(18, 2)
+  saleAmount Decimal? @db.Decimal(18, 2)
 
   // What this commission was before any refund reduced it. Set at creation
   // and never changed again, so a second partial refund prorates against the
@@ -437,22 +444,22 @@ enum WebhookEventStatus {
 }
 
 model WebhookEvent {
-  id            String             @id @default(cuid())
-  merchantId    String
-  merchant      Merchant           @relation(fields: [merchantId], references: [id])
-  stripeEventId String
-  payload       Json
-  status        WebhookEventStatus @default(PENDING)
-  attempts      Int                @default(0)
-  lastError     String? // last failure message, for debugging FAILED rows
-  nextAttemptAt DateTime           @default(now()) // backoff scheduling and, while PROCESSING, the claim lease; the claim query filters on this
-  createdAt     DateTime           @default(now())
-  processedAt   DateTime?
+  id              String             @id @default(cuid())
+  merchantId      String
+  merchant        Merchant           @relation(fields: [merchantId], references: [id])
+  providerEventId String             @map("stripeEventId")
+  payload         Json
+  status          WebhookEventStatus @default(PENDING)
+  attempts        Int                @default(0)
+  lastError       String? // last failure message, for debugging FAILED rows
+  nextAttemptAt   DateTime           @default(now()) // backoff scheduling and, while PROCESSING, the claim lease; the claim query filters on this
+  createdAt       DateTime           @default(now())
+  processedAt     DateTime?
 
   // Blocks duplicate delivery per Merchant. Not globally: two products on
   // one Stripe account each get their own copy of every event, and a global
   // key dropped the second copy as a duplicate before its handler could run.
-  @@unique([merchantId, stripeEventId])
+  @@unique([merchantId, providerEventId])
   @@index([status, nextAttemptAt, createdAt])
   // Cleanup only deletes an old processed row when the same product has a
   // newer one, and looks that up once per row.

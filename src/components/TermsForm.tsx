@@ -227,7 +227,7 @@ function Discount({ coupons, value, replaceKeyHref }: DiscountField) {
 
   return (
     <Field label={label} htmlFor="program-discount">
-      <Select name="stripeCouponId" items={items} defaultValue={value ?? NO_DISCOUNT}>
+      <Select name="discountRef" items={items} defaultValue={value ?? NO_DISCOUNT}>
         <SelectTrigger id="program-discount" className="h-9 w-full cursor-pointer">
           <SelectValue />
         </SelectTrigger>

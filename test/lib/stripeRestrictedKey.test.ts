@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { KEY_PERMISSIONS, keyName, restrictedKeyUrl } from "@/lib/stripeRestrictedKey";
+import { KEY_PERMISSIONS, keyName, restrictedKeyUrl } from "@/lib/payments/stripe/restrictedKey";
 
 /**
  * Stripe's key-creation form ignores an identifier it does not recognise: it

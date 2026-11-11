@@ -71,8 +71,8 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         name: "TestCo",
         domain: "affiliate-lib-test.example.com",
         websiteUrl: "https://affiliate-lib-test.example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentKeyEnc: "x",
+        webhookSecretEnc: "x",
       },
     });
     merchantId = merchant.id;
@@ -108,8 +108,8 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         name: "OtherCo",
         domain: "affiliate-lib-other.example.com",
         websiteUrl: "https://affiliate-lib-other.example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentKeyEnc: "x",
+        webhookSecretEnc: "x",
       },
     });
     otherMerchantId = otherMerchant.id;
@@ -375,7 +375,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         currency,
         status,
         payableAt: new Date(),
-        stripePaymentRef: crypto.randomUUID(),
+        paymentRef: crypto.randomUUID(),
       },
     });
   }

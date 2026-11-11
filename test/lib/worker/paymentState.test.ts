@@ -1,13 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
-import {
-  commissionFieldsAtCreation,
-  disputeStateAtCreation,
-  latestChargeFor,
-  paymentIntentForInvoice,
-  type ChargeSnapshot,
-} from "@/lib/worker/paymentState";
+import { commissionFieldsAtCreation, type ChargeSnapshot } from "@/lib/worker/paymentState";
+import { disputeStateAtCreation, latestChargeFor, paymentIntentForInvoice } from "@/lib/payments/stripe/paymentState";
 
 /** A charge as `latestChargeFor` reports it, undisputed unless said. */
 function snapshot(amountRefunded: number, disputed = false): ChargeSnapshot {
