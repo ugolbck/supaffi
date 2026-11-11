@@ -68,7 +68,7 @@ describe("readReferralHistory", () => {
         merchantId: merchant.id,
         affiliateId: click.affiliateId,
         clickId: click.id,
-        stripePaymentRef: ref,
+        paymentRef: ref,
         amount: 10,
         grossAmount: 10,
         currency: "usd",

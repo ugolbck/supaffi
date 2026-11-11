@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { formatMoney } from "@/lib/format";
-import { minorUnitsToMajor } from "@/lib/stripe";
+import { minorUnitsToMajor } from "@/lib/money";
 import { promoCodeInput } from "@/lib/promoCodeInput";
 
 /**

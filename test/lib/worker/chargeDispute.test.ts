@@ -28,14 +28,14 @@ const stripeStub = vi.hoisted(() => ({
     retrieve: vi.fn(async (_id: string): Promise<unknown> => undefined),
   },
 }));
-vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+vi.mock("@/lib/payments/stripe/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/payments/stripe/client")>("@/lib/payments/stripe/client");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
-import { handleChargeDisputeCreated } from "@/lib/worker/handlers/chargeDisputeCreated";
-import { handleChargeDisputeClosed } from "@/lib/worker/handlers/chargeDisputeClosed";
-import { disputeStateFor, disputeStateOf } from "@/lib/worker/disputes";
+import { handleChargeDisputeCreated } from "@/lib/payments/stripe/handlers/chargeDisputeCreated";
+import { handleChargeDisputeClosed } from "@/lib/payments/stripe/handlers/chargeDisputeClosed";
+import { disputeStateFor, disputeStateOf } from "@/lib/payments/stripe/disputes";
 import { sweepPayableCommissions } from "@/lib/worker/sweep";
 
 const PAYMENT_INTENT_ID = "pi_dispute_test";
@@ -189,7 +189,7 @@ describe("dispute handlers", () => {
         merchantId: merchant.id,
         affiliateId,
         clickId,
-        stripePaymentRef: PAYMENT_INTENT_ID,
+        paymentRef: PAYMENT_INTENT_ID,
         amount: 15.6,
         grossAmount: 15.6,
         currency: "usd",
@@ -223,7 +223,7 @@ describe("dispute handlers", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     const program = await db.program.create({
@@ -532,7 +532,7 @@ describe("dispute handlers", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     disputesOnCharge("needs_response");
@@ -561,7 +561,7 @@ describe("dispute handlers", () => {
 
     it("holds a row stored under its invoice before 0.2.7 while the dispute is open", async () => {
       invoiceLinked("in_post");
-      const commission = await givenCommission({ stripePaymentRef: "in_post" });
+      const commission = await givenCommission({ paymentRef: "in_post" });
       disputesOnCharge("needs_response");
 
       await handleChargeDisputeCreated(merchant, dispute("needs_response"));

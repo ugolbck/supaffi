@@ -119,8 +119,8 @@ describe.skipIf(!hasDatabase)("createAffiliateSignup", () => {
         name: "TestCo",
         domain: "signup-action-test.example.com",
         websiteUrl: "https://signup-action-test.example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentKeyEnc: "x",
+        webhookSecretEnc: "x",
       },
     });
     merchantId = merchant.id;

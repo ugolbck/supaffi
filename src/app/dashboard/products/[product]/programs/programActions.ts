@@ -30,8 +30,8 @@ function read(formData: FormData) {
  * discount field (Stripe not connected, or its coupons could not be listed).
  */
 async function discount(ownerId: string, productId: string, programId: string | null, formData: FormData) {
-  if (!formData.has("stripeCouponId")) return { error: null };
-  const picked = String(formData.get("stripeCouponId"));
+  if (!formData.has("discountRef")) return { error: null };
+  const picked = String(formData.get("discountRef"));
   return programDiscount(ownerId, productId, programId, picked === NO_DISCOUNT ? "" : picked);
 }
 

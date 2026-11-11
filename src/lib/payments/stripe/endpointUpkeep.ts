@@ -1,15 +1,16 @@
 import Stripe from "stripe";
 import { db } from "@/lib/db";
-import { loggableError } from "@/lib/stripeErrors";
+import { loggableError } from "@/lib/payments/stripe/errors";
 import { decrypt } from "@/lib/crypto";
 import { isLocalDomain } from "@/lib/url";
-import { webhookEndpointUrl } from "@/lib/stripeWebhookLink";
-import { stripeApiLocation } from "@/lib/stripeApi";
+import { webhookEndpointUrl } from "@/lib/payments/stripe/webhookLink";
+import { stripeApiLocation } from "@/lib/payments/stripe/apiLocation";
 import {
   ensureRequiredWebhookEvents,
   moveWebhookEndpoint,
   type WebhookEndpointsClient,
-} from "@/lib/stripeWebhookEndpoint";
+} from "@/lib/payments/stripe/webhookEndpoint";
+import type { WebhookMove } from "@/lib/payments/types";
 
 type MakeClient = (secretKey: string) => WebhookEndpointsClient;
 
@@ -27,9 +28,9 @@ function defaultClient(secretKey: string): WebhookEndpointsClient {
 const merchantSelect = {
   id: true,
   domain: true,
-  stripeSecretKeyEnc: true,
-  stripeWebhookSecretEnc: true,
-  stripeWebhookEndpointId: true,
+  paymentKeyEnc: true,
+  webhookSecretEnc: true,
+  webhookEndpointId: true,
 } as const;
 
 /**
@@ -48,15 +49,15 @@ export async function upgradeMerchantWebhookEvents(
     // a local address has no endpoint at all: Stripe cannot reach it, so its
     // events come from the CLI instead.
     if (
-      !merchant?.stripeSecretKeyEnc ||
-      !merchant.stripeWebhookSecretEnc ||
+      !merchant?.paymentKeyEnc ||
+      !merchant.webhookSecretEnc ||
       isLocalDomain(merchant.domain)
     ) {
       return;
     }
 
-    const result = await ensureRequiredWebhookEvents(makeClient(decrypt(merchant.stripeSecretKeyEnc)), {
-      endpointId: merchant.stripeWebhookEndpointId,
+    const result = await ensureRequiredWebhookEvents(makeClient(decrypt(merchant.paymentKeyEnc)), {
+      endpointId: merchant.webhookEndpointId,
       url: webhookEndpointUrl(merchant.domain),
     });
 
@@ -82,12 +83,6 @@ export async function upgradeMerchantWebhookEvents(
   }
 }
 
-/**
- * What a subdomain change did to the product's Stripe endpoint. "manual"
- * means Stripe still delivers to the old address and only the owner can fix
- * that, in Stripe.
- */
-export type WebhookMove = "moved" | "manual" | "none";
 
 /**
  * Follows a subdomain change into Stripe, called once the new domain is
@@ -110,12 +105,12 @@ export async function moveMerchantWebhookEndpoint(
     // No webhook means nothing in Stripe delivers to this product yet. A
     // local address has no endpoint Stripe could reach: its events come
     // from the CLI, which is pointed at the new address by hand.
-    if (!merchant?.stripeWebhookSecretEnc || isLocalDomain(merchant.domain)) return "none";
-    if (!merchant.stripeSecretKeyEnc || !merchant.stripeWebhookEndpointId) return "manual";
+    if (!merchant?.webhookSecretEnc || isLocalDomain(merchant.domain)) return "none";
+    if (!merchant.paymentKeyEnc || !merchant.webhookEndpointId) return "manual";
 
     const result = await moveWebhookEndpoint(
-      makeClient(decrypt(merchant.stripeSecretKeyEnc)),
-      merchant.stripeWebhookEndpointId,
+      makeClient(decrypt(merchant.paymentKeyEnc)),
+      merchant.webhookEndpointId,
       webhookEndpointUrl(merchant.domain)
     );
     if (result.ok) {
@@ -140,7 +135,7 @@ export async function upgradeAllWebhookEvents(makeClient: MakeClient = defaultCl
   let merchants: { id: string }[];
   try {
     merchants = await db.merchant.findMany({
-      where: { stripeSecretKeyEnc: { not: null }, stripeWebhookSecretEnc: { not: null } },
+      where: { paymentProvider: "STRIPE", paymentKeyEnc: { not: null }, webhookSecretEnc: { not: null } },
       select: { id: true },
       orderBy: { createdAt: "asc" },
     });

@@ -10,8 +10,8 @@ import { db } from "@/lib/db";
 const stripeStub = vi.hoisted(() => ({
   coupons: { retrieve: vi.fn(async (_id: string): Promise<unknown> => ({})) },
 }));
-vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+vi.mock("@/lib/payments/stripe/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/payments/stripe/client")>("@/lib/payments/stripe/client");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
@@ -84,8 +84,8 @@ describe.skipIf(!hasDatabase)("program", () => {
         name: "M",
         domain: "program-test.example.com",
         websiteUrl: "https://example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentKeyEnc: "x",
+        webhookSecretEnc: "x",
       },
     });
     merchantId = merchant.id;
@@ -100,8 +100,8 @@ describe.skipIf(!hasDatabase)("program", () => {
         name: "M2",
         domain: "program-test-2.example.com",
         websiteUrl: "https://example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentKeyEnc: "x",
+        webhookSecretEnc: "x",
       },
     });
     merchantId2 = merchant2.id;
@@ -117,8 +117,8 @@ describe.skipIf(!hasDatabase)("program", () => {
         name: "OM",
         domain: "program-test-other.example.com",
         websiteUrl: "https://example.com",
-        stripeSecretKeyEnc: "x",
-        stripeWebhookSecretEnc: "x",
+        paymentKeyEnc: "x",
+        webhookSecretEnc: "x",
       },
     });
     otherMerchantId = otherMerchant.id;
@@ -296,7 +296,7 @@ describe.skipIf(!hasDatabase)("program", () => {
     it("reads a newly picked coupon's label from Stripe", async () => {
       expect(await programDiscount(ownerId, merchantId, null, "coupon_20")).toEqual({
         error: null,
-        stripeCouponId: "coupon_20",
+        discountRef: "coupon_20",
         discountLabel: "20% off for 3 months",
       });
       expect(stripeStub.coupons.retrieve).toHaveBeenCalledWith("coupon_20");
@@ -305,20 +305,20 @@ describe.skipIf(!hasDatabase)("program", () => {
     it("keeps an unchanged coupon's stored label without asking Stripe", async () => {
       const { id } = await createProgram(ownerId, merchantId, {
         ...baseInput,
-        stripeCouponId: "coupon_20",
+        discountRef: "coupon_20",
         discountLabel: "20% off for 3 months",
       });
 
       expect(await programDiscount(ownerId, merchantId, id, "coupon_20")).toEqual({
         error: null,
-        stripeCouponId: "coupon_20",
+        discountRef: "coupon_20",
         discountLabel: "20% off for 3 months",
       });
       expect(stripeStub.coupons.retrieve).not.toHaveBeenCalled();
     });
 
     it("takes the discount away on none, and refuses a coupon that can no longer be used", async () => {
-      expect(await programDiscount(ownerId, merchantId, null, "")).toEqual({ error: null, stripeCouponId: null, discountLabel: null });
+      expect(await programDiscount(ownerId, merchantId, null, "")).toEqual({ error: null, discountRef: null, discountLabel: null });
       stripeStub.coupons.retrieve.mockResolvedValueOnce({ valid: false });
       expect(await programDiscount(ownerId, merchantId, null, "coupon_old")).toEqual({ error: "That coupon can no longer be used" });
     });
@@ -326,12 +326,12 @@ describe.skipIf(!hasDatabase)("program", () => {
     it("shows the discount on the signup page only while a coupon is set", async () => {
       const { id, slug } = await createProgram(ownerId, merchantId, {
         ...baseInput,
-        stripeCouponId: "coupon_20",
+        discountRef: "coupon_20",
         discountLabel: "20% off for 3 months",
       });
       expect((await getProgramForSignup(merchantId, slug))?.discountLabel).toBe("20% off for 3 months");
 
-      await updateProgram(ownerId, merchantId, id, { ...baseInput, stripeCouponId: null, discountLabel: null });
+      await updateProgram(ownerId, merchantId, id, { ...baseInput, discountRef: null, discountLabel: null });
       expect((await getProgramForSignup(merchantId, slug))?.discountLabel).toBeNull();
     });
   });

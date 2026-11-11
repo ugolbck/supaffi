@@ -2,7 +2,7 @@ import type Stripe from "stripe";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import type { CurrencyTotal } from "@/lib/analytics";
-import { stripeClientFor } from "@/lib/stripe";
+import { stripeClientFor } from "@/lib/payments/stripe/client";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { stripeKeyLacksPermission, suggestedCodes } from "@/lib/coupon";
 
@@ -68,7 +68,7 @@ const UNREACHABLE = { ok: false, error: "Stripe could not be reached. Try again.
 async function ownedAffiliate(ownerId: string, merchantId: string, affiliateId: string) {
   return db.affiliate.findFirst({
     where: { id: affiliateId, merchantId, merchant: { ownerId } },
-    select: { id: true, merchant: { select: { id: true, stripeSecretKeyEnc: true } } },
+    select: { id: true, merchant: { select: { id: true, paymentKeyEnc: true } } },
   });
 }
 
@@ -84,7 +84,7 @@ export async function addPromoCode(
 
   const affiliate = await ownedAffiliate(ownerId, merchantId, affiliateId);
   if (!affiliate) return { ok: false, error: "Affiliate not found" };
-  if (!affiliate.merchant.stripeSecretKeyEnc) return { ok: false, error: "Connect Stripe first" };
+  if (!affiliate.merchant.paymentKeyEnc) return { ok: false, error: "Connect Stripe first" };
 
   const count = await db.affiliatePromoCode.count({ where: { affiliateId, ...ACTIVE } });
   if (count >= MAX_PROMO_CODES_PER_AFFILIATE) {
@@ -106,7 +106,7 @@ export async function addPromoCode(
       data: {
         merchantId,
         affiliateId,
-        stripePromotionCodeId: lookup.code.id,
+        promoCodeRef: lookup.code.id,
         code: lookup.code.code,
       },
     });
@@ -139,17 +139,17 @@ async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeRes
     where: { id: affiliateId },
     select: {
       merchantId: true,
-      merchant: { select: { ownerId: true, stripeSecretKeyEnc: true } },
-      program: { select: { stripeCouponId: true, discountLabel: true } },
+      merchant: { select: { ownerId: true, paymentKeyEnc: true } },
+      program: { select: { discountRef: true, discountLabel: true } },
       promoCodes: { where: { issued: true, ...ACTIVE }, select: { id: true } },
       _count: { select: { promoCodes: { where: { issued: true } } } },
     },
   });
   if (!affiliate) return { ok: false, error: "Affiliate not found" };
-  const { stripeCouponId, discountLabel } = affiliate.program;
-  if (!stripeCouponId) return { ok: false, error: "This program has no discount" };
+  const { discountRef, discountLabel } = affiliate.program;
+  if (!discountRef) return { ok: false, error: "This program has no discount" };
   if (affiliate.promoCodes.length > 0) return { ok: false, error: "There is already a code" };
-  if (!affiliate.merchant.stripeSecretKeyEnc) return { ok: false, error: "Connect Stripe first" };
+  if (!affiliate.merchant.paymentKeyEnc) return { ok: false, error: "Connect Stripe first" };
   // A turned off code is inactive in Stripe, which would let its text be used
   // again. Refused here, so a code that leaked stays dead.
   if ((await usedBefore(affiliate.merchant.ownerId, [code])).length > 0) return { ok: false, error: "That code is taken" };
@@ -170,7 +170,7 @@ async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeRes
   try {
     created = await stripe.promotionCodes.create(
       {
-        promotion: { type: "coupon", coupon: stripeCouponId },
+        promotion: { type: "coupon", coupon: discountRef },
         code,
         restrictions: { first_time_transaction: true },
         metadata: { supaffi_affiliate_id: affiliateId },
@@ -192,7 +192,7 @@ async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeRes
     data: {
       merchantId: affiliate.merchantId,
       affiliateId,
-      stripePromotionCodeId: created.id,
+      promoCodeRef: created.id,
       code: created.code,
       issued: true,
       discountLabel,
@@ -234,13 +234,13 @@ export async function turnOffPromoCode(
   if (!affiliate) return { ok: false, error: "Affiliate not found" };
   const code = await db.affiliatePromoCode.findFirst({
     where: { id: promoCodeId, affiliateId, merchantId, ...ACTIVE },
-    select: { id: true, issued: true, stripePromotionCodeId: true },
+    select: { id: true, issued: true, promoCodeRef: true },
   });
   if (!code) return { ok: true };
 
   if (code.issued) {
     try {
-      await stripeClientFor(affiliate.merchant).promotionCodes.update(code.stripePromotionCodeId, { active: false });
+      await stripeClientFor(affiliate.merchant).promotionCodes.update(code.promoCodeRef, { active: false });
     } catch (err) {
       if (stripeKeyLacksPermission(err)) {
         return { ok: false, error: "Your Stripe key can't turn off promo codes.", keyLacksPermission: true };
@@ -276,7 +276,7 @@ export async function promoCodeOffer(affiliateId: string): Promise<PromoCodeOffe
     where: { id: affiliateId },
     select: {
       merchant: { select: { ownerId: true } },
-      program: { select: { stripeCouponId: true, discountLabel: true } },
+      program: { select: { discountRef: true, discountLabel: true } },
       links: { where: { isPrimary: true }, select: { code: true }, take: 1 },
       // An issued code first: it is the one made for this program.
       promoCodes: { where: ACTIVE, select: { code: true, discountLabel: true }, orderBy: [{ issued: "desc" }, { createdAt: "asc" }], take: 1 },
@@ -285,8 +285,8 @@ export async function promoCodeOffer(affiliateId: string): Promise<PromoCodeOffe
   if (!affiliate) return null;
   const live = affiliate.promoCodes[0];
   if (live) return { kind: "code", code: live.code, discountLabel: live.discountLabel };
-  const { stripeCouponId, discountLabel } = affiliate.program;
-  if (!stripeCouponId || !discountLabel) return null;
+  const { discountRef, discountLabel } = affiliate.program;
+  if (!discountRef || !discountLabel) return null;
   const candidates = suggestedCodes(affiliate.links[0]?.code ?? "", discountLabel).filter((c) => CODE_PATTERN.test(c));
   const used = new Set((await usedBefore(affiliate.merchant.ownerId, candidates)).map((c) => c.toUpperCase()));
   const suggested = candidates.find((c) => !used.has(c)) ?? "";

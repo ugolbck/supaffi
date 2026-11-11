@@ -8,7 +8,7 @@ import {
   resetCleanupSchedule,
   type CleanupDeps,
 } from "@/lib/worker/cleanup";
-import { webhookEventReceived } from "@/lib/checks/stripe";
+import { webhookEventReceived } from "@/lib/payments/stripe/keyCheck";
 import { getTrackingStatus } from "@/lib/tracking";
 
 const DAY = 24 * 60 * 60_000;
@@ -49,7 +49,7 @@ async function seedMerchant() {
 
 function row(merchantId: string, status: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED", createdAt: Date) {
   return db.webhookEvent.create({
-    data: { merchantId, stripeEventId: `evt_${crypto.randomUUID()}`, payload: {}, status, createdAt },
+    data: { merchantId, providerEventId: `evt_${crypto.randomUUID()}`, payload: {}, status, createdAt },
   });
 }
 
