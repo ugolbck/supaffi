@@ -65,6 +65,7 @@ describe("readReferralHistory", () => {
   ) {
     return db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: click.affiliateId,
         clickId: click.id,
         stripePaymentRef: ref,
@@ -159,7 +160,7 @@ describe("readReferralHistory", () => {
     const { click } = await seedReferral(merchant, { durationType: "ONE_TIME" });
     const other = await seedMerchant(merchant.ownerId);
     const { affiliate: otherAffiliate } = await seedReferral(other, { durationType: "ONE_TIME" });
-    await seedCommission({ id: click.id, affiliateId: otherAffiliate.id }, "in_other_merchant");
+    await seedCommission({ id: click.id, affiliateId: otherAffiliate.id }, "in_other_merchant", { merchantId: other.id });
 
     expect((await readReferralHistory(merchant.id, click.id, "in_new")).earnedOnAnotherPayment).toBe(false);
   });

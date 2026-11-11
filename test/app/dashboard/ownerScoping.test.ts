@@ -3,7 +3,10 @@
 // and every screen's reads and every Server Action are pointed at the first
 // Owner's product, or at the second Owner's own product with the first
 // Owner's nested ids (affiliate, commission, program, promo code). Each one
-// has to refuse or come back empty, and the first Owner's rows must not move.
+// has to refuse with its own specific answer or come back empty, and the first
+// Owner's rows must not move. The last block runs the same action families as
+// the first Owner, so every refusal above is about ownership alone. An
+// affiliate session is held to the product whose host it is on.
 //
 // Destructive on its own rows only. Runs against the scratch DATABASE_URL.
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
@@ -12,6 +15,9 @@ process.env.MASTER_ENCRYPTION_KEY ??= "0".repeat(64);
 
 const session = { user: { id: "", role: "owner" as "owner" | "affiliate" } };
 vi.mock("@/lib/auth", () => ({ auth: async () => session }));
+// The host an affiliate screen is requested on.
+const request = { host: "" };
+vi.mock("@/lib/requestHost", () => ({ requestHost: async () => request.host }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
@@ -95,6 +101,9 @@ import {
   sendTestEmailAction,
   setMailSwitchAction,
 } from "@/app/dashboard/products/[product]/settings/emailActions";
+import CommissionsPage from "@/app/dashboard/products/[product]/commissions/page";
+import AffiliatesPage from "@/app/dashboard/products/[product]/affiliates/page";
+import { requireAffiliate } from "@/lib/affiliateAuth";
 import { dismissWelcomeAction } from "@/app/dashboard/products/[product]/dismissWelcomeAction";
 import { markTrackingSeen } from "@/app/dashboard/products/[product]/markTrackingSeen";
 import {
@@ -125,7 +134,7 @@ const NO_COMMISSION_FILTERS = { status: null, affiliateId: null, currency: null,
 
 type Seeded = {
   ownerId: string;
-  product: { id: string; slug: string };
+  product: { id: string; slug: string; domain: string };
   programId: string;
   affiliateId: string;
   payableId: string;
@@ -188,6 +197,7 @@ async function seed(label: string): Promise<Seeded> {
   const commission = (status: "PAYABLE" | "FLAGGED", ref: string) =>
     db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: affiliate.id,
         clickId: click.id,
         amount: "10.00",
@@ -201,6 +211,15 @@ async function seed(label: string): Promise<Seeded> {
     });
   const payable = await commission("PAYABLE", "in_payable");
   const flagged = await commission("FLAGGED", "in_flagged");
+  await db.referredSubscription.create({
+    data: {
+      merchantId: merchant.id,
+      clickId: click.id,
+      stripeSubscriptionId: `sub_${label}_${tag}`,
+      firstPaymentRef: `in_payable-${label}-${tag}`,
+      firstPaidAt: new Date(),
+    },
+  });
   const promo = await db.affiliatePromoCode.create({
     data: {
       merchantId: merchant.id,
@@ -211,7 +230,7 @@ async function seed(label: string): Promise<Seeded> {
   });
   return {
     ownerId: owner.id,
-    product: { id: merchant.id, slug: merchant.slug },
+    product: { id: merchant.id, slug: merchant.slug, domain: merchant.domain },
     programId: program.id,
     affiliateId: affiliate.id,
     payableId: payable.id,
@@ -226,10 +245,14 @@ async function snapshot(s: Seeded) {
     merchant: await db.merchant.findUnique({ where: { id: s.product.id } }),
     programs: await db.program.findMany({ where: { merchantId: s.product.id }, orderBy: { id: "asc" } }),
     affiliate: await db.affiliate.findUnique({ where: { id: s.affiliateId } }),
-    commissions: await db.commission.findMany({
-      where: { affiliateId: s.affiliateId },
+    links: await db.affiliateLink.findMany({ where: { affiliateId: s.affiliateId }, orderBy: { id: "asc" } }),
+    // fraudConfirmedAt is what a confirmed self referral stamps.
+    clicks: await db.click.findMany({ where: { affiliateId: s.affiliateId }, orderBy: { id: "asc" } }),
+    // Whole rows: status and dates, and every amount a payout or a refund moves.
+    commissions: await db.commission.findMany({ where: { affiliateId: s.affiliateId }, orderBy: { id: "asc" } }),
+    referredSubscriptions: await db.referredSubscription.findMany({
+      where: { merchantId: s.product.id },
       orderBy: { id: "asc" },
-      select: { id: true, status: true, paidAt: true, voidedAt: true, flagReason: true },
     }),
     promoCodes: await db.affiliatePromoCode.findMany({ where: { merchantId: s.product.id }, orderBy: { id: "asc" } }),
     tokens: await db.affiliateLoginToken.count({ where: { affiliateId: s.affiliateId } }),
@@ -244,6 +267,40 @@ async function outcome(call: () => Promise<unknown>): Promise<string> {
   } catch (err) {
     return (err as Error).message;
   }
+}
+
+/** The props of every element of a component in a rendered page tree. */
+function propsOf(tree: unknown, component: string): Record<string, unknown>[] {
+  const found: Record<string, unknown>[] = [];
+  const seen = new Set<unknown>();
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== "object" || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) return node.forEach(walk);
+    const element = node as { type?: unknown; props?: Record<string, unknown> };
+    if (typeof element.type === "function" && element.type.name === component && element.props) found.push(element.props);
+    if (element.props) Object.values(element.props).forEach(walk);
+  };
+  walk(tree);
+  return found;
+}
+
+/** Every string anywhere in a rendered page tree's props. */
+function textOf(tree: unknown): string {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  const walk = (node: unknown) => {
+    if (typeof node === "string") return void parts.push(node);
+    if (!node || typeof node !== "object" || seen.has(node)) return;
+    seen.add(node);
+    Object.values(node).forEach(walk);
+  };
+  walk(tree);
+  return parts.join("\n");
+}
+
+function page(searchParams: Record<string, string>) {
+  return { params: Promise.resolve({ product: SLUG }), searchParams: Promise.resolve(searchParams) };
 }
 
 function form(fields: Record<string, string>): FormData {
@@ -312,19 +369,21 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
     });
 
     it("affiliates screen refuses another Owner's product and their affiliate ids", async () => {
-      await expect(listAffiliatesForMerchant(b.ownerId, a.product.id, { programId: null, query: null }, PAGE)).rejects.toThrow();
-      await expect(getAffiliateSignals(b.ownerId, a.product.id)).rejects.toThrow();
-      await expect(getAffiliateDetails(b.ownerId, a.product.id, [a.affiliateId])).rejects.toThrow();
+      await expect(listAffiliatesForMerchant(b.ownerId, a.product.id, { programId: null, query: null }, PAGE)).rejects.toThrow(
+        "Merchant not found"
+      );
+      await expect(getAffiliateSignals(b.ownerId, a.product.id)).rejects.toThrow("Merchant not found");
+      await expect(getAffiliateDetails(b.ownerId, a.product.id, [a.affiliateId])).rejects.toThrow("Merchant not found");
       expect(await getAffiliateDetails(b.ownerId, b.product.id, [a.affiliateId])).toEqual({});
     });
 
     it("commissions and payouts screens refuse another Owner's product and filter out their ids", async () => {
-      await expect(listCommissions(b.ownerId, a.product.id, NO_COMMISSION_FILTERS, PAGE)).rejects.toThrow();
-      await expect(getCommissionTotals(b.ownerId, a.product.id)).rejects.toThrow();
-      await expect(getCommissionFilterOptions(b.ownerId, a.product.id)).rejects.toThrow();
-      await expect(getOwedTotals(b.ownerId, a.product.id)).rejects.toThrow();
-      await expect(getPayableGroups(b.ownerId, a.product.id)).rejects.toThrow();
-      await expect(listPayouts(b.ownerId, a.product.id, PAGE)).rejects.toThrow();
+      await expect(listCommissions(b.ownerId, a.product.id, NO_COMMISSION_FILTERS, PAGE)).rejects.toThrow("Merchant not found");
+      await expect(getCommissionTotals(b.ownerId, a.product.id)).rejects.toThrow("Merchant not found");
+      await expect(getCommissionFilterOptions(b.ownerId, a.product.id)).rejects.toThrow("Merchant not found");
+      await expect(getOwedTotals(b.ownerId, a.product.id)).rejects.toThrow("Merchant not found");
+      await expect(getPayableGroups(b.ownerId, a.product.id)).rejects.toThrow("Merchant not found");
+      await expect(listPayouts(b.ownerId, a.product.id, PAGE)).rejects.toThrow("Merchant not found");
       const filtered = await listCommissions(
         b.ownerId,
         b.product.id,
@@ -335,7 +394,7 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
     });
 
     it("programs screen refuses another Owner's product", async () => {
-      await expect(listProgramsForMerchant(b.ownerId, a.product.id)).rejects.toThrow();
+      await expect(listProgramsForMerchant(b.ownerId, a.product.id)).rejects.toThrow("Merchant not found");
       expect(await getProgramForMerchant(b.ownerId, a.product.id, "standard")).toBeNull();
       expect(await couponsForProgramForm(b.ownerId, a.product.id)).toBeNull();
     });
@@ -361,39 +420,111 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
       const background = await runProductChecks(b.ownerId, a.product.id, { overrides, background: true });
       expect(JSON.stringify(background)).not.toContain("a's");
     });
+
+    it("commissions page: opens nothing for another Owner's ?commission= id, and opens one's own", async () => {
+      for (const id of [a.flaggedId, a.payableId]) {
+        const tree = await CommissionsPage(page({ commission: id }));
+        expect(propsOf(tree, "CommissionSheet").map((p) => (p.commission as { id: string } | null)?.id ?? null)).not.toContain(id);
+        expect(textOf(tree)).not.toContain(id);
+      }
+      const own = await CommissionsPage(page({ commission: b.flaggedId }));
+      expect(propsOf(own, "CommissionSheet").map((p) => (p.commission as { id: string }).id)).toEqual([b.flaggedId]);
+    });
+
+    it("commissions page: lists nothing for another Owner's ?affiliate= filter, and lists one's own", async () => {
+      const tree = await CommissionsPage(page({ affiliate: a.affiliateId }));
+      expect(propsOf(tree, "CommissionTable").map((p) => p.rows)).toEqual([[]]);
+      expect(textOf(tree)).not.toContain("affiliate-a@example.com");
+      const own = await CommissionsPage(page({ affiliate: b.affiliateId }));
+      const rows = propsOf(own, "CommissionTable")[0].rows as { id: string }[];
+      expect(rows.map((r) => r.id).sort()).toEqual([b.flaggedId, b.payableId].sort());
+    });
+
+    it("affiliates page: opens nothing for another Owner's ?affiliate= id, and opens one's own", async () => {
+      const tree = await AffiliatesPage(page({ affiliate: a.affiliateId }));
+      expect(propsOf(tree, "AffiliateSheet").map((p) => (p.affiliate as { id: string } | null)?.id ?? null)).not.toContain(
+        a.affiliateId
+      );
+      expect(textOf(tree)).not.toContain("affiliate-a@example.com");
+      expect(textOf(tree)).not.toContain("iban-a");
+      const own = await AffiliatesPage(page({ affiliate: b.affiliateId }));
+      expect(propsOf(own, "AffiliateSheet").map((p) => (p.affiliate as { id: string }).id)).toEqual([b.affiliateId]);
+    });
+  });
+
+  describe("affiliate sessions", () => {
+    it("refuses an affiliate on another product's host, either way round", async () => {
+      session.user = { id: a.affiliateId, role: "affiliate" };
+      request.host = b.product.domain;
+      expect(await outcome(() => requireAffiliate())).toBe("redirect:/affiliates/login");
+      session.user = { id: b.affiliateId, role: "affiliate" };
+      request.host = a.product.domain;
+      expect(await outcome(() => requireAffiliate())).toBe("redirect:/affiliates/login");
+    });
+
+    it("lets an affiliate in on their own product's host", async () => {
+      session.user = { id: a.affiliateId, role: "affiliate" };
+      request.host = a.product.domain;
+      expect(await requireAffiliate()).toEqual({
+        affiliateId: a.affiliateId,
+        email: "affiliate-a@example.com",
+        merchant: expect.objectContaining({ id: a.product.id }),
+      });
+    });
+
+    it("refuses an Owner session on an affiliate screen", async () => {
+      request.host = a.product.domain;
+      expect(await outcome(() => requireAffiliate())).toBe("redirect:/affiliates/login");
+    });
   });
 
   describe("server actions", () => {
     it("affiliate sheet: refuses another Owner's affiliate, on their product or on one's own", async () => {
-      for (const product of [a.product, b.product]) {
-        expect(await outcome(() => changeProgramAction(product, a.affiliateId, form({ programId: b.programId })))).not.toBe("");
-        expect(await outcome(() => setCustomRateAction(product, a.affiliateId, form({ rate: "99" })))).not.toBe("");
-        expect(await outcome(() => setCustomRateAction(product, a.affiliateId, form({ intent: "default" })))).not.toBe("");
+      // Their product is refused before the affiliate is looked at; on one's
+      // own product their affiliate is simply not there.
+      for (const [product, refusal] of [
+        [a.product, "Merchant not found"],
+        [b.product, "Affiliate not found"],
+      ] as const) {
+        expect(await outcome(() => changeProgramAction(product, a.affiliateId, form({ programId: b.programId })))).toBe(refusal);
+        expect(await outcome(() => setCustomRateAction(product, a.affiliateId, form({ rate: "99" })))).toBe(refusal);
+        expect(await outcome(() => setCustomRateAction(product, a.affiliateId, form({ intent: "default" })))).toBe(refusal);
         expect(await createPasswordLinkAction(product, a.affiliateId)).toEqual({ error: "Affiliate not found" });
         expect(await addPromoCodeAction(product, a.affiliateId, "ANYTHING")).toMatchObject({ error: "Affiliate not found" });
         expect(await issuePromoCodeAction(product, a.affiliateId, "ANYTHING")).toMatchObject({ error: "Affiliate not found" });
-        expect(await turnOffPromoCodeAction(product, a.affiliateId, a.promoCodeId)).toMatchObject({ error: expect.any(String) });
+        expect(await turnOffPromoCodeAction(product, a.affiliateId, a.promoCodeId)).toMatchObject({ error: "Affiliate not found" });
       }
       // One's own affiliate with the other Owner's program is refused too.
-      expect(await outcome(() => changeProgramAction(b.product, b.affiliateId, form({ programId: a.programId })))).not.toBe("");
+      expect(await outcome(() => changeProgramAction(b.product, b.affiliateId, form({ programId: a.programId })))).toBe(
+        "Program not found on this product"
+      );
       // A code already gone answers as off, so this one is checked by the
       // snapshot below: the other Owner's code is still on.
-      await turnOffPromoCodeAction(b.product, b.affiliateId, a.promoCodeId);
+      expect(await turnOffPromoCodeAction(b.product, b.affiliateId, a.promoCodeId)).toBeNull();
       expect(await snapshot(a)).toEqual(before);
     });
 
     it("commission ledger: refuses another Owner's commissions", async () => {
       const list = `/dashboard/products/${SLUG}/commissions`;
-      for (const product of [a.product, b.product]) {
-        expect(await outcome(() => confirmFraudAction(list, product, a.flaggedId))).not.toMatch(/^redirect:/);
-        expect(await outcome(() => dismissFlagAction(list, product, a.flaggedId))).not.toMatch(/^redirect:/);
-        expect(await outcome(() => voidAction(list, product, a.payableId, form({ reason: "mine now" })))).not.toMatch(/^redirect:/);
-      }
+      expect(await outcome(() => confirmFraudAction(list, a.product, a.flaggedId))).toBe("Merchant not found");
+      expect(await outcome(() => dismissFlagAction(list, a.product, a.flaggedId))).toBe("Merchant not found");
+      expect(await outcome(() => voidAction(list, a.product, a.payableId, form({ reason: "mine now" })))).toBe("Merchant not found");
+      // On one's own product their commission is simply not there.
+      expect(await outcome(() => confirmFraudAction(list, b.product, a.flaggedId))).toBe(
+        "Commission not found, or a refund adjustment"
+      );
+      expect(await outcome(() => dismissFlagAction(list, b.product, a.flaggedId))).toBe("Flagged commission not found");
+      expect(await outcome(() => voidAction(list, b.product, a.payableId, form({ reason: "mine now" })))).toBe(
+        "Commission not found, or already paid, voided, or a refund adjustment"
+      );
       expect(
         await outcome(() => markPaidAction(list, a.product, [{ id: a.payableId, amount: "10.00" }], new Date().toISOString()))
       ).toBe("Merchant not found");
-      // On one's own product the foreign row is simply not there to pay.
-      await outcome(() => markPaidAction(list, b.product, [{ id: a.payableId, amount: "10.00" }], new Date().toISOString()));
+      // On one's own product the foreign row is not there to pay, so the
+      // payout is refused as a whole.
+      expect(
+        await outcome(() => markPaidAction(list, b.product, [{ id: a.payableId, amount: "10.00" }], new Date().toISOString()))
+      ).toBe(`redirect:${list}?error=refused`);
       expect(await snapshot(a)).toEqual(before);
     });
 
@@ -401,7 +532,9 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
       expect(
         await outcome(() => markPayoutPaidAction(a.product, [{ id: a.payableId, amount: "10.00" }], new Date().toISOString()))
       ).toBe("Merchant not found");
-      await outcome(() => markPayoutPaidAction(b.product, [{ id: a.payableId, amount: "10.00" }], new Date().toISOString()));
+      expect(
+        await outcome(() => markPayoutPaidAction(b.product, [{ id: a.payableId, amount: "10.00" }], new Date().toISOString()))
+      ).toBe(`redirect:/dashboard/products/${SLUG}/payouts?error=refused`);
       expect(await snapshot(a)).toEqual(before);
     });
 
@@ -435,14 +568,15 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
       const mail = form({ host: "smtp.evil.example", port: "587", user: "u", password: "p", from: "x@evil.example" });
       expect(await connectMailAction(a.product, { error: "", sentTo: "" }, mail)).toEqual({ error: "Product not found", sentTo: "" });
       expect(await sendTestEmailAction(a.product)).toEqual({ error: "Email is off", sentTo: "" });
-      await disconnectMailAction(a.product);
-      await setMailSwitchAction(a.product, "notifyNewSales", false);
+      // Both answer nothing either way, so the snapshot is the check.
+      await expect(disconnectMailAction(a.product)).resolves.toBeUndefined();
+      await expect(setMailSwitchAction(a.product, "notifyNewSales", false)).resolves.toBeUndefined();
       expect(await snapshot(a)).toEqual(before);
     });
 
     it("overview: refuses dismissing the welcome or the tracking moment on another Owner's product", async () => {
       expect(await outcome(() => dismissWelcomeAction(a.product))).toBe("Merchant not found");
-      await markTrackingSeen(a.product.id);
+      await expect(markTrackingSeen(a.product.id)).resolves.toBeUndefined();
       expect(await snapshot(a)).toEqual(before);
     });
 
@@ -466,13 +600,6 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
       expect(await snapshot(a)).toEqual(before);
     });
 
-    it("lets the product's own Owner make the same write, so the refusals above are about ownership", async () => {
-      session.user = { id: a.ownerId, role: "owner" };
-      await setCustomRateAction(a.product, a.affiliateId, form({ rate: "25" }));
-      expect((await db.affiliate.findUnique({ where: { id: a.affiliateId } }))?.customCommissionRate?.toString()).toBe("25");
-      await setCustomRateAction(a.product, a.affiliateId, form({ intent: "default" }));
-    });
-
     it("refuses an affiliate session on every Owner action", async () => {
       session.user = { id: a.affiliateId, role: "affiliate" };
       expect(await outcome(() => setCustomRateAction(a.product, a.affiliateId, form({ rate: "99" })))).toBe("redirect:/login");
@@ -481,6 +608,69 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
         "redirect:/login"
       );
       expect(await snapshot(a)).toEqual(before);
+    });
+  });
+
+  // Last, since these change the first Owner's rows the snapshots above hold.
+  describe("the product's own Owner makes the same writes", () => {
+    const list = `/dashboard/products/${SLUG}/commissions`;
+
+    beforeEach(() => {
+      session.user = { id: a.ownerId, role: "owner" };
+    });
+
+    it("affiliate sheet", async () => {
+      await setCustomRateAction(a.product, a.affiliateId, form({ rate: "25" }));
+      expect((await db.affiliate.findUnique({ where: { id: a.affiliateId } }))?.customCommissionRate?.toString()).toBe("25");
+      expect(await createPasswordLinkAction(a.product, a.affiliateId)).toEqual({ token: expect.any(String) });
+    });
+
+    it("commission ledger", async () => {
+      expect(await outcome(() => dismissFlagAction(list, a.product, a.flaggedId))).toBe(`redirect:${list}`);
+      expect((await db.commission.findUniqueOrThrow({ where: { id: a.flaggedId } })).status).not.toBe("FLAGGED");
+    });
+
+    it("payouts", async () => {
+      expect(
+        await outcome(() => markPayoutPaidAction(a.product, [{ id: a.payableId, amount: "10.00" }], new Date().toISOString()))
+      ).toBe(`redirect:/dashboard/products/${SLUG}/payouts`);
+      expect((await db.commission.findUniqueOrThrow({ where: { id: a.payableId } })).status).toBe("PAID");
+    });
+
+    it("programs", async () => {
+      const programs = `redirect:/dashboard/products/${SLUG}/programs`;
+      expect(await outcome(() => updateProgramAction(a.product, a.programId, { error: "" }, form(PROGRAM_FORM)))).toBe(programs);
+      expect((await db.program.findUniqueOrThrow({ where: { id: a.programId } })).name).toBe("Taken over");
+      expect(await outcome(() => createProgramAction(a.product, { error: "" }, form({ ...PROGRAM_FORM, name: "Second" })))).toBe(
+        programs
+      );
+      expect(await db.program.count({ where: { merchantId: a.product.id } })).toBe(2);
+    });
+
+    it("settings", async () => {
+      expect(await outcome(() => replaceWebhookSecretAction(a.product, { error: "" }, form({ value: "whsec_other" })))).toBe(
+        `redirect:/dashboard/products/${SLUG}/settings?fresh=stripe`
+      );
+      const merchant = await db.merchant.findUniqueOrThrow({ where: { id: a.product.id } });
+      expect(merchant.stripeWebhookSecretEnc).not.toBe(before.merchant?.stripeWebhookSecretEnc);
+    });
+
+    it("mail settings", async () => {
+      await setMailSwitchAction(a.product, "notifyNewSales", false);
+      expect((await db.merchant.findUniqueOrThrow({ where: { id: a.product.id } })).notifyNewSales).toBe(false);
+    });
+
+    it("overview", async () => {
+      await dismissWelcomeAction(a.product);
+      await markTrackingSeen(a.product.id);
+      const merchant = await db.merchant.findUniqueOrThrow({ where: { id: a.product.id } });
+      expect(merchant.welcomeDismissedAt).not.toBeNull();
+      expect(merchant.trackingVerifiedSeenAt).not.toBeNull();
+    });
+
+    it("onboarding", async () => {
+      expect(await updateProductNameAction(a.product, { error: "" }, form({ value: "Renamed" }))).toMatchObject({ error: "" });
+      expect((await db.merchant.findUniqueOrThrow({ where: { id: a.product.id } })).name).toBe("Renamed");
     });
   });
 });

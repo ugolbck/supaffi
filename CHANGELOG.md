@@ -13,7 +13,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - An Owner only reaches their own products and data, on every screen and
-  action.
+  action. A payment reference is unique per product, so one product's events
+  can never block another's commission; a product domain must be a full public
+  hostname; and changing to an email already in use shows a form error.
 
 ## 0.6.1
 

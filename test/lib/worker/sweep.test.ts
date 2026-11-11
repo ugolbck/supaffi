@@ -23,6 +23,7 @@ async function clearAll() {
 describe("sweepPayableCommissions", () => {
   let affiliateId: string;
   let clickId: string;
+  let merchantId: string;
 
   beforeEach(async () => {
     await clearAll();
@@ -59,6 +60,7 @@ describe("sweepPayableCommissions", () => {
       },
     });
     affiliateId = affiliate.id;
+    merchantId = merchant.id;
     const click = await db.click.create({
       data: { affiliateId, referralToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + DAY) },
     });
@@ -73,6 +75,7 @@ describe("sweepPayableCommissions", () => {
   function givenCommission(data: { disputeOpenedAt?: Date | null }) {
     return db.commission.create({
       data: {
+        merchantId,
         affiliateId,
         clickId,
         stripePaymentRef: crypto.randomUUID(),

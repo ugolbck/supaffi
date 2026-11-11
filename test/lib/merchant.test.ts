@@ -307,7 +307,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       data: { affiliateId: affiliate.id, linkId: link.id, referralToken: "tok1", expiresAt: new Date() },
     });
     await db.commission.create({
-      data: { affiliateId: affiliate.id, clickId: click.id, amount: 1, currency: "usd", payableAt: new Date() },
+      data: { merchantId: merchant.id, affiliateId: affiliate.id, clickId: click.id, amount: 1, currency: "usd", payableAt: new Date() },
     });
     await db.webhookEvent.create({
       data: { merchantId: merchant.id, stripeEventId: "evt_1", payload: {} },

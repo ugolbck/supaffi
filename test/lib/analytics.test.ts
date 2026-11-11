@@ -132,6 +132,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
   ) {
     return db.commission.create({
       data: {
+        merchantId,
         affiliateId,
         clickId,
         amount: overrides.amount ?? "10.00",
@@ -151,6 +152,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     const click = await makeClick(affiliate.id);
     const sale = await db.commission.create({
       data: {
+        merchantId,
         affiliateId: affiliate.id,
         clickId: click.id,
         amount: "30.00",
@@ -403,6 +405,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     const affiliate = await makeAffiliate("a");
     const kept = await db.commission.create({
       data: {
+        merchantId,
         affiliateId: affiliate.id,
         clickId: (await makeClick(affiliate.id)).id,
         amount: "10.00",
@@ -413,6 +416,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     });
     await db.commission.create({
       data: {
+        merchantId,
         affiliateId: affiliate.id,
         clickId: (await makeClick(affiliate.id)).id,
         amount: "15.50",
@@ -434,6 +438,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     const affiliate = await makeAffiliate("a");
     await db.commission.create({
       data: {
+        merchantId,
         affiliateId: affiliate.id,
         clickId: (await makeClick(affiliate.id)).id,
         amount: "12.00",
@@ -470,6 +475,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     const affiliate = await makeAffiliate("a");
     const oldest = await db.commission.create({
       data: {
+        merchantId,
         affiliateId: affiliate.id,
         clickId: (await makeClick(affiliate.id)).id,
         amount: "10.00",
@@ -480,6 +486,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     });
     const middle = await db.commission.create({
       data: {
+        merchantId,
         affiliateId: affiliate.id,
         clickId: (await makeClick(affiliate.id)).id,
         amount: "15.00",
@@ -490,6 +497,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     });
     await db.commission.create({
       data: {
+        merchantId,
         affiliateId: affiliate.id,
         clickId: (await makeClick(affiliate.id)).id,
         amount: "20.00",
@@ -526,11 +534,11 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     const clickId = click.id;
     await db.commission.createMany({
       data: [
-        { affiliateId, clickId, amount: 10, saleAmount: 50, currency: "usd", status: "PENDING", payableAt: new Date() },
-        { affiliateId, clickId, amount: 8, saleAmount: 40, currency: "usd", status: "PAID", payableAt: new Date() },
-        { affiliateId, clickId, amount: 9, saleAmount: 45, currency: "eur", status: "PENDING", payableAt: new Date() },
+        { merchantId, affiliateId, clickId, amount: 10, saleAmount: 50, currency: "usd", status: "PENDING", payableAt: new Date() },
+        { merchantId, affiliateId, clickId, amount: 8, saleAmount: 40, currency: "usd", status: "PAID", payableAt: new Date() },
+        { merchantId, affiliateId, clickId, amount: 9, saleAmount: 45, currency: "eur", status: "PENDING", payableAt: new Date() },
         // An adjustment carries no sale.
-        { affiliateId, clickId, amount: -8, saleAmount: null, currency: "usd", status: "VOIDED", payableAt: new Date() },
+        { merchantId, affiliateId, clickId, amount: -8, saleAmount: null, currency: "usd", status: "VOIDED", payableAt: new Date() },
       ],
     });
     await db.affiliate.create({

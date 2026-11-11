@@ -45,7 +45,7 @@ export async function findCommissionForPayment(
 ): Promise<Commission | null> {
   for (const stripePaymentRef of paymentRefs) {
     const commission = await db.commission.findUnique({
-      where: { stripePaymentRef, affiliate: { merchantId: merchant.id } },
+      where: { merchantId_stripePaymentRef: { merchantId: merchant.id, stripePaymentRef } },
     });
     if (commission) return commission;
   }

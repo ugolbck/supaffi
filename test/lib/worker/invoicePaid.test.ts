@@ -362,6 +362,19 @@ describe("handleInvoicePaid", () => {
     expect(await db.commission.count()).toBe(1);
   });
 
+  it("earns on a renewal whose invoice id another product already holds a commission under", async () => {
+    const other = await seedMerchant(merchant.ownerId);
+    const { affiliate, click: otherClick } = await seedReferral(other);
+    await seedInvoiceCommission(affiliate.id, otherClick.id, "in_renewal");
+
+    await handleInvoicePaid(merchant, invoiceFixture());
+
+    const own = await db.commission.findFirstOrThrow({ where: { merchantId: merchant.id, stripePaymentRef: "in_renewal" } });
+    expect(own.clickId).toBe(clickId);
+    expect(own.amount.toString()).toBe("20");
+    expect(await db.commission.count({ where: { stripePaymentRef: "in_renewal" } })).toBe(2);
+  });
+
   describe("exclusion", () => {
     const FLAG = { supaffi: "false" };
 
@@ -603,6 +616,7 @@ describe("handleInvoicePaid", () => {
       const { affiliateId } = await db.click.findUniqueOrThrow({ where: { id: clickId } });
       const first = await db.commission.create({
         data: {
+          merchantId: merchant.id,
           affiliateId,
           clickId,
           stripePaymentRef: "in_checkout",

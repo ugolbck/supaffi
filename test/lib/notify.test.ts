@@ -33,9 +33,10 @@ async function productWithMail(switches: Switches = {}) {
   return { owner, merchant };
 }
 
-function sale(affiliateId: string, clickId: string, ref: string, extra: { status?: "PENDING" | "FLAGGED" | "VOIDED" } = {}) {
+async function sale(affiliateId: string, clickId: string, ref: string, extra: { status?: "PENDING" | "FLAGGED" | "VOIDED" } = {}) {
   return createCommissionUnlessSelfReferral({
     data: {
+      merchantId: (await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).merchantId,
       affiliateId,
       clickId,
       stripePaymentRef: ref,

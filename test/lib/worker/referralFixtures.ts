@@ -114,6 +114,7 @@ export async function seedInvoiceCommission(
 ) {
   return db.commission.create({
     data: {
+      merchantId: (await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).merchantId,
       affiliateId,
       clickId,
       stripePaymentRef: ref,
