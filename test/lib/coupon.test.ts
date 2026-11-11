@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type Stripe from "stripe";
 
-import { discountLabel, listCoupons, suggestedCodes } from "@/lib/coupon";
+import { suggestedCodes } from "@/lib/coupon";
+import { discountLabel, listCoupons } from "@/lib/payments/stripe/promoCodes";
 
 const coupon = (fields: Partial<Stripe.Coupon>) =>
   ({ percent_off: null, amount_off: null, currency: null, duration: "forever", duration_in_months: null, ...fields }) as Stripe.Coupon;

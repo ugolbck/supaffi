@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import type { AffiliatePromoCode, Merchant, Prisma, ReferredSubscription } from "@prisma/client";
+import type { AffiliatePromoCode, Merchant, ReferredSubscription } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripeClientFor } from "@/lib/payments/stripe/client";
@@ -21,7 +20,7 @@ import { claimFirstPayment, recordReferredSubscription } from "@/lib/worker/refe
 import { idOf, subscriptionProductIds } from "@/lib/payments/stripe/subscriptions";
 import { referralStillEarns } from "@/lib/worker/referralDuration";
 import { createCommissionUnlessSelfReferral } from "@/lib/worker/recordCommission";
-import { linkClickFor, REFERRAL_INCLUDE, type ReferralClick } from "@/lib/worker/attribution";
+import { linkClickFor, referralThrough, REFERRAL_INCLUDE, type ReferralClick } from "@/lib/worker/attribution";
 
 export async function handleCheckoutSessionCompleted(merchant: Merchant, session: Stripe.Checkout.Session): Promise<void> {
   const completedAt = new Date(session.created * 1000);
@@ -354,58 +353,13 @@ function linkClickOn(merchant: Merchant, session: Stripe.Checkout.Session, compl
   return linkClickFor(merchant.id, referralToken, completedAt);
 }
 
-/**
- * The click this sale earns through: the one a promo code stands in for when
- * the Session used an Affiliate's code, otherwise the visitor's.
- *
- * The code wins over another Affiliate's link. The customer typed it at the
- * moment of paying, which is the latest and most deliberate thing they did; a
- * link may be weeks old. When both belong to the same Affiliate the visitor's
- * click is kept, so the sale still counts for the link it came through.
- *
- * Once a Session has a code click it keeps it, whatever happens to the code
- * since: a redelivered event, or async_payment_succeeded after completed,
- * earns through the same referral the first one recorded.
- */
-async function referralOn(
-  merchant: Merchant,
-  session: Stripe.Checkout.Session,
-  linkClick: ReferralClick | null
-): Promise<ReferralClick | null> {
-  const recordedOn = (tx: Prisma.TransactionClient) =>
-    tx.click.findFirst({
-      where: { promoCheckoutRef: session.id, affiliate: { merchantId: merchant.id } },
-      include: REFERRAL_INCLUDE,
-    });
-  const recorded = await recordedOn(db);
-  if (recorded) return recorded;
-
-  // Read outside the transaction below: it can call Stripe.
-  const promoCode = await promoCodeOn(merchant, session);
-  if (!promoCode || promoCode.affiliateId === linkClick?.affiliateId) return linkClick;
-
-  // Two deliveries of one Session (completed and async_payment_succeeded, or
-  // a redelivery) can run at once, and the code can change hands between
-  // them. Serialized on the Session, the second finds the first one's click
-  // instead of writing one for a different affiliate.
-  return db.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`promo-session:${merchant.id}:${session.id}`}, 0))`;
-    const first = await recordedOn(tx);
-    if (first) return first;
-    return tx.click.create({
-      data: {
-        affiliateId: promoCode.affiliateId,
-        promoCodeId: promoCode.id,
-        promoCheckoutRef: session.id,
-        // Required and unique, and never handed to anyone: no browser holds
-        // it, so no checkout can ever carry it back.
-        referralToken: randomUUID(),
-        // No Attribution Window: the sale is the referral. Nothing reads this
-        // back for a code click.
-        expiresAt: new Date(session.created * 1000),
-      },
-      include: REFERRAL_INCLUDE,
-    });
+function referralOn(merchant: Merchant, session: Stripe.Checkout.Session, linkClick: ReferralClick | null): Promise<ReferralClick | null> {
+  return referralThrough(merchant.id, {
+    checkoutRef: session.id,
+    at: new Date(session.created * 1000),
+    linkClick,
+    // Read outside the transaction it guards: it can call Stripe.
+    promoCode: () => promoCodeOn(merchant, session),
   });
 }
 

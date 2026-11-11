@@ -128,7 +128,7 @@ export default async function SettingsPage({
     "payment-key": polar
       ? {
           title: "Replace the Polar token",
-          lede: "An organization access token with the webhooks:read and webhooks:write scopes.",
+          lede: "An organization access token with the webhooks:read, webhooks:write, discounts:read and discounts:write scopes.",
           createLabel: "Open Polar",
           createUrl: polarDashboardUrl(merchant.paymentSandbox),
           fieldLabel: "Paste the new token",

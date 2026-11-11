@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { recordTrackingVerified } from "@/lib/tracking";
 import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_METADATA_KEY } from "@/lib/referral";
-import { linkClickFor, REFERRAL_INCLUDE, type ReferralClick } from "@/lib/worker/attribution";
+import { linkClickFor, referralThrough, REFERRAL_INCLUDE, type ReferralClick } from "@/lib/worker/attribution";
 import { commissionRateFor, computeCommissionAmount, computePayableAt, saleAmountFor, type PaymentRef } from "@/lib/worker/commission";
 import { commissionFieldsAtCreation } from "@/lib/worker/paymentState";
 import { createCommissionUnlessSelfReferral } from "@/lib/worker/recordCommission";
@@ -49,12 +49,23 @@ function referralTokenOf(order: PolarOrder): string | undefined {
 }
 
 async function firstOrder(merchant: Merchant, order: PolarOrder, payment: PaymentRef): Promise<void> {
-  let click = await linkClickFor(merchant.id, referralTokenOf(order), payment.at);
-  if (!click) return;
+  const linkClick = await linkClickFor(merchant.id, referralTokenOf(order), payment.at);
   // A click existed and its token came back on the order: the script is live
   // and the checkout passes the token through.
-  await recordTrackingVerified(merchant.id);
-  if (click.fraudConfirmedAt) return;
+  if (linkClick) await recordTrackingVerified(merchant.id);
+
+  // An affiliate's promo code wins over another affiliate's link, as on
+  // Stripe. The order names the discount it used, which is the code's id.
+  let click = await referralThrough(merchant.id, {
+    checkoutRef: order.checkout_id ?? order.id,
+    at: payment.at,
+    linkClick,
+    promoCode: async () =>
+      order.discount_id
+        ? db.affiliatePromoCode.findFirst({ where: { merchantId: merchant.id, promoCodeRef: order.discount_id, disabledAt: null } })
+        : null,
+  });
+  if (!click || click.fraudConfirmedAt) return;
 
   const moneyMoved = order.net_amount > 0;
   if (order.subscription_id) {

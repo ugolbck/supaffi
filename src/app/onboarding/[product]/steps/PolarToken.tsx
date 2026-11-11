@@ -20,7 +20,7 @@ export function PolarToken({ ctx }: { ctx: Ctx }) {
     <StepShell
       step={displayStep("payments")}
       title="Let Supaffi receive your Polar sales"
-      lede="In Polar, create an organization access token with the webhooks:read and webhooks:write scopes."
+      lede="In Polar, create an organization access token with the webhooks:read, webhooks:write, discounts:read and discounts:write scopes."
       action={
         stored ? (
           <Button size="lg" render={<Link href={stepPath(merchant.slug, next)} />}>

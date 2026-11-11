@@ -1,8 +1,8 @@
 import { db } from "@/lib/db";
 import type { CommissionDurationType } from "@prisma/client";
 import { uniqueSlug } from "@/lib/slug";
-import { stripeClientFor } from "@/lib/payments/stripe/client";
-import { couponById, listCoupons, type CouponList } from "@/lib/coupon";
+import type { CouponList } from "@/lib/coupon";
+import { paymentProviderFor } from "@/lib/payments";
 
 export type ProgramInput = {
   name: string;
@@ -18,22 +18,24 @@ export type ProgramInput = {
   discountLabel?: string | null;
 };
 
-/** The coupons a program's form offers. Null when Stripe is not connected yet. */
+/**
+ * The discounts a program's form offers. Null when the payment provider is not
+ * connected yet, or has no promo codes.
+ */
 export async function couponsForProgramForm(ownerId: string, merchantId: string): Promise<CouponList | null> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
-    select: { paymentProvider: true, paymentKeyEnc: true },
+    select: { paymentProvider: true, paymentKeyEnc: true, paymentSandbox: true },
   });
-  // Promo codes are built on Stripe coupons, so other providers have no
-  // discount to pick yet.
-  if (merchant?.paymentProvider !== "STRIPE" || !merchant.paymentKeyEnc) return null;
-  return listCoupons(stripeClientFor(merchant));
+  const codes = merchant && paymentProviderFor(merchant).promoCodes;
+  if (!merchant?.paymentKeyEnc || !codes) return null;
+  return codes.listDiscounts(merchant);
 }
 
 /**
- * The coupon a program's form picked, with what it gives a customer, ready to
- * store. An unchanged pick keeps the label already stored, so saving the rest
- * of the terms never depends on Stripe answering.
+ * The discount a program's form picked, with what it gives a customer, ready
+ * to store. An unchanged pick keeps the label already stored, so saving the
+ * rest of the terms never depends on the provider answering.
  */
 export async function programDiscount(
   ownerId: string,
@@ -47,6 +49,7 @@ export async function programDiscount(
     select: {
       paymentProvider: true,
       paymentKeyEnc: true,
+      paymentSandbox: true,
       programs: { where: { id: programId ?? "" }, select: { discountRef: true, discountLabel: true } },
     },
   });
@@ -55,9 +58,10 @@ export async function programDiscount(
   if (current?.discountRef === couponId) {
     return { error: null, discountRef: couponId, discountLabel: current.discountLabel };
   }
-  if (merchant.paymentProvider !== "STRIPE") return { error: "Promo codes need Stripe" };
-  if (!merchant.paymentKeyEnc) return { error: "Connect Stripe first" };
-  const coupon = await couponById(stripeClientFor(merchant), couponId);
+  const provider = paymentProviderFor(merchant);
+  if (!provider.promoCodes) return { error: `${provider.name} has no promo codes` };
+  if (!merchant.paymentKeyEnc) return { error: `Connect ${provider.name} first` };
+  const coupon = await provider.promoCodes.discountById(merchant, couponId);
   if (!coupon.ok) return { error: coupon.error };
   return { error: null, discountRef: couponId, discountLabel: coupon.label };
 }
