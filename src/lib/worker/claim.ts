@@ -1,4 +1,4 @@
-import { loggableError } from "@/lib/stripeErrors";
+import { loggableError } from "@/lib/payments";
 import { Prisma } from "@prisma/client";
 import type { WebhookEvent } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -25,7 +25,7 @@ const CLAIM_LEASE_SECONDS = 10 * 60;
 // PROCESSING, and before this nothing ever looked at a PROCESSING row again,
 // so those events were lost for good. Now a PROCESSING row whose lease has
 // run out is claimed like a due PENDING one. Reprocessing it is safe: the
-// commission handlers dedupe on Commission.stripePaymentRef, a refund
+// commission handlers dedupe on Commission.paymentRef, a refund
 // recomputes from Stripe's cumulative figures, and the rest only set state.
 export async function claimBatch(): Promise<WebhookEvent[]> {
   // A row that took the worker down on its last allowed attempt would
@@ -56,7 +56,9 @@ export async function claimBatch(): Promise<WebhookEvent[]> {
         "nextAttemptAt" = now() + ${CLAIM_LEASE_SECONDS} * interval '1 second'
     FROM claimed
     WHERE w.id = claimed.id
-    RETURNING w.*;
+    -- A raw query answers with column names, not the client's: the column
+    -- keeps its pre-provider name (schema.prisma, @map).
+    RETURNING w.*, w."stripeEventId" AS "providerEventId";
   `);
 }
 

@@ -14,8 +14,8 @@ const stripeStub = vi.hoisted(() => ({
     update: vi.fn(async (_id: string, _params: unknown): Promise<unknown> => ({})),
   },
 }));
-vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+vi.mock("@/lib/payments/stripe/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/payments/stripe/client")>("@/lib/payments/stripe/client");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
@@ -73,7 +73,7 @@ describe("promo codes", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     merchantId = merchant.id;
@@ -114,7 +114,7 @@ describe("promo codes", () => {
 
     expect(stripeStub.promotionCodes.list).toHaveBeenCalledWith({ code: "alice20", active: true, limit: 2 });
     const row = await db.affiliatePromoCode.findFirstOrThrow();
-    expect(row).toMatchObject({ merchantId, affiliateId: aliceId, stripePromotionCodeId: "promo_1", code: "ALICE20" });
+    expect(row).toMatchObject({ merchantId, affiliateId: aliceId, promoCodeRef: "promo_1", code: "ALICE20" });
     expect(row.issued).toBe(false);
     expect(await listPromoCodes(aliceId)).toEqual([{ id: row.id, code: "ALICE20", discountLabel: null }]);
   });
@@ -182,7 +182,7 @@ describe("promo codes", () => {
       data: Array.from({ length: MAX_PROMO_CODES_PER_AFFILIATE }, (_, i) => ({
         merchantId,
         affiliateId: aliceId,
-        stripePromotionCodeId: `promo_${i}`,
+        promoCodeRef: `promo_${i}`,
         code: `CODE${i}`,
       })),
     });
@@ -195,7 +195,7 @@ describe("promo codes", () => {
 
   it("turns off a linked code without touching Stripe, and keeps the sales it brought", async () => {
     const code = await db.affiliatePromoCode.create({
-      data: { merchantId, affiliateId: aliceId, stripePromotionCodeId: "promo_1", code: "ALICE20" },
+      data: { merchantId, affiliateId: aliceId, promoCodeRef: "promo_1", code: "ALICE20" },
     });
     const sale = await db.click.create({
       data: {
@@ -203,7 +203,7 @@ describe("promo codes", () => {
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(),
         promoCodeId: code.id,
-        promoCheckoutSessionId: "cs_1",
+        promoCheckoutRef: "cs_1",
       },
     });
 
@@ -217,7 +217,7 @@ describe("promo codes", () => {
 
   it("leaves a code sale's click out of click counts and tracking", async () => {
     await db.click.create({
-      data: { affiliateId: aliceId, referralToken: crypto.randomUUID(), expiresAt: new Date(), promoCheckoutSessionId: "cs_1" },
+      data: { affiliateId: aliceId, referralToken: crypto.randomUUID(), expiresAt: new Date(), promoCheckoutRef: "cs_1" },
     });
 
     const { rows } = await listAffiliatesForMerchant(
@@ -232,7 +232,7 @@ describe("promo codes", () => {
 
   it("names the code, not a click or a link, on a code sale's commission", async () => {
     const code = await db.affiliatePromoCode.create({
-      data: { merchantId, affiliateId: aliceId, stripePromotionCodeId: "promo_1", code: "ALICE20" },
+      data: { merchantId, affiliateId: aliceId, promoCodeRef: "promo_1", code: "ALICE20" },
     });
     const sale = await db.click.create({
       data: {
@@ -240,14 +240,14 @@ describe("promo codes", () => {
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(),
         promoCodeId: code.id,
-        promoCheckoutSessionId: "cs_1",
+        promoCheckoutRef: "cs_1",
       },
     });
     await db.commission.create({
       data: {
         affiliateId: aliceId,
         clickId: sale.id,
-        stripePaymentRef: "pi_1",
+        paymentRef: "pi_1",
         amount: 10,
         currency: "usd",
         payableAt: new Date(),
@@ -269,17 +269,17 @@ describe("promo codes", () => {
 
   it("counts each code's sales and earnings the way a link's are", async () => {
     const first = await db.affiliatePromoCode.create({
-      data: { merchantId, affiliateId: aliceId, stripePromotionCodeId: "promo_0", code: "ALICE20", createdAt: new Date(Date.now() - 1000) },
+      data: { merchantId, affiliateId: aliceId, promoCodeRef: "promo_0", code: "ALICE20", createdAt: new Date(Date.now() - 1000) },
     });
     const second = await db.affiliatePromoCode.create({
-      data: { merchantId, affiliateId: aliceId, stripePromotionCodeId: "promo_1", code: "ALICE50" },
+      data: { merchantId, affiliateId: aliceId, promoCodeRef: "promo_1", code: "ALICE50" },
     });
     const sale = async (codeId: string, ref: string, amount: number, currency: string, status: "PENDING" | "VOIDED") => {
       const click = await db.click.create({
-        data: { affiliateId: aliceId, referralToken: crypto.randomUUID(), expiresAt: new Date(), promoCodeId: codeId, promoCheckoutSessionId: `cs_${ref}` },
+        data: { affiliateId: aliceId, referralToken: crypto.randomUUID(), expiresAt: new Date(), promoCodeId: codeId, promoCheckoutRef: `cs_${ref}` },
       });
       await db.commission.create({
-        data: { affiliateId: aliceId, clickId: click.id, stripePaymentRef: ref, amount, currency, status, payableAt: new Date() },
+        data: { affiliateId: aliceId, clickId: click.id, paymentRef: ref, amount, currency, status, payableAt: new Date() },
       });
     };
     await sale(first.id, "pi_1", 10, "usd", "PENDING");
@@ -313,7 +313,7 @@ describe("promo codes", () => {
 
   describe("issued from the program's discount", () => {
     const giveDiscount = () =>
-      db.program.update({ where: { id: programId }, data: { stripeCouponId: "coupon_20", discountLabel: "20% off for 3 months" } });
+      db.program.update({ where: { id: programId }, data: { discountRef: "coupon_20", discountLabel: "20% off for 3 months" } });
 
     beforeEach(giveDiscount);
 
@@ -333,7 +333,7 @@ describe("promo codes", () => {
       const row = await db.affiliatePromoCode.findFirstOrThrow();
       expect(row).toMatchObject({
         affiliateId: aliceId,
-        stripePromotionCodeId: "promo_ALICE20",
+        promoCodeRef: "promo_ALICE20",
         code: "ALICE20",
         issued: true,
         discountLabel: "20% off for 3 months",
@@ -348,7 +348,7 @@ describe("promo codes", () => {
     });
 
     it("offers nothing when the program has no discount", async () => {
-      await db.program.update({ where: { id: programId }, data: { stripeCouponId: null, discountLabel: null } });
+      await db.program.update({ where: { id: programId }, data: { discountRef: null, discountLabel: null } });
 
       expect(await promoCodeOffer(aliceId)).toBeNull();
       expect(await claimPromoCode(aliceId, "ALICE20")).toEqual({ ok: false, error: "This program has no discount" });

@@ -13,8 +13,9 @@ import {
 import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import { stripeKeyWorks } from "@/lib/checks/stripe";
-import { moveMerchantWebhookEndpoint, upgradeMerchantWebhookEvents } from "@/lib/worker/webhookEvents";
+import { stripeKeyWorks } from "@/lib/payments/stripe/keyCheck";
+import { upgradeMerchantWebhookEvents } from "@/lib/payments/stripe/endpointUpkeep";
+import { paymentProviderFor } from "@/lib/payments";
 
 /**
  * Everything the settings page can change: the product's own details, the
@@ -67,9 +68,11 @@ export async function updateProductAction(
     if (isUniqueConstraintError(err)) return { error: "Another product already uses that subdomain", values: input };
     throw err;
   }
-  // Stripe finds the product by the address it delivers to, so a new
-  // subdomain has to reach the endpoint too, or every sale after this is lost.
-  const moved = input.domain === before.domain ? "none" : await moveMerchantWebhookEndpoint(product.id);
+  // The payment provider finds the product by the address it delivers to, so
+  // a new subdomain has to reach the endpoint too, or every sale after this
+  // is lost.
+  const moveEndpoint = paymentProviderFor(before).moveWebhookEndpoint;
+  const moved = input.domain === before.domain || !moveEndpoint ? "none" : await moveEndpoint(product.id);
   // The sidebar and the product switcher are rendered by the dashboard layout,
   // which a soft navigation reuses from cache.
   revalidatePath("/dashboard", "layout");

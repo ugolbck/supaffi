@@ -51,16 +51,16 @@ const stripeStub = vi.hoisted(() => ({
     listLineItems: vi.fn(async (_id: string, _params?: unknown): Promise<unknown> => undefined),
   },
 }));
-vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+vi.mock("@/lib/payments/stripe/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/payments/stripe/client")>("@/lib/payments/stripe/client");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
 // The two self-referral vectors that cost Stripe API calls. The email vector
 // stays real: it reads the payload inline and costs nothing.
-vi.mock("@/lib/worker/selfReferral", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/worker/selfReferral")>(
-    "@/lib/worker/selfReferral"
+vi.mock("@/lib/payments/stripe/selfReferral", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/payments/stripe/selfReferral")>(
+    "@/lib/payments/stripe/selfReferral"
   );
   return {
     ...actual,
@@ -69,11 +69,11 @@ vi.mock("@/lib/worker/selfReferral", async () => {
   };
 });
 
-import { handleCheckoutSessionCompleted } from "@/lib/worker/handlers/checkoutSessionCompleted";
+import { handleCheckoutSessionCompleted } from "@/lib/payments/stripe/handlers/checkoutSessionCompleted";
 import { REFERRAL_METADATA_KEY } from "@/lib/referral";
-import { handleInvoicePaid } from "@/lib/worker/handlers/invoicePaid";
-import { handleSubscriptionDeleted } from "@/lib/worker/handlers/subscriptionDeleted";
-import { EARNING_INVOICE_EXPAND } from "@/lib/worker/referredRevenue";
+import { handleInvoicePaid } from "@/lib/payments/stripe/handlers/invoicePaid";
+import { handleSubscriptionDeleted } from "@/lib/payments/stripe/handlers/subscriptionDeleted";
+import { EARNING_INVOICE_EXPAND } from "@/lib/payments/stripe/referredRevenue";
 import { invoiceLine } from "./invoiceLines";
 
 const CUSTOMER_ID = "cus_test";
@@ -275,7 +275,7 @@ describe("handleCheckoutSessionCompleted", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     const program = await db.program.create({
@@ -343,8 +343,8 @@ describe("handleCheckoutSessionCompleted", () => {
       sessionFixture({ invoice: "in_second", metadataToken: "tok-2", subscription: "sub_2" })
     );
 
-    const rows = await db.referredSubscription.findMany({ orderBy: { stripeSubscriptionId: "asc" } });
-    expect(rows.map((r) => [r.stripeSubscriptionId, r.clickId])).toEqual([
+    const rows = await db.referredSubscription.findMany({ orderBy: { subscriptionRef: "asc" } });
+    expect(rows.map((r) => [r.subscriptionRef, r.clickId])).toEqual([
       ["sub_1", click.id],
       ["sub_2", second.id],
     ]);
@@ -371,7 +371,7 @@ describe("handleCheckoutSessionCompleted", () => {
       sessionFixture({ invoice: "in_trial", paymentStatus: "no_payment_required", subscription: "sub_1" })
     );
     expect(await db.commission.count()).toBe(0);
-    const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
     expect(referred.firstPaymentRef).toBeNull();
   });
 
@@ -383,7 +383,7 @@ describe("handleCheckoutSessionCompleted", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     await handleCheckoutSessionCompleted(other, sessionFixture({ invoice: "in_other" }));
@@ -682,7 +682,7 @@ describe("handleCheckoutSessionCompleted", () => {
     const session = sessionFixture({ invoice: "in_first", subscription: "sub_1" });
     await handleCheckoutSessionCompleted(merchant, session);
 
-    const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
     expect(referred.clickId).toBe(click.id);
     expect(referred.merchantId).toBe(merchant.id);
     expect(referred.firstPaymentRef).toBe("in_first");
@@ -694,12 +694,12 @@ describe("handleCheckoutSessionCompleted", () => {
   it("records the subscription once on a redelivery, without moving its first payment", async () => {
     const session = sessionFixture({ invoice: "in_first", subscription: "sub_1" });
     await handleCheckoutSessionCompleted(merchant, session);
-    const first = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    const first = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
 
     await handleCheckoutSessionCompleted(merchant, session);
 
     expect(await db.referredSubscription.count()).toBe(1);
-    const after = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    const after = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
     expect(after.firstPaymentRef).toBe(first.firstPaymentRef);
     expect(after.firstPaidAt?.getTime()).toBe(first.firstPaidAt?.getTime());
   });
@@ -721,8 +721,8 @@ describe("handleCheckoutSessionCompleted", () => {
 
       await handleCheckoutSessionCompleted(merchant, sessionFixture({ invoice: "in_first", subscription: "sub_1" }));
 
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
-      expect(referred.stripeProductIds).toEqual(["prod_pro", "prod_seats"]);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
+      expect(referred.productRefs).toEqual(["prod_pro", "prod_seats"]);
       expect(stripeStub.subscriptions.retrieve).toHaveBeenCalledWith("sub_1");
     });
 
@@ -746,8 +746,8 @@ describe("handleCheckoutSessionCompleted", () => {
 
       expect(stripeStub.subscriptions.retrieve).not.toHaveBeenCalled();
       expect(stripeStub.subscriptionItems.list).not.toHaveBeenCalled();
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
-      expect(referred.stripeProductIds).toEqual(["prod_pro", "prod_seats"]);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
+      expect(referred.productRefs).toEqual(["prod_pro", "prod_seats"]);
     });
 
     it("still records the subscription and the sale's commission when the key cannot read its products", async () => {
@@ -765,8 +765,8 @@ describe("handleCheckoutSessionCompleted", () => {
       // The subscription read failed, but the first invoice's own lines still
       // name the product, the same recovery a renewal gets when it learns the
       // products from an invoice it can already read.
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
-      expect(referred.stripeProductIds).toEqual(["prod_basic"]);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
+      expect(referred.productRefs).toEqual(["prod_basic"]);
       expect(await db.commission.count({ where: { clickId: click.id } })).toBe(1);
     });
 
@@ -781,8 +781,8 @@ describe("handleCheckoutSessionCompleted", () => {
         warnings.mockRestore();
       }
 
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
-      expect(referred.stripeProductIds).toEqual(["prod_basic"]);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
+      expect(referred.productRefs).toEqual(["prod_basic"]);
     });
 
     it("throws before recording anything when Stripe cannot be reached, so the event is retried", async () => {
@@ -820,7 +820,7 @@ describe("handleCheckoutSessionCompleted", () => {
     const settledAt = session.created + 5 * 24 * 60 * 60;
     await handleCheckoutSessionCompleted(merchant, { ...session, payment_status: "paid" });
 
-    const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
     expect(referred.firstPaidAt?.getTime()).toBe(session.created * 1000);
     expect(referred.firstPaidAt?.getTime()).not.toBe(settledAt * 1000);
   });
@@ -866,7 +866,7 @@ describe("handleCheckoutSessionCompleted", () => {
 
     const renewalAt = new Date(session.created * 1000);
     renewalAt.setUTCMonth(renewalAt.getUTCMonth() + 3);
-    const { handleInvoicePaid } = await import("@/lib/worker/handlers/invoicePaid");
+    const { handleInvoicePaid } = await import("@/lib/payments/stripe/handlers/invoicePaid");
     await handleInvoicePaid(merchant, {
       id: "in_fixed_renewal",
       customer: CUSTOMER_ID,
@@ -885,7 +885,7 @@ describe("handleCheckoutSessionCompleted", () => {
 
     expect(await db.commission.count({ where: { clickId: fixedClick.id } })).toBe(1); // the checkout commission only
     const commissions = await db.commission.findMany({ where: { clickId: fixedClick.id } });
-    expect(commissions.map((c) => c.stripePaymentRef)).toEqual(["in_fixed_first"]);
+    expect(commissions.map((c) => c.paymentRef)).toEqual(["in_fixed_first"]);
   });
 
   it("claims no first payment on a trial Stripe reports as paid with a zero total", async () => {
@@ -895,7 +895,7 @@ describe("handleCheckoutSessionCompleted", () => {
       sessionFixture({ invoice: "in_trial", amountTotal: 0, subscription: "sub_1" })
     );
     expect(await db.commission.count()).toBe(0);
-    const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
     expect(referred.firstPaymentRef).toBeNull();
   });
 
@@ -907,7 +907,7 @@ describe("handleCheckoutSessionCompleted", () => {
     );
 
     expect(await db.commission.count()).toBe(0);
-    const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+    const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
     expect(referred.firstPaymentRef).toBe("in_first");
   });
 
@@ -924,7 +924,7 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(stripeStub.invoices.retrieve).toHaveBeenCalledWith("in_first", { expand: EARNING_INVOICE_EXPAND });
       // Only the products read; the flag came from the invoice's expansion.
       expect(stripeStub.subscriptions.retrieve).toHaveBeenCalledTimes(1);
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
       expect(referred.firstPaymentRef).toBe("in_first");
     });
 
@@ -995,7 +995,7 @@ describe("handleCheckoutSessionCompleted", () => {
       // The retry, once Stripe answers, earns as usual and keeps the first payment.
       await handleCheckoutSessionCompleted(merchant, session);
       expect(await db.commission.count()).toBe(1);
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
       expect(referred.firstPaymentRef).toBe("in_first");
     });
 
@@ -1183,7 +1183,7 @@ describe("handleCheckoutSessionCompleted", () => {
 
     async function earnedRefs() {
       const rows = await db.commission.findMany({ where: { clickId: click.id } });
-      return rows.map((c) => c.stripePaymentRef).sort();
+      return rows.map((c) => c.paymentRef).sort();
     }
 
     it("pays a one-time program nothing when the customer cancels and subscribes again through the same click", async () => {
@@ -1194,7 +1194,7 @@ describe("handleCheckoutSessionCompleted", () => {
 
       expect(await earnedRefs()).toEqual(["in_a"]);
       // The new subscription is still recorded, with its own first payment.
-      const resubscribed = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_b" } });
+      const resubscribed = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_b" } });
       expect(resubscribed.firstPaymentRef).toBe("in_b");
     });
 
@@ -1265,7 +1265,7 @@ describe("handleCheckoutSessionCompleted", () => {
         data: {
           affiliateId: clickInput.affiliateId,
           clickId: click.id,
-          stripePaymentRef: "pi_once",
+          paymentRef: "pi_once",
           amount: 10,
           grossAmount: 10,
           currency: "usd",
@@ -1291,7 +1291,7 @@ describe("handleCheckoutSessionCompleted", () => {
       await handleCheckoutSessionCompleted(merchant, checkoutOn("2026-01-20T00:00:00Z", { invoice: "in_b", subscription: "sub_b" }));
 
       const rows = await db.commission.findMany({ where: { clickId: click.id } });
-      expect(rows.map((c) => [c.stripePaymentRef, c.status, c.voidReason])).toEqual([["in_a", "VOIDED", "refund"]]);
+      expect(rows.map((c) => [c.paymentRef, c.status, c.voidReason])).toEqual([["in_a", "VOIDED", "refund"]]);
     });
 
     it("starts a fixed-months window at a refunded first payment", async () => {
@@ -1310,7 +1310,7 @@ describe("handleCheckoutSessionCompleted", () => {
         data: {
           affiliateId: clickInput.affiliateId,
           clickId: click.id,
-          stripePaymentRef: "in_legacy",
+          paymentRef: "in_legacy",
           amount: 10,
           grossAmount: 10,
           currency: "usd",
@@ -1334,7 +1334,7 @@ describe("handleCheckoutSessionCompleted", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     await handleCheckoutSessionCompleted(other, sessionFixture({ invoice: "in_other", subscription: "sub_1" }));
@@ -1367,7 +1367,7 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(commission.grossAmount?.toString()).toBe("2");
       expect(commission.saleAmount?.toString()).toBe("10");
       expect(commission.referredChargeMinor).toBe(1000n);
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
       expect(referred.firstPaymentRef).toBe("in_partial");
     });
 
@@ -1381,7 +1381,7 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(stripeStub.invoices.listLineItems).not.toHaveBeenCalled();
       // Recorded, like a free trial, so the first invoice that charges money
       // can earn and becomes the first payment.
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
       expect(referred.clickId).toBe(click.id);
       expect(referred.firstPaymentRef).toBeNull();
       expect(referred.firstPaidAt).toBeNull();
@@ -1426,8 +1426,8 @@ describe("handleCheckoutSessionCompleted", () => {
       await handleInvoicePaid(merchant, renewal("in_renewal_2"));
 
       const rows = await db.commission.findMany({ where: { clickId: click.id } });
-      expect(rows.map((row) => row.stripePaymentRef)).toEqual(["in_renewal_1"]);
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(rows.map((row) => row.paymentRef)).toEqual(["in_renewal_1"]);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
       expect(referred.firstPaymentRef).toBe("in_renewal_1");
     });
 
@@ -1461,7 +1461,7 @@ describe("handleCheckoutSessionCompleted", () => {
       );
 
       expect(await db.commission.count()).toBe(0);
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
       expect(referred.firstPaymentRef).toBe("in_setup");
     });
 
@@ -1514,7 +1514,7 @@ describe("handleCheckoutSessionCompleted", () => {
       await handleCheckoutSessionCompleted(merchant, session);
       const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
       expect(commission.amount.toString()).toBe("10");
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
       expect(referred.firstPaymentRef).toBe("in_retry");
     });
 
@@ -1546,7 +1546,7 @@ describe("handleCheckoutSessionCompleted", () => {
       }
 
       expect(await db.commission.count()).toBe(0);
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_no_invoice" } });
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_no_invoice" } });
       expect(referred.firstPaymentRef).toBeNull();
     });
   });
@@ -1709,7 +1709,7 @@ describe("handleCheckoutSessionCompleted", () => {
       );
 
       const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
-      expect(commission.stripePaymentRef).toBe("pi_post");
+      expect(commission.paymentRef).toBe("pi_post");
       expect(stripeStub.invoices.retrieve).not.toHaveBeenCalled();
       expect(stripeStub.invoicePayments.list).not.toHaveBeenCalled();
     });
@@ -1718,7 +1718,7 @@ describe("handleCheckoutSessionCompleted", () => {
       await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_plain" }));
 
       const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
-      expect(commission.stripePaymentRef).toBe("pi_plain");
+      expect(commission.paymentRef).toBe("pi_plain");
     });
 
     it("keeps storing a subscription's first payment under its invoice", async () => {
@@ -1728,8 +1728,8 @@ describe("handleCheckoutSessionCompleted", () => {
       );
 
       const commission = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
-      expect(commission.stripePaymentRef).toBe("in_sub_first");
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_1" } });
+      expect(commission.paymentRef).toBe("in_sub_first");
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
       expect(referred.firstPaymentRef).toBe("in_sub_first");
     });
 
@@ -1740,7 +1740,7 @@ describe("handleCheckoutSessionCompleted", () => {
       await handleCheckoutSessionCompleted(merchant, session);
 
       const commissions = await db.commission.findMany({ where: { clickId: click.id } });
-      expect(commissions.map((c) => c.stripePaymentRef)).toEqual(["pi_delayed"]);
+      expect(commissions.map((c) => c.paymentRef)).toEqual(["pi_delayed"]);
     });
 
     it("does not write a second row for a sale stored under its post-purchase invoice before 0.2.7", async () => {
@@ -1750,7 +1750,7 @@ describe("handleCheckoutSessionCompleted", () => {
         data: {
           affiliateId: clickInput.affiliateId,
           clickId: click.id,
-          stripePaymentRef: "in_before",
+          paymentRef: "in_before",
           amount: 10,
           grossAmount: 10,
           currency: "usd",
@@ -1766,7 +1766,7 @@ describe("handleCheckoutSessionCompleted", () => {
       );
 
       const commissions = await db.commission.findMany({ where: { clickId: click.id } });
-      expect(commissions.map((c) => c.stripePaymentRef)).toEqual(["in_before"]);
+      expect(commissions.map((c) => c.paymentRef)).toEqual(["in_before"]);
       // Ends where a dedupe would, before any Stripe call.
       expect(stripeStub.checkout.sessions.retrieve).not.toHaveBeenCalled();
       expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
@@ -1783,7 +1783,7 @@ describe("handleCheckoutSessionCompleted", () => {
         data: { merchantId: merchant.id, programId: program.id, email: `alice-${crypto.randomUUID()}@example.com` },
       });
       code = await db.affiliatePromoCode.create({
-        data: { merchantId: merchant.id, affiliateId: alice.id, stripePromotionCodeId: "promo_alice", code: "ALICE20" },
+        data: { merchantId: merchant.id, affiliateId: alice.id, promoCodeRef: "promo_alice", code: "ALICE20" },
       });
     });
 
@@ -1817,10 +1817,10 @@ describe("handleCheckoutSessionCompleted", () => {
       const commission = await db.commission.findFirstOrThrow({ include: { click: true } });
       expect(commission.affiliateId).toBe(alice.id);
       expect(commission.amount.toString()).toBe("10");
-      expect(commission.click.promoCheckoutSessionId).toBe("cs_in_code");
+      expect(commission.click.promoCheckoutRef).toBe("cs_in_code");
       expect(commission.click.promoCodeId).toBe(code.id);
       expect(commission.click.linkId).toBeNull();
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_code" } });
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_code" } });
       expect(referred.clickId).toBe(commission.clickId);
       // A code proves nothing about the tracking script.
       expect((await db.merchant.findUniqueOrThrow({ where: { id: merchant.id } })).trackingVerifiedAt).toBeNull();
@@ -1836,7 +1836,7 @@ describe("handleCheckoutSessionCompleted", () => {
       await handleInvoicePaid(merchant, renewal("in_code_renewal", "sub_code"));
 
       const commissions = await db.commission.findMany({ where: { affiliateId: alice.id }, orderBy: { createdAt: "asc" } });
-      expect(commissions.map((c) => c.stripePaymentRef)).toEqual(["in_code", "in_code_renewal"]);
+      expect(commissions.map((c) => c.paymentRef)).toEqual(["in_code", "in_code_renewal"]);
     });
 
     it("credits nobody through a code that was turned off, and lets the link earn", async () => {
@@ -1874,7 +1874,7 @@ describe("handleCheckoutSessionCompleted", () => {
 
       const commission = await db.commission.findFirstOrThrow();
       expect(commission.clickId).toBe(click.id);
-      expect(await db.click.count({ where: { promoCheckoutSessionId: { not: null } } })).toBe(0);
+      expect(await db.click.count({ where: { promoCheckoutRef: { not: null } } })).toBe(0);
     });
 
     it("writes one click and one commission across redeliveries and a settled delayed payment", async () => {
@@ -1887,14 +1887,14 @@ describe("handleCheckoutSessionCompleted", () => {
       });
       await handleCheckoutSessionCompleted(merchant, session);
       // The referral is chosen at once; nothing earns until the money moves.
-      expect(await db.click.count({ where: { promoCheckoutSessionId: { not: null } } })).toBe(1);
+      expect(await db.click.count({ where: { promoCheckoutRef: { not: null } } })).toBe(1);
       expect(await db.commission.count()).toBe(0);
 
       const paid = { ...session, payment_status: "paid" } as Stripe.Checkout.Session;
       await handleCheckoutSessionCompleted(merchant, paid);
       await handleCheckoutSessionCompleted(merchant, paid);
 
-      expect(await db.click.count({ where: { promoCheckoutSessionId: "cs_pi_code" } })).toBe(1);
+      expect(await db.click.count({ where: { promoCheckoutRef: "cs_pi_code" } })).toBe(1);
       const commissions = await db.commission.findMany();
       expect(commissions).toHaveLength(1);
       expect(commissions[0].affiliateId).toBe(alice.id);
@@ -1934,17 +1934,17 @@ describe("handleCheckoutSessionCompleted", () => {
       stripeStub.invoices.listLineItems.mockRejectedValueOnce(Object.assign(new Error("down"), { type: "StripeConnectionError" }));
       await expect(handleCheckoutSessionCompleted(merchant, session)).rejects.toThrow();
       await db.affiliatePromoCode.create({
-        data: { merchantId: merchant.id, affiliateId: alice.id, stripePromotionCodeId: "promo_alice", code: "ALICE20" },
+        data: { merchantId: merchant.id, affiliateId: alice.id, promoCodeRef: "promo_alice", code: "ALICE20" },
       });
 
       await handleCheckoutSessionCompleted(merchant, session);
 
       expect((await db.commission.findMany()).map((c) => c.clickId)).toEqual([click.id]);
-      expect((await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_retry" } })).clickId).toBe(click.id);
+      expect((await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_retry" } })).clickId).toBe(click.id);
     });
 
     it("ignores a code given out on another product", async () => {
-      await db.affiliatePromoCode.update({ where: { id: code.id }, data: { stripePromotionCodeId: "promo_other" } });
+      await db.affiliatePromoCode.update({ where: { id: code.id }, data: { promoCodeRef: "promo_other" } });
 
       await handleCheckoutSessionCompleted(
         merchant,
@@ -1952,7 +1952,7 @@ describe("handleCheckoutSessionCompleted", () => {
       );
 
       expect(await db.commission.count()).toBe(0);
-      expect(await db.click.count({ where: { promoCheckoutSessionId: { not: null } } })).toBe(0);
+      expect(await db.click.count({ where: { promoCheckoutRef: { not: null } } })).toBe(0);
     });
 
     it("flags a code affiliate who bought with their own code", async () => {
@@ -1969,11 +1969,11 @@ describe("handleCheckoutSessionCompleted", () => {
     it("earns nothing more once a self referral was confirmed on the code sale", async () => {
       const session = sessionFixture({ invoice: "in_fraud", subscription: "sub_fraud", metadataToken: "", promotionCode: "promo_alice" });
       await handleCheckoutSessionCompleted(merchant, session);
-      await db.click.updateMany({ where: { promoCheckoutSessionId: session.id }, data: { fraudConfirmedAt: new Date() } });
+      await db.click.updateMany({ where: { promoCheckoutRef: session.id }, data: { fraudConfirmedAt: new Date() } });
 
       await handleInvoicePaid(merchant, renewal("in_fraud_renewal", "sub_fraud"));
 
-      expect((await db.commission.findMany()).map((c) => c.stripePaymentRef)).toEqual(["in_fraud"]);
+      expect((await db.commission.findMany()).map((c) => c.paymentRef)).toEqual(["in_fraud"]);
     });
 
     it("reads an older endpoint's Session back for its code", async () => {

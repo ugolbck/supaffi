@@ -299,7 +299,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
         currency: "usd",
         status: "PAYABLE",
         payableAt: new Date(),
-        stripePaymentRef: crypto.randomUUID(),
+        paymentRef: crypto.randomUUID(),
       },
     });
 
@@ -330,7 +330,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
         currency: "usd",
         status: "PAID",
         payableAt: new Date(),
-        stripePaymentRef: crypto.randomUUID(),
+        paymentRef: crypto.randomUUID(),
       },
     });
     await db.commission.create({

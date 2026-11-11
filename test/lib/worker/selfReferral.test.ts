@@ -1,10 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Affiliate } from "@prisma/client";
-import {
-  checkSelfReferralEmail,
-  checkPaymentMethodOverlap,
-  resolveInvoiceFingerprint,
-} from "@/lib/worker/selfReferral";
+import { checkSelfReferralEmail } from "@/lib/worker/selfReferral";
+import { checkPaymentMethodOverlap, resolveInvoiceFingerprint } from "@/lib/payments/stripe/selfReferral";
 
 function affiliateFixture(overrides: Partial<Affiliate> = {}): Affiliate {
   return {

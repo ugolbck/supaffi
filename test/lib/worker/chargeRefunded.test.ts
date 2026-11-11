@@ -12,19 +12,20 @@ import { getAffiliateMetrics } from "@/lib/analytics";
 // The handler resolves a Stripe client for the Merchant and asks it to trace
 // the Charge back to an Invoice. These fixtures are one-time purchases with no
 // Invoice at all, so the lookup finds nothing and the handler falls back to the
-// PaymentIntent ID, which is what Commission.stripePaymentRef holds for them.
+// PaymentIntent ID, which is what Commission.paymentRef holds for them.
 const stripeStub = vi.hoisted(() => ({
   invoicePayments: {
     list: vi.fn(async (_params: unknown): Promise<{ data: unknown[] }> => ({ data: [] })),
   },
 }));
-vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+vi.mock("@/lib/payments/stripe/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/payments/stripe/client")>("@/lib/payments/stripe/client");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
-import { handleChargeRefunded, prorateCommission } from "@/lib/worker/handlers/chargeRefunded";
-import { handleChargeDisputeClosed } from "@/lib/worker/handlers/chargeDisputeClosed";
+import { handleChargeRefunded } from "@/lib/payments/stripe/handlers/chargeRefunded";
+import { prorateCommission } from "@/lib/worker/reversal";
+import { handleChargeDisputeClosed } from "@/lib/payments/stripe/handlers/chargeDisputeClosed";
 
 describe("prorateCommission", () => {
   it("voids when the whole sale came back", () => {
@@ -153,7 +154,7 @@ describe("handleChargeRefunded", () => {
       data: {
         affiliateId,
         clickId,
-        stripePaymentRef: PAYMENT_INTENT_ID,
+        paymentRef: PAYMENT_INTENT_ID,
         amount: 15.6,
         grossAmount: 15.6,
         currency: "usd",
@@ -187,7 +188,7 @@ describe("handleChargeRefunded", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     const program = await db.program.create({
@@ -352,7 +353,7 @@ describe("handleChargeRefunded", () => {
   });
 
   it("does nothing when the charge traces to no commission", async () => {
-    await givenCommission({ stripePaymentRef: "pi_somebody_else" });
+    await givenCommission({ paymentRef: "pi_somebody_else" });
     await handleChargeRefunded(merchant, chargeFixture(7800));
 
     const voided = await db.commission.findMany({ where: { status: "VOIDED" } });
@@ -379,7 +380,7 @@ describe("handleChargeRefunded", () => {
         name: "Other",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://other.example.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     await handleChargeRefunded(other, chargeFixture(7800));
@@ -464,7 +465,7 @@ describe("handleChargeRefunded", () => {
 
     it("refunds a row stored under its invoice before 0.2.7", async () => {
       invoiceLinked("in_post");
-      const commission = await givenCommission({ stripePaymentRef: "in_post" });
+      const commission = await givenCommission({ paymentRef: "in_post" });
 
       await handleChargeRefunded(merchant, chargeFixture(3900));
 
@@ -508,7 +509,7 @@ describe("handleChargeRefunded", () => {
 
     it("voids a row stored under its invoice before 0.2.7 when the chargeback is lost", async () => {
       invoiceLinked("in_post");
-      const commission = await givenCommission({ stripePaymentRef: "in_post" });
+      const commission = await givenCommission({ paymentRef: "in_post" });
 
       await handleChargeDisputeClosed(merchant, disputeFixture("lost"));
 
@@ -520,7 +521,7 @@ describe("handleChargeRefunded", () => {
 
   it("still refunds a subscription payment stored under its invoice", async () => {
     invoiceLinked("in_subscription");
-    const commission = await givenCommission({ stripePaymentRef: "in_subscription" });
+    const commission = await givenCommission({ paymentRef: "in_subscription" });
 
     await handleChargeRefunded(merchant, chargeFixture(7800));
 

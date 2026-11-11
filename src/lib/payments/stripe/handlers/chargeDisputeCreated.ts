@@ -1,6 +1,6 @@
 import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
-import { settleDisputeHold } from "../disputes";
+import { settleDisputeHold } from "@/lib/payments/stripe/disputes";
 
 /**
  * A chargeback usually closes weeks after it opens, often after the Holding

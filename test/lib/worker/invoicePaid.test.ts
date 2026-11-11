@@ -45,13 +45,13 @@ const stripeStub = vi.hoisted(() => ({
     })),
   },
 }));
-vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+vi.mock("@/lib/payments/stripe/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/payments/stripe/client")>("@/lib/payments/stripe/client");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
-import { handleInvoicePaid } from "@/lib/worker/handlers/invoicePaid";
-import { handleChargeRefunded } from "@/lib/worker/handlers/chargeRefunded";
+import { handleInvoicePaid } from "@/lib/payments/stripe/handlers/invoicePaid";
+import { handleChargeRefunded } from "@/lib/payments/stripe/handlers/chargeRefunded";
 import { confirmCommissionFraud } from "@/lib/commission";
 import {
   retrievedInvoice,
@@ -62,8 +62,8 @@ import {
   seedReferredSubscription,
 } from "./referralFixtures";
 import { invoiceLine, PRODUCT_ID } from "./invoiceLines";
-import { subscriptionIdOf } from "@/lib/worker/referredSubscription";
-import { EARNING_INVOICE_EXPAND } from "@/lib/worker/referredRevenue";
+import { subscriptionIdOf } from "@/lib/payments/stripe/subscriptions";
+import { EARNING_INVOICE_EXPAND } from "@/lib/payments/stripe/referredRevenue";
 
 const CUSTOMER_ID = "cus_renewal";
 // Renewals are matched on the subscription a referred checkout created, so
@@ -212,7 +212,7 @@ describe("handleInvoicePaid", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     const program = await db.program.create({
@@ -490,7 +490,7 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoice);
       await handleInvoicePaid(other, invoice);
 
-      const commissions = await db.commission.findMany({ where: { stripePaymentRef: "in_b2" } });
+      const commissions = await db.commission.findMany({ where: { paymentRef: "in_b2" } });
       expect(commissions.map((c) => c.affiliateId)).toEqual([b.affiliate.id]);
     });
 
@@ -524,7 +524,7 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, onTrial({ id: "in_first_paid" }));
       await handleInvoicePaid(merchant, onTrial({ id: "in_next" }));
 
-      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.paymentRef);
       expect(refs).toEqual(["in_first_paid"]);
       const referred = await db.referredSubscription.findFirstOrThrow({ where: { clickId: click.id } });
       expect(referred.firstPaymentRef).toBe("in_first_paid");
@@ -555,7 +555,7 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoiceFixture({ id: "in_2", parent, created: seconds("2026-02-28T00:00:00Z") }));
       await handleInvoicePaid(merchant, invoiceFixture({ id: "in_3", parent, created: seconds("2026-03-31T00:00:00Z") }));
 
-      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.paymentRef);
       expect(refs).toEqual(["in_2"]);
     });
 
@@ -572,7 +572,7 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_1", parent, created: seconds("2026-01-31T00:00:00Z") }));
       await handleInvoicePaid(merchant, invoiceFixture({ id: "in_month_3", parent, created: seconds("2026-03-31T00:00:00Z") }));
 
-      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.paymentRef);
       expect(refs.sort()).toEqual(["in_month_1", "in_month_2"]);
       const referred = await db.referredSubscription.findFirstOrThrow({ where: { clickId: click.id } });
       // The ref stays on whichever payment claimed it first; only the date moves.
@@ -605,7 +605,7 @@ describe("handleInvoicePaid", () => {
         data: {
           affiliateId,
           clickId,
-          stripePaymentRef: "in_checkout",
+          paymentRef: "in_checkout",
           amount: "20.00",
           grossAmount: "20.00",
           currency: "eur",
@@ -617,7 +617,7 @@ describe("handleInvoicePaid", () => {
       await confirmCommissionFraud(merchant.ownerId, merchant.id, first.id);
       await handleInvoicePaid(merchant, invoiceFixture());
 
-      expect(await db.commission.count({ where: { stripePaymentRef: "in_renewal" } })).toBe(0);
+      expect(await db.commission.count({ where: { paymentRef: "in_renewal" } })).toBe(0);
       expect((await db.commission.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("VOIDED");
     });
 
@@ -660,7 +660,7 @@ describe("handleInvoicePaid", () => {
       );
 
       expect(stripeStub.invoices.retrieve).toHaveBeenCalledWith("in_legacy_first");
-      expect(await db.commission.count({ where: { stripePaymentRef: "in_legacy_2" } })).toBe(1);
+      expect(await db.commission.count({ where: { paymentRef: "in_legacy_2" } })).toBe(1);
     });
 
     it("does not pay a legacy customer's subscription that their referral did not start", async () => {
@@ -674,7 +674,7 @@ describe("handleInvoicePaid", () => {
         invoiceFixture({ id: "in_other", customer: "cus_legacy", parent: subscriptionParent("sub_unreferred") })
       );
 
-      expect(await db.commission.count({ where: { stripePaymentRef: "in_other" } })).toBe(0);
+      expect(await db.commission.count({ where: { paymentRef: "in_other" } })).toBe(0);
     });
 
     it("does not recognise a legacy referral whose first purchase never earned, such as a trial that converted", async () => {
@@ -697,8 +697,8 @@ describe("handleInvoicePaid", () => {
         invoiceFixture({ id: "in_after_upgrade", customer: "cus_legacy", parent: subscriptionParent("sub_trial") })
       );
 
-      expect(await db.commission.count({ where: { stripePaymentRef: "in_after_upgrade" } })).toBe(0);
-      expect(await db.referredSubscription.count({ where: { stripeSubscriptionId: "sub_trial" } })).toBe(0);
+      expect(await db.commission.count({ where: { paymentRef: "in_after_upgrade" } })).toBe(0);
+      expect(await db.referredSubscription.count({ where: { subscriptionRef: "sub_trial" } })).toBe(0);
     });
   });
 
@@ -721,7 +721,7 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoiceFixture({ id: "in_manual_fee", billing_reason: "manual", parent }));
       await handleInvoicePaid(merchant, invoiceFixture({ id: "in_first_cycle", parent }));
 
-      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.paymentRef);
       expect(refs).toEqual(["in_first_cycle"]);
     });
 
@@ -774,7 +774,7 @@ describe("handleInvoicePaid", () => {
 
       await handleInvoicePaid(merchant, invoice);
 
-      const commission = await db.commission.findFirstOrThrow({ where: { stripePaymentRef: "in_upgrade" } });
+      const commission = await db.commission.findFirstOrThrow({ where: { paymentRef: "in_upgrade" } });
       expect(commission.saleAmount?.toString()).toBe("30");
       expect(commission.amount.toString()).toBe("6");
     });
@@ -815,9 +815,9 @@ describe("handleInvoicePaid", () => {
         warnings.mockRestore();
       }
 
-      const referred = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_no_products" } });
-      expect(referred.stripeProductIds).toEqual([PRODUCT_ID]);
-      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.stripePaymentRef);
+      const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_no_products" } });
+      expect(referred.productRefs).toEqual([PRODUCT_ID]);
+      const refs = (await db.commission.findMany({ where: { clickId: click.id } })).map((c) => c.paymentRef);
       expect(refs).toEqual(["in_fills"]);
     });
 
@@ -1089,7 +1089,7 @@ describe("handleInvoicePaid", () => {
   describe("one duration per referral", () => {
     async function refsOn(clickId: string) {
       const rows = await db.commission.findMany({ where: { clickId } });
-      return rows.map((c) => c.stripePaymentRef).sort();
+      return rows.map((c) => c.paymentRef).sort();
     }
 
     it("measures a second subscription on the same click from the click's first payment", async () => {
@@ -1119,7 +1119,7 @@ describe("handleInvoicePaid", () => {
       );
 
       expect(await db.commission.count({ where: { clickId: click.id } })).toBe(0);
-      const trial = await db.referredSubscription.findFirstOrThrow({ where: { stripeSubscriptionId: "sub_trial" } });
+      const trial = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_trial" } });
       expect(trial.firstPaymentRef).toBe("in_trial_paid");
     });
 
@@ -1204,8 +1204,8 @@ describe("handleInvoicePaid", () => {
       await handleInvoicePaid(merchant, invoiceFixture({ id: "in_r1" }));
       await handleInvoicePaid(merchant, invoiceFixture({ id: "in_r2" }));
 
-      const commissions = await db.commission.findMany({ where: { clickId }, orderBy: { stripePaymentRef: "asc" } });
-      expect(commissions.map((c) => [c.stripePaymentRef, c.status, c.flagReason])).toEqual([
+      const commissions = await db.commission.findMany({ where: { clickId }, orderBy: { paymentRef: "asc" } });
+      expect(commissions.map((c) => [c.paymentRef, c.status, c.flagReason])).toEqual([
         ["in_r1", "FLAGGED", "card"],
         ["in_r2", "FLAGGED", "card"],
       ]);

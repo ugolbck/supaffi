@@ -1,8 +1,8 @@
 import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
-import { stripeClientFor } from "@/lib/stripe";
-import { reverseCommission } from "./chargeRefunded";
-import { disputedPayment, settleDisputeHold } from "../disputes";
+import { stripeClientFor } from "@/lib/payments/stripe/client";
+import { reverseCommission } from "@/lib/worker/reversal";
+import { disputedPayment, settleDisputeHold } from "@/lib/payments/stripe/disputes";
 
 /**
  * A lost chargeback takes the whole sale back, so it takes the whole unpaid

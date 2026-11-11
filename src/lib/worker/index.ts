@@ -1,7 +1,7 @@
 import { runTick } from "./tick";
 import { runEmailSender } from "./sendEmails";
 import { startListening } from "./listen";
-import { upgradeAllWebhookEvents } from "./webhookEvents";
+import { paymentProviders } from "@/lib/payments";
 import { isDevInstance } from "@/lib/instanceMode";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -24,11 +24,13 @@ export function startWorker(): void {
   runTick().catch((err) => console.error("[worker] initial tick failed", err));
 
   // Endpoints made by an earlier release lack events added since, so they
-  // are brought up to date once per start. Not awaited: it talks to Stripe
-  // for every product and must not delay the queue. Skipped on a developer's
-  // machine, where seeded products carry keys Stripe has never seen and every
-  // start would log a page of failures.
+  // are brought up to date once per start. Not awaited: it talks to the
+  // payment provider for every product and must not delay the queue. Skipped
+  // on a developer's machine, where seeded products carry keys the provider
+  // has never seen and every start would log a page of failures.
   if (!isDevInstance()) {
-    upgradeAllWebhookEvents().catch((err) => console.error("[worker] webhook event upgrade failed", err));
+    for (const provider of paymentProviders) {
+      provider.upgradeWebhookEndpoints?.().catch((err) => console.error("[worker] webhook event upgrade failed", err));
+    }
   }
 }

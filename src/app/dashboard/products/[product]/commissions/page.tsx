@@ -2,6 +2,8 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
+import { paymentProviderFor } from "@/lib/payments";
+import type { PaymentProviderAdapter } from "@/lib/payments/types";
 import {
   listCommissions,
   getCommissionFilterOptions,
@@ -76,14 +78,11 @@ function stateLabel(row: CommissionRow): string {
   }
 }
 
-// A Stripe reference is worth following, so it is a link into the dashboard
-// the owner already has open. Anything that is not a payment or an invoice id
-// is shown as it came, rather than guessed into a URL that would 404.
-function referenceFor(ref: string | null): { text: string; href: string | null } | null {
+// A payment reference is worth following, so it is a link into the payment
+// provider's dashboard when the provider has one for it.
+function referenceFor(provider: PaymentProviderAdapter, ref: string | null): { text: string; href: string | null } | null {
   if (!ref) return null;
-  if (ref.startsWith("pi_")) return { text: ref, href: `https://dashboard.stripe.com/payments/${ref}` };
-  if (ref.startsWith("in_")) return { text: ref, href: `https://dashboard.stripe.com/invoices/${ref}` };
-  return { text: ref, href: null };
+  return { text: ref, href: provider.paymentUrl(ref) };
 }
 
 function amountText(totals: CurrencyTotal[]): string {
@@ -210,7 +209,7 @@ export default async function CommissionsPage({
         voidReason: selected.voidReason,
         flagReason: selected.flagReason,
         stateLabel: stateLabel(selected),
-        reference: referenceFor(selected.stripePaymentRef),
+        reference: referenceFor(paymentProviderFor(merchant), selected.paymentRef),
         clickLabel: selected.promoCode ? null : formatDate(selected.click.at),
         promoCodeLabel: selected.promoCode ? (selected.promoCode.code ?? "Removed") : null,
         linkLabel: selected.click.linkCode

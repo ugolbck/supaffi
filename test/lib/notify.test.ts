@@ -38,7 +38,7 @@ function sale(affiliateId: string, clickId: string, ref: string, extra: { status
     data: {
       affiliateId,
       clickId,
-      stripePaymentRef: ref,
+      paymentRef: ref,
       amount: "9.00",
       grossAmount: "9.00",
       saleAmount: "30.00",

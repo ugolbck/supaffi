@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { decrypt } from "@/lib/crypto";
-import { stripeApiLocation } from "@/lib/stripeApi";
+import { stripeApiLocation } from "@/lib/payments/stripe/apiLocation";
 
 // Pinned explicitly so outgoing calls made *by* Supaffi always get object
 // shapes matching the bundled SDK's types, regardless of what API version
@@ -16,29 +16,12 @@ const STRIPE_API_VERSION = "2026-09-30.endive" as const;
 // without a key. Nothing queues Stripe work for such a Merchant (no webhook
 // secret means the webhook route rejects the delivery before it is ever
 // stored), so reaching here without a key is a bug, not a user state.
-export function stripeClientFor(merchant: { stripeSecretKeyEnc: string | null }): Stripe {
-  if (!merchant.stripeSecretKeyEnc) {
+export function stripeClientFor(merchant: { paymentKeyEnc: string | null }): Stripe {
+  if (!merchant.paymentKeyEnc) {
     throw new Error("Stripe is not connected for this Merchant");
   }
-  return new Stripe(decrypt(merchant.stripeSecretKeyEnc), {
+  return new Stripe(decrypt(merchant.paymentKeyEnc), {
     apiVersion: STRIPE_API_VERSION,
     ...stripeApiLocation(),
   });
-}
-
-// Stripe amounts are integers in the currency's smallest unit, except for a
-// documented set of zero-decimal currencies (already whole units) and a
-// few three-decimal currencies. Getting this wrong silently makes
-// Commission.amount 100x too small or large for affected currencies.
-const ZERO_DECIMAL = new Set([
-  "bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg",
-  "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf",
-]);
-const THREE_DECIMAL = new Set(["bhd", "jod", "kwd", "omr", "tnd"]);
-
-export function minorUnitsToMajor(amountMinor: number, currency: string): number {
-  const cur = currency.toLowerCase();
-  if (ZERO_DECIMAL.has(cur)) return amountMinor;
-  if (THREE_DECIMAL.has(cur)) return amountMinor / 1000;
-  return amountMinor / 100;
 }

@@ -19,12 +19,12 @@ const stripeStub = vi.hoisted(() => ({
     })),
   },
 }));
-vi.mock("@/lib/stripe", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
+vi.mock("@/lib/payments/stripe/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/payments/stripe/client")>("@/lib/payments/stripe/client");
   return { ...actual, stripeClientFor: () => stripeStub as unknown as Stripe };
 });
 
-import { handleSubscriptionDeleted } from "@/lib/worker/handlers/subscriptionDeleted";
+import { handleSubscriptionDeleted } from "@/lib/payments/stripe/handlers/subscriptionDeleted";
 import { recordReferredSubscription } from "@/lib/worker/referredSubscription";
 import { referralCounts } from "@/lib/affiliate";
 import {
@@ -71,7 +71,7 @@ describe("handleSubscriptionDeleted", () => {
         name: "InstantGradient",
         domain: `${crypto.randomUUID()}.example.com`,
         websiteUrl: "https://instantgradient.com",
-        stripeSecretKeyEnc: "x",
+        paymentKeyEnc: "x",
       },
     });
     const program = await db.program.create({
@@ -178,7 +178,7 @@ describe("handleSubscriptionDeleted", () => {
         data: {
           affiliateId,
           clickId,
-          stripePaymentRef: "pi_1",
+          paymentRef: "pi_1",
           amount: 15.6,
           grossAmount: 15.6,
           currency: "usd",
@@ -196,7 +196,7 @@ describe("handleSubscriptionDeleted", () => {
         data: {
           affiliateId,
           clickId,
-          stripePaymentRef: "pi_1",
+          paymentRef: "pi_1",
           amount: 15.6,
           grossAmount: 15.6,
           currency: "usd",
@@ -214,7 +214,7 @@ describe("handleSubscriptionDeleted", () => {
         data: {
           affiliateId,
           clickId,
-          stripePaymentRef: "pi_1",
+          paymentRef: "pi_1",
           amount: 15.6,
           grossAmount: 15.6,
           currency: "usd",
@@ -247,7 +247,7 @@ describe("handleSubscriptionDeleted", () => {
         data: {
           affiliateId,
           clickId,
-          stripePaymentRef: "pi_1",
+          paymentRef: "pi_1",
           amount: 15.6,
           grossAmount: 15.6,
           currency: "usd",

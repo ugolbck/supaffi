@@ -87,7 +87,7 @@ async function seedSaleWithLegacyAdjustment(saleDaysAgo: number, adjustmentDaysA
       payableAt: noonDaysAgo(saleDaysAgo),
       paidAt: noonDaysAgo(saleDaysAgo),
       createdAt: noonDaysAgo(saleDaysAgo),
-      stripePaymentRef: crypto.randomUUID(),
+      paymentRef: crypto.randomUUID(),
     },
   });
   await db.commission.create({
@@ -147,7 +147,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
         status: "PAID",
         payableAt: new Date(),
         paidAt: new Date(),
-        stripePaymentRef: crypto.randomUUID(),
+        paymentRef: crypto.randomUUID(),
       },
     });
     await db.commission.create({
@@ -219,7 +219,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
           currency,
           status,
           payableAt: new Date(),
-          stripePaymentRef: crypto.randomUUID(),
+          paymentRef: crypto.randomUUID(),
         },
       });
     }
@@ -262,7 +262,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
         status: "PENDING",
         payableAt: new Date(Date.now() - 86400_000),
         disputeOpenedAt: new Date(),
-        stripePaymentRef: crypto.randomUUID(),
+        paymentRef: crypto.randomUUID(),
       },
     });
 
@@ -296,7 +296,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
         status: "FLAGGED",
         flagReason: "card",
         payableAt: new Date(),
-        stripePaymentRef: crypto.randomUUID(),
+        paymentRef: crypto.randomUUID(),
       },
     });
     // A genuinely PENDING row, same currency as the flagged one above. This is
@@ -312,7 +312,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
         currency: "usd",
         status: "PENDING",
         payableAt: new Date(Date.now() + 86400_000),
-        stripePaymentRef: crypto.randomUUID(),
+        paymentRef: crypto.randomUUID(),
       },
     });
 
@@ -398,7 +398,7 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
         status: "PAID",
         payableAt: paidAt,
         paidAt,
-        stripePaymentRef: crypto.randomUUID(),
+        paymentRef: crypto.randomUUID(),
       },
     });
   }
@@ -463,7 +463,7 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
           currency: "usd",
           status: "PAYABLE",
           payableAt: new Date(Date.now() - 1000),
-          stripePaymentRef: crypto.randomUUID(),
+          paymentRef: crypto.randomUUID(),
         },
       });
     const a = await make("10.00");

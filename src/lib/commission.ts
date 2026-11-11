@@ -47,7 +47,7 @@ export type CommissionRow = {
   grossAmount: string | null;
   /** What the customer paid for this sale. Null on rows older than the column. */
   saleAmount: string | null;
-  stripePaymentRef: string | null;
+  paymentRef: string | null;
   affiliateId: string;
   affiliateName: string | null;
   affiliateEmail: string;
@@ -82,7 +82,7 @@ function whereFor(merchantId: string, filters: CommissionFilters) {
     ...(query
       ? {
           OR: [
-            { stripePaymentRef: { contains: query, mode: "insensitive" as const } },
+            { paymentRef: { contains: query, mode: "insensitive" as const } },
             { affiliate: { merchantId, email: { contains: query, mode: "insensitive" as const } } },
             { affiliate: { merchantId, name: { contains: query, mode: "insensitive" as const } } },
           ],
@@ -126,7 +126,7 @@ export async function listCommissions(
         voidReason: true,
         grossAmount: true,
         saleAmount: true,
-        stripePaymentRef: true,
+        paymentRef: true,
         adjustsCommissionId: true,
         disputeOpenedAt: true,
         affiliate: { select: { id: true, name: true, email: true } },
@@ -137,7 +137,7 @@ export async function listCommissions(
             // Nullable: deleting a link leaves its clicks behind, and
             // attribution reads the affiliate, not the link.
             link: { select: { code: true, destinationPath: true } },
-            promoCheckoutSessionId: true,
+            promoCheckoutRef: true,
             promoCode: { select: { code: true } },
           },
         },
@@ -170,7 +170,7 @@ export async function listCommissions(
       voidReason: c.voidReason,
       grossAmount: c.grossAmount ? c.grossAmount.toFixed(2) : null,
       saleAmount: c.saleAmount ? c.saleAmount.toFixed(2) : null,
-      stripePaymentRef: c.stripePaymentRef,
+      paymentRef: c.paymentRef,
       affiliateId: c.affiliate.id,
       affiliateName: c.affiliate.name,
       affiliateEmail: c.affiliate.email,
@@ -184,7 +184,7 @@ export async function listCommissions(
         destinationPath: c.click.link?.destinationPath ?? null,
         selfReferralConfirmed: c.click.fraudConfirmedAt !== null,
       },
-      promoCode: c.click.promoCheckoutSessionId !== null ? { code: c.click.promoCode?.code ?? null } : null,
+      promoCode: c.click.promoCheckoutRef !== null ? { code: c.click.promoCode?.code ?? null } : null,
     })),
   };
 }

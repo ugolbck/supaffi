@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/stripeWebhookEvents";
+import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/payments/stripe/webhookEvents";
 
 describe("REQUIRED_STRIPE_WEBHOOK_EVENTS", () => {
   it("lists exactly the event types the webhook dispatcher handles", () => {

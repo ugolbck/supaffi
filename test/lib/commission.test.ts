@@ -51,8 +51,8 @@ async function makeMerchant(ownerId: string, suffix: string) {
       name: `Merchant ${suffix}`,
       domain: `commission-test-${suffix}.example.com`,
       websiteUrl: `https://commission-test-${suffix}.example.com`,
-      stripeSecretKeyEnc: "x",
-      stripeWebhookSecretEnc: "x",
+      paymentKeyEnc: "x",
+      webhookSecretEnc: "x",
     },
   });
 }
@@ -105,7 +105,7 @@ async function makeCommission(
     flagReason: string;
     voidReason: string;
     voidedAt: Date;
-    stripePaymentRef: string;
+    paymentRef: string;
     adjustsCommissionId: string;
     disputeOpenedAt: Date;
   }>
@@ -122,7 +122,7 @@ async function makeCommission(
       flagReason: overrides.flagReason,
       voidReason: overrides.voidReason,
       voidedAt: overrides.voidedAt,
-      stripePaymentRef: overrides.stripePaymentRef,
+      paymentRef: overrides.paymentRef,
       adjustsCommissionId: overrides.adjustsCommissionId,
       disputeOpenedAt: overrides.disputeOpenedAt,
     },
@@ -241,10 +241,10 @@ describe.skipIf(!hasDatabase)("commission", () => {
   it("searches the payment reference and the affiliate", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
-      stripePaymentRef: "in_1ABCxyz",
+      paymentRef: "in_1ABCxyz",
     });
     await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
-      stripePaymentRef: "pi_9ZZZ",
+      paymentRef: "pi_9ZZZ",
     });
 
     const byRef = await listCommissions(
@@ -556,8 +556,8 @@ describe.skipIf(!hasDatabase)("commission", () => {
   it("skips a shown commission a confirmed self referral voided after the page loaded", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);
-    const flagged = await makeCommission(affiliate.id, click.id, { status: "FLAGGED", flagReason: "card", stripePaymentRef: "in_flag" });
-    const sibling = await makeCommission(affiliate.id, click.id, { stripePaymentRef: "in_sib" });
+    const flagged = await makeCommission(affiliate.id, click.id, { status: "FLAGGED", flagReason: "card", paymentRef: "in_flag" });
+    const sibling = await makeCommission(affiliate.id, click.id, { paymentRef: "in_sib" });
     const renderedAt = loadedNow();
 
     await confirmCommissionFraud(ownerId, merchantId, flagged.id);
@@ -939,12 +939,12 @@ describe.skipIf(!hasDatabase)("commission", () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);
     const otherClick = await makeClick(affiliate.id);
-    const confirmed = await makeCommission(affiliate.id, click.id, { status: "FLAGGED", flagReason: "card", stripePaymentRef: "in_c" });
-    const pending = await makeCommission(affiliate.id, click.id, { status: "PENDING", stripePaymentRef: "in_p" });
-    const payable = await makeCommission(affiliate.id, click.id, { status: "PAYABLE", stripePaymentRef: "in_y" });
-    const flagged = await makeCommission(affiliate.id, click.id, { status: "FLAGGED", flagReason: "card", stripePaymentRef: "in_f" });
-    const paid = await makeCommission(affiliate.id, click.id, { status: "PAID", stripePaymentRef: "in_d" });
-    const unrelated = await makeCommission(affiliate.id, otherClick.id, { status: "PENDING", stripePaymentRef: "in_u" });
+    const confirmed = await makeCommission(affiliate.id, click.id, { status: "FLAGGED", flagReason: "card", paymentRef: "in_c" });
+    const pending = await makeCommission(affiliate.id, click.id, { status: "PENDING", paymentRef: "in_p" });
+    const payable = await makeCommission(affiliate.id, click.id, { status: "PAYABLE", paymentRef: "in_y" });
+    const flagged = await makeCommission(affiliate.id, click.id, { status: "FLAGGED", flagReason: "card", paymentRef: "in_f" });
+    const paid = await makeCommission(affiliate.id, click.id, { status: "PAID", paymentRef: "in_d" });
+    const unrelated = await makeCommission(affiliate.id, otherClick.id, { status: "PENDING", paymentRef: "in_u" });
 
     await confirmCommissionFraud(ownerId, merchantId, confirmed.id);
 
@@ -963,8 +963,8 @@ describe.skipIf(!hasDatabase)("commission", () => {
   it("confirmCommissionFraud from a pending commission voids the referral's unpaid rows and marks the click", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);
-    const pending = await makeCommission(affiliate.id, click.id, { status: "PENDING", stripePaymentRef: "in_p" });
-    const payable = await makeCommission(affiliate.id, click.id, { status: "PAYABLE", stripePaymentRef: "in_y" });
+    const pending = await makeCommission(affiliate.id, click.id, { status: "PENDING", paymentRef: "in_p" });
+    const payable = await makeCommission(affiliate.id, click.id, { status: "PAYABLE", paymentRef: "in_y" });
 
     await confirmCommissionFraud(ownerId, merchantId, pending.id);
 
@@ -984,9 +984,9 @@ describe.skipIf(!hasDatabase)("commission", () => {
       flagReason: "card",
       voidReason: "refund",
       voidedAt: new Date(Date.now() - 60_000),
-      stripePaymentRef: "in_r",
+      paymentRef: "in_r",
     });
-    const sibling = await makeCommission(affiliate.id, click.id, { status: "PENDING", stripePaymentRef: "in_s" });
+    const sibling = await makeCommission(affiliate.id, click.id, { status: "PENDING", paymentRef: "in_s" });
 
     await confirmCommissionFraud(ownerId, merchantId, refunded.id);
 
@@ -1002,9 +1002,9 @@ describe.skipIf(!hasDatabase)("commission", () => {
   it("confirmCommissionFraud from a paid commission voids the unpaid siblings only", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);
-    const paid = await makeCommission(affiliate.id, click.id, { status: "PAID", stripePaymentRef: "in_paid" });
-    const olderPaid = await makeCommission(affiliate.id, click.id, { status: "PAID", stripePaymentRef: "in_old" });
-    const pending = await makeCommission(affiliate.id, click.id, { status: "PENDING", stripePaymentRef: "in_next" });
+    const paid = await makeCommission(affiliate.id, click.id, { status: "PAID", paymentRef: "in_paid" });
+    const olderPaid = await makeCommission(affiliate.id, click.id, { status: "PAID", paymentRef: "in_old" });
+    const pending = await makeCommission(affiliate.id, click.id, { status: "PENDING", paymentRef: "in_next" });
 
     await confirmCommissionFraud(ownerId, merchantId, paid.id);
 
@@ -1035,7 +1035,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
   it("confirmCommissionFraud refuses a refund adjustment row and marks nothing", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);
-    const original = await makeCommission(affiliate.id, click.id, { status: "PAID", stripePaymentRef: "in_o" });
+    const original = await makeCommission(affiliate.id, click.id, { status: "PAID", paymentRef: "in_o" });
     const adjustment = await makeCommission(affiliate.id, click.id, {
       status: "VOIDED",
       amount: "-10.00",
@@ -1063,7 +1063,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
   it("confirmCommissionFraud voids a commission a renewal was writing on the click while it waited", async () => {
     const affiliate = await makeAffiliate(merchantId, programId, "sarah");
     const click = await makeClick(affiliate.id);
-    const first = await makeCommission(affiliate.id, click.id, { status: "PENDING", stripePaymentRef: "in_first" });
+    const first = await makeCommission(affiliate.id, click.id, { status: "PENDING", paymentRef: "in_first" });
 
     let confirming!: Promise<void>;
     await db.$transaction(async (tx) => {
@@ -1076,7 +1076,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
         data: {
           affiliateId: affiliate.id,
           clickId: click.id,
-          stripePaymentRef: "in_renewal",
+          paymentRef: "in_renewal",
           amount: "10.00",
           grossAmount: "10.00",
           currency: "usd",
@@ -1087,7 +1087,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     });
     await confirming;
 
-    const renewal = await db.commission.findUniqueOrThrow({ where: { stripePaymentRef: "in_renewal" } });
+    const renewal = await db.commission.findUniqueOrThrow({ where: { paymentRef: "in_renewal" } });
     expect(renewal.status).toBe("VOIDED");
     expect(renewal.voidReason).toBe("confirmed self-referral");
   });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type Stripe from "stripe";
-import { checkoutSessionBaseMinor, invoiceBaseMinor, invoiceLinesBeforeTax, scaleToAmountPaid } from "@/lib/worker/saleBase";
+import { checkoutSessionBaseMinor, invoiceBaseMinor, invoiceLinesBeforeTax, scaleToAmountPaid } from "@/lib/payments/stripe/saleBase";
 
 // A Session read back with its tax breakdown expanded. A case that gives
 // total_details without a breakdown gets an empty one, as a sale with no tax.

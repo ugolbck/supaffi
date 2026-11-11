@@ -9,11 +9,11 @@ import { clearReferralTables, seedMerchant, seedOwner, seedReferral } from "./re
 
 const DAY = 24 * 60 * 60 * 1000;
 
-function commissionData(affiliateId: string, clickId: string, stripePaymentRef: string) {
+function commissionData(affiliateId: string, clickId: string, paymentRef: string) {
   return {
     affiliateId,
     clickId,
-    stripePaymentRef,
+    paymentRef,
     amount: "10.00",
     grossAmount: "10.00",
     currency: "usd",

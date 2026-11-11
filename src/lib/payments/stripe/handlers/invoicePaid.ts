@@ -1,28 +1,21 @@
 import type { Merchant } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
-import { stripeClientFor } from "@/lib/stripe";
-import {
-  commissionRateFor,
-  computeCommissionAmount,
-  computePayableAt,
-  hasExclusionFlag,
-  isExcluded,
-  saleAmountFor,
-} from "../commission";
-import {
-  commissionFieldsAtCreation,
-  disputeStateAtCreation,
-  latestChargeFor,
-  paymentIntentForInvoice,
-} from "../paymentState";
-import { exclusionSourcesOf, retrieveInvoiceForEarning } from "../referredRevenue";
-import { referredEarningOn, storableReferredShare } from "../referredEarning";
-import { checkPaymentMethodOverlap, checkSelfReferralEmail, resolveInvoiceFingerprint } from "../selfReferral";
+import { stripeClientFor } from "@/lib/payments/stripe/client";
+import { commissionRateFor, computeCommissionAmount, computePayableAt, saleAmountFor } from "@/lib/worker/commission";
+import { hasExclusionFlag, isExcluded } from "@/lib/payments/stripe/exclusion";
+import { commissionFieldsAtCreation } from "@/lib/worker/paymentState";
+import { disputeStateAtCreation, latestChargeFor, paymentIntentForInvoice } from "@/lib/payments/stripe/paymentState";
+import { exclusionSourcesOf, retrieveInvoiceForEarning } from "@/lib/payments/stripe/referredRevenue";
+import { referredEarningOn } from "@/lib/payments/stripe/referredEarning";
+import { storableReferredShare } from "@/lib/worker/referredShare";
+import { checkPaymentMethodOverlap, resolveInvoiceFingerprint } from "@/lib/payments/stripe/selfReferral";
+import { checkSelfReferralEmail } from "@/lib/worker/selfReferral";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import { claimFirstPayment, findReferredSubscription, idOf, subscriptionIdOf } from "../referredSubscription";
-import { referralStillEarns } from "../referralDuration";
-import { createCommissionUnlessSelfReferral } from "../recordCommission";
+import { claimFirstPayment } from "@/lib/worker/referredSubscription";
+import { findReferredSubscription, idOf, subscriptionIdOf } from "@/lib/payments/stripe/subscriptions";
+import { referralStillEarns } from "@/lib/worker/referralDuration";
+import { createCommissionUnlessSelfReferral } from "@/lib/worker/recordCommission";
 
 // A renewal or a plan change is revenue of the subscription the referral
 // bought. Every other billing reason earns nothing: manual, quote_accept and
@@ -163,7 +156,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
       data: {
         affiliateId: affiliate.id,
         clickId: click.id,
-        stripePaymentRef: invoice.id,
+        paymentRef: invoice.id,
         currency: invoice.currency,
         saleAmount: saleAmountFor(baseMinor, invoice.currency),
         payableAt: computePayableAt(program),
@@ -177,7 +170,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
     if (written && dispute === "unknown") {
       // The write only reports whether it happened, not the row: looked up by
       // its unique payment reference so the log still names the commission.
-      const commission = await db.commission.findFirst({ where: { stripePaymentRef: invoice.id }, select: { id: true } });
+      const commission = await db.commission.findFirst({ where: { paymentRef: invoice.id }, select: { id: true } });
       console.warn(
         `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event arrives or the owner cancels it.`
       );

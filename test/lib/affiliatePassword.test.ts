@@ -50,8 +50,8 @@ async function seedProduct(ownerEmail: string, domain: string, affiliateEmail: s
       name: "TestCo",
       domain,
       websiteUrl: `https://${domain}`,
-      stripeSecretKeyEnc: "x",
-      stripeWebhookSecretEnc: "x",
+      paymentKeyEnc: "x",
+      webhookSecretEnc: "x",
     },
   });
   const program = await db.program.create({

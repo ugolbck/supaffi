@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { resolvesTo as resolvesToImpl, httpsReachable as httpsReachableImpl, type CheckResult } from "@/lib/checks/dns";
-import { stripeKeyWorks as stripeKeyWorksImpl, webhookEventReceived as webhookEventReceivedImpl } from "@/lib/checks/stripe";
+import { stripeKeyWorks as stripeKeyWorksImpl, webhookEventReceived as webhookEventReceivedImpl } from "@/lib/payments/stripe/keyCheck";
 import { scriptFound as scriptFoundImpl } from "@/lib/checks/script";
 
 export type CheckDeps = {
@@ -141,12 +141,12 @@ function refresh(
     const started = now();
     const merchant = await db.merchant.findFirst({
       where: { id: merchantId, ownerId },
-      select: { domain: true, websiteUrl: true, stripeSecretKeyEnc: true },
+      select: { domain: true, websiteUrl: true, paymentKeyEnc: true },
     });
     if (!merchant) throw new Error("Merchant not found");
 
     const hostIp = process.env.SUPAFFI_HOST_IP?.trim() ?? "";
-    const stripeKey = safeDecrypt(merchant.stripeSecretKeyEnc);
+    const stripeKey = safeDecrypt(merchant.paymentKeyEnc);
     const wanted = new Set(sections);
     const result: Partial<ProductChecks> = {};
 

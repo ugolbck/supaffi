@@ -33,7 +33,7 @@ export async function seedMerchant(ownerId: string): Promise<Merchant> {
       name: "Product",
       domain: `${crypto.randomUUID()}.example.com`,
       websiteUrl: "https://product.example.com",
-      stripeSecretKeyEnc: "x",
+      paymentKeyEnc: "x",
     },
   });
 }
@@ -82,20 +82,20 @@ export async function seedReferral(
 export async function seedReferredSubscription(
   merchantId: string,
   clickId: string,
-  stripeSubscriptionId: string,
+  subscriptionRef: string,
   firstPayment?: { ref: string; at: Date },
-  stripeProductIds?: string[]
+  productRefs?: string[]
 ) {
   return db.referredSubscription.create({
     data: {
       merchantId,
       clickId,
-      stripeSubscriptionId,
+      subscriptionRef,
       firstPaymentRef: firstPayment?.ref ?? null,
       firstPaidAt: firstPayment?.at ?? null,
       // Left to the column default when a case does not care, which is how
       // rows recorded before 0.2.7 look.
-      ...(stripeProductIds ? { stripeProductIds } : {}),
+      ...(productRefs ? { productRefs } : {}),
     },
   });
 }
@@ -116,7 +116,7 @@ export async function seedInvoiceCommission(
     data: {
       affiliateId,
       clickId,
-      stripePaymentRef: ref,
+      paymentRef: ref,
       amount: 10,
       grossAmount: 10,
       currency: "usd",

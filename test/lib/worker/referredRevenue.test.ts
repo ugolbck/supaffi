@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { inspect } from "node:util";
 import type Stripe from "stripe";
-import { exclusionSourcesOf, listInvoiceLines, referredInvoiceBase } from "@/lib/worker/referredRevenue";
+import { exclusionSourcesOf, listInvoiceLines, referredInvoiceBase } from "@/lib/payments/stripe/referredRevenue";
 import { invoiceLine, LINE_SUBSCRIPTION_ID, PRODUCT_ID } from "./invoiceLines";
 
 const SUB = LINE_SUBSCRIPTION_ID;

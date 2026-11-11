@@ -1,7 +1,7 @@
 import Stripe from "stripe";
-import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/stripeWebhookEvents";
-import { stripeErrorLabel } from "@/lib/stripeErrors";
-import { stripeApiLocation } from "@/lib/stripeApi";
+import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/payments/stripe/webhookEvents";
+import { stripeErrorLabel } from "@/lib/payments/stripe/errors";
+import { stripeApiLocation } from "@/lib/payments/stripe/apiLocation";
 
 export type EndpointResult =
   | { ok: true; id: string; secret: string }

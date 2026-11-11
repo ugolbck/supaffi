@@ -20,7 +20,7 @@ import {
   dismissWelcome,
   getOnboardingState,
 } from "@/lib/merchant";
-import { webhookEventReceived } from "@/lib/checks/stripe";
+import { webhookEventReceived } from "@/lib/payments/stripe/keyCheck";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
 // letting Prisma throw an opaque connection error mid-run. Checked once, up
@@ -90,8 +90,8 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
 
     const raw = await db.merchant.findUniqueOrThrow({ where: { id } });
-    expect(raw.stripeSecretKeyEnc).toBeNull();
-    expect(raw.stripeWebhookSecretEnc).toBeNull();
+    expect(raw.paymentKeyEnc).toBeNull();
+    expect(raw.webhookSecretEnc).toBeNull();
     expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, stripeKey: false, stripeWebhook: false });
   });
 
@@ -108,9 +108,9 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
 
     const raw = await db.merchant.findUniqueOrThrow({ where: { id } });
-    expect(raw.stripeSecretKeyEnc).not.toBe("sk_test_abc123");
-    expect(raw.stripeSecretKeyEnc).toContain(":"); // iv:authTag:ciphertext format
-    expect(raw.stripeWebhookSecretEnc).not.toBe("whsec_abc123");
+    expect(raw.paymentKeyEnc).not.toBe("sk_test_abc123");
+    expect(raw.paymentKeyEnc).toContain(":"); // iv:authTag:ciphertext format
+    expect(raw.webhookSecretEnc).not.toBe("whsec_abc123");
     expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: true, stripeKey: true, stripeWebhook: true });
   });
 
@@ -190,8 +190,8 @@ describe.skipIf(!hasDatabase)("merchant", () => {
 
     const after = await db.merchant.findUniqueOrThrow({ where: { id } });
     expect(after.name).toBe("Renamed");
-    expect(after.stripeSecretKeyEnc).toBe(before.stripeSecretKeyEnc);
-    expect(after.stripeWebhookSecretEnc).toBe(before.stripeWebhookSecretEnc);
+    expect(after.paymentKeyEnc).toBe(before.paymentKeyEnc);
+    expect(after.webhookSecretEnc).toBe(before.webhookSecretEnc);
   });
 
   it("connectStripe rotates one secret without clearing the other", async () => {
@@ -209,8 +209,8 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     await connectStripe(ownerId, id, { secretKey: "sk_test_second", webhookSecret: "" });
 
     const after = await db.merchant.findUniqueOrThrow({ where: { id } });
-    expect(after.stripeSecretKeyEnc).not.toBe(before.stripeSecretKeyEnc);
-    expect(after.stripeWebhookSecretEnc).toBe(before.stripeWebhookSecretEnc);
+    expect(after.paymentKeyEnc).not.toBe(before.paymentKeyEnc);
+    expect(after.webhookSecretEnc).toBe(before.webhookSecretEnc);
   });
 
   it("updateMerchant throws when the Merchant belongs to a different Owner", async () => {
@@ -310,7 +310,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       data: { affiliateId: affiliate.id, clickId: click.id, amount: 1, currency: "usd", payableAt: new Date() },
     });
     await db.webhookEvent.create({
-      data: { merchantId: merchant.id, stripeEventId: "evt_1", payload: {} },
+      data: { merchantId: merchant.id, providerEventId: "evt_1", payload: {} },
     });
 
     await deleteMerchant(ownerId, merchant.id);
@@ -368,7 +368,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       websiteUrl: "https://w.test",
     });
     expect((await webhookEventReceived(ownerId, merchant.id)).ok).toBe(false);
-    await db.webhookEvent.create({ data: { merchantId: merchant.id, stripeEventId: "evt_w", payload: {} } });
+    await db.webhookEvent.create({ data: { merchantId: merchant.id, providerEventId: "evt_w", payload: {} } });
     expect((await webhookEventReceived(ownerId, merchant.id)).ok).toBe(true);
   });
 
@@ -378,7 +378,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       domain: "affiliates.w2.test",
       websiteUrl: "https://w2.test",
     });
-    await db.webhookEvent.create({ data: { merchantId: merchant.id, stripeEventId: "evt_w2", payload: {} } });
+    await db.webhookEvent.create({ data: { merchantId: merchant.id, providerEventId: "evt_w2", payload: {} } });
     expect((await webhookEventReceived(otherOwnerId, merchant.id)).ok).toBe(false);
   });
 });
