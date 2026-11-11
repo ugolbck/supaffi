@@ -59,6 +59,12 @@ describe("an installed build", () => {
     const { staticExt } = await import("@/extensions/static");
     expect(staticExt.owners.signupPath).toBeNull();
   });
+
+  it("reads an empty password reset path as none", async () => {
+    vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { owners: { passwordResetPath: "  " } } }));
+    const { staticExt } = await import("@/extensions/static");
+    expect(staticExt.owners.passwordResetPath).toBeNull();
+  });
 });
 
 it("keeps the API version on one line a build can read", () => {

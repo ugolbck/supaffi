@@ -44,13 +44,13 @@ const withSession = auth(async (req: NextAuthRequest, _event: NextFetchEvent) =>
 export default async function proxy(req: NextRequest, event: NextFetchEvent) {
   if (proxyReadsSession(req.nextUrl.pathname)) return withSession(req, event);
   // Any other page only gets the affiliate-domain check, which answers null
-  // without a lookup unless the path is the Owner signup page.
+  // without a lookup unless the path is the Owner signup or password reset page.
   return (await productDomainResponse(req, null)) ?? NextResponse.next();
 }
 
 export const config = {
   // Next needs these as constants, so the last entry stands in for the Owner
-  // signup path a build may set: every other page, minus API routes, Next's
+  // signup and password reset paths a build may set: every other page, minus API routes, Next's
   // own files and anything with a file extension (the tracking script among
   // them). proxyReadsSession keeps the session to the paths listed first.
   matcher: [

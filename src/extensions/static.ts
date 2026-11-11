@@ -11,9 +11,12 @@ export const staticDefaults: StaticExtensions = {
 
 const merged = mergeExtensions(staticDefaults, installedStatic);
 
-// An empty path would match no page yet still read as "signup is open", so it
-// counts as no path at all.
+// An empty path would match no page yet still read as set, so it counts as no
+// path at all.
 export const staticExt: StaticExtensions = {
   ...merged,
-  owners: { ...merged.owners, signupPath: merged.owners.signupPath?.trim() || null },
+  owners: {
+    signupPath: merged.owners.signupPath?.trim() || null,
+    passwordResetPath: merged.owners.passwordResetPath?.trim() || null,
+  },
 };
