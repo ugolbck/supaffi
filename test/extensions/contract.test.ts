@@ -13,7 +13,10 @@ beforeEach(() => {
 describe("extension defaults", () => {
   it("keep the single-Owner setup and the instance panel", async () => {
     const { staticExt } = await import("@/extensions/static");
-    expect(staticExt).toEqual({ owners: { signupPath: null }, instance: { showInfo: true } });
+    expect(staticExt).toEqual({
+      owners: { signupPath: null, passwordResetPath: null },
+      instance: { showInfo: true },
+    });
   });
 
   it("add nothing to the dashboard or the account page", async () => {
@@ -45,13 +48,22 @@ describe("an installed build", () => {
       installedStatic: { owners: { signupPath: undefined }, instance: { showInfo: false } },
     }));
     const { staticExt } = await import("@/extensions/static");
-    expect(staticExt).toEqual({ owners: { signupPath: null }, instance: { showInfo: false } });
+    expect(staticExt).toEqual({
+      owners: { signupPath: null, passwordResetPath: null },
+      instance: { showInfo: false },
+    });
   });
 
   it("reads an empty signup path as none", async () => {
     vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { owners: { signupPath: "" } } }));
     const { staticExt } = await import("@/extensions/static");
     expect(staticExt.owners.signupPath).toBeNull();
+  });
+
+  it("reads an empty password reset path as none", async () => {
+    vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { owners: { passwordResetPath: "  " } } }));
+    const { staticExt } = await import("@/extensions/static");
+    expect(staticExt.owners.passwordResetPath).toBeNull();
   });
 });
 

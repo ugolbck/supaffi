@@ -36,7 +36,8 @@ export function resolveLoginRedirect(pathname: string, role: SessionRole): strin
 // The Owner's pages, which belong on the dashboard address only. A product's
 // affiliate domain serves its affiliates, so these answer not found there:
 // otherwise an affiliate could land on the Owner's login under the product's
-// name. The Owner signup page, when there is one, is one of them.
+// name. The Owner signup and password reset pages, when there are any, are
+// among them.
 const OWNER_PREFIXES = ["/login", "/dashboard", "/onboarding", "/setup"];
 
 function underPrefix(pathname: string, prefix: string): boolean {
@@ -44,8 +45,8 @@ function underPrefix(pathname: string, prefix: string): boolean {
 }
 
 function isOwnerPath(pathname: string): boolean {
-  const { signupPath } = staticExt.owners;
-  return OWNER_PREFIXES.some((prefix) => underPrefix(pathname, prefix)) || (signupPath !== null && underPrefix(pathname, signupPath));
+  const { signupPath, passwordResetPath } = staticExt.owners;
+  return [...OWNER_PREFIXES, signupPath, passwordResetPath].some((prefix) => prefix !== null && underPrefix(pathname, prefix));
 }
 
 // The paths whose answer depends on the session. The proxy's matcher has to

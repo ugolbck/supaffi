@@ -23,6 +23,12 @@ export type StaticExtensions = {
      * domain answers not found for it. An empty string counts as null.
      */
     signupPath: string | null;
+    /**
+     * Where an Owner who forgot their password goes. A path adds a link to it
+     * on the login page, and a product's affiliate domain answers not found
+     * for it. An empty string counts as null.
+     */
+    passwordResetPath: string | null;
   };
   instance: {
     /** Whether the Owner sees the running version, update notices and the "This instance" panel. */
