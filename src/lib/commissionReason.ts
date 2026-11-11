@@ -14,13 +14,13 @@ export function voidReasonText(reason: string | null, audience: Audience): strin
 
   switch (reason) {
     case "refund":
-      return audience === "affiliate" ? "The customer was refunded" : "Refunded in Stripe";
+      return audience === "affiliate" ? "The customer was refunded" : "Refunded to the customer";
     case "partial refund":
       return audience === "affiliate"
         ? "Reduced because part of the sale was refunded"
         : "Reduced, part of the sale was refunded";
     case "chargeback":
-      return audience === "affiliate" ? "The customer disputed the payment and won" : "Chargeback lost in Stripe";
+      return audience === "affiliate" ? "The customer disputed the payment and won" : "Chargeback lost";
     case "confirmed self-referral":
       return audience === "affiliate"
         ? "This sale was made by you, so it does not earn a commission"

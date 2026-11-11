@@ -8,6 +8,7 @@ import { loadChecks, loadStepContext, type Ctx } from "../checks";
 import { Product } from "../steps/Product";
 import { Subdomain } from "../steps/Subdomain";
 import { StripeKey } from "../steps/StripeKey";
+import { PolarToken } from "../steps/PolarToken";
 import { Terms } from "../steps/Terms";
 import { Tracking } from "../steps/Tracking";
 
@@ -15,6 +16,8 @@ export default async function StepPage({ params }: { params: Promise<{ product: 
   const { product, step } = await params;
   // The email step is gone. A bookmark to it lands on the step that followed.
   if (step === "email") redirect(stepPath(product, "terms"));
+  // The payment step was the Stripe key step before other providers.
+  if (step === "stripe-key") redirect(stepPath(product, "payments"));
   if (!isStepId(step)) notFound();
   const context = await loadStepContext(product);
 
@@ -52,8 +55,8 @@ function stepBody(step: StepId, ctx: Ctx) {
       return <Product ctx={ctx} />;
     case "subdomain":
       return <Subdomain ctx={ctx} />;
-    case "stripe-key":
-      return <StripeKey ctx={ctx} />;
+    case "payments":
+      return ctx.merchant.paymentProvider === "POLAR" ? <PolarToken ctx={ctx} /> : <StripeKey ctx={ctx} />;
     case "terms":
       return <Terms ctx={ctx} />;
     case "tracking":

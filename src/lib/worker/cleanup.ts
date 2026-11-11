@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
  * an old processed row: commissions and tracking verification live in their
  * own columns, and Stripe retries a delivery for three days at most, so it
  * cannot resend an event whose row is gone. The one reader of "any row at
- * all" is the settings light that says Stripe is sending events, so each
+ * all" is the settings light that says events are arriving, so each
  * product's newest row is always kept.
  *
  * Batched, so a first run on an install with years of rows does not hold one

@@ -91,6 +91,11 @@ outside or from Dependabot. No scheduled runs.
 
 ## Known gaps
 
+- Polar is pinned to API version 2026-10, on every request and on each
+  webhook endpoint. Polar removes a version about nine months after it ships,
+  so the move to 2027-01 has to land before about April 2027. Bumping
+  `POLAR_API_VERSION` moves existing endpoints at the next start; the handlers
+  must read the new payloads first.
 - A session that outlives its owner account still passes the dashboard guard
   and renders an empty dashboard instead of sending you back to login.
 - The Stripe restricted key permissions named in the connect instructions have

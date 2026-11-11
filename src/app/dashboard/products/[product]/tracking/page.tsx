@@ -7,7 +7,7 @@ import { getProductMetrics } from "@/lib/analytics";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
 import { trackingScriptPrompt, checkoutPrompt } from "@/lib/integrationPrompt";
 import { originFor } from "@/lib/url";
-import { CHECKOUT_SNIPPET } from "./TrackingSteps";
+import { checkoutGuideFor } from "@/lib/checkoutGuide";
 import { TrackingStatus } from "./TrackingStatus";
 
 /**
@@ -76,9 +76,9 @@ export default async function TrackingPage({
       clickedRecently={clickedRecently(timestamps.lastClickAt)}
       verifiedAt={timestamps.verifiedAt}
       scriptTag={scriptTag}
-      checkoutSnippet={CHECKOUT_SNIPPET}
+      guide={checkoutGuideFor(merchant.paymentProvider)}
       scriptPrompt={trackingScriptPrompt({ websiteUrl: merchant.websiteUrl, scriptTag })}
-      checkoutPromptText={checkoutPrompt({ checkoutSnippet: CHECKOUT_SNIPPET })}
+      checkoutPromptText={checkoutPrompt({ guide: checkoutGuideFor(merchant.paymentProvider) })}
       checkAgain={checkAgain}
     />
   );

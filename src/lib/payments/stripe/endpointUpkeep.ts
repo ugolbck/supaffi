@@ -27,6 +27,7 @@ function defaultClient(secretKey: string): WebhookEndpointsClient {
 
 const merchantSelect = {
   id: true,
+  paymentProvider: true,
   domain: true,
   paymentKeyEnc: true,
   webhookSecretEnc: true,
@@ -49,6 +50,7 @@ export async function upgradeMerchantWebhookEvents(
     // a local address has no endpoint at all: Stripe cannot reach it, so its
     // events come from the CLI instead.
     if (
+      merchant?.paymentProvider !== "STRIPE" ||
       !merchant?.paymentKeyEnc ||
       !merchant.webhookSecretEnc ||
       isLocalDomain(merchant.domain)

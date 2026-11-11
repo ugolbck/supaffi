@@ -4,10 +4,10 @@ import { assertOwnsMerchant } from "@/lib/ownership";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { uniqueSlug } from "@/lib/slug";
 
-// Creating a Merchant no longer takes any credentials. Connecting Stripe is
-// a separate step, done against a Merchant that
-// already exists, so the Owner is never asked for a Stripe secret before
-// they have been told what Supaffi does with it.
+// Creating a Merchant takes no credentials. Connecting the payment provider
+// is a separate step, done against a Merchant that already exists, so the
+// Owner is never asked for a key before they have been told what Supaffi does
+// with it.
 type MerchantDetailsInput = {
   name: string;
   domain: string;
@@ -16,7 +16,7 @@ type MerchantDetailsInput = {
 
 export async function createMerchant(
   ownerId: string,
-  input: MerchantDetailsInput
+  input: MerchantDetailsInput & { paymentProvider?: PaymentProvider }
 ): Promise<{ id: string; slug: string }> {
   const slug = await uniqueSlug(input.name, "product", async (candidate) =>
     Boolean(
@@ -34,6 +34,7 @@ export async function createMerchant(
       slug,
       domain: input.domain,
       websiteUrl: input.websiteUrl,
+      ...(input.paymentProvider ? { paymentProvider: input.paymentProvider } : {}),
     },
     select: { id: true, slug: true },
   });
@@ -42,10 +43,10 @@ export async function createMerchant(
 // Fields are individually optional so re-connecting can rotate one secret
 // without the caller having to re-send the other. An empty string is treated
 // as "not provided", never encrypted over the top of a live credential.
-export async function connectStripe(
+export async function connectPaymentProvider(
   ownerId: string,
   merchantId: string,
-  input: { secretKey?: string; webhookSecret?: string; webhookEndpointId?: string | null }
+  input: { secretKey?: string; webhookSecret?: string; webhookEndpointId?: string | null; sandbox?: boolean }
 ): Promise<void> {
   await assertOwnsMerchant(ownerId, merchantId);
   await db.merchant.update({
@@ -57,6 +58,7 @@ export async function connectStripe(
       // the endpoint on the other end is one Supaffi did not create and must
       // not later delete.
       ...(input.webhookEndpointId !== undefined ? { webhookEndpointId: input.webhookEndpointId } : {}),
+      ...(input.sandbox !== undefined ? { paymentSandbox: input.sandbox } : {}),
     },
   });
 }
@@ -64,25 +66,22 @@ export async function connectStripe(
 // Which integrations are live, without ever handing the ciphertext to a
 // caller that only needs to render a checkmark.
 //
-// The two halves of Stripe are reported separately as well as together. A
+// The two halves of the payment connection are reported separately as well
+// as together. A
 // screen that treats "key and secret" as one thing cannot tell someone who
 // has pasted the key and still owes the webhook secret where they are, and
 // onboarding has a step for each.
 export async function getIntegrationStatus(
   ownerId: string,
   merchantId: string
-): Promise<{ stripe: boolean; stripeKey: boolean; stripeWebhook: boolean }> {
+): Promise<{ connected: boolean; key: boolean; webhook: boolean }> {
   const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
     select: { paymentKeyEnc: true, webhookSecretEnc: true },
   });
-  const stripeKey = Boolean(merchant?.paymentKeyEnc);
-  const stripeWebhook = Boolean(merchant?.webhookSecretEnc);
-  return {
-    stripe: stripeKey && stripeWebhook,
-    stripeKey,
-    stripeWebhook,
-  };
+  const key = Boolean(merchant?.paymentKeyEnc);
+  const webhook = Boolean(merchant?.webhookSecretEnc);
+  return { connected: key && webhook, key, webhook };
 }
 
 export type StripeKeyKind = "restricted" | "secret" | null;
@@ -150,6 +149,7 @@ export type OwnedMerchant = {
   domain: string;
   websiteUrl: string;
   paymentProvider: PaymentProvider;
+  paymentSandbox: boolean;
   createdAt: Date;
 };
 
@@ -159,7 +159,7 @@ export type OwnedMerchant = {
  * every dashboard route, and one Stripe implementation detail does not belong
  * in all of them.
  */
-export async function getStripeWebhookEndpointId(
+export async function getWebhookEndpointId(
   ownerId: string,
   merchantId: string
 ): Promise<string | null> {
@@ -199,6 +199,7 @@ const MERCHANT_FIELDS = {
   domain: true,
   websiteUrl: true,
   paymentProvider: true,
+  paymentSandbox: true,
   createdAt: true,
 } as const;
 

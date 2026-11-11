@@ -5,7 +5,7 @@ import { registrableCandidates } from "@/lib/checks/dns";
 export type StepId =
   | "product"
   | "subdomain"
-  | "stripe-key"
+  | "payments"
   | "terms"
   | "tracking";
 
@@ -28,7 +28,7 @@ const ALL: StepId[] = [
   // No webhook step. The key is made from a link that ticks write access on
   // webhook endpoints, and saving it creates the endpoint in the same
   // action, so there was nothing left for a screen to ask.
-  "stripe-key",
+  "payments",
   "terms",
   "tracking",
 ];
@@ -36,7 +36,7 @@ const ALL: StepId[] = [
 const LABELS: Record<StepId, string> = {
   product: "Product",
   subdomain: "Subdomain",
-  "stripe-key": "Stripe key",
+  payments: "Payments",
   terms: "Commission",
   tracking: "Tracking",
 };
@@ -75,8 +75,8 @@ export function checkSectionFor(id: StepId): keyof ProductChecks | null {
   switch (id) {
     case "subdomain":
       return "dns";
-    case "stripe-key":
-      return "stripe";
+    case "payments":
+      return "payments";
     case "tracking":
       return "tracking";
     case "product":
@@ -108,13 +108,13 @@ function stored(id: StepId, setup: ProductSetup, onboardingCompletedAt: Date | n
       // stored at all means they never reached it, which is where a resume
       // should put them back.
       return (
-        setup.stripeKeyStored ||
-        setup.stripeWebhookStored ||
+        setup.paymentKeyStored ||
+        setup.webhookSecretStored ||
         setup.firstProgramSlug !== null ||
         setup.trackingStatus !== "not-started"
       );
-    case "stripe-key":
-      return setup.stripeKeyStored;
+    case "payments":
+      return setup.paymentKeyStored;
     case "terms":
       return setup.firstProgramSlug !== null;
     case "tracking":
@@ -127,8 +127,8 @@ function verified(id: StepId, checks: ProductChecks, setup: ProductSetup, onboar
   switch (id) {
     case "subdomain":
       return checks.dns.resolves.ok && checks.dns.https.ok && checks.dns.certificate.ok;
-    case "stripe-key":
-      return checks.stripe.key.ok;
+    case "payments":
+      return checks.payments.key.ok;
     case "tracking":
       return checks.tracking.script.ok || setup.trackingStatus !== "not-started";
     default:

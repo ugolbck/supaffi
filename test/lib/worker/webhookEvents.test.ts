@@ -17,6 +17,7 @@ const OLD_EVENTS = ["checkout.session.completed", "invoice.paid", "charge.refund
 function merchant(id: string, extra: Record<string, unknown> = {}) {
   return {
     id,
+    paymentProvider: "STRIPE",
     domain: `${id}.example.com`,
     paymentKeyEnc: `key-${id}`,
     webhookSecretEnc: `whsec-${id}`,

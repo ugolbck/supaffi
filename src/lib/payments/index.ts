@@ -1,12 +1,14 @@
 import type { PaymentProvider } from "@prisma/client";
 import type { PaymentProviderAdapter } from "@/lib/payments/types";
 import { stripeProvider } from "@/lib/payments/stripe";
+import { polarProvider } from "@/lib/payments/polar";
 
 // Every provider Supaffi supports, keyed by the value stored on
 // Merchant.paymentProvider. Adding a provider is a folder next to stripe/ and
 // one line here.
 const PROVIDERS: Record<PaymentProvider, PaymentProviderAdapter> = {
   STRIPE: stripeProvider,
+  POLAR: polarProvider,
 };
 
 export const paymentProviders: readonly PaymentProviderAdapter[] = Object.values(PROVIDERS);

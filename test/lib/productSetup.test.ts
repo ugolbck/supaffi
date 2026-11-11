@@ -7,7 +7,7 @@ import { getProductSetup } from "@/lib/productSetup";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
-async function seedMerchant(stripeConnected: boolean) {
+async function seedMerchant(paymentsConnected: boolean) {
   const owner = await db.owner.create({
     data: { email: `owner-${crypto.randomUUID()}@example.com`, passwordHash: "x" },
   });
@@ -18,8 +18,8 @@ async function seedMerchant(stripeConnected: boolean) {
       name: "InstantGradient",
       domain: `${crypto.randomUUID()}.example.com`,
       websiteUrl: "https://instantgradient.com",
-      paymentKeyEnc: stripeConnected ? "enc" : null,
-      webhookSecretEnc: stripeConnected ? "enc" : null,
+      paymentKeyEnc: paymentsConnected ? "enc" : null,
+      webhookSecretEnc: paymentsConnected ? "enc" : null,
     },
   });
   return { owner, merchant };
