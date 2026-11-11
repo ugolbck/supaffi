@@ -3,7 +3,7 @@ import {
   checkState,
   dnsCheckRows,
   dnsPending,
-  stripeKeyPending,
+  paymentKeyPending,
   trackingPending,
 } from "@/components/onboarding/checkRows";
 
@@ -68,11 +68,11 @@ describe("checkState", () => {
   });
 
   it("waits, rather than failing, when no Stripe key is stored yet", () => {
-    expect(checkState(no(DETAIL.notConnected), stripeKeyPending)).toBe("pending");
+    expect(checkState(no(DETAIL.notConnected), paymentKeyPending)).toBe("pending");
   });
 
   it("waits when Stripe never answered, because no answer is not a wrong answer", () => {
-    expect(checkState(no(DETAIL.stripeUnreachable), stripeKeyPending)).toBe("pending");
+    expect(checkState(no(DETAIL.stripeUnreachable), paymentKeyPending)).toBe("pending");
   });
 });
 

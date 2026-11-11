@@ -1,4 +1,5 @@
 import type { Merchant, PaymentProvider } from "@prisma/client";
+import type { CheckResult } from "@/lib/checks/dns";
 
 /**
  * What one payment provider plugs into Supaffi.
@@ -23,6 +24,9 @@ export type PaymentProviderAdapter = {
 
   /** The header a delivery's signature arrives in. A request without it is turned away before any lookup. */
   signatureHeader: string;
+
+  /** One call with a key the owner pasted, before it is stored, to say whether it works. */
+  checkKey(key: string): Promise<CheckResult>;
 
   /**
    * Checks a delivery's signature against the product's signing secret.

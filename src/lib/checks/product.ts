@@ -1,13 +1,15 @@
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { resolvesTo as resolvesToImpl, httpsReachable as httpsReachableImpl, type CheckResult } from "@/lib/checks/dns";
-import { stripeKeyWorks as stripeKeyWorksImpl, webhookEventReceived as webhookEventReceivedImpl } from "@/lib/payments/stripe/keyCheck";
+import type { PaymentProvider } from "@prisma/client";
+import { webhookEventReceived as webhookEventReceivedImpl } from "@/lib/checks/webhook";
+import { paymentProviderFor } from "@/lib/payments";
 import { scriptFound as scriptFoundImpl } from "@/lib/checks/script";
 
 export type CheckDeps = {
   resolvesTo: (hostname: string, ip: string) => Promise<CheckResult>;
   httpsReachable: (hostname: string) => Promise<{ reachable: CheckResult; certificate: CheckResult }>;
-  stripeKeyWorks: (key: string) => Promise<CheckResult>;
+  paymentKeyWorks: (provider: PaymentProvider, key: string) => Promise<CheckResult>;
   webhookEventReceived: (ownerId: string, merchantId: string) => Promise<CheckResult>;
   scriptFound: (websiteUrl: string, domain: string) => Promise<CheckResult>;
 };
@@ -15,14 +17,14 @@ export type CheckDeps = {
 const defaults: CheckDeps = {
   resolvesTo: resolvesToImpl,
   httpsReachable: httpsReachableImpl,
-  stripeKeyWorks: stripeKeyWorksImpl,
+  paymentKeyWorks: (provider, key) => paymentProviderFor({ paymentProvider: provider }).checkKey(key),
   webhookEventReceived: webhookEventReceivedImpl,
   scriptFound: scriptFoundImpl,
 };
 
 export type ProductChecks = {
   dns: { resolves: CheckResult; https: CheckResult; certificate: CheckResult };
-  stripe: { key: CheckResult; webhook: CheckResult };
+  payments: { key: CheckResult; webhook: CheckResult };
   tracking: { script: CheckResult };
 };
 
@@ -64,7 +66,7 @@ type Timed<T> = { value: T; at: number };
  */
 type SectionCache = {
   dns?: Timed<ProductChecks["dns"]>;
-  stripe?: Timed<ProductChecks["stripe"]>;
+  payments?: Timed<ProductChecks["payments"]>;
   tracking?: Timed<ProductChecks["tracking"]>;
 };
 
@@ -110,7 +112,7 @@ export type RunOptions = {
 function lastKnown(cached: SectionCache): ProductChecks {
   return {
     dns: cached.dns?.value ?? { resolves: CHECKING, https: CHECKING, certificate: CHECKING },
-    stripe: cached.stripe?.value ?? { key: CHECKING, webhook: CHECKING },
+    payments: cached.payments?.value ?? { key: CHECKING, webhook: CHECKING },
     tracking: cached.tracking?.value ?? { script: CHECKING },
   };
 }
@@ -141,12 +143,12 @@ function refresh(
     const started = now();
     const merchant = await db.merchant.findFirst({
       where: { id: merchantId, ownerId },
-      select: { domain: true, websiteUrl: true, paymentKeyEnc: true },
+      select: { domain: true, websiteUrl: true, paymentProvider: true, paymentKeyEnc: true },
     });
     if (!merchant) throw new Error("Merchant not found");
 
     const hostIp = process.env.SUPAFFI_HOST_IP?.trim() ?? "";
-    const stripeKey = safeDecrypt(merchant.paymentKeyEnc);
+    const paymentKey = safeDecrypt(merchant.paymentKeyEnc);
     const wanted = new Set(sections);
     const result: Partial<ProductChecks> = {};
 
@@ -160,13 +162,13 @@ function refresh(
             result.dns = { resolves, https: https.reachable, certificate: https.certificate };
           })()
         : null,
-      wanted.has("stripe")
+      wanted.has("payments")
         ? (async () => {
             const [key, webhook] = await Promise.all([
-              stripeKey ? settle(deps.stripeKeyWorks(stripeKey), FAILED) : Promise.resolve(NOT_CONNECTED),
+              paymentKey ? settle(deps.paymentKeyWorks(merchant.paymentProvider, paymentKey), FAILED) : Promise.resolve(NOT_CONNECTED),
               settle(deps.webhookEventReceived(ownerId, merchantId), FAILED),
             ]);
-            result.stripe = { key, webhook };
+            result.payments = { key, webhook };
           })()
         : null,
       wanted.has("tracking")
@@ -227,14 +229,14 @@ export async function runProductChecks(
   };
   const warm = {
     dns: usable(cached.dns, "dns"),
-    stripe: usable(cached.stripe, "stripe"),
+    payments: usable(cached.payments, "payments"),
     tracking: usable(cached.tracking, "tracking"),
   };
-  const stale = (["dns", "stripe", "tracking"] as const).filter((s) => !warm[s]);
+  const stale = (["dns", "payments", "tracking"] as const).filter((s) => !warm[s]);
 
   // Nothing to run: no database round trip either, which is the point.
   if (stale.length === 0) {
-    return { dns: warm.dns!, stripe: warm.stripe!, tracking: warm.tracking! };
+    return { dns: warm.dns!, payments: warm.payments!, tracking: warm.tracking! };
   }
 
   if (options.background) {
@@ -244,7 +246,7 @@ export async function runProductChecks(
     const known = lastKnown(cached);
     return {
       dns: warm.dns ?? known.dns,
-      stripe: warm.stripe ?? known.stripe,
+      payments: warm.payments ?? known.payments,
       tracking: warm.tracking ?? known.tracking,
     };
   }
@@ -253,7 +255,7 @@ export async function runProductChecks(
   const known = lastKnown(cached);
   return {
     dns: warm.dns ?? ran.dns ?? known.dns,
-    stripe: warm.stripe ?? ran.stripe ?? known.stripe,
+    payments: warm.payments ?? ran.payments ?? known.payments,
     tracking: warm.tracking ?? ran.tracking ?? known.tracking,
   };
 }

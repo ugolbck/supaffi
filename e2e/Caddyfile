@@ -12,7 +12,7 @@ https://admin.test {
 	reverse_proxy app:3000
 }
 
-https://shop.test {
+https://shop.test, https://polarshop.test {
 	reverse_proxy merchant:8080
 }
 

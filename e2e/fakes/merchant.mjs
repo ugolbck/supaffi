@@ -5,19 +5,29 @@
 // also carries a Stripe Payment Link, which the owner leaves alone. The
 // checkout itself is the fake Stripe's /_test/checkout, which stands in for a
 // buyer paying on Stripe's hosted page.
+//
+// Served on polarshop.test it is a second merchant, selling through Polar: its
+// page carries a Polar checkout link and loads that product's track.js.
 
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const TRACK_ORIGIN = process.env.TRACK_ORIGIN ?? "https://affiliates.shop.test";
 const STRIPE = process.env.FAKE_STRIPE ?? "http://fake-stripe:12111";
+const POLAR_TRACK_ORIGIN = process.env.POLAR_TRACK_ORIGIN ?? "https://affiliates.polarshop.test";
 const REFERRAL_COOKIE = "__supaffi_referral";
 const REFERRAL_METADATA_KEY = "supaffi_referral";
 
-const page = (body) => `<!doctype html>
+const page = (body, origin = TRACK_ORIGIN) => `<!doctype html>
 <html><head><meta charset="utf-8"><title>Shop</title>
-<script src="${TRACK_ORIGIN}/track.js" async></script>
+<script src="${origin}/track.js" async></script>
 </head><body>${body}</body></html>`;
+
+const polarHome = page(
+  `<h1>Polar shop</h1>
+<p><a data-testid="polar-link" href="https://buy.polar.sh/polar_cl_e2e">Buy with Polar</a></p>`,
+  POLAR_TRACK_ORIGIN,
+);
 
 const home = page(`<h1>Shop</h1>
 <form method="post" action="/buy">
@@ -36,6 +46,10 @@ function cookie(req, name) {
 
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://shop");
+  if ((req.headers.host ?? "").startsWith("polarshop.test")) {
+    res.writeHead(200, { "content-type": "text/html" });
+    return res.end(polarHome);
+  }
   if (req.method === "POST" && url.pathname === "/buy") {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);

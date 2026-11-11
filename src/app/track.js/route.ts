@@ -1,7 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { PaymentProvider } from "@prisma/client";
 import { db } from "@/lib/db";
 import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { originFor } from "@/lib/url";
+
+// The hosted checkout links each provider builds without the Merchant's code,
+// and the query parameter that carries a reference through to the sale.
+// Stripe's Payment Links take client_reference_id. Polar's checkout links take
+// reference_id, which Polar copies into the checkout's metadata
+// (polar.sh/docs/features/checkout/links); its sandbox serves them from the
+// API host.
+const CHECKOUT_LINKS: Record<PaymentProvider, { hosts: string[]; param: string; selector: string }> = {
+  STRIPE: {
+    hosts: ["buy.stripe.com"],
+    param: "client_reference_id",
+    selector: 'a[href*="buy.stripe.com"], stripe-buy-button, stripe-pricing-table',
+  },
+  POLAR: {
+    hosts: ["buy.polar.sh", "sandbox-api.polar.sh"],
+    param: "reference_id",
+    selector: 'a[href*="buy.polar.sh"], a[href*="polar.sh/v1/checkout-links/"]',
+  },
+};
 
 // Served at /track.js on the Merchant's own Supaffi domain, embedded on
 // the Merchant's actual site with a plain <script src="..."> tag — a
@@ -21,13 +41,14 @@ export async function GET(req: NextRequest) {
   // is ignored for the same reason: originFor already knows the scheme.
   const host = req.headers.get("host");
   const merchant = host
-    ? await db.merchant.findUnique({ where: { domain: host }, select: { domain: true } })
+    ? await db.merchant.findUnique({ where: { domain: host }, select: { domain: true, paymentProvider: true } })
     : null;
   if (!merchant) {
     return new NextResponse(null, { status: 404 });
   }
 
   const trackUrl = JSON.stringify(`${originFor(merchant.domain)}/api/track?${REFERRAL_QUERY_PARAM}=`);
+  const links = CHECKOUT_LINKS[merchant.paymentProvider];
 
   const script = `
 (function () {
@@ -50,11 +71,14 @@ export async function GET(req: NextRequest) {
   // reading back the older value.
   var seen = token;
 
-  // Checkouts Stripe builds without the Merchant's code (Payment Links, buy
-  // buttons, pricing tables) have no place for metadata, so they carry the
-  // token in client_reference_id. An empty value counts as absent, and one
-  // carrying our prefix is ours to keep current (last click wins). Any other
-  // value is the Merchant's own and is never overwritten.
+  // Checkouts the provider builds without the Merchant's code (Stripe's
+  // Payment Links, buy buttons and pricing tables, Polar's checkout links)
+  // have no place for metadata, so they carry the token in the link's
+  // reference. An empty value counts as absent, and one carrying our prefix
+  // is ours to keep current (last click wins). Any other value is the
+  // Merchant's own and is never overwritten.
+  var LINK_HOSTS = ${JSON.stringify(links.hosts)};
+  var LINK_PARAM = ${JSON.stringify(links.param)};
   function tag(el) {
     var name = el.tagName.toLowerCase();
     var ref = ${JSON.stringify(REFERRAL_CLIENT_REFERENCE_PREFIX)} + token;
@@ -64,9 +88,9 @@ export async function GET(req: NextRequest) {
     if (name === "a") {
       var url;
       try { url = new URL(el.href); } catch (e) { return; }
-      var cur = url.searchParams.get("client_reference_id");
-      if (url.hostname !== "buy.stripe.com" || taken(cur) || cur === ref) return;
-      url.searchParams.set("client_reference_id", ref);
+      var cur = url.searchParams.get(LINK_PARAM);
+      if (LINK_HOSTS.indexOf(url.hostname) < 0 || taken(cur) || cur === ref) return;
+      url.searchParams.set(LINK_PARAM, ref);
       el.href = url.href;
     } else if (name === "stripe-buy-button" || name === "stripe-pricing-table") {
       var attr = el.getAttribute("client-reference-id");
@@ -80,7 +104,7 @@ export async function GET(req: NextRequest) {
   function scan(root) {
     if (root.nodeType !== 1) return;
     tag(root);
-    var found = root.querySelectorAll('a[href*="buy.stripe.com"], stripe-buy-button, stripe-pricing-table');
+    var found = root.querySelectorAll(${JSON.stringify(links.selector)});
     for (var i = 0; i < found.length; i++) tag(found[i]);
   }
 

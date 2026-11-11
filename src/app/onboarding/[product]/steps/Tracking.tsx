@@ -5,7 +5,7 @@ import { CodeBlock } from "@/components/onboarding/CodeBlock";
 import { StepShell, StepLabel } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { trackingScriptPrompt, checkoutPrompt } from "@/lib/integrationPrompt";
-import { REFERRAL_COOKIE, REFERRAL_METADATA_KEY } from "@/lib/referral";
+import { checkoutGuideFor } from "@/lib/checkoutGuide";
 import { displayStep, siteHost } from "@/lib/onboarding";
 import { originFor } from "@/lib/url";
 import { FinishedModal } from "@/components/onboarding/FinishedModal";
@@ -20,15 +20,7 @@ export async function Tracking({ ctx }: { ctx: Ctx }) {
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
   const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
-  const checkoutSnippet = `const referralToken = cookies.get("${REFERRAL_COOKIE}");
-
-await stripe.checkout.sessions.create({
-  // ...your existing options
-  metadata: {
-    // ...your existing metadata
-    ...(referralToken && { ${REFERRAL_METADATA_KEY}: referralToken }),
-  },
-});`;
+  const guide = checkoutGuideFor(merchant.paymentProvider);
   const site = siteHost(merchant.websiteUrl);
   const found = checks.tracking.script.ok;
   // Finishing happens on this screen, so the reward does too. The step stays
@@ -74,9 +66,9 @@ await stripe.checkout.sessions.create({
         </TaskCardSection>
       </TaskCard>
 
-      <StepLabel>Then, wherever you create the Stripe checkout session.</StepLabel>
-      <CodeBlock title="Checkout session" code={checkoutSnippet} prompt={checkoutPrompt({ checkoutSnippet })} />
-      <StepLabel>Stripe Payment Links, buy buttons and pricing tables need nothing more.</StepLabel>
+      <StepLabel>{guide.then}</StepLabel>
+      <CodeBlock title="Checkout session" code={guide.snippet} prompt={checkoutPrompt({ guide })} />
+      <StepLabel>{guide.hosted}</StepLabel>
       {program && (
         <FinishedModal
           link={`${originFor(merchant.domain)}/affiliates/signup/${program.slug}`}

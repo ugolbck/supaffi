@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { trackingScriptPrompt, checkoutPrompt } from "@/lib/integrationPrompt";
+import { checkoutGuideFor } from "@/lib/checkoutGuide";
 
 describe("trackingScriptPrompt", () => {
   it("carries the snippet and the site it belongs on", () => {
@@ -16,13 +17,20 @@ describe("trackingScriptPrompt", () => {
 
 describe("checkoutPrompt", () => {
   it("carries the snippet and protects metadata already there", () => {
-    const prompt = checkoutPrompt({ checkoutSnippet: "await stripe.checkout.sessions.create({});" });
+    const prompt = checkoutPrompt({ guide: checkoutGuideFor("STRIPE") });
     expect(prompt).toContain("stripe.checkout.sessions.create");
     expect(prompt).toContain("already being set");
   });
 
   it("tells a Payment Links site there is nothing to change", () => {
-    const prompt = checkoutPrompt({ checkoutSnippet: "await stripe.checkout.sessions.create({});" });
+    const prompt = checkoutPrompt({ guide: checkoutGuideFor("STRIPE") });
     expect(prompt).toContain("Payment Links, buy buttons or pricing tables, change nothing here");
+  });
+
+  it("speaks Polar to a Polar product", () => {
+    const prompt = checkoutPrompt({ guide: checkoutGuideFor("POLAR") });
+    expect(prompt).toContain("polar.checkouts.create");
+    expect(prompt).toContain("Polar checkout links, change nothing here");
+    expect(prompt).not.toMatch(/stripe/i);
   });
 });

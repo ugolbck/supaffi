@@ -3,8 +3,11 @@
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Field, FormCard } from "@/components/Field";
 import { createProductAction } from "./productAction";
+
+const PROVIDERS: Record<string, string> = { STRIPE: "Stripe", POLAR: "Polar" };
 
 export function ProductForm() {
   const [state, action, pending] = useActionState(createProductAction, { error: "" });
@@ -24,6 +27,20 @@ export function ProductForm() {
             required
             placeholder="yoursite.com"
           />
+        </Field>
+        <Field label="Payments" htmlFor="product-provider">
+          <Select name="paymentProvider" items={PROVIDERS} defaultValue="STRIPE">
+            <SelectTrigger id="product-provider" className="h-9 w-full cursor-pointer">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(PROVIDERS).map(([id, text]) => (
+                <SelectItem key={id} value={id} className="cursor-pointer">
+                  {text}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
       </FormCard>
       {state.error && (

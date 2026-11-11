@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import type { CheckoutGuide } from "@/lib/checkoutGuide";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
 import type { CheckResult } from "@/lib/checks/dns";
@@ -26,7 +27,7 @@ export function TrackingStatus({
   clickedRecently,
   verifiedAt,
   scriptTag,
-  checkoutSnippet,
+  guide,
   scriptPrompt,
   checkoutPromptText,
   checkAgain,
@@ -44,7 +45,7 @@ export function TrackingStatus({
   clickedRecently: boolean;
   verifiedAt: Date | null;
   scriptTag: string;
-  checkoutSnippet: string;
+  guide: CheckoutGuide;
   /** The plain text an owner forwards to whoever touches the code. */
   scriptPrompt: string;
   checkoutPromptText: string;
@@ -82,13 +83,9 @@ export function TrackingStatus({
           enough to push the buttons under it off an 800px screen: it scrolls
           inside its own card so the page never does. */}
       <Section title="Checkout" scroll>
-        <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">
-          Wherever you create the Stripe Checkout Session, server side.
-        </p>
-        <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">
-          Stripe Payment Links, buy buttons and pricing tables need nothing more.
-        </p>
-        <CodeBlock title="Checkout session" code={checkoutSnippet} prompt={checkoutPromptText} />
+        <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">{guide.where}</p>
+        <p className="mb-2 shrink-0 text-[13px] text-muted-foreground">{guide.hosted}</p>
+        <CodeBlock title="Checkout session" code={guide.snippet} prompt={checkoutPromptText} />
       </Section>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">

@@ -22,11 +22,11 @@ import { getTrackingStatus, type TrackingStatus } from "@/lib/tracking";
  * screens cannot disagree about how far along a product is.
  */
 export type ProductSetup = {
-  stripeConnected: boolean;
+  paymentsConnected: boolean;
   /** The Stripe secret key is on file, whether or not the webhook secret is. */
-  stripeKeyStored: boolean;
+  paymentKeyStored: boolean;
   /** The Stripe webhook signing secret is on file, whether or not the key is. */
-  stripeWebhookStored: boolean;
+  webhookSecretStored: boolean;
   /** Everything the instance needs connected, which is Stripe. */
   integrationsConnected: boolean;
   firstProgramSlug: string | null;
@@ -57,7 +57,7 @@ export async function getProductSetup(
     db.affiliate.count({ where: { merchantId } }),
   ]);
 
-  const integrationsConnected = integrations.stripe;
+  const integrationsConnected = integrations.connected;
 
   // Tracking counts as done once anything has been recorded, not once a sale
   // has proven the checkout half. Waiting on a stranger to buy something is not
@@ -70,9 +70,9 @@ export async function getProductSetup(
   ].filter(Boolean).length;
 
   return {
-    stripeConnected: integrations.stripe,
-    stripeKeyStored: integrations.stripeKey,
-    stripeWebhookStored: integrations.stripeWebhook,
+    paymentsConnected: integrations.connected,
+    paymentKeyStored: integrations.key,
+    webhookSecretStored: integrations.webhook,
     integrationsConnected,
     // The link handed out, so the first program anyone can still sign up to.
     firstProgramSlug: programs.find((p) => p.signupOpen)?.slug ?? null,

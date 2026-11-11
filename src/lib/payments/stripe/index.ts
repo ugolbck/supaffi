@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import type { PaymentProviderAdapter } from "@/lib/payments/types";
+import { stripeKeyWorks } from "@/lib/payments/stripe/keyCheck";
 import { processStripeEvent } from "@/lib/payments/stripe/dispatch";
 import { isStripeError, stripeErrorLabel } from "@/lib/payments/stripe/errors";
 import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/payments/stripe/webhookEvents";
@@ -10,6 +11,7 @@ export const stripeProvider: PaymentProviderAdapter = {
   name: "Stripe",
   webhookSlug: "stripe",
   signatureHeader: "stripe-signature",
+  checkKey: (key) => stripeKeyWorks(key),
 
   verifyWebhook({ rawBody, headers, secret }) {
     const signature = headers.get("stripe-signature");

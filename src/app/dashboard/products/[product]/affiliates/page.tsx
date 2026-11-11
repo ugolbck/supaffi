@@ -188,6 +188,7 @@ export default async function AffiliatesPage({
         earned: [money(c.earned, fallbackCurrency), moneyHint(c.earned)].filter(Boolean).join(" · "),
       })),
       codeToIssue: offer?.kind === "claim" ? { suggested: offer.suggested, discountLabel: offer.discountLabel } : null,
+      promoCodesOn: merchant.paymentProvider === "STRIPE",
       commissions: (detail?.commissions ?? []).map((c) => ({
         id: c.id,
         date: formatDate(c.createdAt),

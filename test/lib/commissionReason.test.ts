@@ -7,7 +7,7 @@ describe("voidReasonText", () => {
   });
 
   it("tells the owner what happened, in Stripe's terms", () => {
-    expect(voidReasonText("refund", "owner")).toBe("Refunded in Stripe");
+    expect(voidReasonText("refund", "owner")).toBe("Refunded to the customer");
   });
 
   it("distinguishes a partial refund for the affiliate", () => {
@@ -24,7 +24,7 @@ describe("voidReasonText", () => {
 
   it("names a lost chargeback for each side", () => {
     expect(voidReasonText("chargeback", "affiliate")).toBe("The customer disputed the payment and won");
-    expect(voidReasonText("chargeback", "owner")).toBe("Chargeback lost in Stripe");
+    expect(voidReasonText("chargeback", "owner")).toBe("Chargeback lost");
   });
 
   it("does not leave a confirmed self-referral sounding like an accident, for the affiliate", () => {

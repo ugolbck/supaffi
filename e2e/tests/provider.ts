@@ -72,3 +72,20 @@ export async function sale(buyer: Page, input: { via?: string; email: string }):
       .map(Number),
   };
 }
+
+// A buyer arriving through an affiliate link onto a page with a Polar
+// checkout link on it. As with a Payment Link, Polar's hosted checkout is not
+// loaded: the order is made at the Polar fake with the reference the link
+// carried, which Polar copies into the order's metadata.
+export async function polarLinkSale(buyer: Page, input: { via: string; email: string; amount: number }): Promise<{ order: string; delivered: number[] }> {
+  await buyer.goto(`https://polarshop.test/?via=${input.via}`);
+  const link = buyer.getByTestId("polar-link");
+  await expect(link).toHaveAttribute("href", /reference_id=/);
+  const reference = new URL((await link.getAttribute("href"))!).searchParams.get("reference_id");
+  const res = await buyer.request.post("http://127.0.0.1:12112/_test/order", {
+    data: { net_amount: input.amount, email: input.email, reference_id: reference },
+  });
+  expect(res.ok()).toBe(true);
+  const body = await res.json();
+  return { order: body.order, delivered: body.deliveries.map((d: { status: number }) => d.status) };
+}

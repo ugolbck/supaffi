@@ -11,7 +11,7 @@ import {
   listMerchantsForOwner,
   getMerchantForOwner,
   updateMerchant,
-  connectStripe,
+  connectPaymentProvider,
   getIntegrationStatus,
   getMerchantByDomain,
   getStripeKeyKind,
@@ -20,7 +20,7 @@ import {
   dismissWelcome,
   getOnboardingState,
 } from "@/lib/merchant";
-import { webhookEventReceived } from "@/lib/payments/stripe/keyCheck";
+import { webhookEventReceived } from "@/lib/checks/webhook";
 
 // Skip this whole suite cleanly when no database is reachable, instead of
 // letting Prisma throw an opaque connection error mid-run. Checked once, up
@@ -92,17 +92,17 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     const raw = await db.merchant.findUniqueOrThrow({ where: { id } });
     expect(raw.paymentKeyEnc).toBeNull();
     expect(raw.webhookSecretEnc).toBeNull();
-    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: false, stripeKey: false, stripeWebhook: false });
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({ connected: false, key: false, webhook: false });
   });
 
-  it("connectStripe encrypts both Stripe secrets at rest", async () => {
+  it("connectPaymentProvider encrypts both Stripe secrets at rest", async () => {
     const { id } = await createMerchant(ownerId, {
       name: "InstantGradient",
       domain: "connect-stripe.example.com",
       websiteUrl: "https://example.com",
     });
 
-    await connectStripe(ownerId, id, {
+    await connectPaymentProvider(ownerId, id, {
       secretKey: "sk_test_abc123",
       webhookSecret: "whsec_abc123",
     });
@@ -111,7 +111,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     expect(raw.paymentKeyEnc).not.toBe("sk_test_abc123");
     expect(raw.paymentKeyEnc).toContain(":"); // iv:authTag:ciphertext format
     expect(raw.webhookSecretEnc).not.toBe("whsec_abc123");
-    expect(await getIntegrationStatus(ownerId, id)).toEqual({ stripe: true, stripeKey: true, stripeWebhook: true });
+    expect(await getIntegrationStatus(ownerId, id)).toEqual({ connected: true, key: true, webhook: true });
   });
 
   it("reports the two Stripe halves separately when only the key is on file", async () => {
@@ -121,16 +121,16 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       websiteUrl: "https://example.com",
     });
 
-    await connectStripe(ownerId, id, { secretKey: "sk_test_abc123" });
+    await connectPaymentProvider(ownerId, id, { secretKey: "sk_test_abc123" });
 
     expect(await getIntegrationStatus(ownerId, id)).toEqual({
-      stripe: false,
-      stripeKey: true,
-      stripeWebhook: false,
+      connected: false,
+      key: true,
+      webhook: false,
     });
   });
 
-  it("connectStripe throws when the Merchant belongs to a different Owner", async () => {
+  it("connectPaymentProvider throws when the Merchant belongs to a different Owner", async () => {
     const { id } = await createMerchant(otherOwnerId, {
       name: "NotMine",
       domain: "connect-notmine.example.com",
@@ -138,7 +138,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     });
 
     await expect(
-      connectStripe(ownerId, id, { secretKey: "sk_test_x", webhookSecret: "whsec_x" })
+      connectPaymentProvider(ownerId, id, { secretKey: "sk_test_x", webhookSecret: "whsec_x" })
     ).rejects.toThrow();
   });
 
@@ -176,7 +176,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       domain: "original.example.com",
       websiteUrl: "https://example.com",
     });
-    await connectStripe(ownerId, id, {
+    await connectPaymentProvider(ownerId, id, {
       secretKey: "sk_test_original",
       webhookSecret: "whsec_original",
     });
@@ -194,19 +194,19 @@ describe.skipIf(!hasDatabase)("merchant", () => {
     expect(after.webhookSecretEnc).toBe(before.webhookSecretEnc);
   });
 
-  it("connectStripe rotates one secret without clearing the other", async () => {
+  it("connectPaymentProvider rotates one secret without clearing the other", async () => {
     const { id } = await createMerchant(ownerId, {
       name: "Rotate",
       domain: "rotate.example.com",
       websiteUrl: "https://example.com",
     });
-    await connectStripe(ownerId, id, {
+    await connectPaymentProvider(ownerId, id, {
       secretKey: "sk_test_first",
       webhookSecret: "whsec_first",
     });
     const before = await db.merchant.findUniqueOrThrow({ where: { id } });
 
-    await connectStripe(ownerId, id, { secretKey: "sk_test_second", webhookSecret: "" });
+    await connectPaymentProvider(ownerId, id, { secretKey: "sk_test_second", webhookSecret: "" });
 
     const after = await db.merchant.findUniqueOrThrow({ where: { id } });
     expect(after.paymentKeyEnc).not.toBe(before.paymentKeyEnc);
@@ -259,7 +259,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       domain: "keykind-restricted.example.com",
       websiteUrl: "https://example.com",
     });
-    await connectStripe(ownerId, id, { secretKey: "rk_live_abc", webhookSecret: "whsec_x" });
+    await connectPaymentProvider(ownerId, id, { secretKey: "rk_live_abc", webhookSecret: "whsec_x" });
     expect(await getStripeKeyKind(ownerId, id)).toBe("restricted");
 
     const { id: id2 } = await createMerchant(ownerId, {
@@ -267,7 +267,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       domain: "keykind-secret.example.com",
       websiteUrl: "https://example.com",
     });
-    await connectStripe(ownerId, id2, { secretKey: "sk_live_abc", webhookSecret: "whsec_x" });
+    await connectPaymentProvider(ownerId, id2, { secretKey: "sk_live_abc", webhookSecret: "whsec_x" });
     expect(await getStripeKeyKind(ownerId, id2)).toBe("secret");
   });
 
@@ -284,7 +284,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       domain: "keykind-notmine.example.com",
       websiteUrl: "https://example.com",
     });
-    await connectStripe(otherOwnerId, theirId, { secretKey: "rk_live_x", webhookSecret: "whsec_x" });
+    await connectPaymentProvider(otherOwnerId, theirId, { secretKey: "rk_live_x", webhookSecret: "whsec_x" });
     expect(await getStripeKeyKind(ownerId, theirId)).toBeNull();
   });
 
