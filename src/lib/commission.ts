@@ -1,17 +1,8 @@
 import { db } from "@/lib/db";
+import { assertOwnsMerchant } from "@/lib/ownership";
 import { Prisma } from "@prisma/client";
 import { notifyPaid } from "@/lib/notify";
 import { MAX_SHOWN } from "@/lib/payoutLimits";
-
-async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
-  const merchant = await db.merchant.findFirst({
-    where: { id: merchantId, ownerId },
-    select: { id: true },
-  });
-  if (!merchant) {
-    throw new Error("Merchant not found");
-  }
-}
 
 export type CommissionStatus = "PENDING" | "PAYABLE" | "PAID" | "VOIDED" | "FLAGGED";
 
@@ -105,7 +96,7 @@ export async function listCommissions(
   filters: CommissionFilters,
   { page, pageSize }: { page: number; pageSize: number }
 ): Promise<{ rows: CommissionRow[]; total: number }> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const where = whereFor(merchantId, filters);
 
@@ -206,7 +197,7 @@ export async function getCommissionTotals(
   ownerId: string,
   merchantId: string
 ): Promise<StatusTotal[]> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const grouped = await db.commission.groupBy({
     by: ["status", "currency"],
@@ -238,7 +229,7 @@ export async function getCommissionFilterOptions(
   affiliates: { id: string; name: string | null; email: string }[];
   currencies: string[];
 }> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const [affiliates, currencies] = await Promise.all([
     db.affiliate.findMany({
@@ -393,7 +384,7 @@ export async function markCommissionsPaid(
   shown: ShownCommission[],
   renderedAt: string
 ): Promise<MarkPaidResult> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   if (!Array.isArray(shown) || shown.length === 0) {
     return { error: "Nothing selected" };
@@ -553,7 +544,7 @@ export async function confirmCommissionFraud(
   merchantId: string,
   commissionId: string
 ): Promise<void> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const existing = await db.commission.findFirst({
     where: { id: commissionId, adjustsCommissionId: null, affiliate: { merchantId } },
@@ -635,7 +626,7 @@ export async function voidCommission(
   commissionId: string,
   reason: string
 ): Promise<void> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const existing = await db.commission.findFirst({
     where: {
@@ -671,7 +662,7 @@ export async function dismissCommissionFlag(
   merchantId: string,
   commissionId: string
 ): Promise<void> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const existing = await db.commission.findFirst({
     where: { id: commissionId, status: "FLAGGED", affiliate: { merchantId } },

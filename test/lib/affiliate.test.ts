@@ -256,6 +256,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       for (let i = 0; i < 3; i++) {
         await db.commission.create({
           data: {
+            merchantId,
             affiliateId: affiliate.id,
             clickId: click.id,
             amount: `${i + 1}.00`,
@@ -369,6 +370,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     const click = await makeClick(affiliateId);
     return db.commission.create({
       data: {
+        merchantId,
         affiliateId,
         clickId: click.id,
         amount,
@@ -462,6 +464,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       const sale = await makeCommission(affiliate.id, "20.00", "usd", "PAID");
       await db.commission.create({
         data: {
+          merchantId,
           affiliateId: affiliate.id,
           clickId: sale.clickId,
           adjustsCommissionId: sale.id,
@@ -474,6 +477,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
       const unpaidSale = await makeCommission(affiliate.id, "30.00", "usd", "PAYABLE");
       await db.commission.create({
         data: {
+          merchantId,
           affiliateId: affiliate.id,
           clickId: unpaidSale.clickId,
           adjustsCommissionId: unpaidSale.id,

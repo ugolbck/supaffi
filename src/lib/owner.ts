@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { ConcurrencyLimitError, hashPassword, verifyAgainstNoAccount, verifyPassword } from "@/lib/password";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
 
@@ -116,7 +117,12 @@ export async function changeOwnerEmail(
   if (!email.includes("@")) return { error: "That does not look like an email address" };
   const owner = await ownerWithVerifiedPassword(ownerId, currentPassword);
   if ("error" in owner) return owner;
-  await db.owner.update({ where: { id: owner.id }, data: { email } });
+  try {
+    await db.owner.update({ where: { id: owner.id }, data: { email } });
+  } catch (err) {
+    if (isUniqueConstraintError(err)) return { error: "That email is already in use" };
+    throw err;
+  }
   return null;
 }
 

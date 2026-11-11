@@ -107,6 +107,16 @@ describe.skipIf(!hasDatabase)("owner", () => {
       );
     });
 
+    it("refuses an email another Owner already uses, with a form error and nothing changed", async () => {
+      const owner = await createOwner("first@example.com", "correct horse battery");
+      await db.owner.create({ data: { email: "taken@example.com", passwordHash: "x" } });
+
+      expect(await changeOwnerEmail(owner.id, "correct horse battery", "Taken@Example.com")).toEqual({
+        error: "That email is already in use",
+      });
+      expect((await db.owner.findUnique({ where: { id: owner.id } }))?.email).toBe("first@example.com");
+    });
+
     it("refuses an email change with the wrong password", async () => {
       const owner = await createOwner("first@example.com", "correct horse battery");
       const result = await changeOwnerEmail(owner.id, "wrong", "second@example.com");

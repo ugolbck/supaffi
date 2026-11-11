@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { assertOwnsMerchant } from "@/lib/ownership";
 import { VISITOR_CLICK } from "@/lib/referral";
 import { generateLinkCode } from "@/lib/referralCode";
 import { isCodeRetiredByAnother, lockLinkCodes } from "@/lib/affiliateLink";
@@ -10,15 +11,6 @@ import type { CommissionStatus } from "@/lib/commission";
 // Owner-scoping is done in the query, never inferred from the route guard.
 // An Affiliate reaches an Owner only through its Merchant, so both links get
 // checked: the Merchant is the Owner's, and the Affiliate is that Merchant's.
-async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
-  const merchant = await db.merchant.findFirst({
-    where: { id: merchantId, ownerId },
-    select: { id: true },
-  });
-  if (!merchant) {
-    throw new Error("Merchant not found");
-  }
-}
 
 export type CreateAffiliateInput = {
   name: string;
@@ -307,7 +299,7 @@ export async function updateAffiliate(
   affiliateId: string,
   input: { programId?: string; customCommissionRate?: number | null }
 ): Promise<void> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   // `!== undefined`, not truthiness: an empty programId is a caller asking for
   // a program that does not exist, which is an error, not "leave it alone".
@@ -430,7 +422,7 @@ export async function listAffiliatesForMerchant(
   filters: AffiliateListFilters,
   { page, pageSize }: { page: number; pageSize: number }
 ): Promise<{ rows: AffiliateListRow[]; total: number }> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const query = filters.query?.trim();
   const where = {
@@ -553,7 +545,7 @@ export async function getAffiliateSignals(
   ownerId: string,
   merchantId: string
 ): Promise<AffiliateSignals> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const monthStart = new Date();
   monthStart.setUTCDate(1);
@@ -600,7 +592,7 @@ export async function getAffiliateDetails(
   affiliateIds: string[],
   perAffiliate = 8
 ): Promise<Record<string, AffiliateDetail>> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
   if (affiliateIds.length === 0) return {};
 
   const affiliates = await db.affiliate.findMany({

@@ -161,6 +161,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
     // Checked against a self referral confirmed since the check above.
     const written = await createCommissionUnlessSelfReferral({
       data: {
+        merchantId: merchant.id,
         affiliateId: affiliate.id,
         clickId: click.id,
         stripePaymentRef: invoice.id,
@@ -177,7 +178,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
     if (written && dispute === "unknown") {
       // The write only reports whether it happened, not the row: looked up by
       // its unique payment reference so the log still names the commission.
-      const commission = await db.commission.findFirst({ where: { stripePaymentRef: invoice.id }, select: { id: true } });
+      const commission = await db.commission.findFirst({ where: { merchantId: merchant.id, stripePaymentRef: invoice.id }, select: { id: true } });
       console.warn(
         `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event arrives or the owner cancels it.`
       );

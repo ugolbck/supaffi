@@ -79,6 +79,7 @@ async function seedSaleWithLegacyAdjustment(saleDaysAgo: number, adjustmentDaysA
   });
   const sale = await db.commission.create({
     data: {
+      merchantId: merchant.id,
       affiliateId: sarah.id,
       clickId: click.id,
       amount: "30.00",
@@ -92,6 +93,7 @@ async function seedSaleWithLegacyAdjustment(saleDaysAgo: number, adjustmentDaysA
   });
   await db.commission.create({
     data: {
+      merchantId: merchant.id,
       affiliateId: sarah.id,
       clickId: click.id,
       adjustsCommissionId: sale.id,
@@ -140,6 +142,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     });
     const sale = await db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         clickId: click.id,
         amount: "30.00",
@@ -152,6 +155,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     });
     await db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         clickId: click.id,
         adjustsCommissionId: sale.id,
@@ -213,6 +217,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     ] as const) {
       await db.commission.create({
         data: {
+          merchantId: merchant.id,
           affiliateId: sarah.id,
           clickId: click.id,
           amount,
@@ -255,6 +260,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     });
     await db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         clickId: click.id,
         amount: "12.00",
@@ -289,6 +295,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     });
     await db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         clickId: click.id,
         amount: "9.00",
@@ -306,6 +313,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     // pass even if rowsFor overwrote instead of accumulated.
     await db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         clickId: click.id,
         amount: "4.00",
@@ -350,7 +358,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
       ["PAYABLE", "4.00", "eur"],
     ] as const) {
       await db.commission.create({
-        data: { affiliateId: sarah.id, clickId: click.id, amount, currency, status, payableAt: new Date() },
+        data: { merchantId: merchant.id, affiliateId: sarah.id, clickId: click.id, amount, currency, status, payableAt: new Date() },
       });
     }
 
@@ -391,6 +399,7 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
   ) {
     return db.commission.create({
       data: {
+        merchantId: (await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).merchantId,
         affiliateId,
         clickId,
         amount,
@@ -457,6 +466,7 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     const make = (amount: string) =>
       db.commission.create({
         data: {
+          merchantId: merchant.id,
           affiliateId: sarah.id,
           clickId: click.id,
           amount,
