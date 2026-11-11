@@ -23,13 +23,13 @@ A SaaS founder or small team that:
 
 A product can sell through Polar instead of Stripe. It is picked when the product is created.
 
-- Polar is connected with an organization access token that has the `webhooks:read` and `webhooks:write` scopes. Supaffi creates the Polar webhook itself. Tokens from Polar's sandbox work too.
+- Polar is connected with an organization access token that has the `webhooks:read` and `webhooks:write` scopes, plus `discounts:read` and `discounts:write` for promo codes. Supaffi creates the Polar webhook itself. Tokens from Polar's sandbox work too.
 - Polar checkout links on your pages need no code of yours. The script adds the referral to them. A checkout your code creates passes the referral in its metadata, as with Stripe.
 - One-time purchases, a subscription's first payment and every renewal of that subscription earn, plan changes included, after discounts and before tax. A free trial starts earning at its first paid order.
 - Refunds, partial or full, lower or cancel the commission, including refunds Polar makes on its own to head off a chargeback.
 - Self-referrals are flagged by email only. Polar does not share the card used.
 - Polar sends no event for chargebacks, so an open chargeback does not hold its commission. The holding period is the protection.
-- Promo codes are Stripe only for now.
+- **Promo codes.** A program picks one of your Polar discounts, and each affiliate's code is a new discount copied from it, under their code. You can also link a discount code that already exists in Polar. Polar has no new-customers-only rule, so each code can be used once per customer instead. Turning off a code Supaffi made deletes it in Polar.
 
 ### Tracking a referral
 

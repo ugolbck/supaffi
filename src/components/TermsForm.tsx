@@ -39,6 +39,8 @@ export type DiscountField = {
   value: string | null;
   /** Where the Owner replaces a key that cannot list coupons. */
   replaceKeyHref: string;
+  /** Who can use a code, as the provider enforces it: "New customers only." */
+  rule: string;
 };
 
 /**
@@ -197,14 +199,12 @@ export function TermsForm({
 }
 
 /**
- * Which Stripe coupon the program's promo codes give. A coupon that is stored
+ * Which of the provider's discounts the program's promo codes give. A coupon that is stored
  * but no longer listed (expired, used up) stays selectable under its id, so
  * opening the form and saving it does not quietly take the discount away.
  */
-function Discount({ coupons, value, replaceKeyHref }: DiscountField) {
-  const label = (
-    <Term tip="What a customer gets with an affiliate's promo code. New customers only.">Customer discount</Term>
-  );
+function Discount({ coupons, value, replaceKeyHref, rule }: DiscountField) {
+  const label = <Term tip={`What a customer gets with an affiliate's promo code. ${rule}`}>Customer discount</Term>;
 
   if (!coupons.ok) {
     return (

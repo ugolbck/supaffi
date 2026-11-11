@@ -10,7 +10,32 @@ import { createServer } from "node:http";
 
 const PORT = Number(process.env.PORT ?? 12112);
 
-const state = { endpoints: new Map(), orders: new Map(), deliveries: [] };
+const state = { endpoints: new Map(), orders: new Map(), discounts: new Map(), deliveries: [] };
+
+// The owner's own discounts: one to put behind a program, and a code that is
+// already taken.
+for (const discount of [
+  { id: "d_partner", name: "Partners", code: null },
+  { id: "d_taken", name: "Spring sale", code: "PARTNER20" },
+]) {
+  state.discounts.set(discount.id, {
+    ...discount,
+    type: "percentage",
+    basis_points: 2000,
+    duration: "repeating",
+    duration_in_months: 3,
+    starts_at: null,
+    ends_at: null,
+    max_redemptions: null,
+    max_redemptions_per_customer: null,
+    redemptions_count: 0,
+    products: [],
+    metadata: {},
+  });
+}
+
+const liveDiscounts = () => [...state.discounts.values()].filter((d) => !d.deleted);
+const byCode = (code) => liveDiscounts().find((d) => d.code && d.code.toLowerCase() === String(code).toLowerCase());
 
 function sign(secret, id, timestamp, payload) {
   const key = Buffer.from(secret.replace(/^whsec_/, ""), "base64");
@@ -67,7 +92,7 @@ async function testOrder(body) {
     customer_id: randomUUID(),
     product_id: body.product_id ?? "prod_e2e",
     subscription_id: body.subscription_id ?? null,
-    discount_id: null,
+    discount_id: body.discount_code ? (byCode(body.discount_code)?.id ?? null) : null,
     checkout_id: randomUUID(),
     metadata: {
       ...(body.metadata ?? {}),
@@ -93,6 +118,29 @@ async function testRevoke(body) {
 }
 
 // --- the API Supaffi calls ------------------------------------------------
+
+function discounts(method, path, search, body) {
+  if (path === "/v1/discounts/" && method === "GET") {
+    const query = (search.get("query") ?? "").toLowerCase();
+    const items = liveDiscounts().filter((d) => !query || d.name.toLowerCase().includes(query) || (d.code ?? "").toLowerCase().includes(query));
+    return [200, { items }];
+  }
+  if (path === "/v1/discounts/" && method === "POST") {
+    if (body.code && byCode(body.code)) return [422, { error: "RequestValidationError" }];
+    const discount = { ...body, id: randomUUID(), redemptions_count: 0, ends_at: null, max_redemptions: null, products: (body.products ?? []).map((id) => ({ id })) };
+    state.discounts.set(discount.id, discount);
+    return [201, discount];
+  }
+  const match = path.match(/^\/v1\/discounts\/([^/]+)$/);
+  const discount = match && state.discounts.get(match[1]);
+  if (!discount || discount.deleted) return [404, { error: "ResourceNotFound" }];
+  if (method === "GET") return [200, discount];
+  if (method === "DELETE") {
+    discount.deleted = true;
+    return [204, null];
+  }
+  return [405, { error: "MethodNotAllowed" }];
+}
 
 function api(method, path, body) {
   if (path === "/v1/webhooks/endpoints" && method === "GET") return [200, { items: [...state.endpoints.values()] }];
@@ -142,7 +190,9 @@ createServer(async (req, res) => {
   const body = text ? JSON.parse(text) : {};
 
   if (url.pathname.startsWith("/_test/")) {
-    if (url.pathname === "/_test/state") return send(res, 200, { endpoints: [...state.endpoints.values()], deliveries: state.deliveries });
+    if (url.pathname === "/_test/state") {
+      return send(res, 200, { endpoints: [...state.endpoints.values()], discounts: [...state.discounts.values()], deliveries: state.deliveries });
+    }
     const route = { "/_test/order": testOrder, "/_test/refund": testRefund, "/_test/revoke": testRevoke }[url.pathname];
     const result = route ? await route(body) : null;
     return result ? send(res, 200, result) : send(res, 404, { error: "ResourceNotFound" });
@@ -154,6 +204,8 @@ createServer(async (req, res) => {
   const token = (req.headers.authorization ?? "").replace(/^Bearer /, "");
   if (!token.startsWith("polar_oat_e2e")) return send(res, 401, { error: "invalid_token" });
 
-  const [status, answer] = api(req.method, url.pathname, body);
+  const [status, answer] = url.pathname.startsWith("/v1/discounts/")
+    ? discounts(req.method, url.pathname, url.searchParams, body)
+    : api(req.method, url.pathname, body);
   return send(res, status, answer);
 }).listen(PORT, () => console.log(`fake polar on :${PORT}`));

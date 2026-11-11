@@ -1,34 +1,26 @@
-import type Stripe from "stripe";
 import { Prisma } from "@prisma/client";
+import type { PaymentProvider } from "@prisma/client";
 import { db } from "@/lib/db";
 import type { CurrencyTotal } from "@/lib/analytics";
-import { stripeClientFor } from "@/lib/payments/stripe/client";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import { stripeKeyLacksPermission, suggestedCodes } from "@/lib/coupon";
+import { suggestedCodes } from "@/lib/coupon";
+import { paymentProviderFor } from "@/lib/payments";
+import type { PromoCodeAdapter, PromoMerchant } from "@/lib/payments/types";
 
 /**
- * Stripe promotion codes that credit an Affiliate.
+ * Promo codes that credit an Affiliate, on whichever payment provider the
+ * product uses (its adapter's `promoCodes`).
  *
- * Most are issued: Supaffi creates the code in Stripe from the coupon on the
- * Affiliate's program, under a name the Affiliate (or the Owner) picks. The
- * Owner can also link a code that already exists in Stripe, for a deal made
- * outside the program.
- *
- * A Checkout Session names the code it used only by Stripe's id
- * (`discounts[].promotion_code`, "Promotion code attached to the Checkout
- * Session", Stripe docs, api/checkout/sessions/object), never by the text the
- * customer typed. So the text is turned into that id here, once, when the
- * Owner adds it, and every sale after that is matched on the id with no
- * further Stripe call. Creating and deactivating a code need
- * `promotion_code_write` ("POST /v1/promotion_codes" and
- * "POST /v1/promotion_codes/{id}", Stripe docs, keys/permissions-reference.md),
- * which also covers the lookup: "Write permissions include read permissions"
- * (keys/restricted-api-keys.md).
+ * Most are issued: Supaffi creates the code in the provider from the discount
+ * on the Affiliate's program, under a name the Affiliate (or the Owner) picks.
+ * The Owner can also link a code that already exists in the provider, for a
+ * deal made outside the program. Either way the provider's id for the code is
+ * stored, and every sale is matched on it.
  */
 
 export const MAX_PROMO_CODES_PER_AFFILIATE = 20;
-// Far longer than any code Stripe would hold; only stops an absurd paste
-// from reaching the Stripe request.
+// Far longer than any code a provider would hold; only stops an absurd paste
+// from reaching the provider.
 const MAX_CODE_LENGTH = 200;
 
 export type PromoCodeRow = { id: string; code: string; discountLabel: string | null };
@@ -38,37 +30,22 @@ export type PromoCodeResult = { ok: true } | { ok: false; error: string; keyLack
 
 const ACTIVE = { disabledAt: null } as const;
 
-type Lookup =
-  | { kind: "one"; code: Stripe.PromotionCode }
-  | { kind: "none" }
-  | { kind: "many" }
-  | { kind: "keyLacksPermission" }
-  | { kind: "unreachable" };
+type MerchantForCodes = PromoMerchant & { paymentProvider: PaymentProvider };
 
-/**
- * The active promotion codes with this text. `code` "Only return promotion
- * codes that have this case-insensitive code" (Stripe docs,
- * api/promotion_codes/list.md). Codes limited to different customers may share
- * the same text, so there can be more than one.
- */
-async function lookUp(stripe: Stripe, code: string): Promise<Lookup> {
-  let list: Stripe.ApiList<Stripe.PromotionCode>;
-  try {
-    list = await stripe.promotionCodes.list({ code, active: true, limit: 2 });
-  } catch (err) {
-    return { kind: stripeKeyLacksPermission(err) ? "keyLacksPermission" : "unreachable" };
-  }
-  if (list.data.length === 0) return { kind: "none" };
-  if (list.data.length > 1) return { kind: "many" };
-  return { kind: "one", code: list.data[0] };
+/** The product's promo code adapter, or why it has none to use. */
+function codesFor(merchant: MerchantForCodes): { codes: PromoCodeAdapter } | PromoCodeResult {
+  const provider = paymentProviderFor(merchant);
+  if (!provider.promoCodes) return { ok: false, error: `${provider.name} has no promo codes` };
+  if (!merchant.paymentKeyEnc) return { ok: false, error: `Connect ${provider.name} first` };
+  return { codes: provider.promoCodes };
 }
 
-const UNREACHABLE = { ok: false, error: "Stripe could not be reached. Try again." } as const;
+const MERCHANT_FOR_CODES = { paymentProvider: true, paymentKeyEnc: true, paymentSandbox: true } as const;
 
 async function ownedAffiliate(ownerId: string, merchantId: string, affiliateId: string) {
   return db.affiliate.findFirst({
     where: { id: affiliateId, merchantId, merchant: { ownerId } },
-    select: { id: true, merchant: { select: { id: true, paymentProvider: true, paymentKeyEnc: true } } },
+    select: { id: true, merchant: { select: { id: true, ...MERCHANT_FOR_CODES } } },
   });
 }
 
@@ -84,31 +61,24 @@ export async function addPromoCode(
 
   const affiliate = await ownedAffiliate(ownerId, merchantId, affiliateId);
   if (!affiliate) return { ok: false, error: "Affiliate not found" };
-  if (affiliate.merchant.paymentProvider !== "STRIPE") return { ok: false, error: "Promo codes need Stripe" };
-  if (!affiliate.merchant.paymentKeyEnc) return { ok: false, error: "Connect Stripe first" };
+  const ready = codesFor(affiliate.merchant);
+  if (!("codes" in ready)) return ready;
 
   const count = await db.affiliatePromoCode.count({ where: { affiliateId, ...ACTIVE } });
   if (count >= MAX_PROMO_CODES_PER_AFFILIATE) {
     return { ok: false, error: `An affiliate can have up to ${MAX_PROMO_CODES_PER_AFFILIATE} codes` };
   }
 
-  // More than one match is refused rather than guessed: there is no telling
-  // which one the Owner means.
-  const lookup = await lookUp(stripeClientFor(affiliate.merchant), code);
-  if (lookup.kind === "keyLacksPermission") {
-    return { ok: false, error: "Your Stripe key can't read promotion codes.", keyLacksPermission: true };
-  }
-  if (lookup.kind === "unreachable") return UNREACHABLE;
-  if (lookup.kind === "none") return { ok: false, error: "No active promotion code with that text in Stripe" };
-  if (lookup.kind === "many") return { ok: false, error: "More than one promotion code in Stripe uses that text" };
+  const found = await ready.codes.findCode(affiliate.merchant, code);
+  if (!found.ok) return found;
 
   try {
     await db.affiliatePromoCode.create({
       data: {
         merchantId,
         affiliateId,
-        promoCodeRef: lookup.code.id,
-        code: lookup.code.code,
+        promoCodeRef: found.ref,
+        code: found.code,
       },
     });
   } catch (err) {
@@ -118,19 +88,14 @@ export async function addPromoCode(
   return { ok: true };
 }
 
-// What the customer types: Stripe takes letters, digits and dashes (Stripe
-// docs, api/promotion_codes/create, `code`). Letters and digits only here,
-// and short, because a creator reads it out in a video.
+// What the customer types: letters and digits only, which every provider
+// takes, and short, because a creator reads it out in a video.
 const CODE_PATTERN = /^[A-Z0-9]{3,20}$/;
 
 /**
- * Creates a code in Stripe from the program's coupon, under the name given,
- * and gives it to the Affiliate. One live issued code per Affiliate: a second
- * is refused until the first is turned off.
- *
- * `restrictions.first_time_transaction` keeps it to "Customers without any
- * successful payments or invoices" (Stripe docs, api/promotion_codes/create),
- * so a code that leaks to a coupon site is no use to existing customers.
+ * Creates a code in the provider from the program's discount, under the name
+ * given, and gives it to the Affiliate. One live issued code per Affiliate: a
+ * second is refused until the first is turned off.
  */
 async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeResult> {
   const code = rawCode.trim().toUpperCase();
@@ -140,7 +105,7 @@ async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeRes
     where: { id: affiliateId },
     select: {
       merchantId: true,
-      merchant: { select: { ownerId: true, paymentProvider: true, paymentKeyEnc: true } },
+      merchant: { select: { ownerId: true, ...MERCHANT_FOR_CODES } },
       program: { select: { discountRef: true, discountLabel: true } },
       promoCodes: { where: { issued: true, ...ACTIVE }, select: { id: true } },
       _count: { select: { promoCodes: { where: { issued: true } } } },
@@ -150,51 +115,25 @@ async function issue(affiliateId: string, rawCode: string): Promise<PromoCodeRes
   const { discountRef, discountLabel } = affiliate.program;
   if (!discountRef) return { ok: false, error: "This program has no discount" };
   if (affiliate.promoCodes.length > 0) return { ok: false, error: "There is already a code" };
-  if (affiliate.merchant.paymentProvider !== "STRIPE") return { ok: false, error: "Promo codes need Stripe" };
-  if (!affiliate.merchant.paymentKeyEnc) return { ok: false, error: "Connect Stripe first" };
-  // A turned off code is inactive in Stripe, which would let its text be used
-  // again. Refused here, so a code that leaked stays dead.
+  const ready = codesFor(affiliate.merchant);
+  if (!("codes" in ready)) return ready;
+  // A turned off code is inactive in the provider, which would let its text
+  // be used again. Refused here, so a code that leaked stays dead.
   if ((await usedBefore(affiliate.merchant.ownerId, [code])).length > 0) return { ok: false, error: "That code is taken" };
 
-  const stripe = stripeClientFor(affiliate.merchant);
-  // Stripe refuses a code another active one already uses ("must be unique
-  // across all active promotion codes", api/promotion_codes/create) with the
-  // same invalid request error a key without the permission gets. Asking
-  // first is what tells "taken" apart from "your key can't".
-  const existing = await lookUp(stripe, code);
-  if (existing.kind === "keyLacksPermission") {
-    return { ok: false, error: "Your Stripe key can't create promo codes.", keyLacksPermission: true };
-  }
-  if (existing.kind === "unreachable") return UNREACHABLE;
-  if (existing.kind !== "none") return { ok: false, error: "That code is taken" };
-
-  let created: Stripe.PromotionCode;
-  try {
-    created = await stripe.promotionCodes.create(
-      {
-        promotion: { type: "coupon", coupon: discountRef },
-        code,
-        restrictions: { first_time_transaction: true },
-        metadata: { supaffi_affiliate_id: affiliateId },
-      },
-      // A double click makes one code, not two. The count moves on once a
-      // code is made, so claiming again after turning one off is a new key.
-      { idempotencyKey: `supaffi-promo:${affiliateId}:${affiliate._count.promoCodes}:${code}` }
-    );
-  } catch (err) {
-    // A key that can read codes but not create them gets here: the lookup
-    // above passed, and Stripe answers the create with an invalid request.
-    if (stripeKeyLacksPermission(err)) {
-      return { ok: false, error: "Your Stripe key can't create promo codes.", keyLacksPermission: true };
-    }
-    return UNREACHABLE;
-  }
+  const created = await ready.codes.createCode(affiliate.merchant, {
+    discountRef,
+    code,
+    affiliateId,
+    attempt: affiliate._count.promoCodes,
+  });
+  if (!created.ok) return created;
 
   await db.affiliatePromoCode.create({
     data: {
       merchantId: affiliate.merchantId,
       affiliateId,
-      promoCodeRef: created.id,
+      promoCodeRef: created.ref,
       code: created.code,
       issued: true,
       discountLabel,
@@ -220,9 +159,9 @@ export async function issuePromoCode(
 }
 
 /**
- * Stops a code crediting anyone. An issued code is deactivated in Stripe too,
- * so customers can no longer use it; a linked one is the Owner's own and is
- * left as it is in Stripe. The subscriptions a code already brought keep
+ * Stops a code crediting anyone. An issued code is deactivated in the
+ * provider too, so customers can no longer use it; a linked one is the
+ * Owner's own and is left as it is. The subscriptions a code already brought keep
  * earning, because they belong to the click that sale recorded, not to the
  * code. Kept, not deleted, so its sales stay counted on it.
  */
@@ -241,14 +180,10 @@ export async function turnOffPromoCode(
   if (!code) return { ok: true };
 
   if (code.issued) {
-    try {
-      await stripeClientFor(affiliate.merchant).promotionCodes.update(code.promoCodeRef, { active: false });
-    } catch (err) {
-      if (stripeKeyLacksPermission(err)) {
-        return { ok: false, error: "Your Stripe key can't turn off promo codes.", keyLacksPermission: true };
-      }
-      return UNREACHABLE;
-    }
+    const ready = codesFor(affiliate.merchant);
+    if (!("codes" in ready)) return ready;
+    const off = await ready.codes.deactivateCode(affiliate.merchant, code.promoCodeRef);
+    if (!off.ok) return off;
   }
   await db.affiliatePromoCode.update({ where: { id: code.id }, data: { disabledAt: new Date() } });
   return { ok: true };
@@ -297,7 +232,7 @@ export async function promoCodeOffer(affiliateId: string): Promise<PromoCodeOffe
 
 /**
  * The texts among `codes` any of this Owner's products has had a code under,
- * live or off. Across products, because products can share a Stripe account.
+ * live or off. Across products, because products can share a payment account.
  */
 async function usedBefore(ownerId: string, codes: string[]): Promise<string[]> {
   if (codes.length === 0) return [];

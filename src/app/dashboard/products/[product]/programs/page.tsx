@@ -84,7 +84,13 @@ export default async function ProgramsPage({
   const coupons = query.new || editing ? await couponsForProgramForm(ownerId, merchant.id) : null;
   const discountFor = (p: Program | null) =>
     coupons
-      ? { coupons, value: p?.discountRef ?? null, replaceKeyHref: `/dashboard/products/${merchant.slug}/settings?replace=payment-key` }
+      ? {
+          coupons,
+          value: p?.discountRef ?? null,
+          replaceKeyHref: `/dashboard/products/${merchant.slug}/settings?replace=payment-key`,
+          // Polar has no first-purchase rule; each code is limited to one use per customer.
+          rule: merchant.paymentProvider === "POLAR" ? "Once per customer." : "New customers only.",
+        }
       : undefined;
 
   return (

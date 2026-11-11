@@ -1275,7 +1275,7 @@ function BAffiliateSheet() {
         links: [{ url: "https://instantgradient.com/?via=sarah", clicks: 312 }],
         promoCodes: [],
         codeToIssue: { suggested: "SARAH20", discountLabel: "20% off for 3 months" },
-        promoCodesOn: true,
+        promoProvider: "Stripe",
         commissions: [{ id: "c1", date: "2 Sept", amount: "$8.70", status: "PAYABLE" }],
       }}
       productDomain="affiliates.mokkit.co"
