@@ -24,9 +24,10 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
 | Feature | What you get |
 | --- | --- |
+| **Bulk payouts and tax forms** | One file to pay everyone through PayPal or Wise, a minimum payout amount, and affiliates' tax forms collected in their portal. |
 | **Import from Rewardful, Tolt and FirstPromoter** | Bring your affiliates, their links and their history. Nobody's link breaks. |
-| **Bulk payouts** | One file to pay everyone through PayPal or Wise, and a minimum payout amount. |
-| **Applications** | Approve new affiliates before they go live. |
+| **Claude and ChatGPT connection** | Ask about your program and manage it from your AI assistant, through MCP. |
+| **Applications and sales review** | Approve new affiliates before they go live, and hold sales that look like fraud until you review them. |
 
 ## Later
 
