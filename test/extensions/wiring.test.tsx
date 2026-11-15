@@ -180,3 +180,53 @@ describe("account.sections and instance.showInfo", () => {
     expect(updateCheckEnabled()).toBe(false);
   });
 });
+
+describe("domains.requireOwnershipProof", () => {
+  async function askedWhere(): Promise<unknown> {
+    let where: unknown;
+    vi.doMock("@/lib/db", () => ({
+      db: {
+        merchant: {
+          findUnique: async (args: { where: unknown }) => {
+            where = args.where;
+            return null;
+          },
+        },
+      },
+    }));
+    const { GET } = await import("@/app/api/internal/domain-check/route");
+    const { NextRequest } = await import("next/server");
+    await GET(
+      new NextRequest("http://app:3000/api/internal/domain-check?domain=affiliates.example.com", {
+        headers: { "x-forwarded-for": "172.18.0.3" },
+      })
+    );
+    return where;
+  }
+
+  it("lets the certificate check approve any saved domain by default", async () => {
+    expect(await askedWhere()).toEqual({ domain: "affiliates.example.com" });
+  });
+
+  it("makes the certificate check approve only a proven domain when set", async () => {
+    install({}, { domains: { requireOwnershipProof: true } });
+    expect(await askedWhere()).toEqual({ domain: "affiliates.example.com", domainVerifiedAt: { not: null } });
+  });
+});
+
+describe("domains.reserved", () => {
+  const input = (domain: string) => ({ name: "Docs", domain, websiteUrl: "https://example.com" });
+
+  it("reserves nothing by default", async () => {
+    const { validateProductInput } = await import("@/lib/productValidation");
+    expect(validateProductInput(input("affiliates.example.com"))).toBeNull();
+  });
+
+  it("refuses a listed domain and every name under it when set", async () => {
+    install({}, { domains: { reserved: ["example.com"] } });
+    const { validateProductInput } = await import("@/lib/productValidation");
+    expect(validateProductInput(input("example.com"))).toBe("That domain is reserved.");
+    expect(validateProductInput(input("affiliates.example.com"))).toBe("That domain is reserved.");
+    expect(validateProductInput(input("notexample.com"))).toBeNull();
+  });
+});

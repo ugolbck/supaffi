@@ -26,7 +26,8 @@ downstream code.
 
 ## Hook catalogue (API version 1)
 
-Static (`staticExt`): `owners.signupPath`, `owners.passwordResetPath`, `instance.showInfo`.
+Static (`staticExt`): `owners.signupPath`, `owners.passwordResetPath`, `instance.showInfo`,
+`domains.requireOwnershipProof`, `domains.reserved`.
 Server (`ext`): `dashboard.gate`, `dashboard.banner`, `account.sections`.
 Core API: `createOwnerAccount`, `findOwnerByEmail`, `setOwnerPassword`,
 `listOwnerMerchants`, `currentOwnerId`, `signInOwner`, `isMerchantDomain`.

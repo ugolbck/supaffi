@@ -12,18 +12,22 @@ import { CopyValue } from "@/components/CopyValue";
 import { Button } from "@/components/ui/button";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { CheckList } from "@/components/onboarding/CheckList";
-import { dnsCheckRows, type CheckRow } from "@/components/onboarding/checkRows";
+import { dnsCheckRows, ownershipCheckRow, type CheckRow } from "@/components/onboarding/checkRows";
+import { OwnershipRecordTable, OwnershipRecordTitle } from "@/components/onboarding/OwnershipRecord";
+import { checkDomainOwnership } from "@/lib/domainOwnership";
 import { isDevInstance } from "@/lib/instanceMode";
 import { isLocalDomain } from "@/lib/url";
 import { ProductForm, type SubdomainWebhook } from "./ProductForm";
 import { ConnectionSheet } from "./ConnectionSheet";
 import { DeleteProduct } from "./DeleteProduct";
 import { MailSettings } from "./MailSettings";
+import { VerifyDomainButton } from "./VerifyDomainButton";
 import { mailStatus } from "@/lib/mail";
 import {
   replacePolarTokenAction,
   replaceStripeKeyAction,
   replaceWebhookSecretAction,
+  verifyDomainAction,
 } from "./settingsActions";
 
 /**
@@ -82,6 +86,8 @@ export default async function SettingsPage({
     getWebhookEndpointId(ownerId, merchant.id),
   ]);
   const local = isDevInstance() || isLocalDomain(merchant.domain);
+  // Null unless the build requires proof; looks for the record while it is missing.
+  const ownership = local ? null : await checkDomainOwnership(ownerId, merchant.id);
   const polar = merchant.paymentProvider === "POLAR";
   const provider = polar ? "Polar" : "Stripe";
   const webhooksUrl = polar ? polarDashboardUrl(merchant.paymentSandbox) : "https://dashboard.stripe.com/webhooks";
@@ -122,7 +128,15 @@ export default async function SettingsPage({
       action: replaceLink("webhook-secret"),
     },
   ];
-  const dnsRows: CheckRow[] = local ? [] : dnsCheckRows(checks.dns);
+  const ownershipRows: CheckRow[] = ownership
+    ? [
+        {
+          ...ownershipCheckRow(ownership.result),
+          action: ownership.record ? <VerifyDomainButton action={verifyDomainAction.bind(null, productRef)} /> : undefined,
+        },
+      ]
+    : [];
+  const dnsRows: CheckRow[] = local ? [] : [...ownershipRows, ...dnsCheckRows(checks.dns)];
 
   const sheets = {
     "payment-key": polar
@@ -172,7 +186,21 @@ export default async function SettingsPage({
             domain: merchant.domain,
             websiteUrl: merchant.websiteUrl,
           }}
-          lights={dnsRows.length > 0 ? <CheckList rows={dnsRows} /> : null}
+          lights={
+            dnsRows.length > 0 ? (
+              <>
+                {ownership?.record && (
+                  <div className="border-b border-neutral-200 bg-white">
+                    <p className="px-4 pt-3 pb-1 text-[13px] font-medium">
+                      <OwnershipRecordTitle />
+                    </p>
+                    <OwnershipRecordTable record={ownership.record} />
+                  </div>
+                )}
+                <CheckList rows={dnsRows} />
+              </>
+            ) : null
+          }
           webhook={subdomainWebhook}
         />
         {query.webhook === "manual" && setup.webhookSecretStored && (

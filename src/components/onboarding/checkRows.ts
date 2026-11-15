@@ -118,3 +118,19 @@ export function dnsCheckRows(dns: DnsChecks): CheckRow[] {
     },
   ];
 }
+
+/**
+ * Proof that the domain belongs to the Owner, shown above the subdomain's own
+ * rows when the build requires it. Nothing is served on the domain until it
+ * passes, so it leads the list.
+ */
+export function ownershipCheckRow(result: CheckResult): CheckRow {
+  return {
+    id: "ownership",
+    state: checkState(result, dnsPending),
+    pending: "Your DNS does not have the verification record yet",
+    passed: "Domain verified as yours",
+    failed: result.detail,
+    hint: "Check the name and the value on the verification record.",
+  };
+}

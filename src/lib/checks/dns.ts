@@ -1,4 +1,4 @@
-import { Resolver, resolve4, resolveNs } from "node:dns/promises";
+import { Resolver, resolve4, resolveNs, resolveTxt } from "node:dns/promises";
 import { connect, type PeerCertificate } from "node:tls";
 
 export type CheckResult = { ok: boolean; detail: string };
@@ -57,6 +57,24 @@ export async function resolveAuthoritative(
   hostname: string,
   deps: AuthoritativeDeps = authoritativeDefaults
 ): Promise<string[]> {
+  return askZoneNameservers(
+    hostname,
+    deps,
+    (servers) => deps.makeResolver(servers).resolve4(hostname),
+    () => deps.resolve4(hostname)
+  );
+}
+
+/**
+ * Finds the zone's nameservers and asks them, through `ask`, or falls back to
+ * `fallback` when that path cannot be established. See resolveAuthoritative.
+ */
+async function askZoneNameservers<T>(
+  hostname: string,
+  deps: Pick<AuthoritativeDeps, "resolveNs" | "resolve4">,
+  ask: (servers: string[]) => Promise<T>,
+  fallback: () => Promise<T>
+): Promise<T> {
   for (const zone of [...registrableCandidates(hostname)].reverse()) {
     let nameservers: string[];
     try {
@@ -77,13 +95,49 @@ export async function resolveAuthoritative(
     if (addresses.length === 0) continue;
 
     try {
-      return await deps.makeResolver(addresses).resolve4(hostname);
+      return await ask(addresses);
     } catch (err) {
       if ((err as { code?: string })?.code === "ENOTFOUND") throw err;
-      return deps.resolve4(hostname);
+      return fallback();
     }
   }
-  return deps.resolve4(hostname);
+  return fallback();
+}
+
+export type AuthoritativeTxtDeps = {
+  resolveNs: (h: string) => Promise<string[]>;
+  resolve4: (h: string) => Promise<string[]>;
+  resolveTxt: (h: string) => Promise<string[][]>;
+  makeResolver: (servers: string[]) => { resolveTxt: (h: string) => Promise<string[][]> };
+};
+
+const authoritativeTxtDefaults: AuthoritativeTxtDeps = {
+  resolveNs,
+  resolve4,
+  resolveTxt,
+  makeResolver: (servers) => {
+    const resolver = new Resolver();
+    resolver.setServers(servers);
+    return resolver;
+  },
+};
+
+/**
+ * A name's TXT records, asked of the zone's own nameservers for the same
+ * reason as resolveAuthoritative: the domain ownership check polls the name
+ * before the Owner has created it. Each record's chunks are joined.
+ */
+export async function resolveTxtAuthoritative(
+  hostname: string,
+  deps: AuthoritativeTxtDeps = authoritativeTxtDefaults
+): Promise<string[]> {
+  const records = await askZoneNameservers(
+    hostname,
+    deps,
+    (servers) => deps.makeResolver(servers).resolveTxt(hostname),
+    () => deps.resolveTxt(hostname)
+  );
+  return records.map((chunks) => chunks.join(""));
 }
 
 /**

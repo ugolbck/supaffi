@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { servedDomain } from "@/lib/domainOwnership";
 import { decrypt } from "@/lib/crypto";
 import { Prisma } from "@prisma/client";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   }
 
   const merchant = await db.merchant.findUnique({
-    where: { domain: host },
+    where: servedDomain(host),
     select: { id: true, paymentProvider: true, webhookSecretEnc: true },
   });
   // No webhook secret means the provider was never connected for this

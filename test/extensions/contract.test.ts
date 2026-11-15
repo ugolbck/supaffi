@@ -16,6 +16,7 @@ describe("extension defaults", () => {
     expect(staticExt).toEqual({
       owners: { signupPath: null, passwordResetPath: null },
       instance: { showInfo: true },
+      domains: { requireOwnershipProof: false, reserved: [] },
     });
   });
 
@@ -51,6 +52,7 @@ describe("an installed build", () => {
     expect(staticExt).toEqual({
       owners: { signupPath: null, passwordResetPath: null },
       instance: { showInfo: false },
+      domains: { requireOwnershipProof: false, reserved: [] },
     });
   });
 
@@ -64,6 +66,14 @@ describe("an installed build", () => {
     vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { owners: { passwordResetPath: "  " } } }));
     const { staticExt } = await import("@/extensions/static");
     expect(staticExt.owners.passwordResetPath).toBeNull();
+  });
+
+  it("reads reserved domains lowercase, trimmed, without a trailing dot or empty entries", async () => {
+    vi.doMock("@/extensions/installed-static", () => ({
+      installedStatic: { domains: { reserved: [" Example.COM. ", "", "  "] } },
+    }));
+    const { staticExt } = await import("@/extensions/static");
+    expect(staticExt.domains).toEqual({ requireOwnershipProof: false, reserved: ["example.com"] });
   });
 });
 

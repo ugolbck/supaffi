@@ -7,6 +7,7 @@ import type { StaticExtensions } from "./types";
 export const staticDefaults: StaticExtensions = {
   owners: { signupPath: null, passwordResetPath: null },
   instance: { showInfo: true },
+  domains: { requireOwnershipProof: false, reserved: [] },
 };
 
 const merged = mergeExtensions(staticDefaults, installedStatic);
@@ -18,5 +19,10 @@ export const staticExt: StaticExtensions = {
   owners: {
     signupPath: merged.owners.signupPath?.trim() || null,
     passwordResetPath: merged.owners.passwordResetPath?.trim() || null,
+  },
+  // Compared against stored domains, which are lowercase with no trailing dot.
+  domains: {
+    ...merged.domains,
+    reserved: merged.domains.reserved.map((domain) => domain.trim().toLowerCase().replace(/\.$/, "")).filter(Boolean),
   },
 };

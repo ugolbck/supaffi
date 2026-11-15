@@ -30,6 +30,14 @@ model Merchant {
   // Owners on the same Instance can both have a product called "Docs".
   slug       String
   domain     String @unique // e.g. affiliates.instantgradient.com
+  // When the Owner proved control of `domain` with the TXT record carrying
+  // `domainToken`. Only read when the build requires that proof
+  // (staticExt.domains.requireOwnershipProof): until then the domain is not
+  // served and gets no certificate. Domains that existed before this column
+  // were marked proven, so an upgrade keeps them working.
+  domainVerifiedAt DateTime?
+  // New with every new domain. Public once it is in DNS, so stored as is.
+  domainToken      String?
   websiteUrl String // the actual product site affiliates promote, e.g. https://instantgradient.com — distinct from `domain`, which is only the tracking subdomain
 
   // Encrypted at rest (ADR 0003), master key outside the database.
@@ -493,4 +501,16 @@ model RetiredLinkCode {
   retiredAt   DateTime @default(now())
 
   @@index([affiliateId])
+}
+
+/// A proven product domain that was removed or replaced. Until the hold runs
+/// out only the Owner who released it may claim it again, so a domain somebody
+/// just gave up cannot be picked up by another Owner on the same server while
+/// links to it still circulate. Written only when ownership proof is required.
+///
+/// No foreign keys, like RetiredLinkCode: a row outlives the product it came from.
+model ReleasedDomain {
+  domain     String   @id
+  ownerId    String
+  releasedAt DateTime @default(now())
 }

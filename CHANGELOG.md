@@ -8,6 +8,24 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Extensions: `domains.requireOwnershipProof`, a static hook that makes a
+  product's affiliate domain prove it belongs to its Owner with a DNS TXT
+  record before it is served or given a certificate. The record and a check
+  are shown in the subdomain step and the product's settings. A proven domain
+  that is given up stays with its Owner for 7 days, and an Owner can have 3
+  domains waiting for proof at once. Off by default.
+- Extensions: `domains.reserved`, a static hook listing hostnames no product
+  may use, along with every name under them. Defaults to none.
+
+### Changed
+
+- Every product domain saved before this version counts as proven, so it
+  keeps working after the upgrade.
+
 ## 0.8.0
 
 ### Added

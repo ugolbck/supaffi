@@ -110,7 +110,7 @@ export function ProductForm({
             className="font-mono lg:max-w-80"
             required
           />
-          {lights && <div className="rounded-(--radius) border border-neutral-200 bg-neutral-50 lg:max-w-md">{lights}</div>}
+          {lights && <div className="overflow-hidden rounded-(--radius) border border-neutral-200 bg-neutral-50 lg:max-w-md">{lights}</div>}
         </div>
       </Row>
 

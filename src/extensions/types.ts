@@ -34,6 +34,23 @@ export type StaticExtensions = {
     /** Whether the Owner sees the running version, update notices and the "This instance" panel. */
     showInfo: boolean;
   };
+  domains: {
+    /**
+     * Whether a product's affiliate domain needs a DNS TXT record proving the
+     * Owner controls it. false keeps every domain live as soon as it is saved.
+     * true shows the record in the product's subdomain step and settings, and
+     * until it is found the domain gets no certificate and serves nothing. A
+     * proven domain that is given up is held for its Owner for a while, and an
+     * Owner can have only a few domains waiting for proof at once.
+     */
+    requireOwnershipProof: boolean;
+    /**
+     * Hostnames no product may use, each with every name under it. Matched
+     * without case or surrounding space; empty entries are ignored. This
+     * Instance's own domain is always refused, whatever is listed here.
+     */
+    reserved: string[];
+  };
 };
 
 /** Server-side hooks. Called from server components and actions only. */

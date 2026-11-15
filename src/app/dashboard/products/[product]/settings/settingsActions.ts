@@ -13,6 +13,7 @@ import {
 import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { DomainClaimError, checkDomainOwnership } from "@/lib/domainOwnership";
 import { stripeKeyWorks } from "@/lib/payments/stripe/keyCheck";
 import { connectPolarToken } from "@/lib/payments/polar/connectToken";
 import { upgradeMerchantWebhookEvents } from "@/lib/payments/stripe/endpointUpkeep";
@@ -67,6 +68,7 @@ export async function updateProductAction(
     await updateMerchant(ownerId, product.id, input);
   } catch (err) {
     if (isUniqueConstraintError(err)) return { error: "Another product already uses that subdomain", values: input };
+    if (err instanceof DomainClaimError) return { error: err.message, values: input };
     throw err;
   }
   // The payment provider finds the product by the address it delivers to, so
@@ -79,6 +81,13 @@ export async function updateProductAction(
   revalidatePath("/dashboard", "layout");
   const target = settings(product.slug, "dns");
   redirect(moved === "manual" ? `${target}&webhook=manual` : target);
+}
+
+/** "Check" beside the domain's verification row: looks for its TXT record now. */
+export async function verifyDomainAction(product: ProductRef): Promise<void> {
+  const ownerId = await owner();
+  await checkDomainOwnership(ownerId, product.id);
+  redirect(settings(product.slug, "dns"));
 }
 
 export async function replaceStripeKeyAction(

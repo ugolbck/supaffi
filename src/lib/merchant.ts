@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { assertOwnsMerchant } from "@/lib/ownership";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { uniqueSlug } from "@/lib/slug";
+import { claimDomain, releaseDomain, servedDomain } from "@/lib/domainOwnership";
 
 // Creating a Merchant takes no credentials. Connecting the payment provider
 // is a separate step, done against a Merchant that already exists, so the
@@ -27,12 +28,16 @@ export async function createMerchant(
     )
   );
 
+  // Throws DomainClaimError when the domain cannot be taken.
+  const claim = await claimDomain(ownerId, input.domain);
+
   return db.merchant.create({
     data: {
       ownerId,
       name: input.name,
       slug,
       domain: input.domain,
+      ...claim,
       websiteUrl: input.websiteUrl,
       ...(input.paymentProvider ? { paymentProvider: input.paymentProvider } : {}),
     },
@@ -209,21 +214,31 @@ export async function updateMerchant(
   input: MerchantDetailsInput
 ): Promise<void> {
   await assertOwnsMerchant(ownerId, merchantId);
+  const before = await db.merchant.findUniqueOrThrow({
+    where: { id: merchantId },
+    select: { domain: true, domainVerifiedAt: true },
+  });
+  // A new domain is a new claim, proven afresh. Throws DomainClaimError when
+  // it cannot be taken, before anything is written.
+  const moving = input.domain !== before.domain;
+  const claim = moving ? await claimDomain(ownerId, input.domain, merchantId) : {};
   await db.merchant.update({
     where: { id: merchantId },
     data: {
       name: input.name,
       domain: input.domain,
       websiteUrl: input.websiteUrl,
+      ...claim,
     },
   });
+  if (moving) await releaseDomain(ownerId, before.domain, before.domainVerifiedAt);
 }
 
 export async function getMerchantByDomain(
   domain: string
 ): Promise<{ id: string; slug: string; name: string; domain: string; websiteUrl: string } | null> {
   return db.merchant.findUnique({
-    where: { domain },
+    where: servedDomain(domain),
     select: { id: true, slug: true, name: true, domain: true, websiteUrl: true },
   });
 }
@@ -238,6 +253,11 @@ export async function getMerchantByDomain(
 export async function deleteMerchant(ownerId: string, merchantId: string): Promise<void> {
   await assertOwnsMerchant(ownerId, merchantId);
   const affiliates = { affiliate: { merchantId } };
+  const { domain, domainVerifiedAt } = await db.merchant.findUniqueOrThrow({
+    where: { id: merchantId },
+    select: { domain: true, domainVerifiedAt: true },
+  });
+  const release = releaseDomain(ownerId, domain, domainVerifiedAt);
   await db.$transaction([
     db.commission.deleteMany({ where: affiliates }),
     // Points at the click, so it goes before clicks do.
@@ -250,6 +270,7 @@ export async function deleteMerchant(ownerId: string, merchantId: string): Promi
     db.program.deleteMany({ where: { merchantId } }),
     db.webhookEvent.deleteMany({ where: { merchantId } }),
     db.merchant.delete({ where: { id: merchantId } }),
+    ...(release ? [release] : []),
   ]);
 }
 

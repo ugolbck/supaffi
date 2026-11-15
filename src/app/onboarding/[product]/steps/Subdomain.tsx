@@ -2,12 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CheckList } from "@/components/onboarding/CheckList";
-import { dnsCheckRows } from "@/components/onboarding/checkRows";
+import { dnsCheckRows, ownershipCheckRow } from "@/components/onboarding/checkRows";
 import { EditableField } from "@/components/onboarding/EditableField";
+import { OwnershipRecordTable, OwnershipRecordTitle } from "@/components/onboarding/OwnershipRecord";
 import { RecordTable } from "@/components/onboarding/RecordTable";
 import { StepShell } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { detectDnsProvider } from "@/lib/checks/dns";
+import { checkDomainOwnership } from "@/lib/domainOwnership";
 import { cloudflareDnsRecordsUrl } from "@/lib/dnsProviderLinks";
 import { displayStep, dnsRecordName, dnsZone, nextStep, splitSubdomain, stepPath } from "@/lib/onboarding";
 import { isLocalDomain } from "@/lib/url";
@@ -56,9 +58,13 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
     );
   }
 
-  const provider = await detectDnsProvider(merchant.domain);
+  // Looked up on every render, so the page's own polling is what verifies it.
+  const [provider, ownership] = await Promise.all([
+    detectDnsProvider(merchant.domain),
+    checkDomainOwnership(ctx.ownerId, merchant.id),
+  ]);
   const hostIp = process.env.SUPAFFI_HOST_IP?.trim() || null;
-  const rows = dnsCheckRows(checks.dns);
+  const rows = [...(ownership ? [ownershipCheckRow(ownership.result)] : []), ...dnsCheckRows(checks.dns)];
   const settled = rows.every((r) => r.state === "ok");
 
   return (
@@ -100,6 +106,14 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
             ]}
           />
         </TaskCardSection>
+        {ownership?.record && (
+          <>
+            <TaskCardHeader title={<OwnershipRecordTitle />} />
+            <TaskCardSection>
+              <OwnershipRecordTable record={ownership.record} />
+            </TaskCardSection>
+          </>
+        )}
         <TaskCardSection sunken>
           <CheckList rows={rows} onRecheck={recheckAction.bind(null, product, "subdomain")} />
         </TaskCardSection>

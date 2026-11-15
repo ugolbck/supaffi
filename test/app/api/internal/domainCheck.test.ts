@@ -5,7 +5,7 @@
 // turns the server into a free certificate mint for any domain pointed at it;
 // a false 403 makes a real Merchant's domain unreachable. Neither failure is
 // visible from the app itself, which is why this file exists.
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { GET } from "@/app/api/internal/domain-check/route";
@@ -114,5 +114,52 @@ describe.skipIf(!hasDatabase)("domain-check", () => {
 
     const res = await ask("affiliates.example.com", "203.0.113.7");
     expect(res.status).toBe(404);
+  });
+});
+
+// Off by default. On, a domain whose TXT record has not been found yet gets no
+// certificate, so pointing somebody else's domain here and saving it is not
+// enough to have it served.
+describe.skipIf(!hasDatabase)("domain-check with ownership proof", () => {
+  beforeEach(clear);
+  afterAll(async () => {
+    vi.doUnmock("@/extensions/installed-static");
+    await clear();
+  });
+
+  async function routeWith(requireOwnershipProof: boolean) {
+    vi.resetModules();
+    vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { domains: { requireOwnershipProof } } }));
+    return (await import("@/app/api/internal/domain-check/route")).GET;
+  }
+
+  async function merchant(domain: string, domainVerifiedAt: Date | null) {
+    const owner = await db.owner.create({ data: { email: `${crypto.randomUUID()}@example.com`, passwordHash: "x" } });
+    await db.merchant.create({
+      data: { slug: crypto.randomUUID(), ownerId: owner.id, name: "Proof", domain, websiteUrl: "https://example.com", domainVerifiedAt },
+    });
+  }
+
+  const request = (domain: string) =>
+    new NextRequest(`http://app:3000/api/internal/domain-check?domain=${domain}`, {
+      headers: { "x-forwarded-for": "172.18.0.3" },
+    });
+
+  it("refuses a domain not proven yet when proof is required", async () => {
+    await merchant("affiliates.example.com", null);
+    const get = await routeWith(true);
+    expect((await get(request("affiliates.example.com"))).status).toBe(403);
+  });
+
+  it("approves a proven domain when proof is required", async () => {
+    await merchant("affiliates.example.com", new Date());
+    const get = await routeWith(true);
+    expect((await get(request("affiliates.example.com"))).status).toBe(200);
+  });
+
+  it("approves a domain not proven yet when proof is not required", async () => {
+    await merchant("affiliates.example.com", null);
+    const get = await routeWith(false);
+    expect((await get(request("affiliates.example.com"))).status).toBe(200);
   });
 });

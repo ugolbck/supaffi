@@ -6,6 +6,7 @@ import { createMerchant } from "@/lib/merchant";
 import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { DomainClaimError } from "@/lib/domainOwnership";
 import { suggestSubdomain, stepPath } from "@/lib/onboarding";
 
 export async function createProductAction(
@@ -34,6 +35,7 @@ export async function createProductAction(
     slug = (await createMerchant(session.user.id, { name, domain: normalizeDomain(domain), websiteUrl, paymentProvider })).slug;
   } catch (err) {
     if (isUniqueConstraintError(err)) return { error: "A product on that site already exists" };
+    if (err instanceof DomainClaimError) return { error: err.message };
     throw err;
   }
   redirect(stepPath(slug, "subdomain"));

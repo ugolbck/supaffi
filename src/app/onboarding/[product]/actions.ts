@@ -13,6 +13,7 @@ import {
 import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { DomainClaimError } from "@/lib/domainOwnership";
 import { stepPath, nextStep, splitSubdomain, rehomeSubdomain, type StepId } from "@/lib/onboarding";
 import { createProgram, updateProgram, listProgramsForMerchant } from "@/lib/program";
 import { validateProgramInput } from "@/lib/programValidation";
@@ -64,6 +65,7 @@ export async function updateSubdomainAction(
     await updateMerchant(ownerId, product.id, { name: merchant.name, domain, websiteUrl: merchant.websiteUrl });
   } catch (err) {
     if (isUniqueConstraintError(err)) return { error: "Another product already uses that address" };
+    if (err instanceof DomainClaimError) return { error: err.message };
     throw err;
   }
   // No revalidate here. Re-rendering the step from the action means the save
@@ -115,6 +117,7 @@ export async function updateProductWebsiteAction(
     await updateMerchant(ownerId, product.id, { name: merchant.name, domain, websiteUrl });
   } catch (err) {
     if (isUniqueConstraintError(err)) return { error: "Another product already uses that address" };
+    if (err instanceof DomainClaimError) return { error: err.message };
     throw err;
   }
   revalidatePath(stepPath(product.slug, "product"));
