@@ -89,6 +89,37 @@ describe("with an Owner signup path installed", () => {
   });
 });
 
+describe("with an Owner password reset path installed", () => {
+  afterEach(() => {
+    vi.doUnmock("@/extensions/installed-static");
+    vi.resetModules();
+  });
+
+  async function logicWith(passwordResetPath: string | null) {
+    vi.resetModules();
+    vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { owners: { passwordResetPath } } }));
+    return import("@/lib/middlewareLogic");
+  }
+
+  it("answers not found for the reset page and its subpaths on a product's domain", async () => {
+    const logic = await logicWith("/reset-password");
+    expect(logic.resolveProductDomainRoute("/reset-password")).toEqual({ notFound: true });
+    expect(logic.resolveProductDomainRoute("/reset-password/abc123")).toEqual({ notFound: true });
+    expect(logic.resolveProductDomainRoute("/reset-passwords")).toBeNull();
+    expect(logic.resolveProductDomainRoute("/affiliates/login")).toBeNull();
+  });
+
+  it("leaves the same path alone when none is installed", async () => {
+    const logic = await logicWith(null);
+    expect(logic.resolveProductDomainRoute("/reset-password")).toBeNull();
+  });
+
+  it("does not read an empty path as every page", async () => {
+    const logic = await logicWith("");
+    expect(logic.resolveProductDomainRoute("/affiliates")).toBeNull();
+  });
+});
+
 describe("proxyReadsSession", () => {
   it("covers the root and the paths that redirect by session, and nothing else", () => {
     for (const path of ["/", "/login", "/setup", "/dashboard/products", "/onboarding/acme", "/affiliates/dashboard/payouts"]) {

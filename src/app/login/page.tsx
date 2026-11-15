@@ -12,7 +12,7 @@ import { LoginForm } from "./LoginForm";
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
-  const { signupPath } = staticExt.owners;
+  const { signupPath, passwordResetPath } = staticExt.owners;
   if (!(await ownerExists())) {
     redirect(signupPath ?? "/setup");
   }
@@ -20,6 +20,13 @@ export default async function LoginPage() {
   return (
     <CenteredShell>
       <LoginForm />
+      {passwordResetPath && (
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          <Link href={passwordResetPath} className="cursor-pointer text-foreground underline underline-offset-4">
+            Forgot password?
+          </Link>
+        </p>
+      )}
       {signupPath && (
         <p className="mt-4 text-center text-sm text-muted-foreground">
           No account yet?{" "}
