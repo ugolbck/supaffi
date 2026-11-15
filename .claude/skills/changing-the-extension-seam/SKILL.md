@@ -15,7 +15,7 @@ downstream code.
 
 | File | Role |
 |---|---|
-| `types.ts` | All hook types and `export const EXTENSIONS_API_VERSION = 1;` (keep on one line, builds read it by regex). |
+| `types.ts` | All hook types and `export const EXTENSIONS_API_VERSION = 2;` (keep on one line, builds read it by regex). |
 | `static.ts` | `staticExt`: plain-data hooks and their defaults. Imports only types, `merge` and `installed-static`. |
 | `defaults.ts` | This app's behaviour for every server hook. |
 | `index.ts` | `ext`: server hooks. |
@@ -24,7 +24,7 @@ downstream code.
 | `core-api.ts` | Stable functions downstream code may call. |
 | `test/extensions/` | `contract` (defaults), `wiring` (each hook reaches its page), `owners`, `core-api`. |
 
-## Hook catalogue (API version 1)
+## Hook catalogue (API version 2)
 
 Static (`staticExt`): `owners.signupPath`, `owners.passwordResetPath`, `instance.showInfo`,
 `domains.requireOwnershipProof`, `domains.reserved`.

@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse(null, { status: 400 });
   }
 
-  const merchant = await db.merchant.findUnique({
+  const merchant = await db.merchant.findFirst({
     where: servedDomain(host),
     select: { id: true },
   });

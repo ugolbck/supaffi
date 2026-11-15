@@ -14,7 +14,7 @@ import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { CheckList } from "@/components/onboarding/CheckList";
 import { dnsCheckRows, ownershipCheckRow, type CheckRow } from "@/components/onboarding/checkRows";
 import { OwnershipRecordTable, OwnershipRecordTitle } from "@/components/onboarding/OwnershipRecord";
-import { checkDomainOwnership } from "@/lib/domainOwnership";
+import { proveDomain } from "@/lib/domainProof";
 import { isDevInstance } from "@/lib/instanceMode";
 import { isLocalDomain } from "@/lib/url";
 import { ProductForm, type SubdomainWebhook } from "./ProductForm";
@@ -87,7 +87,7 @@ export default async function SettingsPage({
   ]);
   const local = isDevInstance() || isLocalDomain(merchant.domain);
   // Null unless the build requires proof; looks for the record while it is missing.
-  const ownership = local ? null : await checkDomainOwnership(ownerId, merchant.id);
+  const ownership = local ? null : await proveDomain(ownerId, merchant.id);
   const polar = merchant.paymentProvider === "POLAR";
   const provider = polar ? "Polar" : "Stripe";
   const webhooksUrl = polar ? polarDashboardUrl(merchant.paymentSandbox) : "https://dashboard.stripe.com/webhooks";
@@ -205,7 +205,7 @@ export default async function SettingsPage({
           }
           webhook={subdomainWebhook}
         />
-        {query.webhook === "manual" && setup.webhookSecretStored && webhookUrl && (
+        {(query.webhook === "manual" || ownership?.webhook === "manual") && setup.webhookSecretStored && webhookUrl && (
           <div
             role="alert"
             className="mt-4 flex flex-col gap-3 rounded-(--radius) border border-status-warning/30 bg-status-warning-bg px-4 py-3 text-sm"

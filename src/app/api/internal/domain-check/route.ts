@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
   // A domain whose ownership is still unproven, when proof is required, is
   // refused like an unknown one.
-  const merchant = await db.merchant.findUnique({
+  const merchant = await db.merchant.findFirst({
     where: servedDomain(domain),
     select: { id: true },
   });

@@ -7,7 +7,8 @@ import { NextRequest } from "next/server";
 // already cover against a real database.
 const findUnique = vi.fn();
 const create = vi.fn();
-vi.mock("@/lib/db", () => ({ db: { merchant: { findUnique }, webhookEvent: { create } } }));
+// The route looks the product up with findFirst; the mock keeps its old name.
+vi.mock("@/lib/db", () => ({ db: { merchant: { findFirst: findUnique }, webhookEvent: { create } } }));
 vi.mock("@/lib/crypto", () => ({ decrypt: (value: string) => value }));
 
 const { POST } = await import("@/app/api/webhooks/[provider]/route");

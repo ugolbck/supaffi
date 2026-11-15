@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ProductRef } from "@/lib/merchant";
 import { normalizeDomain } from "@/lib/productValidation";
+import { staticExt } from "@/extensions/static";
+import { cn } from "@/lib/utils";
 import { updateProductAction } from "./settingsActions";
 
 /**
@@ -111,7 +113,17 @@ export function ProductForm({
             className="font-mono lg:max-w-80"
             required
           />
-          {lights && <div className="overflow-hidden rounded-(--radius) border border-neutral-200 bg-neutral-50 lg:max-w-md">{lights}</div>}
+          {lights && (
+            // Clipped only where the verification record sits on top of the lights.
+            <div
+              className={cn(
+                "rounded-(--radius) border border-neutral-200 bg-neutral-50 lg:max-w-md",
+                staticExt.domains.requireOwnershipProof && "overflow-hidden"
+              )}
+            >
+              {lights}
+            </div>
+          )}
         </div>
       </Row>
 

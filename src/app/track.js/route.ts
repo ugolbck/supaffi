@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   // is ignored for the same reason: originFor already knows the scheme.
   const host = req.headers.get("host");
   const merchant = host
-    ? await db.merchant.findUnique({ where: servedDomain(host), select: { domain: true, paymentProvider: true } })
+    ? await db.merchant.findFirst({ where: servedDomain(host), select: { domain: true, paymentProvider: true } })
     : null;
   if (!merchant?.domain) {
     return new NextResponse(null, { status: 404 });

@@ -98,7 +98,12 @@ describe.skipIf(!hasDatabase)("domain ownership", () => {
       expect(await m.getMerchantByDomain("affiliates.example.com")).toBeNull();
 
       const check = await m.checkDomainOwnership(ownerId, id, await answering(id));
-      expect(check).toEqual({ domain: "affiliates.example.com", record: null, result: { ok: true, detail: "Verified" } });
+      expect(check).toEqual({
+        domain: "affiliates.example.com",
+        record: null,
+        result: { ok: true, detail: "Verified" },
+        moved: false,
+      });
       expect((await stored(id)).domainVerifiedAt).not.toBeNull();
       expect(await m.getMerchantByDomain("affiliates.example.com")).not.toBeNull();
     });
@@ -114,6 +119,7 @@ describe.skipIf(!hasDatabase)("domain ownership", () => {
         domain: "affiliates.example.com",
         record: { name: "_supaffi.affiliates.example.com", value: `supaffi-verification=${domainToken}` },
         result: { ok: false, detail: "No record found yet" },
+        moved: false,
       });
       expect((await stored(id)).domainVerifiedAt).toBeNull();
     });
@@ -170,9 +176,11 @@ describe.skipIf(!hasDatabase)("domain ownership", () => {
         );
       });
 
-      it("is held from other Owners after a change", async () => {
+      it("is held from other Owners once the domain it changed to is proven", async () => {
         const m = await withProof(true);
         await released(m, "change");
+        const moved = await db.merchant.findFirstOrThrow({ where: { ownerId } });
+        await m.checkDomainOwnership(ownerId, moved.id, await answering(moved.id));
         const { id } = await m.createMerchant(otherOwnerId, { ...site, name: "Other", domain: "other.example.com" });
         await expect(m.updateMerchant(otherOwnerId, id, { ...site, domain: "affiliates.example.com" })).rejects.toThrow(
           "That domain is not available yet"
@@ -262,6 +270,78 @@ describe.skipIf(!hasDatabase)("domain ownership", () => {
       });
     });
 
+    describe("a proven domain changed for a new one", () => {
+      async function movedFromProven(m: Awaited<ReturnType<typeof withProof>>) {
+        const { id } = await m.createMerchant(ownerId, { ...site, domain: "affiliates.example.com" });
+        await m.checkDomainOwnership(ownerId, id, await answering(id));
+        expect(await m.updateMerchant(ownerId, id, { ...site, domain: "partners.example.com" })).toEqual({ live: false });
+        return id;
+      }
+
+      it("keeps serving the proven one, unheld and unclaimable, until the new one is proven", async () => {
+        const m = await withProof(true);
+        const id = await movedFromProven(m);
+        expect(await m.getMerchantByDomain("affiliates.example.com")).toMatchObject({ id, domain: "affiliates.example.com" });
+        expect(await m.getMerchantByDomain("partners.example.com")).toBeNull();
+        expect(await db.releasedDomain.count()).toBe(0);
+        await expect(m.createMerchant(otherOwnerId, { ...site, domain: "affiliates.example.com" })).rejects.toThrow(
+          "Another product already uses that domain."
+        );
+      });
+
+      it("retires the proven one when the new one is proven, and says so once", async () => {
+        const m = await withProof(true);
+        const id = await movedFromProven(m);
+        const check = await m.checkDomainOwnership(ownerId, id, await answering(id));
+        expect(check?.moved).toBe(true);
+        expect(await m.getMerchantByDomain("affiliates.example.com")).toBeNull();
+        expect(await m.getMerchantByDomain("partners.example.com")).toMatchObject({ id });
+        expect(await db.releasedDomain.findUnique({ where: { domain: "affiliates.example.com" } })).toMatchObject({ ownerId });
+        expect((await m.checkDomainOwnership(ownerId, id))?.moved).toBe(false);
+      });
+
+      it("goes back to the proven one without proof", async () => {
+        const m = await withProof(true);
+        const id = await movedFromProven(m);
+        expect(await m.updateMerchant(ownerId, id, { ...site, domain: "affiliates.example.com" })).toEqual({ live: true });
+        expect(await db.merchant.findUniqueOrThrow({ where: { id } })).toMatchObject({
+          domain: "affiliates.example.com",
+          previousDomain: null,
+          domainToken: null,
+        });
+        expect((await stored(id)).domainVerifiedAt).not.toBeNull();
+      });
+
+      it("falls back to the proven one when another Owner takes the new one", async () => {
+        const m = await withProof(true);
+        const id = await movedFromProven(m);
+        await m.createMerchant(otherOwnerId, { ...site, domain: "partners.example.com" });
+        expect(await db.merchant.findUniqueOrThrow({ where: { id } })).toMatchObject({
+          domain: "affiliates.example.com",
+          previousDomain: null,
+        });
+        expect((await stored(id)).domainVerifiedAt).not.toBeNull();
+      });
+
+      it("holds the proven one when the product is deleted before the new one is proven", async () => {
+        const m = await withProof(true);
+        const id = await movedFromProven(m);
+        await m.deleteMerchant(ownerId, id);
+        expect(await db.releasedDomain.findUnique({ where: { domain: "affiliates.example.com" } })).toMatchObject({ ownerId });
+      });
+    });
+
+    it("reports proof only from when it was found, and makes a token when one is missing", async () => {
+      const m = await withProof(true);
+      const { id } = await m.createMerchant(ownerId, { ...site, domain: "affiliates.example.com" });
+      await db.merchant.update({ where: { id }, data: { domainToken: null } });
+      const check = await m.checkDomainOwnership(ownerId, id, async () => []);
+      expect(check?.result.ok).toBe(false);
+      const { domainToken } = await stored(id);
+      expect(domainToken).toMatch(/^[A-Za-z0-9_-]{22}$/);
+      expect(check?.record?.value).toBe(`supaffi-verification=${domainToken}`);
+    });
+
     describe("domains waiting for proof", () => {
       it("are capped per Owner", async () => {
         const m = await withProof(true);
@@ -272,6 +352,15 @@ describe.skipIf(!hasDatabase)("domain ownership", () => {
         );
         // Another Owner has their own allowance.
         await m.createMerchant(otherOwnerId, { ...site, domain: "b1.example.com" });
+      });
+
+      it("hold the cap against saves at the same moment", async () => {
+        const m = await withProof(true);
+        const results = await Promise.allSettled(
+          [1, 2, 3, 4, 5].map((n) => m.createMerchant(ownerId, { ...site, name: `P${n}`, domain: `a${n}.example.com` }))
+        );
+        expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(3);
+        expect(await db.merchant.count({ where: { ownerId } })).toBe(3);
       });
 
       it("still let a waiting product change its own domain", async () => {
@@ -289,5 +378,37 @@ describe.skipIf(!hasDatabase)("domain ownership", () => {
         await m.createMerchant(ownerId, { ...site, domain: "a4.example.com" });
       });
     });
+  });
+});
+
+describe("proveDomain", () => {
+  const base = { domain: "affiliates.example.com", record: null, result: { ok: true, detail: "Verified" } };
+
+  async function proveWith(move: () => Promise<string>) {
+    vi.resetModules();
+    vi.doMock("@/lib/db", () => ({ db: { merchant: { findFirst: async () => ({ paymentProvider: "STRIPE" }) } } }));
+    vi.doMock("@/lib/payments", () => ({ paymentProviderFor: () => ({ moveWebhookEndpoint: move }) }));
+    return (await import("@/lib/domainProof")).proveDomain;
+  }
+
+  afterAll(() => {
+    vi.doUnmock("@/lib/db");
+    vi.doUnmock("@/lib/payments");
+  });
+
+  it("moves the payment webhook on the check that proves a domain the product moved to", async () => {
+    const move = vi.fn(async () => "manual");
+    const proveDomain = await proveWith(move);
+    const result = await proveDomain("owner-1", "product-1", async () => ({ ...base, moved: true }));
+    expect(move).toHaveBeenCalledWith("product-1");
+    expect(result?.webhook).toBe("manual");
+  });
+
+  it("leaves the webhook alone otherwise", async () => {
+    const move = vi.fn(async () => "moved");
+    const proveDomain = await proveWith(move);
+    expect((await proveDomain("owner-1", "product-1", async () => ({ ...base, moved: false })))?.webhook).toBe("none");
+    expect(await proveDomain("owner-1", "product-1", async () => null)).toBeNull();
+    expect(move).not.toHaveBeenCalled();
   });
 });

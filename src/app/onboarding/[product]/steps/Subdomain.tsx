@@ -9,7 +9,7 @@ import { RecordTable } from "@/components/onboarding/RecordTable";
 import { StepShell } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardHeader, TaskCardSection } from "@/components/onboarding/TaskCard";
 import { detectDnsProvider } from "@/lib/checks/dns";
-import { checkDomainOwnership } from "@/lib/domainOwnership";
+import { proveDomain } from "@/lib/domainProof";
 import { cloudflareDnsRecordsUrl } from "@/lib/dnsProviderLinks";
 import { displayStep, dnsRecordName, dnsZone, nextStep, splitSubdomain, stepPath } from "@/lib/onboarding";
 import { isLocalDomain } from "@/lib/url";
@@ -63,7 +63,7 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
   // Looked up on every render, so the page's own polling is what verifies it.
   const [provider, ownership] = await Promise.all([
     detectDnsProvider(merchant.domain),
-    checkDomainOwnership(ctx.ownerId, merchant.id),
+    proveDomain(ctx.ownerId, merchant.id),
   ]);
   const hostIp = process.env.SUPAFFI_HOST_IP?.trim() || null;
   const rows = [...(ownership ? [ownershipCheckRow(ownership.result)] : []), ...dnsCheckRows(checks.dns)];

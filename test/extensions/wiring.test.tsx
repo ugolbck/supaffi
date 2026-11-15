@@ -187,7 +187,7 @@ describe("domains.requireOwnershipProof", () => {
     vi.doMock("@/lib/db", () => ({
       db: {
         merchant: {
-          findUnique: async (args: { where: unknown }) => {
+          findFirst: async (args: { where: unknown }) => {
             where = args.where;
             return null;
           },
@@ -210,7 +210,12 @@ describe("domains.requireOwnershipProof", () => {
 
   it("makes the certificate check approve only a proven domain when set", async () => {
     install({}, { domains: { requireOwnershipProof: true } });
-    expect(await askedWhere()).toEqual({ domain: "affiliates.example.com", domainVerifiedAt: { not: null } });
+    expect(await askedWhere()).toEqual({
+      OR: [
+        { domain: "affiliates.example.com", domainVerifiedAt: { not: null } },
+        { previousDomain: "affiliates.example.com" },
+      ],
+    });
   });
 });
 

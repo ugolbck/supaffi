@@ -40,6 +40,10 @@ model Merchant {
   domainVerifiedAt DateTime?
   // New with every new domain. Public once it is in DNS, so stored as is.
   domainToken      String?
+  // The proven domain a product moved away from, still served (and still
+  // receiving payment events) until the new `domain` is proven. Set only when
+  // proof is required.
+  previousDomain   String?   @unique
   websiteUrl String // the actual product site affiliates promote, e.g. https://instantgradient.com — distinct from `domain`, which is only the tracking subdomain
 
   // Encrypted at rest (ADR 0003), master key outside the database.

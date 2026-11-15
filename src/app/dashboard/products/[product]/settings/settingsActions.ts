@@ -13,7 +13,8 @@ import {
 import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
-import { DomainClaimError, checkDomainOwnership } from "@/lib/domainOwnership";
+import { DomainClaimError } from "@/lib/domainOwnership";
+import { proveDomain } from "@/lib/domainProof";
 import { stripeKeyWorks } from "@/lib/payments/stripe/keyCheck";
 import { connectPolarToken } from "@/lib/payments/polar/connectToken";
 import { upgradeMerchantWebhookEvents } from "@/lib/payments/stripe/endpointUpkeep";
@@ -64,8 +65,9 @@ export async function updateProductAction(
   if (error) return { error, values: input };
   const before = await getMerchantForOwner(ownerId, product.id);
   if (!before) redirect("/dashboard");
+  let live: boolean;
   try {
-    await updateMerchant(ownerId, product.id, input);
+    ({ live } = await updateMerchant(ownerId, product.id, input));
   } catch (err) {
     if (isUniqueConstraintError(err)) return { error: "Another product already uses that subdomain", values: input };
     if (err instanceof DomainClaimError) return { error: err.message, values: input };
@@ -75,7 +77,9 @@ export async function updateProductAction(
   // a new subdomain has to reach the endpoint too, or every sale after this
   // is lost.
   const moveEndpoint = paymentProviderFor(before).moveWebhookEndpoint;
-  const moved = input.domain === before.domain || !moveEndpoint ? "none" : await moveEndpoint(product.id);
+  // A domain still waiting for proof is not served yet, so the endpoint stays
+  // on the one that is and moves when the new one is proven (proveDomain).
+  const moved = input.domain === before.domain || !moveEndpoint || !live ? "none" : await moveEndpoint(product.id);
   // The sidebar and the product switcher are rendered by the dashboard layout,
   // which a soft navigation reuses from cache.
   revalidatePath("/dashboard", "layout");
@@ -86,8 +90,9 @@ export async function updateProductAction(
 /** "Check" beside the domain's verification row: looks for its TXT record now. */
 export async function verifyDomainAction(product: ProductRef): Promise<void> {
   const ownerId = await owner();
-  await checkDomainOwnership(ownerId, product.id);
-  redirect(settings(product.slug, "dns"));
+  const ownership = await proveDomain(ownerId, product.id);
+  const target = settings(product.slug, "dns");
+  redirect(ownership?.webhook === "manual" ? `${target}&webhook=manual` : target);
 }
 
 export async function replaceStripeKeyAction(

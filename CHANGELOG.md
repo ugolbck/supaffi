@@ -19,12 +19,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   that is given up stays with its Owner for 7 days, and an Owner can have 3
   domains waiting for proof at once. A domain waiting for proof blocks
   nobody: another Owner who saves it takes it over, the first product is
-  left with no domain, and whoever proves it first keeps it. Off by default.
+  left with no domain, and whoever proves it first keeps it. A product moving
+  to a new domain keeps serving its proven one, payment webhook included,
+  until the new one is proven. Off by default.
 - Extensions: `domains.reserved`, a static hook listing hostnames no product
   may use, along with every name under them. Defaults to none.
 
 ### Changed
 
+- Extensions: API version 2. `listOwnerMerchants` returns `domain: null` for
+  a product that has no domain, which happens when ownership proof is
+  required and another Owner's claim took it before it was verified.
 - Every product domain saved before this version counts as proven, so it
   keeps working after the upgrade.
 

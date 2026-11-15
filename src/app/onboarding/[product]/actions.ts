@@ -109,6 +109,8 @@ export async function updateProductWebsiteAction(
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
 
+  // Rehoming would claim a default address the Owner never chose.
+  if (!merchant.domain) return { error: "Set a domain first" };
   const websiteUrl = normalizeWebsiteUrl(String(formData.get("value") ?? ""));
   const domain = normalizeDomain(rehomeSubdomain(merchant.domain, merchant.websiteUrl, websiteUrl));
   const error = validateProductInput({ name: merchant.name, domain, websiteUrl }, instanceDomain());

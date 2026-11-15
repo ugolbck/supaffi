@@ -46,10 +46,10 @@ export async function setOwnerPassword(ownerId: string, password: string): Promi
   });
 }
 
-/** A product's domain is empty while it has none (another Owner's claim took it before it was verified). */
-export async function listOwnerMerchants(ownerId: string): Promise<{ id: string; name: string; domain: string }[]> {
+/** A product's domain is null while it has none (another Owner's claim took it before it was verified). */
+export async function listOwnerMerchants(ownerId: string): Promise<{ id: string; name: string; domain: string | null }[]> {
   const merchants = await listMerchantsForOwner(ownerId);
-  return merchants.map(({ id, name, domain }) => ({ id, name, domain }));
+  return merchants.map(({ id, name, domain }) => ({ id, name, domain: domain || null }));
 }
 
 /** The signed-in Owner's id, or null for no session or an affiliate's. */

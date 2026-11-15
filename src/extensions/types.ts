@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 // Bump on any rename, removal, or change of signature or meaning, and say so
 // under "Extensions" in CHANGELOG.md. Adding a hook does not bump. Kept on one
 // line: builds read it with a regex.
-export const EXTENSIONS_API_VERSION = 1;
+export const EXTENSIONS_API_VERSION = 2;
 
 /**
  * Plain data, readable from anywhere, the proxy and the startup hook included.
@@ -48,8 +48,11 @@ export type StaticExtensions = {
     requireOwnershipProof: boolean;
     /**
      * Hostnames no product may use, each with every name under it. Matched
-     * without case or surrounding space; empty entries are ignored. This
-     * Instance's own domain is always refused, whatever is listed here.
+     * without case, surrounding space or a trailing dot, and an internationalized
+     * name as its punycode; empty entries are ignored. A leading "*." or "." or
+     * anything other than a bare hostname fails at startup: an entry already
+     * covers the names under it. This Instance's own domain is always refused,
+     * whatever is listed here.
      */
     reserved: string[];
   };

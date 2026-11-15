@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { assertOwnsMerchant } from "@/lib/ownership";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { uniqueSlug } from "@/lib/slug";
-import { claimDomain, releaseDomain, servedDomain } from "@/lib/domainOwnership";
+import { claimDomain, ownershipProofRequired, releaseDomain, servedDomain } from "@/lib/domainOwnership";
 
 // Creating a Merchant takes no credentials. Connecting the payment provider
 // is a separate step, done against a Merchant that already exists, so the
@@ -28,20 +28,21 @@ export async function createMerchant(
     )
   );
 
-  // Throws DomainClaimError when the domain cannot be taken.
-  const claim = await claimDomain(ownerId, input.domain);
-
-  return db.merchant.create({
-    data: {
-      ownerId,
-      name: input.name,
-      slug,
-      domain: input.domain,
-      ...claim,
-      websiteUrl: input.websiteUrl,
-      ...(input.paymentProvider ? { paymentProvider: input.paymentProvider } : {}),
-    },
-    select: { id: true, slug: true },
+  return db.$transaction(async (tx) => {
+    // Throws DomainClaimError when the domain cannot be taken.
+    const claim = await claimDomain(tx, ownerId, input.domain);
+    return tx.merchant.create({
+      data: {
+        ownerId,
+        name: input.name,
+        slug,
+        domain: input.domain,
+        ...claim,
+        websiteUrl: input.websiteUrl,
+        ...(input.paymentProvider ? { paymentProvider: input.paymentProvider } : {}),
+      },
+      select: { id: true, slug: true },
+    });
   });
 }
 
@@ -220,36 +221,56 @@ const MERCHANT_FIELDS = {
   createdAt: true,
 } as const;
 
+/**
+ * Saves a product's details. Answers whether its domain is served now: a new
+ * domain waiting for proof is not, and the proven one it replaces keeps being
+ * served, and keeps its payment webhook, until the new one is proven.
+ */
 export async function updateMerchant(
   ownerId: string,
   merchantId: string,
   input: MerchantDetailsInput
-): Promise<void> {
+): Promise<{ live: boolean }> {
   await assertOwnsMerchant(ownerId, merchantId);
-  const before = await db.merchant.findUniqueOrThrow({
-    where: { id: merchantId },
-    select: { domain: true, domainVerifiedAt: true },
+  return db.$transaction(async (tx) => {
+    const before = await tx.merchant.findUniqueOrThrow({
+      where: { id: merchantId },
+      select: { domain: true, domainVerifiedAt: true, previousDomain: true },
+    });
+    const details = { name: input.name, websiteUrl: input.websiteUrl };
+    if (input.domain === before.domain) {
+      await tx.merchant.update({ where: { id: merchantId }, data: details });
+      return { live: before.domainVerifiedAt !== null };
+    }
+    // Back to the proven domain still being served: nothing to prove.
+    if (ownershipProofRequired() && input.domain === before.previousDomain) {
+      await tx.merchant.update({
+        where: { id: merchantId },
+        data: { ...details, domain: input.domain, previousDomain: null, domainToken: null, domainVerifiedAt: new Date() },
+      });
+      return { live: true };
+    }
+
+    // A new domain is a new claim, proven afresh. Throws DomainClaimError when
+    // it cannot be taken, before anything is written.
+    const claim = await claimDomain(tx, ownerId, input.domain, merchantId);
+    const live = claim.domainVerifiedAt !== null;
+    const served = before.domainVerifiedAt ? before.domain : before.previousDomain;
+    const previousDomain = live ? null : served;
+    await tx.merchant.update({
+      where: { id: merchantId },
+      data: { ...details, domain: input.domain, ...claim, previousDomain },
+    });
+    // The proven domain stops being served only once the new one is live.
+    if (served && live) await releaseDomain(tx, ownerId, served);
+    return { live };
   });
-  // A new domain is a new claim, proven afresh. Throws DomainClaimError when
-  // it cannot be taken, before anything is written.
-  const moving = input.domain !== before.domain;
-  const claim = moving ? await claimDomain(ownerId, input.domain, merchantId) : {};
-  await db.merchant.update({
-    where: { id: merchantId },
-    data: {
-      name: input.name,
-      domain: input.domain,
-      websiteUrl: input.websiteUrl,
-      ...claim,
-    },
-  });
-  if (moving && before.domain) await releaseDomain(ownerId, before.domain, before.domainVerifiedAt);
 }
 
 export async function getMerchantByDomain(
   domain: string
 ): Promise<{ id: string; slug: string; name: string; domain: string; websiteUrl: string } | null> {
-  const merchant = await db.merchant.findUnique({
+  const merchant = await db.merchant.findFirst({
     where: servedDomain(domain),
     select: { id: true, slug: true, name: true, domain: true, websiteUrl: true },
   });
@@ -266,25 +287,30 @@ export async function getMerchantByDomain(
 export async function deleteMerchant(ownerId: string, merchantId: string): Promise<void> {
   await assertOwnsMerchant(ownerId, merchantId);
   const affiliates = { affiliate: { merchantId } };
-  const { domain, domainVerifiedAt } = await db.merchant.findUniqueOrThrow({
-    where: { id: merchantId },
-    select: { domain: true, domainVerifiedAt: true },
-  });
-  const release = domain ? releaseDomain(ownerId, domain, domainVerifiedAt) : null;
-  await db.$transaction([
-    db.commission.deleteMany({ where: affiliates }),
-    // Points at the click, so it goes before clicks do.
-    db.referredSubscription.deleteMany({ where: { merchantId } }),
-    db.click.deleteMany({ where: affiliates }),
-    db.affiliatePromoCode.deleteMany({ where: { merchantId } }),
-    db.affiliateLink.deleteMany({ where: affiliates }),
-    db.affiliateLoginToken.deleteMany({ where: affiliates }),
-    db.affiliate.deleteMany({ where: { merchantId } }),
-    db.program.deleteMany({ where: { merchantId } }),
-    db.webhookEvent.deleteMany({ where: { merchantId } }),
-    db.merchant.delete({ where: { id: merchantId } }),
-    ...(release ? [release] : []),
-  ]);
+  await db.$transaction(
+    async (tx) => {
+      const { domain, domainVerifiedAt, previousDomain } = await tx.merchant.findUniqueOrThrow({
+        where: { id: merchantId },
+        select: { domain: true, domainVerifiedAt: true, previousDomain: true },
+      });
+      await tx.commission.deleteMany({ where: affiliates });
+      // Points at the click, so it goes before clicks do.
+      await tx.referredSubscription.deleteMany({ where: { merchantId } });
+      await tx.click.deleteMany({ where: affiliates });
+      await tx.affiliatePromoCode.deleteMany({ where: { merchantId } });
+      await tx.affiliateLink.deleteMany({ where: affiliates });
+      await tx.affiliateLoginToken.deleteMany({ where: affiliates });
+      await tx.affiliate.deleteMany({ where: { merchantId } });
+      await tx.program.deleteMany({ where: { merchantId } });
+      await tx.webhookEvent.deleteMany({ where: { merchantId } });
+      await tx.merchant.delete({ where: { id: merchantId } });
+      // Whichever proven domain it was serving is held for its Owner.
+      const served = domainVerifiedAt ? domain : previousDomain;
+      if (served) await releaseDomain(tx, ownerId, served);
+    },
+    // A year of history can take longer than the five second default.
+    { timeout: 60_000 }
+  );
 }
 
 export async function getOnboardingState(

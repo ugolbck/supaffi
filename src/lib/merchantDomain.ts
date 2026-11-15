@@ -7,6 +7,11 @@ import { isLocalDomain } from "@/lib/url";
 // so the proxy can use it.
 export async function isMerchantDomain(host: string | null): Promise<boolean> {
   if (!host || isLocalDomain(host)) return false;
-  const merchant = await db.merchant.findUnique({ where: { domain: host.toLowerCase() }, select: { id: true } });
+  const name = host.toLowerCase();
+  // The proven domain a product is moving away from is still its.
+  const merchant = await db.merchant.findFirst({
+    where: { OR: [{ domain: name }, { previousDomain: name }] },
+    select: { id: true },
+  });
   return merchant !== null;
 }
