@@ -28,6 +28,8 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
   // product carries a real domain or a local one: what decides is the
   // instance, not the address typed into the product.
   const local = isDevInstance() || isLocalDomain(merchant.domain);
+  // No domain: another Owner's claim took it. Only the field, to set a new one.
+  const bare = local || !merchant.domain;
 
   const field = (
     <EditableField
@@ -39,7 +41,7 @@ export async function Subdomain({ ctx }: { ctx: Ctx }) {
     />
   );
 
-  if (local) {
+  if (bare) {
     return (
       <StepShell
         step={displayStep("subdomain")}

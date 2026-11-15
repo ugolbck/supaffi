@@ -82,7 +82,8 @@ export function ProductForm({
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     if (confirmed.current) return;
     const domain = normalizeDomain(String(new FormData(event.currentTarget).get("domain") ?? ""));
-    if (domain === initial.domain) return;
+    // Nothing shared names a domain the product does not have.
+    if (domain === initial.domain || !initial.domain) return;
     event.preventDefault();
     setConfirming(true);
   }

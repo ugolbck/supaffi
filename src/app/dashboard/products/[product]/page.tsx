@@ -83,7 +83,7 @@ export default async function ProductOverviewPage({
   const payableTotal = payable.reduce((n, g) => n + g.commissionIds.length, 0);
   const empty = metrics.clicks === 0 && metrics.signups === 0 && setup.affiliateCount === 0;
 
-  const signupLink = setup.firstProgramSlug
+  const signupLink = setup.firstProgramSlug && merchant.domain
     ? signupLinkFor(merchant.domain, setup.firstProgramSlug, setup.firstProgramSlug)
     : null;
 

@@ -85,6 +85,7 @@ export async function updateProductNameAction(
   if (!merchant) redirect("/onboarding");
 
   const name = String(formData.get("value") ?? "").trim();
+  if (!merchant.domain) return { error: "Set a domain first" };
   const error = validateProductInput({ name, domain: merchant.domain, websiteUrl: merchant.websiteUrl }, instanceDomain());
   if (error) return { error };
 
@@ -142,6 +143,9 @@ export async function saveStripeKeyAction(
 
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
+
+  // Stripe would deliver to an address that answers for no product.
+  if (!merchant.domain) return { error: "Set a domain first" };
 
   // Stripe cannot reach a machine on your desk, so a local instance stores
   // the key alone and the step shows the CLI command that forwards events.

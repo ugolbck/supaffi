@@ -21,6 +21,7 @@ export function ProgramCard({
   affiliateCount,
   discount,
   signupLink,
+  unlinked,
   editHref,
 }: {
   name: string;
@@ -34,6 +35,8 @@ export function ProgramCard({
   discount?: string | null;
   /** Null when the program's signup is closed. */
   signupLink: string | null;
+  /** Shown in place of the link when signup is open but there is no address for it. */
+  unlinked?: React.ReactNode;
   editHref: string;
 }) {
   return (
@@ -71,7 +74,7 @@ export function ProgramCard({
           {signupLink ? (
             <CopyLinkButton link={signupLink} size="sm" label="Copy signup link" />
           ) : (
-            <span className="px-2 text-sm text-muted-foreground">Invite only</span>
+            unlinked ?? <span className="px-2 text-sm text-muted-foreground">Invite only</span>
           )}
           <Button variant="ghost" size="sm" render={<Link href={editHref} />}>
             <Pencil />

@@ -91,7 +91,8 @@ export default async function SettingsPage({
   const polar = merchant.paymentProvider === "POLAR";
   const provider = polar ? "Polar" : "Stripe";
   const webhooksUrl = polar ? polarDashboardUrl(merchant.paymentSandbox) : "https://dashboard.stripe.com/webhooks";
-  const webhookUrl = polar ? polarWebhookUrl(merchant.domain) : webhookEndpointUrl(merchant.domain);
+  // Empty with no domain, and then never shown.
+  const webhookUrl = !merchant.domain ? "" : polar ? polarWebhookUrl(merchant.domain) : webhookEndpointUrl(merchant.domain);
   // The same rules the save follows (the provider's moveWebhookEndpoint).
   const subdomainWebhook: SubdomainWebhook =
     !setup.webhookSecretStored || isLocalDomain(merchant.domain)
@@ -136,7 +137,8 @@ export default async function SettingsPage({
         },
       ]
     : [];
-  const dnsRows: CheckRow[] = local ? [] : [...ownershipRows, ...dnsCheckRows(checks.dns)];
+  // No domain, nothing to look up: the empty field says what to do.
+  const dnsRows: CheckRow[] = local || !merchant.domain ? [] : [...ownershipRows, ...dnsCheckRows(checks.dns)];
 
   const sheets = {
     "payment-key": polar
@@ -203,7 +205,7 @@ export default async function SettingsPage({
           }
           webhook={subdomainWebhook}
         />
-        {query.webhook === "manual" && setup.webhookSecretStored && (
+        {query.webhook === "manual" && setup.webhookSecretStored && webhookUrl && (
           <div
             role="alert"
             className="mt-4 flex flex-col gap-3 rounded-(--radius) border border-status-warning/30 bg-status-warning-bg px-4 py-3 text-sm"

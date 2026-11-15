@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { SetDomainFirst } from "@/components/SetDomainFirst";
 import { CheckList } from "@/components/onboarding/CheckList";
 import { checkState, trackingPending } from "@/components/onboarding/checkRows";
 import { CodeBlock } from "@/components/onboarding/CodeBlock";
@@ -19,7 +20,7 @@ export async function Tracking({ ctx }: { ctx: Ctx }) {
   const product = { id: merchant.id, slug: merchant.slug };
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
-  const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
+  const scriptTag = merchant.domain ? `<script src="${originFor(merchant.domain)}/track.js" async></script>` : null;
   const guide = checkoutGuideFor(merchant.paymentProvider);
   const site = siteHost(merchant.websiteUrl);
   const found = checks.tracking.script.ok;
@@ -43,11 +44,15 @@ export async function Tracking({ ctx }: { ctx: Ctx }) {
       }
     >
       <AutoRefresh active={!found} />
-      <CodeBlock
-        title="Tracking script"
-        code={scriptTag}
-        prompt={trackingScriptPrompt({ websiteUrl: merchant.websiteUrl, scriptTag })}
-      />
+      {scriptTag ? (
+        <CodeBlock
+          title="Tracking script"
+          code={scriptTag}
+          prompt={trackingScriptPrompt({ websiteUrl: merchant.websiteUrl, scriptTag })}
+        />
+      ) : (
+        <SetDomainFirst slug={merchant.slug} />
+      )}
       <TaskCard>
         <TaskCardSection sunken>
           <CheckList
@@ -69,7 +74,7 @@ export async function Tracking({ ctx }: { ctx: Ctx }) {
       <StepLabel>{guide.then}</StepLabel>
       <CodeBlock title="Checkout session" code={guide.snippet} prompt={checkoutPrompt({ guide })} />
       <StepLabel>{guide.hosted}</StepLabel>
-      {program && (
+      {program && merchant.domain && (
         <FinishedModal
           link={`${originFor(merchant.domain)}/affiliates/signup/${program.slug}`}
           dashboardHref={`/dashboard/products/${merchant.slug}`}

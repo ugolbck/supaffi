@@ -46,6 +46,7 @@ export async function setOwnerPassword(ownerId: string, password: string): Promi
   });
 }
 
+/** A product's domain is empty while it has none (another Owner's claim took it before it was verified). */
 export async function listOwnerMerchants(ownerId: string): Promise<{ id: string; name: string; domain: string }[]> {
   const merchants = await listMerchantsForOwner(ownerId);
   return merchants.map(({ id, name, domain }) => ({ id, name, domain }));
