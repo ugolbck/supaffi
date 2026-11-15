@@ -67,11 +67,11 @@ export const certificatePending = (detail: string) =>
   detail.startsWith("Being set up") || detail.startsWith("Waiting") || detail === "Nothing answered";
 
 /**
- * `stripeKeyWorks`: nothing stored, or Stripe never answered. A key Stripe
- * actively rejected is an answer, and a failure.
+ * The payment key check: nothing stored, or the provider never answered. A key
+ * the provider actively rejected is an answer, and a failure.
  */
-export const stripeKeyPending = (detail: string) =>
-  detail === "Not connected yet" || detail === "Could not reach Stripe";
+export const paymentKeyPending = (detail: string) =>
+  detail === "Not connected yet" || detail === "Could not reach Stripe" || detail === "Could not reach Polar";
 
 /**
  * `scriptFound`: the page loaded and the script is not on it yet, which on

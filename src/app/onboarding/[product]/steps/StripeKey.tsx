@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { CheckList } from "@/components/onboarding/CheckList";
-import { checkState, stripeKeyPending } from "@/components/onboarding/checkRows";
+import { checkState, paymentKeyPending } from "@/components/onboarding/checkRows";
 import { CodeBlock } from "@/components/onboarding/CodeBlock";
 import { StepShell } from "@/components/onboarding/StepShell";
 import { TaskCard, TaskCardSection } from "@/components/onboarding/TaskCard";
@@ -15,8 +15,8 @@ import type { Ctx } from "../checks";
 
 export function StripeKey({ ctx }: { ctx: Ctx }) {
   const { merchant, checks, setup } = ctx;
-  const stored = setup.stripeKeyStored;
-  const next = nextStep("stripe-key")!;
+  const stored = setup.paymentKeyStored;
+  const next = nextStep("payments")!;
   const product = { id: merchant.id, slug: merchant.slug };
   // Stripe cannot reach a machine on your desk, so the only way to see a real
   // event locally is to have Stripe's own CLI forward it. This is the one
@@ -26,7 +26,7 @@ export function StripeKey({ ctx }: { ctx: Ctx }) {
 
   return (
     <StepShell
-      step={displayStep("stripe-key")}
+      step={displayStep("payments")}
       title="Let Supaffi read your Stripe payments"
       lede="The link opens Stripe with the permissions already ticked."
       action={
@@ -55,11 +55,11 @@ export function StripeKey({ ctx }: { ctx: Ctx }) {
               rows={[
                 {
                   id: "key",
-                  state: checkState(checks.stripe.key, stripeKeyPending),
+                  state: checkState(checks.payments.key, paymentKeyPending),
                   pending: "Checking the key",
                   passed: "Supaffi can read your Stripe payments",
                   failed: "Stripe rejected that key",
-                  hint: checks.stripe.key.detail || "Create a new one and paste it again.",
+                  hint: checks.payments.key.detail || "Create a new one and paste it again.",
                 },
               ]}
             />
@@ -81,7 +81,7 @@ export function StripeKey({ ctx }: { ctx: Ctx }) {
             code={`stripe listen --forward-to ${merchant.domain}/api/webhooks/stripe`}
           />
           <PasteField
-            label={setup.stripeWebhookStored ? "Replace the signing secret it prints" : "Paste the signing secret it prints"}
+            label={setup.webhookSecretStored ? "Replace the signing secret it prints" : "Paste the signing secret it prints"}
             placeholder="whsec_..."
             action={saveWebhookSecretAction.bind(null, product)}
             submitLabel="Save"

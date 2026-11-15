@@ -25,10 +25,13 @@ export async function createProductAction(
 
   const error = validateProductInput({ name, domain, websiteUrl }, instanceDomain());
   if (error) return { error };
+  // Fixed once the product exists: every payment reference it stores belongs
+  // to this provider.
+  const paymentProvider = formData.get("paymentProvider") === "POLAR" ? "POLAR" : "STRIPE";
 
   let slug: string;
   try {
-    slug = (await createMerchant(session.user.id, { name, domain: normalizeDomain(domain), websiteUrl })).slug;
+    slug = (await createMerchant(session.user.id, { name, domain: normalizeDomain(domain), websiteUrl, paymentProvider })).slug;
   } catch (err) {
     if (isUniqueConstraintError(err)) return { error: "A product on that site already exists" };
     throw err;

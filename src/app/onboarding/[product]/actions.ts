@@ -5,9 +5,9 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import {
   getMerchantForOwner,
-  getStripeWebhookEndpointId,
+  getWebhookEndpointId,
   updateMerchant,
-  connectStripe,
+  connectPaymentProvider,
   markOnboardingComplete,
 } from "@/lib/merchant";
 import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
@@ -19,6 +19,7 @@ import { validateProgramInput } from "@/lib/programValidation";
 import { stripeKeyWorks } from "@/lib/payments/stripe/keyCheck";
 import { createWebhookEndpoint } from "@/lib/payments/stripe/webhookEndpoint";
 import { webhookEndpointUrl } from "@/lib/payments/stripe/webhookLink";
+import { connectPolarToken } from "@/lib/payments/polar/connectToken";
 import { isLocalDomain } from "@/lib/url";
 import { runProductChecks } from "@/lib/checks/product";
 import { checkSectionFor } from "@/lib/onboarding";
@@ -142,8 +143,8 @@ export async function saveStripeKeyAction(
   // Stripe cannot reach a machine on your desk, so a local instance stores
   // the key alone and the step shows the CLI command that forwards events.
   if (isLocalDomain(merchant.domain)) {
-    await connectStripe(ownerId, product.id, { secretKey: key });
-    revalidatePath(stepPath(product.slug, "stripe-key"));
+    await connectPaymentProvider(ownerId, product.id, { secretKey: key });
+    revalidatePath(stepPath(product.slug, "payments"));
     return { error: "" };
   }
 
@@ -151,9 +152,9 @@ export async function saveStripeKeyAction(
   // owner just pasted. A key that cannot create it is refused here, on the
   // screen with the button that makes a right one, rather than stored and
   // left for a webhook screen to explain. There is no webhook screen.
-  const existingEndpoint = await getStripeWebhookEndpointId(ownerId, product.id);
+  const existingEndpoint = await getWebhookEndpointId(ownerId, product.id);
   if (existingEndpoint) {
-    await connectStripe(ownerId, product.id, { secretKey: key });
+    await connectPaymentProvider(ownerId, product.id, { secretKey: key });
   } else {
     const created = await createWebhookEndpoint({
       secretKey: key,
@@ -168,13 +169,27 @@ export async function saveStripeKeyAction(
             : created.detail,
       };
     }
-    await connectStripe(ownerId, product.id, {
+    await connectPaymentProvider(ownerId, product.id, {
       secretKey: key,
       webhookSecret: created.secret,
       webhookEndpointId: created.id,
     });
   }
-  redirect(stepPath(product.slug, nextStep("stripe-key")!));
+  redirect(stepPath(product.slug, nextStep("payments")!));
+}
+
+export async function savePolarTokenAction(
+  product: { id: string; slug: string },
+  _prev: { error: string },
+  formData: FormData
+): Promise<{ error: string }> {
+  const ownerId = await owner();
+  const token = String(formData.get("value") ?? "").trim();
+  // Checked, and the webhook created in Polar, before anything is stored, so
+  // a token that fails is refused on this screen.
+  const result = await connectPolarToken(ownerId, product.id, token);
+  if (result.error !== null) return { error: result.error };
+  redirect(stepPath(product.slug, nextStep("payments")!));
 }
 
 export async function saveWebhookSecretAction(
@@ -188,8 +203,8 @@ export async function saveWebhookSecretAction(
   // A hand-pasted secret belongs to an endpoint Supaffi did not create, so
   // the stored endpoint id is cleared: it must never later delete something
   // the owner made themselves.
-  await connectStripe(ownerId, product.id, { webhookSecret: secret, webhookEndpointId: null });
-  revalidatePath(stepPath(product.slug, "stripe-key"));
+  await connectPaymentProvider(ownerId, product.id, { webhookSecret: secret, webhookEndpointId: null });
+  revalidatePath(stepPath(product.slug, "payments"));
   return { error: "" };
 }
 

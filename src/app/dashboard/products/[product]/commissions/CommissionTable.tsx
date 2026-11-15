@@ -63,7 +63,7 @@ export function CommissionTable({
           <EmptyState
             icon={<Coins />}
             title="No commissions yet"
-            body="The first referred sale shows up here the moment Stripe reports it."
+            body="The first referred sale shows up here the moment it is paid."
           />
         )}
       </div>

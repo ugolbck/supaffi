@@ -84,7 +84,7 @@ export default async function ProgramsPage({
   const coupons = query.new || editing ? await couponsForProgramForm(ownerId, merchant.id) : null;
   const discountFor = (p: Program | null) =>
     coupons
-      ? { coupons, value: p?.discountRef ?? null, replaceKeyHref: `/dashboard/products/${merchant.slug}/settings?replace=stripe-key` }
+      ? { coupons, value: p?.discountRef ?? null, replaceKeyHref: `/dashboard/products/${merchant.slug}/settings?replace=payment-key` }
       : undefined;
 
   return (

@@ -45,27 +45,29 @@ function Row({ label, htmlFor, children }: { label: string; htmlFor: string; chi
 }
 
 /**
- * What a new subdomain does to Stripe: Supaffi moves the endpoint it made,
- * the owner moves one they made, and with no webhook there is nothing to say.
+ * What a new subdomain does to the payment provider's webhook: Supaffi moves
+ * the endpoint it made, the owner moves one they made, and with no webhook
+ * there is nothing to say.
  */
-export type SubdomainStripe = "moves" | "manual" | null;
+export type SubdomainWebhook = { move: "moves" | "manual"; provider: string } | null;
 
-const STRIPE_LINE = {
-  moves: "Supaffi will point Stripe at the new address.",
-  manual: "You will also need to change the webhook address in Stripe.",
-} as const;
+function webhookLine({ move, provider }: NonNullable<SubdomainWebhook>): string {
+  return move === "moves"
+    ? `Supaffi will point ${provider} at the new address.`
+    : `You will also need to change the webhook address in ${provider}.`;
+}
 
 export function ProductForm({
   product,
   initial,
   lights,
-  stripe,
+  webhook,
 }: {
   product: ProductRef;
   initial: { name: string; domain: string; websiteUrl: string };
   /** The two DNS lights, rendered on the server and sat beside the subdomain. */
   lights: ReactNode | null;
-  stripe: SubdomainStripe;
+  webhook: SubdomainWebhook;
 }) {
   const [state, action, pending] = useActionState(updateProductAction.bind(null, product), {
     error: "",
@@ -131,7 +133,7 @@ export function ProductForm({
             <AlertDialogDescription>
               Links already shared with {initial.domain} will stop working, and the script on your site
               needs the new address.
-              {stripe && ` ${STRIPE_LINE[stripe]}`}
+              {webhook && ` ${webhookLine(webhook)}`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

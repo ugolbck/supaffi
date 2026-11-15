@@ -7,5 +7,5 @@ export default async function ConnectStripePage({
   params: Promise<{ product: string }>;
 }) {
   const { product } = await params;
-  redirect(`/dashboard/products/${product}/settings?replace=stripe-key`);
+  redirect(`/dashboard/products/${product}/settings?replace=payment-key`);
 }

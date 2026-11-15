@@ -56,7 +56,7 @@ import {
   getMerchantForOwnerBySlug,
   getOnboardingState,
   getStripeKeyKind,
-  getStripeWebhookEndpointId,
+  getWebhookEndpointId,
   listMerchantsForOwner,
 } from "@/lib/merchant";
 import { getProductSetup } from "@/lib/productSetup";
@@ -400,9 +400,9 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
     });
 
     it("settings and integrations show nothing of another Owner's product", async () => {
-      expect(await getIntegrationStatus(b.ownerId, a.product.id)).toEqual({ stripe: false, stripeKey: false, stripeWebhook: false });
+      expect(await getIntegrationStatus(b.ownerId, a.product.id)).toEqual({ connected: false, key: false, webhook: false });
       expect(await getStripeKeyKind(b.ownerId, a.product.id)).toBeNull();
-      expect(await getStripeWebhookEndpointId(b.ownerId, a.product.id)).toBeNull();
+      expect(await getWebhookEndpointId(b.ownerId, a.product.id)).toBeNull();
       expect(await mailStatus(b.ownerId, a.product.id)).toBeNull();
     });
 
@@ -594,7 +594,7 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
         "Merchant not found"
       );
       expect(await outcome(() => saveTermsAction(a.product, { error: "" }, form(PROGRAM_FORM)))).toBe("redirect:/onboarding");
-      expect(await outcome(() => recheckAction(a.product, "stripe-key"))).toBe("redirect:/onboarding");
+      expect(await outcome(() => recheckAction(a.product, "payments"))).toBe("redirect:/onboarding");
       expect(await outcome(() => finishOnboardingAction(a.product))).toBe("Merchant not found");
       expect(createEndpointSpy).not.toHaveBeenCalled();
       expect(await snapshot(a)).toEqual(before);
@@ -649,7 +649,7 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
 
     it("settings", async () => {
       expect(await outcome(() => replaceWebhookSecretAction(a.product, { error: "" }, form({ value: "whsec_other" })))).toBe(
-        `redirect:/dashboard/products/${SLUG}/settings?fresh=stripe`
+        `redirect:/dashboard/products/${SLUG}/settings?fresh=payments`
       );
       const merchant = await db.merchant.findUniqueOrThrow({ where: { id: a.product.id } });
       expect(merchant.webhookSecretEnc).not.toBe(before.merchant?.webhookSecretEnc);
