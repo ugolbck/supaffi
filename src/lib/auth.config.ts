@@ -28,6 +28,13 @@ declare module "next-auth/jwt" {
      * affiliateSessionIsCurrent in src/lib/affiliateSession.ts).
      */
     authAt?: number;
+    /**
+     * The same moment in milliseconds. Whole seconds cannot order a sign-in
+     * and a password change that fall in the same second, so the Owner check
+     * uses this one, and falls back to `authAt` for a session signed in before
+     * this claim existed.
+     */
+    authAtMs?: number;
   }
 }
 
@@ -54,7 +61,9 @@ export const authConfig: NextAuthConfig = {
       // Only on sign-in, when `user` is present. Plain arithmetic, so it stays
       // safe for the Edge proxy that shares this config.
       if (user) {
-        token.authAt = Math.floor(Date.now() / 1000);
+        const now = Date.now();
+        token.authAt = Math.floor(now / 1000);
+        token.authAtMs = now;
       }
       return token;
     },

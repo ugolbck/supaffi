@@ -72,7 +72,7 @@ export function AppSidebar({
   merchants: Merchant[];
   counts: Record<string, Counts>;
   email: string;
-  version: string;
+  version: string | null;
   update: UpdateInfo | null;
 }) {
   const pathname = usePathname();
