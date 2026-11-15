@@ -58,6 +58,7 @@ model Merchant {
   referredSubscriptions ReferredSubscription[]
   promoCodes            AffiliatePromoCode[]
   emails                Email[]
+  commissions           Commission[]
   createdAt             DateTime               @default(now())
 
   // The product's own mail server, for its notifications, so its affiliates
@@ -334,6 +335,10 @@ enum CommissionStatus {
 
 model Commission {
   id          String    @id @default(cuid())
+  // The product the commission belongs to, always its affiliate's. Kept on
+  // the row so a payment reference is unique within one product only.
+  merchantId  String
+  merchant    Merchant  @relation(fields: [merchantId], references: [id])
   affiliateId String
   affiliate   Affiliate @relation(fields: [affiliateId], references: [id])
   clickId     String
@@ -346,7 +351,7 @@ model Commission {
   adjustsCommission   Commission?  @relation("Adjustment", fields: [adjustsCommissionId], references: [id])
   adjustments         Commission[] @relation("Adjustment")
 
-  stripePaymentRef String?  @unique // an Invoice ID for subscriptions, a PaymentIntent ID for one-time purchases (no Invoice exists for those) — null for adjustment rows, which aren't tied to a new payment
+  stripePaymentRef String? // unique per product; an Invoice ID for subscriptions, a PaymentIntent ID for one-time purchases (no Invoice exists for those) — null for adjustment rows, which aren't tied to a new payment
   // Eighteen digits because a single sale in a currency like VND or IDR can
   // pass the eight integer digits Decimal(10,2) allowed.
   amount           Decimal  @db.Decimal(18, 2) // negative for adjustment rows
@@ -387,6 +392,7 @@ model Commission {
 
   createdAt DateTime @default(now())
 
+  @@unique([merchantId, stripePaymentRef])
   @@index([status, payableAt])
   // The sale handlers read a click's earlier commissions on every sale of a
   // program with a limited duration (src/lib/worker/referralDuration.ts).

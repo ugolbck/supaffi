@@ -245,6 +245,7 @@ describe("promo codes", () => {
     });
     await db.commission.create({
       data: {
+        merchantId,
         affiliateId: aliceId,
         clickId: sale.id,
         stripePaymentRef: "pi_1",
@@ -279,7 +280,7 @@ describe("promo codes", () => {
         data: { affiliateId: aliceId, referralToken: crypto.randomUUID(), expiresAt: new Date(), promoCodeId: codeId, promoCheckoutSessionId: `cs_${ref}` },
       });
       await db.commission.create({
-        data: { affiliateId: aliceId, clickId: click.id, stripePaymentRef: ref, amount, currency, status, payableAt: new Date() },
+        data: { merchantId, affiliateId: aliceId, clickId: click.id, stripePaymentRef: ref, amount, currency, status, payableAt: new Date() },
       });
     };
     await sale(first.id, "pi_1", 10, "usd", "PENDING");

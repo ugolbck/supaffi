@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { assertOwnsMerchant } from "@/lib/ownership";
 import type { CommissionDurationType } from "@prisma/client";
 import { uniqueSlug } from "@/lib/slug";
 import { stripeClientFor } from "@/lib/stripe";
@@ -55,22 +56,12 @@ export async function programDiscount(
   return { error: null, stripeCouponId: couponId, discountLabel: coupon.label };
 }
 
-async function assertMerchantOwnership(ownerId: string, merchantId: string): Promise<void> {
-  const merchant = await db.merchant.findFirst({
-    where: { id: merchantId, ownerId },
-    select: { id: true },
-  });
-  if (!merchant) {
-    throw new Error("Merchant not found");
-  }
-}
-
 export async function createProgram(
   ownerId: string,
   merchantId: string,
   input: ProgramInput
 ): Promise<{ id: string; slug: string }> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const slug = await uniqueSlug(input.name, "program", async (candidate) =>
     Boolean(
@@ -106,7 +97,7 @@ export async function listProgramsForMerchant(
     affiliateCount: number;
   }[]
 > {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const programs = await db.program.findMany({
     where: { merchantId },
@@ -178,7 +169,7 @@ export async function updateProgram(
   programId: string,
   input: ProgramInput
 ): Promise<void> {
-  await assertMerchantOwnership(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const existing = await db.program.findFirst({
     where: { id: programId, merchantId },

@@ -176,6 +176,7 @@ describe("handleSubscriptionDeleted", () => {
       await seedReferredSubscription(merchant.id, clickId, "sub_1");
       await db.commission.create({
         data: {
+          merchantId: merchant.id,
           affiliateId,
           clickId,
           stripePaymentRef: "pi_1",
@@ -194,6 +195,7 @@ describe("handleSubscriptionDeleted", () => {
     it("does not count a click with a commission from a one-time purchase", async () => {
       await db.commission.create({
         data: {
+          merchantId: merchant.id,
           affiliateId,
           clickId,
           stripePaymentRef: "pi_1",
@@ -212,6 +214,7 @@ describe("handleSubscriptionDeleted", () => {
     it("counts total 1 active 0 after the subscription is cancelled", async () => {
       await db.commission.create({
         data: {
+          merchantId: merchant.id,
           affiliateId,
           clickId,
           stripePaymentRef: "pi_1",
@@ -245,6 +248,7 @@ describe("handleSubscriptionDeleted", () => {
     it("does not count a referral confirmed as a self referral as still paying", async () => {
       await db.commission.create({
         data: {
+          merchantId: merchant.id,
           affiliateId,
           clickId,
           stripePaymentRef: "pi_1",

@@ -293,6 +293,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     });
     await db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         clickId: converting.id,
         amount: "12.00",
@@ -324,6 +325,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     });
     const sale = await db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         clickId: click.id,
         amount: "20.00",
@@ -335,6 +337,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     });
     await db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         clickId: click.id,
         adjustsCommissionId: sale.id,
@@ -346,6 +349,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     });
     await db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId: sarah.id,
         clickId: click.id,
         adjustsCommissionId: sale.id,

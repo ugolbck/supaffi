@@ -153,18 +153,19 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // Paid entirely from credit balance: nothing moved, so nothing earns.
   if (firstInvoice && !moneyPaid) return;
 
-  // Idempotency rides on Commission.stripePaymentRef being unique. A session
-  // with neither an invoice nor a payment intent gives us no key, and a
-  // redelivery would duplicate. Nothing was paid on such a session anyway.
+  // Idempotency rides on Commission.stripePaymentRef being unique within the
+  // product. A session with neither an invoice nor a payment intent gives us
+  // no key, and a redelivery would duplicate. Nothing was paid on such a
+  // session anyway.
   if (!stripePaymentRef) return;
 
   // The unique key cannot catch this one: the row was written under the
   // invoice and this event now computes the PaymentIntent. Checked the same way
-  // the unique constraint is, across every Merchant, and before the duration
+  // the unique constraint is, within this product, and before the duration
   // read and any Stripe call, which is where a dedupe would have ended too.
   if (earlierPaymentRef) {
     const earlier = await db.commission.findUnique({
-      where: { stripePaymentRef: earlierPaymentRef },
+      where: { merchantId_stripePaymentRef: { merchantId: merchant.id, stripePaymentRef: earlierPaymentRef } },
       select: { id: true },
     });
     if (earlier) return;
@@ -301,6 +302,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     // Checked against a self referral confirmed since the check above.
     const written = await createCommissionUnlessSelfReferral({
       data: {
+        merchantId: merchant.id,
         affiliateId: affiliate.id,
         clickId: click.id,
         stripePaymentRef,
@@ -320,13 +322,14 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     if (written && dispute === "unknown") {
       // The write only reports whether it happened, not the row: looked up by
       // its unique payment reference so the log still names the commission.
-      const commission = await db.commission.findFirst({ where: { stripePaymentRef }, select: { id: true } });
+      const commission = await db.commission.findFirst({ where: { merchantId: merchant.id, stripePaymentRef }, select: { id: true } });
       console.warn(
         `[worker] commission ${commission?.id} was created while its disputes could not be read, so it is held until a dispute event arrives or the owner cancels it.`
       );
     }
   } catch (err) {
-    // Unique constraint on stripePaymentRef. checkout.session.completed and
+    // Unique constraint on the product's stripePaymentRef.
+    // checkout.session.completed and
     // checkout.session.async_payment_succeeded can both land on the same
     // paid Session; whichever arrives second finds the Commission the first
     // one already created, not an error.

@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { assertOwnsMerchant } from "@/lib/ownership";
 import { VISITOR_CLICK } from "@/lib/referral";
 import { Prisma } from "@prisma/client";
 import { MAX_SHOWN } from "@/lib/payoutLimits";
@@ -236,16 +237,6 @@ function nextBucket(date: Date, bucket: Bucket): Date {
   else if (bucket === "day") next.setUTCDate(next.getUTCDate() + 1);
   else next.setUTCMonth(next.getUTCMonth() + 1);
   return next;
-}
-
-async function assertOwns(ownerId: string, merchantId: string): Promise<void> {
-  const merchant = await db.merchant.findFirst({
-    where: { id: merchantId, ownerId },
-    select: { id: true },
-  });
-  if (!merchant) {
-    throw new Error("Merchant not found");
-  }
 }
 
 /**
@@ -575,7 +566,7 @@ export async function getTopAffiliates(
   limit = 5,
   window?: Window
 ): Promise<TopAffiliate[]> {
-  await assertOwns(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   // Within the window the page is showing, when it has one, so the list
   // and the chart beside it answer the same question.
@@ -691,7 +682,7 @@ export async function getPayableGroups(
   merchantId: string,
   capPerGroup: number = MAX_SHOWN
 ): Promise<PayableGroup[]> {
-  await assertOwns(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const rows = await db.commission.findMany({
     where: {
@@ -779,7 +770,7 @@ export async function listPayouts(
   merchantId: string,
   { page, pageSize }: { page: number; pageSize: number }
 ): Promise<{ rows: PayoutRow[]; total: number }> {
-  await assertOwns(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const groups = await db.commission.groupBy({
     by: ["affiliateId", "currency", "paidAt"],
@@ -819,7 +810,7 @@ export async function getOwedTotals(
   ownerId: string,
   merchantId: string
 ): Promise<{ owed: CurrencyTotal[]; payableNow: CurrencyTotal[] }> {
-  await assertOwns(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
   const [owed, payableNow] = await Promise.all([
     owedTotals({ merchantId }),
     owedTotals({ merchantId }, ["PAYABLE"]),
@@ -837,7 +828,7 @@ export async function getWebhookHealth(
   ownerId: string,
   merchantId: string
 ): Promise<WebhookHealth> {
-  await assertOwns(ownerId, merchantId);
+  await assertOwnsMerchant(ownerId, merchantId);
 
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [last24h, recent] = await Promise.all([

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getIntegrationStatus } from "@/lib/merchant";
+import { assertOwnsMerchant } from "@/lib/ownership";
 import { getTrackingStatus, type TrackingStatus } from "@/lib/tracking";
 
 /**
@@ -46,6 +47,7 @@ export async function getProductSetup(
   ownerId: string,
   merchantId: string
 ): Promise<ProductSetup> {
+  await assertOwnsMerchant(ownerId, merchantId);
   const [integrations, programs, trackingStatus, affiliateCount] = await Promise.all([
     getIntegrationStatus(ownerId, merchantId),
     db.program.findMany({

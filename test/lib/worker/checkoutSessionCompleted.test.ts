@@ -75,6 +75,7 @@ import { handleInvoicePaid } from "@/lib/worker/handlers/invoicePaid";
 import { handleSubscriptionDeleted } from "@/lib/worker/handlers/subscriptionDeleted";
 import { EARNING_INVOICE_EXPAND } from "@/lib/worker/referredRevenue";
 import { invoiceLine } from "./invoiceLines";
+import { seedInvoiceCommission, seedMerchant, seedReferral } from "./referralFixtures";
 
 const CUSTOMER_ID = "cus_test";
 
@@ -1263,6 +1264,7 @@ describe("handleCheckoutSessionCompleted", () => {
       // Recorded when that purchase was processed; a one-time sale keeps no other date.
       await db.commission.create({
         data: {
+          merchantId: merchant.id,
           affiliateId: clickInput.affiliateId,
           clickId: click.id,
           stripePaymentRef: "pi_once",
@@ -1308,6 +1310,7 @@ describe("handleCheckoutSessionCompleted", () => {
       await useDuration("FIXED_MONTHS", 3);
       await db.commission.create({
         data: {
+          merchantId: merchant.id,
           affiliateId: clickInput.affiliateId,
           clickId: click.id,
           stripePaymentRef: "in_legacy",
@@ -1748,6 +1751,7 @@ describe("handleCheckoutSessionCompleted", () => {
       // reclaimed after the upgrade, now computes the PaymentIntent instead.
       await db.commission.create({
         data: {
+          merchantId: merchant.id,
           affiliateId: clickInput.affiliateId,
           clickId: click.id,
           stripePaymentRef: "in_before",
@@ -1771,6 +1775,49 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(stripeStub.checkout.sessions.retrieve).not.toHaveBeenCalled();
       expect(stripeStub.customers.retrieve).not.toHaveBeenCalled();
       expect(stripeStub.paymentIntents.retrieve).not.toHaveBeenCalled();
+    });
+
+    // Another product's commission written under this sale's reference, by an
+    // event signed with that product's own webhook secret.
+    async function foreignCommission(ref: string) {
+      const other = await seedMerchant(merchant.ownerId);
+      const { affiliate, click: otherClick } = await seedReferral(other);
+      return seedInvoiceCommission(affiliate.id, otherClick.id, ref);
+    }
+
+    it("earns on a sale whose PaymentIntent another product already holds a commission under", async () => {
+      const foreign = await foreignCommission("pi_shared");
+
+      await handleCheckoutSessionCompleted(merchant, sessionFixture({ mode: "payment", paymentIntent: "pi_shared" }));
+
+      const own = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(own.merchantId).toBe(merchant.id);
+      expect(own.stripePaymentRef).toBe("pi_shared");
+      expect(await db.commission.findUniqueOrThrow({ where: { id: foreign.id } })).toEqual(foreign);
+    });
+
+    it("earns on a sale whose post-purchase invoice another product already holds a commission under", async () => {
+      await foreignCommission("in_shared");
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ mode: "payment", paymentIntent: "pi_own", invoice: "in_shared" })
+      );
+
+      const own = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(own.stripePaymentRef).toBe("pi_own");
+    });
+
+    it("earns on a subscription's first invoice another product already holds a commission under", async () => {
+      await foreignCommission("in_sub_shared");
+
+      await handleCheckoutSessionCompleted(
+        merchant,
+        sessionFixture({ invoice: "in_sub_shared", paymentIntent: "pi_sub_shared", subscription: "sub_shared" })
+      );
+
+      const own = await db.commission.findFirstOrThrow({ where: { clickId: click.id } });
+      expect(own.stripePaymentRef).toBe("in_sub_shared");
     });
   });
   describe("promo codes", () => {

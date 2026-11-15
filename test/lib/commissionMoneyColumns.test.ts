@@ -19,6 +19,7 @@ async function clearAll() {
 describe("Commission money columns", () => {
   let affiliateId: string;
   let clickId: string;
+  let merchantId: string;
 
   beforeEach(async () => {
     await clearAll();
@@ -47,6 +48,7 @@ describe("Commission money columns", () => {
       data: { merchantId: merchant.id, programId: program.id, email: `aff-${crypto.randomUUID()}@example.com` },
     });
     affiliateId = affiliate.id;
+    merchantId = merchant.id;
     const click = await db.click.create({
       data: { affiliateId, referralToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + 60_000) },
     });
@@ -64,6 +66,7 @@ describe("Commission money columns", () => {
     // until it gave up.
     const created = await db.commission.create({
       data: {
+        merchantId,
         affiliateId,
         clickId,
         stripePaymentRef: "pi_vnd_large",

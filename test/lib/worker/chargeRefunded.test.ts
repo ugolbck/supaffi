@@ -151,6 +151,7 @@ describe("handleChargeRefunded", () => {
   async function givenCommission(overrides: Partial<Commission> = {}): Promise<Commission> {
     return db.commission.create({
       data: {
+        merchantId: merchant.id,
         affiliateId,
         clickId,
         stripePaymentRef: PAYMENT_INTENT_ID,

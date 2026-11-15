@@ -112,6 +112,7 @@ async function makeCommission(
 ) {
   return db.commission.create({
     data: {
+      merchantId: (await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).merchantId,
       affiliateId,
       clickId,
       amount: overrides.amount ?? "10.00",
@@ -1074,6 +1075,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       await new Promise((resolve) => setTimeout(resolve, 200));
       await tx.commission.create({
         data: {
+          merchantId,
           affiliateId: affiliate.id,
           clickId: click.id,
           stripePaymentRef: "in_renewal",
@@ -1087,7 +1089,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
     });
     await confirming;
 
-    const renewal = await db.commission.findUniqueOrThrow({ where: { stripePaymentRef: "in_renewal" } });
+    const renewal = await db.commission.findFirstOrThrow({ where: { stripePaymentRef: "in_renewal" } });
     expect(renewal.status).toBe("VOIDED");
     expect(renewal.voidReason).toBe("confirmed self-referral");
   });

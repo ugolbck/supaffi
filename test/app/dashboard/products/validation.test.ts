@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   validateProductInput,
   validateStripeCredentials,
@@ -74,6 +74,56 @@ describe("validateProductInput", () => {
 
   it("skips the check when no Instance domain is configured, so local development is unaffected", () => {
     expect(validateProductInput({ ...validInput, domain: "localhost:3000" }, "")).toBeNull();
+  });
+
+  describe("in production", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    const HOSTNAME_ERROR = "Domain must be a full hostname, like affiliates.example.com";
+
+    it.each([
+      "affiliates.instantgradient.com",
+      "a.io",
+      "xn--bcher-kva.example",
+      "my-shop.co.uk",
+      "  Affiliates.Example.COM ",
+    ])("accepts the public hostname %s", (domain) => {
+      vi.stubEnv("NODE_ENV", "production");
+      expect(validateProductInput({ ...validInput, domain })).toBeNull();
+    });
+
+    it.each([
+      ["a port", "affiliates.example.com:8443"],
+      ["a local name with a port", "localhost:3000"],
+      ["localhost", "localhost"],
+      ["a single-label internal name", "app"],
+      ["a trailing dot", "affiliates.example.com."],
+      ["an IPv4 address", "203.0.113.7"],
+      ["an IPv4 address with a port", "203.0.113.7:443"],
+      ["an IPv6 address", "[2001:db8::1]"],
+      ["a bare IPv6 address", "2001:db8::1"],
+      ["an underscore", "my_shop.example.com"],
+      ["a label starting with a hyphen", "-shop.example.com"],
+      ["a label ending with a hyphen", "shop-.example.com"],
+      ["an empty label", "shop..example.com"],
+      ["a leading dot", ".example.com"],
+      ["a label over 63 characters", `${"a".repeat(64)}.example.com`],
+      ["a name over 253 characters", `${"a".repeat(60)}.`.repeat(5) + "com"],
+      ["a wildcard", "*.example.com"],
+      ["a user part", "user@example.com"],
+    ])("rejects %s", (_label, domain) => {
+      vi.stubEnv("NODE_ENV", "production");
+      expect(validateProductInput({ ...validInput, domain })).toBe(HOSTNAME_ERROR);
+    });
+
+    it("still refuses the Instance's own domain", () => {
+      vi.stubEnv("NODE_ENV", "production");
+      expect(validateProductInput({ ...validInput, domain: "supaffi.example.com" }, "supaffi.example.com")).toBe(
+        "That domain serves this Supaffi instance."
+      );
+    });
   });
 });
 
