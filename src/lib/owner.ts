@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
+import { staticExt } from "@/extensions/static";
 import { ConcurrencyLimitError, hashPassword, verifyAgainstNoAccount, verifyPassword } from "@/lib/password";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwordPolicy";
+import { isUniqueConstraintError } from "@/lib/prismaErrors";
 
 // Lives in its own module so the startup hook can reach it without dragging
 // Argon2 into the Edge instrumentation bundle. Re-exported here so every
@@ -29,8 +31,8 @@ export async function createOwner(
     // thing (the single-Owner invariant).
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(72583)`;
 
-    const count = await tx.owner.count();
-    if (count > 0) {
+    // One Owner per instance, unless a build has opened Owner signup.
+    if (staticExt.owners.signupPath === null && (await tx.owner.count()) > 0) {
       throw new Error("An Owner already exists on this Instance");
     }
 
@@ -39,6 +41,11 @@ export async function createOwner(
       select: { id: true, email: true },
     });
   });
+}
+
+/** The one shape check for an Owner's email, on signup and on change alike. */
+export function looksLikeOwnerEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
 type OwnerForLogin = { id: string; email: string; passwordHash: string };
@@ -113,10 +120,17 @@ export async function changeOwnerEmail(
   newEmail: string
 ): Promise<{ error: string } | null> {
   const email = newEmail.trim().toLowerCase();
-  if (!email.includes("@")) return { error: "That does not look like an email address" };
+  if (!looksLikeOwnerEmail(email)) return { error: "That does not look like an email address" };
   const owner = await ownerWithVerifiedPassword(ownerId, currentPassword);
   if ("error" in owner) return owner;
-  await db.owner.update({ where: { id: owner.id }, data: { email } });
+  try {
+    await db.owner.update({ where: { id: owner.id }, data: { email } });
+  } catch (err) {
+    // Another Owner has it. Asked only after the password check, so this
+    // tells nothing to someone without the account's password.
+    if (isUniqueConstraintError(err)) return { error: "That email cannot be used. Try another one." };
+    throw err;
+  }
   return null;
 }
 

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { ext } from "@/extensions";
 import { Button } from "@/components/ui/button";
 import { signOutAction } from "@/app/dashboard/signOutAction";
 
@@ -19,6 +20,9 @@ const COLUMN = "mx-auto w-full max-w-[calc(256px+48px+640px+2*24px)] px-6";
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
+
+  const gate = await ext.dashboard.gate(session.user.id);
+  if (gate.redirect) redirect(gate.redirect);
 
   return (
     <div className="min-h-svh bg-background">

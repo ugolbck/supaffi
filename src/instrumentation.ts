@@ -43,6 +43,10 @@ async function announceSetupTokenIfNeeded(): Promise<void> {
   // Argon2 out of the Edge bundle — only the import boundary above does that.
   const { ownerExists } = await import("@/lib/ownerExists");
   const { mintSetupToken } = await import("@/lib/setupToken");
+  const { staticExt } = await import("@/extensions/static");
+
+  // Owners sign up instead, so there is no wizard for a token to open.
+  if (staticExt.owners.signupPath !== null) return;
 
   try {
     if (await ownerExists()) return;

@@ -15,6 +15,8 @@
 // it from the web app would mean handing the app control of Docker on the
 // host, which is root, and that is how self-hosted tools get taken over.
 
+import { staticExt } from "@/extensions/static";
+
 const REPO = "ugolbck/supaffi";
 const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 
@@ -34,7 +36,7 @@ export function installedVersion(): string {
 }
 
 export function updateCheckEnabled(): boolean {
-  return process.env.SUPAFFI_UPDATE_CHECK?.trim().toLowerCase() !== "off";
+  return staticExt.instance.showInfo && process.env.SUPAFFI_UPDATE_CHECK?.trim().toLowerCase() !== "off";
 }
 
 export type Release = {

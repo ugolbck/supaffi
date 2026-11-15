@@ -43,10 +43,16 @@ describe("dropSessionIfStale", () => {
   it("strips a stale owner session, checked against the owner lookup only", async () => {
     ownerSessionIsCurrent.mockResolvedValue(false);
     const result = await dropSessionIfStale(sessionFor("owner"), tokenFor("owner"));
-    expect(ownerSessionIsCurrent).toHaveBeenCalledWith("u1", 1000);
+    expect(ownerSessionIsCurrent).toHaveBeenCalledWith("u1", 1_000_000);
     expect(affiliateSessionIsCurrent).not.toHaveBeenCalled();
     expect(result.user).not.toHaveProperty("id");
     expect(result.user).not.toHaveProperty("role");
+  });
+
+  it("checks an owner session by its sign-in time in milliseconds when the token has it", async () => {
+    ownerSessionIsCurrent.mockResolvedValue(true);
+    await dropSessionIfStale(sessionFor("owner"), { ...tokenFor("owner"), authAtMs: 1_000_456 } as JWT);
+    expect(ownerSessionIsCurrent).toHaveBeenCalledWith("u1", 1_000_456);
   });
 
   it("leaves a token with no role or no subject alone", async () => {
