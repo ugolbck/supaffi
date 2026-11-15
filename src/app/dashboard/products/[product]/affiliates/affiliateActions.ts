@@ -1,8 +1,7 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { updateAffiliate } from "@/lib/affiliate";
 import { createAffiliateResetLink } from "@/lib/affiliatePassword";
 import { addPromoCode, issuePromoCode, turnOffPromoCode, type PromoCodeResult } from "@/lib/promoCode";
@@ -12,18 +11,12 @@ import { addPromoCode, issuePromoCode, turnOffPromoCode, type PromoCodeResult } 
  * they are paid, their password link and their promo codes.
  */
 
-async function owner(): Promise<string> {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  return session.user.id;
-}
-
 export async function changeProgramAction(
   product: { id: string; slug: string },
   affiliateId: string,
   formData: FormData
 ): Promise<void> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const programId = String(formData.get("programId") ?? "").trim();
   // An empty id is refused by updateAffiliate, and the select always carries a
   // real one, so nothing is left to do here but ignore a submit that does not.
@@ -37,7 +30,7 @@ export async function setCustomRateAction(
   affiliateId: string,
   formData: FormData
 ): Promise<void> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
 
   // "Use default" carries its own field. Reading an empty `rate` instead
   // would never fire: the button and the input share a form, and the value
@@ -65,7 +58,7 @@ export async function createPasswordLinkAction(
   product: { id: string },
   affiliateId: string
 ): Promise<{ token: string } | { error: string }> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const token = await createAffiliateResetLink(ownerId, product.id, affiliateId);
   return token ? { token } : { error: "Affiliate not found" };
 }
@@ -77,7 +70,7 @@ async function promoCodeWrite(
   product: { id: string; slug: string },
   write: (ownerId: string) => Promise<PromoCodeResult>
 ): Promise<PromoCodeActionError> {
-  const result = await write(await owner());
+  const result = await write(await requireOwner());
   if (!result.ok) return { error: result.error, keyLacksPermission: result.keyLacksPermission };
   revalidatePath(`/dashboard/products/${product.slug}/affiliates`);
   return null;

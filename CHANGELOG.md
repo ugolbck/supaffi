@@ -8,6 +8,17 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Extensions: `owners.canUse`, a server hook that decides whether an Owner
+  may use the dashboard. Every Owner page and action checks it first; a
+  refused Owner goes where `dashboard.gate` sends them, or gets not found.
+  Signing out and the account page stay open. Defaults to allowed.
+- Extensions: `getOwnerAccount` in the core API, an Owner's current email
+  and when their password last changed.
+
 ## 0.8.0
 
 ### Added
