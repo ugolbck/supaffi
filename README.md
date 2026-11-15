@@ -36,14 +36,14 @@ Everything lives at **[supaffi.com/docs](https://supaffi.com/docs)**. Good place
 - **Unlimited apps on one install**, each with its own affiliate program, domain, affiliates and payment account, fully separate from the others. [Products](https://supaffi.com/docs/products)
 - **Recurring commissions** paid once, for a set number of months, or for as long as the customer keeps paying. [What earns a commission](https://supaffi.com/docs/what-earns)
 - **Several programs per app** for different tiers, plus a custom rate for any affiliate. [Programs and rates](https://supaffi.com/docs/programs)
-- **Promo codes** on your Stripe coupons. Each affiliate claims their own code, and a customer who uses it at checkout credits them, link or no link. [Promo codes](https://supaffi.com/docs/promo-codes)
+- **Promo codes** on your Stripe coupons or Polar discounts. Each affiliate claims their own code, and a customer who uses it at checkout credits them, link or no link. [Promo codes](https://supaffi.com/docs/promo-codes)
 - **Refund-safe payouts**, because commissions wait out a holding period and an open chargeback freezes its commission until the dispute closes. [Refunds and disputes](https://supaffi.com/docs/refunds-and-disputes)
 - **Self-referral detection** that holds back any sale made with the affiliate's own email or card. [Self-referrals](https://supaffi.com/docs/self-referrals)
 - **An affiliate portal on your domain**, like `affiliates.yourapp.com`, where affiliates sign up and follow their earnings. [The affiliate portal](https://supaffi.com/docs/affiliate-portal)
 - **A payouts page** that lists who you owe and where to send it, with one click to mark them paid. [Paying affiliates](https://supaffi.com/docs/payouts)
 - **Optional email** through your own provider: you hear when someone joins or sells, and affiliates hear when they earn and are paid and reset their own password. [Email](https://supaffi.com/docs/email)
 
-Stripe and Polar are supported today, and more payment providers are on the way. See [what Supaffi does not handle](https://supaffi.com/docs/limits).
+Stripe and [Polar](https://supaffi.com/docs/polar) are supported today, and more payment providers are on the way. See [what Supaffi does not handle](https://supaffi.com/docs/limits).
 
 ## Install
 
@@ -60,8 +60,8 @@ Full guide, with server requirements: [Install](https://supaffi.com/docs/self-ho
 ## Add a product
 
 1. Point an A record for `affiliates.yourproduct.com` at the server. On Cloudflare, proxy off (grey cloud). [Affiliate domain and DNS](https://supaffi.com/docs/domain)
-2. Add the product in the dashboard with that hostname, your site's address and a Stripe key. [Connect Stripe](https://supaffi.com/docs/stripe)
-3. Paste the tracking snippet into your site. If you create Stripe Checkout Sessions yourself, pass the referral to Stripe when you create them. Payment Links, buy buttons and pricing tables need only the script. [Tracking](https://supaffi.com/docs/tracking), [Checkout Sessions](https://supaffi.com/docs/checkout), [Payment Links](https://supaffi.com/docs/payment-links)
+2. Add the product in the dashboard with that hostname, your site's address, and a Stripe key or Polar token. [Connect Stripe](https://supaffi.com/docs/stripe), [Connect Polar](https://supaffi.com/docs/polar)
+3. Paste the tracking snippet into your site. If you create Stripe or Polar checkouts yourself, pass the referral in their metadata when you create them. Stripe Payment Links, buy buttons and pricing tables, and Polar checkout links, need only the script. [Tracking](https://supaffi.com/docs/tracking), [Checkout Sessions](https://supaffi.com/docs/checkout), [Payment Links](https://supaffi.com/docs/payment-links)
 
 The hostname hosts the affiliate signup and their dashboard, so it must be on the product's own domain. One per product.
 
@@ -160,7 +160,7 @@ gh attestation verify oci://ghcr.io/ugolbck/supaffi:0.3.2 --repo ugolbck/supaffi
 The pre-update dump doesn't survive a dead disk. Keep, off the server:
 
 - the database, on a cron: `docker compose exec -T db pg_dump -U supaffi supaffi | gzip > supaffi.sql.gz`
-- `MASTER_ENCRYPTION_KEY` from `.env`, stored apart from the dump. It decrypts every Stripe key, so one stolen backup holding both gives up everything.
+- `MASTER_ENCRYPTION_KEY` from `.env`, stored apart from the dump. It decrypts every Stripe key and Polar token, so one stolen backup holding both gives up everything.
 
 How to restore is in [Backups](https://supaffi.com/docs/self-hosting/backups). If something goes wrong, check [Troubleshooting](https://supaffi.com/docs/self-hosting/troubleshooting).
 
