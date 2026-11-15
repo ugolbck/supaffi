@@ -5,29 +5,41 @@ order, with the technical notes, the work that runs alongside, and the known
 gaps. Shipped versions are in CHANGELOG.md.
 
 The order follows what makes a SaaS founder pass on Supaffi today, measured
-against Rewardful, Tolt, FirstPromoter and Affonso: sales it cannot see first,
-then switching costs, then the rest of the program.
+against Rewardful, Tolt, FirstPromoter, Affonso and Dub Partners: sales it
+cannot see first, then the work and fees of paying affiliates, then switching
+costs, then the rest of the program.
 
 ## Up next
 
-### Polar and Paddle
-Founders who let a merchant of record handle sales tax cannot use Supaffi.
-Polar and Paddle first, Lemon Squeezy after. The e2e sale step is already
-written without naming Stripe, so each needs only a fake.
+### Paddle
+Polar shipped in 0.8.0 behind the provider layer (src/lib/payments/). Paddle
+is a folder next to stripe/ and polar/ that passes the shared provider test
+kit, plus a fake for the e2e suite; Lemon Squeezy after it.
 
 ## Planned
+
+### Bulk payouts and tax forms
+A payout file in the format PayPal and Wise accept for bulk payouts, from the
+Payouts page, and a minimum amount below which an affiliate is not paid yet.
+Affiliates upload their W-9 or W-8BEN in the portal, and the Payouts page shows
+who is missing one. Paid tools charge 2 to 8% of payouts for this, or keep it
+for their top plans.
 
 ### Import from another tool
 Affiliates, their links and their commission history from Rewardful, Tolt and
 FirstPromoter, so moving costs nothing and nobody's link breaks.
 
-### Bulk payouts
-A payout file in the format PayPal and Wise accept for bulk payouts, from the
-Payouts page, and a minimum amount below which an affiliate is not paid yet.
+### Claude and ChatGPT connection
+An MCP server so an owner can ask their AI assistant about the program and act
+on it: top affiliates, what is owed, flagged commissions. Read first, then the
+actions the dashboard already has. Tolt, FirstPromoter, Affonso, Partnero and
+Dub all ship one.
 
-### Applications
+### Applications and sales review
 A program can hold new affiliates until the owner approves them, instead of
-choosing between open to anyone and invite only.
+choosing between open to anyone and invite only. Sales that look like fraud
+beyond a self-referral (many clicks from one address, disposable emails) are
+held in the same flagged list for the owner to confirm or dismiss.
 
 ## Later
 

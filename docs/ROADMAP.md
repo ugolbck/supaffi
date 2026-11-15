@@ -10,6 +10,7 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
 | Feature | What you get |
 | --- | --- |
+| **Polar** | Sell through Polar, a merchant of record that handles your sales tax. Pick it when you add a product. Promo codes work there too. |
 | **Email notifications** | Connect your email provider and hear when someone joins or sells. Affiliates hear when they earn and are paid, and reset their own password. |
 | **Promo codes** | Give a program a discount and every affiliate claims their own code for it in one click. A customer using it credits them, even without clicking their link. |
 | **Stripe Payment Links, buy buttons and pricing tables** | Sales through them earn commissions. The tracking script is all you add. |
@@ -18,15 +19,16 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
 | Feature | What you get |
 | --- | --- |
-| **Polar and Paddle** | Sell through a merchant of record that handles your sales tax. Lemon Squeezy after them. |
+| **Paddle** | Sell through Paddle, another merchant of record. Lemon Squeezy after it. |
 
 ## Planned
 
 | Feature | What you get |
 | --- | --- |
+| **Bulk payouts and tax forms** | One file to pay everyone through PayPal or Wise, a minimum payout amount, and affiliates' tax forms collected in their portal. |
 | **Import from Rewardful, Tolt and FirstPromoter** | Bring your affiliates, their links and their history. Nobody's link breaks. |
-| **Bulk payouts** | One file to pay everyone through PayPal or Wise, and a minimum payout amount. |
-| **Applications** | Approve new affiliates before they go live. |
+| **Claude and ChatGPT connection** | Ask about your program and manage it from your AI assistant, through MCP. |
+| **Applications and sales review** | Approve new affiliates before they go live, and hold sales that look like fraud until you review them. |
 
 ## Later
 
