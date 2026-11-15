@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stripeKeyWorks } from "@/lib/checks/stripe";
+import { stripeKeyWorks } from "@/lib/payments/stripe/keyCheck";
 
 describe("stripeKeyWorks", () => {
   it("passes when one read succeeds", async () => {

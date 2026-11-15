@@ -3,8 +3,8 @@ import {
   ensureRequiredWebhookEvents,
   moveWebhookEndpoint,
   type WebhookEndpointsClient,
-} from "@/lib/stripeWebhookEndpoint";
-import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/stripeWebhookEvents";
+} from "@/lib/payments/stripe/webhookEndpoint";
+import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/payments/stripe/webhookEvents";
 
 const URL = "https://affiliates.example.com/api/webhooks/stripe";
 

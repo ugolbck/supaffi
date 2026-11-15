@@ -30,20 +30,20 @@ vi.mock("next/navigation", () => ({
 // Nothing here should reach Stripe: a key check passes so the ownership check
 // behind it is what answers, and the webhook helpers are spied on to prove the
 // refused writes never got as far as them.
-vi.mock("@/lib/checks/stripe", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/checks/stripe")>()),
+vi.mock("@/lib/payments/stripe/keyCheck", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/payments/stripe/keyCheck")>()),
   stripeKeyWorks: async () => ({ ok: true, detail: "ok" }),
 }));
 const upgradeSpy = vi.fn();
 const moveSpy = vi.fn();
-vi.mock("@/lib/worker/webhookEvents", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/worker/webhookEvents")>()),
+vi.mock("@/lib/payments/stripe/endpointUpkeep", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/payments/stripe/endpointUpkeep")>()),
   upgradeMerchantWebhookEvents: (...args: unknown[]) => upgradeSpy(...args),
   moveMerchantWebhookEndpoint: (...args: unknown[]) => moveSpy(...args),
 }));
 const createEndpointSpy = vi.fn();
-vi.mock("@/lib/stripeWebhookEndpoint", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/stripeWebhookEndpoint")>()),
+vi.mock("@/lib/payments/stripe/webhookEndpoint", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/payments/stripe/webhookEndpoint")>()),
   createWebhookEndpoint: (...args: unknown[]) => createEndpointSpy(...args),
 }));
 
@@ -155,9 +155,9 @@ async function seed(label: string): Promise<Seeded> {
       name: `Product ${label}`,
       domain: `scoping-${label}-${tag}.example.com`,
       websiteUrl: `https://scoping-${label}-${tag}.example.com`,
-      stripeSecretKeyEnc: encrypt("rk_test_scoping"),
-      stripeWebhookSecretEnc: encrypt("whsec_scoping"),
-      stripeWebhookEndpointId: `we_${label}`,
+      paymentKeyEnc: encrypt("rk_test_scoping"),
+      webhookSecretEnc: encrypt("whsec_scoping"),
+      webhookEndpointId: `we_${label}`,
       smtpHost: "smtp.example.com",
       smtpPort: 587,
       smtpUser: "user",
@@ -206,7 +206,7 @@ async function seed(label: string): Promise<Seeded> {
         status,
         payableAt: new Date(Date.now() - 1000),
         flagReason: status === "FLAGGED" ? "self_referral" : undefined,
-        stripePaymentRef: `${ref}-${label}-${tag}`,
+        paymentRef: `${ref}-${label}-${tag}`,
       },
     });
   const payable = await commission("PAYABLE", "in_payable");
@@ -215,7 +215,7 @@ async function seed(label: string): Promise<Seeded> {
     data: {
       merchantId: merchant.id,
       clickId: click.id,
-      stripeSubscriptionId: `sub_${label}_${tag}`,
+      subscriptionRef: `sub_${label}_${tag}`,
       firstPaymentRef: `in_payable-${label}-${tag}`,
       firstPaidAt: new Date(),
     },
@@ -224,7 +224,7 @@ async function seed(label: string): Promise<Seeded> {
     data: {
       merchantId: merchant.id,
       affiliateId: affiliate.id,
-      stripePromotionCodeId: `promo_${label}_${tag}`,
+      promoCodeRef: `promo_${label}_${tag}`,
       code: `SCOPE${label.toUpperCase()}`,
     },
   });
@@ -652,7 +652,7 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
         `redirect:/dashboard/products/${SLUG}/settings?fresh=stripe`
       );
       const merchant = await db.merchant.findUniqueOrThrow({ where: { id: a.product.id } });
-      expect(merchant.stripeWebhookSecretEnc).not.toBe(before.merchant?.stripeWebhookSecretEnc);
+      expect(merchant.webhookSecretEnc).not.toBe(before.merchant?.webhookSecretEnc);
     });
 
     it("mail settings", async () => {

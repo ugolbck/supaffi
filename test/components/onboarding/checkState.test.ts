@@ -13,7 +13,7 @@ import {
  *
  * `checkState` tells "has not happened yet" from "happened and is wrong" by
  * matching the front of a detail string that `src/lib/checks/dns.ts`,
- * `src/lib/checks/stripe.ts`, `src/lib/checks/script.ts` and
+ * `src/lib/payments/stripe/keyCheck.ts`, `src/lib/checks/script.ts` and
  * `src/lib/checks/product.ts` write. Nothing in the type system ties the two
  * together, so renaming a detail there would silently turn every waiting row
  * into a red cross and every red cross into a waiting row.
@@ -30,7 +30,7 @@ const DETAIL = {
   wrongAddress: "Points at 1.2.3.4, not this server",
   certNotIssued: "Being set up",
   nothingAnswered: "Nothing answered",
-  // src/lib/checks/stripe.ts
+  // src/lib/payments/stripe/keyCheck.ts
   stripeUnreachable: "Could not reach Stripe",
   // src/lib/checks/script.ts
   scriptMissing: "Not found on example.com",

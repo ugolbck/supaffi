@@ -1,44 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
 import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { Prisma } from "@prisma/client";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { shouldLogSignatureFailure } from "@/lib/webhookSignatureLog";
+import { paymentProviderBySlug } from "@/lib/payments";
 
 // One instance can host several Merchants (ADR 0006), each on their own
 // domain, so the Merchant is resolved by which domain the request arrived
 // on, same as regular traffic. Each Merchant has their own webhook signing
-// secret, verified independently.
+// secret, verified independently. The last segment of the address names the
+// payment provider, /api/webhooks/stripe for Stripe.
 //
 // This only verifies the signature and queues the event (ADR 0007) — it
 // does not process it. Processing happens in the background worker, so
-// this handler stays fast and returns 200 quickly, which is what Stripe
+// this handler stays fast and returns 200 quickly, which is what a provider
 // expects to stop retrying.
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
+  const provider = paymentProviderBySlug((await params).provider);
   const host = req.headers.get("host");
-  const signature = req.headers.get("stripe-signature");
-  if (!host || !signature) {
+  if (!provider) {
+    return new NextResponse(null, { status: 404 });
+  }
+  if (!host || !req.headers.get(provider.signatureHeader)) {
     return new NextResponse(null, { status: 400 });
   }
 
   const merchant = await db.merchant.findUnique({
     where: { domain: host },
-    select: { id: true, stripeWebhookSecretEnc: true },
+    select: { id: true, paymentProvider: true, webhookSecretEnc: true },
   });
-  // No webhook secret means Stripe was never connected for this Merchant,
-  // so there is nothing to verify the signature against. Treated the same as
-  // an unknown domain: reject, never queue an unverifiable payload.
-  if (!merchant || !merchant.stripeWebhookSecretEnc) {
+  // No webhook secret means the provider was never connected for this
+  // Merchant, so there is nothing to verify the signature against, and a
+  // Merchant on another provider has no secret for this one. Treated the same
+  // as an unknown domain: reject, never queue an unverifiable payload.
+  if (!merchant || !merchant.webhookSecretEnc || merchant.paymentProvider !== provider.id) {
     return new NextResponse(null, { status: 404 });
   }
 
   const rawBody = await req.text();
-  let event: Stripe.Event;
+  let verified;
   try {
-    const webhookSecret = decrypt(merchant.stripeWebhookSecretEnc);
-    event = Stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    verified = provider.verifyWebhook({ rawBody, headers: req.headers, secret: decrypt(merchant.webhookSecretEnc) });
   } catch {
+    verified = null;
+  }
+  if (!verified) {
     // Bad signature: reject outright, never queue an unverified payload.
     //
     // This used to fail in silence, so a rotated or mistyped signing secret
@@ -57,14 +64,14 @@ export async function POST(req: NextRequest) {
     await db.webhookEvent.create({
       data: {
         merchantId: merchant.id,
-        stripeEventId: event.id,
-        payload: event as unknown as Prisma.InputJsonValue,
+        providerEventId: verified.eventId,
+        payload: verified.payload as Prisma.InputJsonValue,
       },
     });
   } catch (err) {
-    // Unique constraint on stripeEventId — Stripe redelivered an event we
-    // already have queued. Not an error, still a success from Stripe's
-    // point of view.
+    // Unique constraint on providerEventId: the provider redelivered an event
+    // we already have queued. Not an error, still a success from its point of
+    // view.
     if (!isUniqueConstraintError(err)) {
       throw err;
     }

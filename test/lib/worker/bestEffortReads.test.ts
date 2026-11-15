@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { inspect } from "node:util";
 import type Stripe from "stripe";
-import { latestChargeFor, paymentIntentForInvoice } from "@/lib/worker/paymentState";
-import { resolveInvoiceFingerprint } from "@/lib/worker/selfReferral";
-import { disputeStateFor } from "@/lib/worker/disputes";
+import { latestChargeFor, paymentIntentForInvoice } from "@/lib/payments/stripe/paymentState";
+import { resolveInvoiceFingerprint } from "@/lib/payments/stripe/selfReferral";
+import { disputeStateFor } from "@/lib/payments/stripe/disputes";
 
 const outage = () => Object.assign(new Error("connection reset on acct_secret123"), { type: "StripeConnectionError" });
 const noPermission = () =>

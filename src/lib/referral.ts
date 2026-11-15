@@ -64,4 +64,4 @@ export const REFERRAL_QUERY_PARAM = "via";
  * nobody clicked anything, and counting it would inflate clicks and flatter
  * the conversion rate.
  */
-export const VISITOR_CLICK = { promoCheckoutSessionId: null } as const;
+export const VISITOR_CLICK = { promoCheckoutRef: null } as const;

@@ -24,7 +24,7 @@ describe("claimBatch", () => {
 
   function event(data: { status: "PENDING" | "PROCESSING"; nextAttemptAt: Date; attempts?: number }) {
     return db.webhookEvent.create({
-      data: { merchantId: merchant.id, stripeEventId: `evt_${crypto.randomUUID()}`, payload: {}, ...data },
+      data: { merchantId: merchant.id, providerEventId: `evt_${crypto.randomUUID()}`, payload: {}, ...data },
     });
   }
 
@@ -47,6 +47,12 @@ describe("claimBatch", () => {
   afterAll(async () => {
     await clearAll();
     await db.$disconnect();
+  });
+
+  it("answers each row with the provider's event id under its client name", async () => {
+    const pending = await event({ status: "PENDING", nextAttemptAt: new Date(Date.now() - 1000) });
+    const [claimed] = await claimBatch();
+    expect(claimed.providerEventId).toBe(pending.providerEventId);
   });
 
   it("picks an event left PROCESSING by a crash once its lease has run out", async () => {

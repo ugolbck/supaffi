@@ -1,7 +1,5 @@
-import type { Merchant } from "@prisma/client";
-import type Stripe from "stripe";
+import type { ReferredSubscription } from "@prisma/client";
 import { db } from "@/lib/db";
-import { findReferredSubscription, idOf } from "../referredSubscription";
 
 /**
  * Nothing retroactive: commissions already earned stay earned, which is what
@@ -11,17 +9,11 @@ import { findReferredSubscription, idOf } from "../referredSubscription";
  * which is the moment they decide the merchant is cheating them.
  *
  * Matched on the subscription, like renewals. A referred customer cancelling a
- * subscription nobody referred, or one on another product sharing the Stripe
+ * subscription nobody referred, or one on another product sharing the payment
  * account, says nothing about this referral. A click that brought several
  * subscriptions only stops paying once all of them have ended.
  */
-export async function handleSubscriptionDeleted(
-  merchant: Merchant,
-  subscription: Stripe.Subscription
-): Promise<void> {
-  const referred = await findReferredSubscription(merchant, subscription.id, idOf(subscription.customer));
-  if (!referred) return;
-
+export async function recordSubscriptionEnded(referred: Pick<ReferredSubscription, "id" | "clickId">): Promise<void> {
   const now = new Date();
   await db.referredSubscription.updateMany({
     where: { id: referred.id, cancelledAt: null },

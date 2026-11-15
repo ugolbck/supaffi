@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
-import type { ExclusionSources } from "./commission";
-import { invoiceLinesBeforeTax, scaleToAmountPaid } from "./saleBase";
+import type { ExclusionSources } from "@/lib/payments/stripe/exclusion";
+import { invoiceLinesBeforeTax, scaleToAmountPaid } from "@/lib/payments/stripe/saleBase";
 
 /**
  * The part of a renewal invoice that is referred revenue, in Stripe minor units.

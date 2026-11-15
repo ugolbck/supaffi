@@ -52,5 +52,28 @@ export default defineConfig([
       ],
     },
   },
+  {
+    // The commission engine works for every payment provider, so it never
+    // reaches into one. A provider's adapter (src/lib/payments/<provider>/)
+    // reads its own events and calls the engine; the engine reaches providers
+    // only through the registry in src/lib/payments. ESLint keeps one set of
+    // options per rule, so the extension rule for src/lib is repeated here.
+    files: ["src/lib/worker/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [...SERVER_EXTENSION_MODULES, { name: "stripe", message: "Provider code belongs in src/lib/payments/<provider>/." }],
+          patterns: [
+            { regex: "^\\.\\.?/(\\.\\./)*extensions(/(index|defaults|installed|core-api))?(\\.tsx?)?$", message: SERVER_EXTENSION_MESSAGE },
+            {
+              group: ["@/lib/payments/*", "@/lib/payments/*/**", "!@/lib/payments/types", "../payments/*", "../payments/*/**", "!../payments/types"],
+              message: "Use the registry in @/lib/payments, not a provider's module.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", ".superpowers/**"]),
 ]);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isTransientStripeError, loggableError, stripeErrorLabel } from "@/lib/stripeErrors";
+import { isTransientStripeError, loggableError, stripeErrorLabel } from "@/lib/payments/stripe/errors";
 
 describe("isTransientStripeError", () => {
   it("retries outages, rate limits and dropped connections", () => {

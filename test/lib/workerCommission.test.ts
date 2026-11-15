@@ -5,10 +5,10 @@ import type Stripe from "stripe";
 import {
   addMonthsClamped,
   computeCommissionAmount,
-  isExcluded,
   isPaymentWithinCommissionDuration,
   saleAmountFor,
 } from "@/lib/worker/commission";
+import { isExcluded } from "@/lib/payments/stripe/exclusion";
 
 function programOf(type: Program["commissionDurationType"], months: number | null = null): Program {
   return { commissionDurationType: type, commissionDurationMonths: months } as Program;

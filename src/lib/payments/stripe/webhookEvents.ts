@@ -1,10 +1,9 @@
-// The exact set of Stripe event types src/lib/worker/dispatch.ts's switch
-// statement handles. Keep this list and that switch in sync by hand — if
-// you add a case there, add it here too, and vice versa. Used to tell a
-// Merchant exactly which events to enable on their Stripe webhook endpoint,
-// and as the enabled events when Supaffi creates the endpoint itself;
-// a Merchant enabling fewer than this list means Supaffi silently misses
-// real Commissions.
+// The Stripe event types Supaffi handles. dispatch.ts keys its handlers by
+// this list, so the compiler keeps the two in step. Used to tell a Merchant
+// exactly which events to enable on their Stripe webhook endpoint, and as the
+// enabled events when Supaffi creates the endpoint itself; a Merchant
+// enabling fewer than this list means Supaffi silently misses real
+// Commissions.
 export const REQUIRED_STRIPE_WEBHOOK_EVENTS = [
   "checkout.session.completed",
   // Delayed payment methods (SEPA, ACH, Boleto) complete the Session unpaid

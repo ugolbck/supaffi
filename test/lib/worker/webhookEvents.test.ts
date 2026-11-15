@@ -9,7 +9,7 @@ vi.mock("@/lib/db", () => ({ db: { merchant: { findUnique, findMany } } }));
 vi.mock("@/lib/crypto", () => ({ decrypt: (value: string) => `plain:${value}` }));
 
 const { upgradeAllWebhookEvents, upgradeMerchantWebhookEvents, moveMerchantWebhookEndpoint } = await import(
-  "@/lib/worker/webhookEvents"
+  "@/lib/payments/stripe/endpointUpkeep"
 );
 
 const OLD_EVENTS = ["checkout.session.completed", "invoice.paid", "charge.refunded", "customer.subscription.deleted"];
@@ -18,9 +18,9 @@ function merchant(id: string, extra: Record<string, unknown> = {}) {
   return {
     id,
     domain: `${id}.example.com`,
-    stripeSecretKeyEnc: `key-${id}`,
-    stripeWebhookSecretEnc: `whsec-${id}`,
-    stripeWebhookEndpointId: `we_${id}`,
+    paymentKeyEnc: `key-${id}`,
+    webhookSecretEnc: `whsec-${id}`,
+    webhookEndpointId: `we_${id}`,
     ...extra,
   };
 }
@@ -157,7 +157,7 @@ describe("moveMerchantWebhookEndpoint", () => {
   });
 
   it("asks the owner to move an endpoint Supaffi did not create, without touching it", async () => {
-    findUnique.mockResolvedValue(merchant("a", { stripeWebhookEndpointId: null }));
+    findUnique.mockResolvedValue(merchant("a", { webhookEndpointId: null }));
     const makeClient = vi.fn();
     expect(await moveMerchantWebhookEndpoint("a", makeClient)).toBe("manual");
     expect(makeClient).not.toHaveBeenCalled();
@@ -173,7 +173,7 @@ describe("moveMerchantWebhookEndpoint", () => {
 
   it("has nothing to move without a webhook, or on a local address", async () => {
     const makeClient = vi.fn();
-    findUnique.mockResolvedValue(merchant("a", { stripeWebhookSecretEnc: null, stripeWebhookEndpointId: null }));
+    findUnique.mockResolvedValue(merchant("a", { webhookSecretEnc: null, webhookEndpointId: null }));
     expect(await moveMerchantWebhookEndpoint("a", makeClient)).toBe("none");
     findUnique.mockResolvedValue(merchant("a", { domain: "shop.localhost:3000" }));
     expect(await moveMerchantWebhookEndpoint("a", makeClient)).toBe("none");
