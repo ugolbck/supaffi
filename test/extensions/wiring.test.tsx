@@ -152,6 +152,36 @@ describe("dashboard.banner and instance.showInfo in the shell", () => {
   });
 });
 
+describe("owners.canUse in the dashboard shell", () => {
+  it("renders a refused Owner the shell with no products, counts or banner", async () => {
+    const listMerchantsForOwner = vi.fn(async () => [{ id: "m1", slug: "acme", name: "Acme", domain: "a.acme.com" }]);
+    const countAffiliatesForMerchant = vi.fn(async () => 0);
+    const banner = vi.fn(async () => <p>Installed banner</p>);
+    vi.doMock("@/lib/merchant", () => ({ listMerchantsForOwner }));
+    vi.doMock("@/lib/affiliate", () => ({ countAffiliatesForMerchant }));
+    vi.doMock("@/components/ui/sidebar", () => ({
+      SidebarProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+      SidebarInset: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
+      SidebarTrigger: () => null,
+    }));
+    vi.doMock("@/app/dashboard/AppSidebar", () => ({
+      AppSidebar: ({ merchants, counts }: { merchants: unknown[]; counts: object }) => (
+        <nav>products:{merchants.length} counts:{Object.keys(counts).length}</nav>
+      ),
+    }));
+    install({ owners: { canUse: async () => false }, dashboard: { banner } });
+
+    const { default: DashboardLayout } = await import("@/app/dashboard/layout");
+    const html = renderToStaticMarkup((await DashboardLayout({ children: <p>page</p> })) as ReactElement);
+    expect(html).toContain("products:0 counts:0");
+    expect(html).toContain("<p>page</p>");
+    expect(html).not.toContain("Installed banner");
+    expect(listMerchantsForOwner).not.toHaveBeenCalled();
+    expect(countAffiliatesForMerchant).not.toHaveBeenCalled();
+    expect(banner).not.toHaveBeenCalled();
+  });
+});
+
 describe("account.sections and instance.showInfo", () => {
   beforeEach(() => {
     vi.doMock("@/app/dashboard/account/AccountForms", () => ({ EmailForm: () => null, PasswordForm: () => null }));

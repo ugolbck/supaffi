@@ -58,7 +58,11 @@ export async function listOwnerMerchants(ownerId: string): Promise<{ id: string;
   return merchants.map(({ id, name, domain }) => ({ id, name, domain }));
 }
 
-/** The signed-in Owner's id, or null for no session or an affiliate's. */
+/**
+ * The signed-in Owner's id, or null for no session or an affiliate's. Does not
+ * ask owners.canUse, on purpose: a page outside the dashboard can still tell
+ * who an Owner refused by it is.
+ */
 export async function currentOwnerId(): Promise<string | null> {
   const session = await auth();
   return session?.user?.role === "owner" && session.user.id ? session.user.id : null;

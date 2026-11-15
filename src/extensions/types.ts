@@ -61,10 +61,13 @@ export type SupaffiExtensions = {
     /**
      * Whether this Owner may use the dashboard. The access check every Owner
      * page, server action and Owner-only API route runs before any of its
-     * own work. Signing out, the account page and its actions skip it. On
-     * false nothing is read or changed: the request redirects where
-     * dashboard.gate sends this Owner, or answers not found when the gate
-     * sends nowhere. A refused server action never returns.
+     * own work. Signing out, the account page and its actions skip it on
+     * purpose, so a refused Owner can still reach their own account; the
+     * dashboard layout around that page then shows no products, counts or
+     * banner. On false nothing else is read or changed: the request redirects
+     * where dashboard.gate sends this Owner, or answers not found when the
+     * gate sends nowhere. A refused server action never returns.
+     * currentOwnerId in the core API does not ask it.
      */
     canUse(ownerId: string): Promise<boolean>;
   };
