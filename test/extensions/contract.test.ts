@@ -27,6 +27,11 @@ describe("extension defaults", () => {
     expect(await ext.account.sections("owner-1")).toEqual([]);
   });
 
+  it("let every Owner use the dashboard", async () => {
+    const { ext } = await import("@/extensions");
+    expect(await ext.owners.canUse("owner-1")).toBe(true);
+  });
+
   it("ship with nothing installed", async () => {
     const { installed } = await import("@/extensions/installed");
     const { installedStatic } = await import("@/extensions/installed-static");

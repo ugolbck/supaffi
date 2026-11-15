@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import {
   updateMerchant,
   deleteMerchant,
@@ -36,12 +36,6 @@ import { paymentProviderFor } from "@/lib/payments";
  * on the page the owner lands on.
  */
 
-async function owner(): Promise<string> {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  return session.user.id;
-}
-
 /** The settings URL, optionally asking for one section of checks to be re-run. */
 const settings = (slug: string, fresh?: "dns" | "payments") =>
   `/dashboard/products/${slug}/settings${fresh ? `?fresh=${fresh}` : ""}`;
@@ -53,7 +47,7 @@ export async function updateProductAction(
   _prev: ProductFormState,
   formData: FormData
 ): Promise<ProductFormState> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const input = {
     name: String(formData.get("name") ?? "").trim(),
     domain: normalizeDomain(String(formData.get("domain") ?? "")),
@@ -89,7 +83,7 @@ export async function updateProductAction(
 
 /** "Check" beside the domain's verification row: looks for its TXT record now. */
 export async function verifyDomainAction(product: ProductRef): Promise<void> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const ownership = await proveDomain(ownerId, product.id);
   const target = settings(product.slug, "dns");
   redirect(ownership?.webhook === "manual" ? `${target}&webhook=manual` : target);
@@ -100,7 +94,7 @@ export async function replaceStripeKeyAction(
   _prev: { error: string },
   formData: FormData
 ): Promise<{ error: string }> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const key = String(formData.get("value") ?? "").trim();
   const check = await stripeKeyWorks(key);
   if (!check.ok) return { error: check.detail };
@@ -117,7 +111,7 @@ export async function replacePolarTokenAction(
   _prev: { error: string },
   formData: FormData
 ): Promise<{ error: string }> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const token = String(formData.get("value") ?? "").trim();
   // A token for another Polar organization or environment gets its own
   // webhook, see connectPolarToken.
@@ -131,7 +125,7 @@ export async function replaceWebhookSecretAction(
   _prev: { error: string },
   formData: FormData
 ): Promise<{ error: string }> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const secret = String(formData.get("value") ?? "").trim();
   if (!secret.startsWith("whsec_")) return { error: "The signing secret starts with whsec_" };
   // A pasted secret may belong to an endpoint the owner made by hand, so the
@@ -145,7 +139,7 @@ export async function replaceWebhookSecretAction(
 }
 
 export async function deleteProductAction(product: ProductRef, formData: FormData): Promise<void> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/dashboard");
   // Typing the name is the confirmation. A dialog button alone is one

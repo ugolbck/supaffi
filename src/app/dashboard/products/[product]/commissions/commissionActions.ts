@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { alreadyPaidParams } from "@/lib/payoutNotices";
 import { safeListHref } from "@/lib/commissionRedirect";
 import {
@@ -25,12 +25,6 @@ import {
  * it before the redirect: a bound argument is a value the browser posts, so it
  * is not trusted to be a URL on this list at all.
  */
-
-async function owner(): Promise<string> {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  return session.user.id;
-}
 
 /**
  * The closed set of refusals the ledger can hand back. The reason travels in
@@ -77,7 +71,7 @@ export async function markPaidAction(
   shown: ShownCommission[],
   renderedAt: string
 ): Promise<void> {
-  const result = await markCommissionsPaid(await owner(), product.id, shown, renderedAt);
+  const result = await markCommissionsPaid(await requireOwner(), product.id, shown, renderedAt);
   back(
     product,
     listHref,
@@ -92,7 +86,7 @@ export async function confirmFraudAction(
   product: { id: string; slug: string },
   id: string
 ): Promise<void> {
-  await confirmCommissionFraud(await owner(), product.id, id);
+  await confirmCommissionFraud(await requireOwner(), product.id, id);
   back(product, listHref);
 }
 
@@ -101,7 +95,7 @@ export async function dismissFlagAction(
   product: { id: string; slug: string },
   id: string
 ): Promise<void> {
-  await dismissCommissionFlag(await owner(), product.id, id);
+  await dismissCommissionFlag(await requireOwner(), product.id, id);
   back(product, listHref);
 }
 
@@ -114,6 +108,6 @@ export async function voidAction(
   // Capped: the reason is read back months later in a table cell, and the
   // field is a free text input on a page anybody with the session can post to.
   const reason = String(formData.get("reason") ?? "").trim().slice(0, 200) || "voided by owner";
-  await voidCommission(await owner(), product.id, id, reason);
+  await voidCommission(await requireOwner(), product.id, id, reason);
   back(product, listHref);
 }

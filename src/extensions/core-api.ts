@@ -46,13 +46,24 @@ export async function setOwnerPassword(ownerId: string, password: string): Promi
   });
 }
 
+/** The Owner's current email and when their password last changed, or null for no such Owner. */
+export async function getOwnerAccount(
+  ownerId: string
+): Promise<{ email: string; passwordChangedAt: Date | null } | null> {
+  return db.owner.findUnique({ where: { id: ownerId }, select: { email: true, passwordChangedAt: true } });
+}
+
 /** A product's domain is null while it has none (another Owner's claim took it before it was verified). */
 export async function listOwnerMerchants(ownerId: string): Promise<{ id: string; name: string; domain: string | null }[]> {
   const merchants = await listMerchantsForOwner(ownerId);
   return merchants.map(({ id, name, domain }) => ({ id, name, domain: domain || null }));
 }
 
-/** The signed-in Owner's id, or null for no session or an affiliate's. */
+/**
+ * The signed-in Owner's id, or null for no session or an affiliate's. Does not
+ * ask owners.canUse, on purpose: a page outside the dashboard can still tell
+ * who an Owner refused by it is.
+ */
 export async function currentOwnerId(): Promise<string | null> {
   const session = await auth();
   return session?.user?.role === "owner" && session.user.id ? session.user.id : null;

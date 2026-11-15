@@ -66,9 +66,10 @@ export type SupaffiExtensions = {
      * A redirect sends the Owner elsewhere. Navigation only, never an access
      * check: a layout does not run again on client-side navigation between
      * pages it wraps, does not stop the page segment's own server work, and
-     * does not run for server actions or API routes. It is not told which page
-     * is open and the onboarding layout calls it too, so a redirect to a page
-     * under /dashboard or /onboarding loops: send the Owner outside both.
+     * does not run for server actions or API routes (owners.canUse is the
+     * access check, and sends a refused Owner here too). It is not told which
+     * page is open and the onboarding layout calls it too, so a redirect to a
+     * page under /dashboard or /onboarding loops: send the Owner outside both.
      */
     gate(ownerId: string): Promise<{ redirect?: string }>;
     /** Rendered above every dashboard page's content. */
@@ -77,6 +78,20 @@ export type SupaffiExtensions = {
   account: {
     /** Extra sections on the account page, after the password form. */
     sections(ownerId: string): Promise<ReactNode[]>;
+  };
+  owners: {
+    /**
+     * Whether this Owner may use the dashboard. The access check every Owner
+     * page, server action and Owner-only API route runs before any of its
+     * own work. Signing out, the account page and its actions skip it on
+     * purpose, so a refused Owner can still reach their own account; the
+     * dashboard layout around that page then shows no products, counts or
+     * banner. On false nothing else is read or changed: the request redirects
+     * where dashboard.gate sends this Owner, or answers not found when the
+     * gate sends nowhere. A refused server action never returns.
+     * currentOwnerId in the core API does not ask it.
+     */
+    canUse(ownerId: string): Promise<boolean>;
   };
 };
 

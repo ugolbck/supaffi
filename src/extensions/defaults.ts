@@ -9,4 +9,7 @@ export const defaults: SupaffiExtensions = {
   account: {
     sections: async () => [],
   },
+  owners: {
+    canUse: async () => true,
+  },
 };

@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { getMerchantForOwnerBySlug, getOnboardingState } from "@/lib/merchant";
 import { getProductSetup } from "@/lib/productSetup";
 import { resumeStep, stepPath } from "@/lib/onboarding";
@@ -50,10 +50,7 @@ export default async function ProductOverviewPage({
   const { product } = await params;
   const query = await searchParams;
   const range = rangeFromQuery(query.range);
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-
-  const ownerId = session.user.id;
+  const ownerId = await requireOwner();
   const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 

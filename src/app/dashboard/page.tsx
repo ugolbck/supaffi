@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight, Plus } from "lucide-react";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { countAffiliatesForMerchant } from "@/lib/affiliate";
 import { getProductMetrics } from "@/lib/analytics";
@@ -21,11 +21,9 @@ import { Page, PageTitle, Section } from "@/components/dashboard/Page";
  * onboarding before this ever renders.
  */
 export default async function ProductsPage() {
-  const session = await auth();
-  // The layout checks the role too. Kept here because every page under
+  // The layout checks the session too. Kept here because every page under
   // /dashboard carries its own check and none of them lean on the layout.
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  const ownerId = session.user.id;
+  const ownerId = await requireOwner();
   const merchants = await listMerchantsForOwner(ownerId);
 
   // One product is not a list. Home is that product.

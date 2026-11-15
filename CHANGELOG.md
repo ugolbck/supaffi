@@ -24,6 +24,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   until the new one is proven. Off by default.
 - Extensions: `domains.reserved`, a static hook listing hostnames no product
   may use, along with every name under them. Defaults to none.
+- Extensions: `owners.canUse`, a server hook that decides whether an Owner
+  may use the dashboard. Every Owner page and action checks it first; a
+  refused Owner goes where `dashboard.gate` sends them, or gets not found.
+  Signing out and the account page stay open. Defaults to allowed.
+- Extensions: `getOwnerAccount` in the core API, an Owner's current email
+  and when their password last changed.
 
 ### Changed
 

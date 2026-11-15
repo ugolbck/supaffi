@@ -1,5 +1,5 @@
 import { redirect, notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { getProgramForMerchant } from "@/lib/program";
 
@@ -13,13 +13,12 @@ export default async function EditProgramPage({
   params: Promise<{ product: string; program: string }>;
 }) {
   const { product, program: programSlug } = await params;
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
+  const ownerId = await requireOwner();
 
-  const merchant = await getMerchantForOwnerBySlug(session.user.id, product);
+  const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 
-  const program = await getProgramForMerchant(session.user.id, merchant.id, programSlug);
+  const program = await getProgramForMerchant(ownerId, merchant.id, programSlug);
   if (!program) notFound();
 
   redirect(`/dashboard/products/${merchant.slug}/programs?edit=${program.id}`);

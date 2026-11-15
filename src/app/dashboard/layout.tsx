@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { ownerCanUse, requireOwnerSession } from "@/app/requireOwner";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { countAffiliatesForMerchant } from "@/lib/affiliate";
 import { listProgramsForMerchant } from "@/lib/program";
@@ -12,23 +12,23 @@ import { staticExt } from "@/extensions/static";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar, type Counts } from "./AppSidebar";
 
-// Defense-in-depth: every page under /dashboard already checks role itself
-// (added during the Affiliate Auth plan). This layout-level check is an
-// additional, cheap guard — it does not replace the per-page checks, which
-// stay as-is.
+// Defense-in-depth: every page under /dashboard already runs requireOwner
+// itself. This layout-level check is an additional, cheap guard. It checks the
+// session alone, since it also wraps the account page, which stays open to an
+// Owner refused by owners.canUse. Such an Owner gets the shell with no
+// products, counts or banner: none of their data is read.
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  const ownerId = session.user.id;
+  const { ownerId, email } = await requireOwnerSession();
 
   const gate = await ext.dashboard.gate(ownerId);
   if (gate.redirect) redirect(gate.redirect);
 
-  const merchants = await listMerchantsForOwner(ownerId);
+  const canUse = await ownerCanUse(ownerId);
+  const merchants = canUse ? await listMerchantsForOwner(ownerId) : [];
 
   // A dashboard with nothing in it is not a dashboard. Until a product
   // exists, the only screen that makes sense is the first onboarding step.
-  if (merchants.length === 0) redirect("/onboarding");
+  if (canUse && merchants.length === 0) redirect("/onboarding");
 
   // Counted for every product, not just the open one. A layout does not
   // re-render when the user moves between two products, so a server-picked
@@ -64,14 +64,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // cache refreshes in the background and the notice appears on the next
   // navigation.
   const update = availableUpdate();
-  const banner = await ext.dashboard.banner(ownerId);
+  const banner = canUse ? await ext.dashboard.banner(ownerId) : null;
 
   return (
     <SidebarProvider style={{ "--sidebar-width": "264px" } as React.CSSProperties}>
       <AppSidebar
         merchants={merchants}
         counts={counts}
-        email={session.user.email ?? ""}
+        email={email}
         version={staticExt.instance.showInfo ? installedVersion() : null}
         update={update && { version: update.version, url: update.url, security: update.security }}
       />

@@ -1,6 +1,5 @@
 import { Fragment } from "react";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireOwnerSession } from "@/app/requireOwner";
 import { availableUpdate, installedVersion, updateCheckEnabled } from "@/lib/version";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { EmailForm, PasswordForm } from "./AccountForms";
@@ -17,19 +16,19 @@ import { staticExt } from "@/extensions/static";
  */
 
 export default async function AccountPage() {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
+  // Open to an Owner refused by owners.canUse, so the session alone.
+  const { ownerId, email } = await requireOwnerSession();
 
   // Answers from the cache and starts a refresh it does not wait for, so a
   // server with no outbound access does not pay for this on every visit.
   const update = availableUpdate();
-  const sections = await ext.account.sections(session.user.id);
+  const sections = await ext.account.sections(ownerId);
 
   return (
     <Page>
       <PageTitle title="Account" />
 
-      <EmailForm email={session.user.email ?? ""} />
+      <EmailForm email={email} />
       <PasswordForm />
 
       {sections.map((section, i) => (
