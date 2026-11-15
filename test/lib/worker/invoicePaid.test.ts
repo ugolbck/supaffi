@@ -106,6 +106,7 @@ async function clearAll() {
   await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
+  await db.webhookEvent.deleteMany();
   await db.merchant.deleteMany();
   await db.owner.deleteMany();
 }
@@ -264,6 +265,29 @@ describe("handleInvoicePaid", () => {
     expect(commission.saleAmount?.toString()).toBe("100");
     expect(commission.amount.toString()).toBe("20");
     expect(commission.status).toBe("PENDING");
+  });
+
+  it("waits for the checkout that started the subscription before claiming its first payment", async () => {
+    await db.referredSubscription.updateMany({ data: { firstPaymentRef: null, firstPaidAt: null } });
+    const checkout = await db.webhookEvent.create({
+      data: {
+        merchantId: merchant.id,
+        providerEventId: "evt_checkout",
+        payload: { type: "checkout.session.completed", data: { object: { id: "cs_1", subscription: SUBSCRIPTION_ID } } },
+        status: "PENDING",
+      },
+    });
+
+    await expect(handleInvoicePaid(merchant, invoiceFixture({ billing_reason: "subscription_update" }))).rejects.toThrow(
+      SUBSCRIPTION_ID
+    );
+    expect(await db.commission.count()).toBe(0);
+    expect((await db.referredSubscription.findFirstOrThrow()).firstPaymentRef).toBeNull();
+
+    // A checkout whose retries ran out no longer holds the renewal.
+    await db.webhookEvent.update({ where: { id: checkout.id }, data: { status: "FAILED" } });
+    await handleInvoicePaid(merchant, invoiceFixture({ billing_reason: "subscription_update" }));
+    expect((await db.referredSubscription.findFirstOrThrow()).firstPaymentRef).toBe("in_renewal");
   });
 
   it("creates nothing on a renewal paid entirely from credit balance", async () => {

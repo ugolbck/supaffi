@@ -86,6 +86,7 @@ async function testOrder(body) {
     net_amount: body.net_amount ?? 10000,
     tax_amount: 0,
     total_amount: body.net_amount ?? 10000,
+    applied_balance_amount: body.applied_balance_amount ?? 0,
     refunded_amount: 0,
     refunded_tax_amount: 0,
     currency: "usd",
@@ -108,8 +109,10 @@ async function testOrder(body) {
 async function testRefund(body) {
   const order = state.orders.get(body.order);
   if (!order) return null;
-  order.refunded_amount = Math.min(order.net_amount, order.refunded_amount + Number(body.amount ?? order.net_amount));
-  order.status = order.refunded_amount >= order.net_amount ? "refunded" : "partially_refunded";
+  // Polar refunds up to what the customer paid, their balance applied.
+  const paid = Math.max(0, order.net_amount + order.applied_balance_amount);
+  order.refunded_amount = Math.min(paid, order.refunded_amount + Number(body.amount ?? paid));
+  order.status = order.refunded_amount >= paid ? "refunded" : "partially_refunded";
   return { deliveries: await emit("order.refunded", order) };
 }
 

@@ -10,6 +10,11 @@ export type PolarOrder = {
   billing_reason: string;
   /** After discount, before tax. */
   net_amount: number;
+  /**
+   * The customer's balance used on the order: negative when their credit paid
+   * part of it, positive when it collected an amount they owed.
+   */
+  applied_balance_amount?: number;
   /** Cumulative, before tax. */
   refunded_amount: number;
   currency: string;
@@ -26,6 +31,15 @@ export type PolarOrder = {
 export type PolarSubscription = { id: string };
 
 export type PolarEvent = { type: string; data: unknown };
+
+/**
+ * What the customer paid before tax: the net amount with their balance
+ * applied. Polar refunds up to this figure and marks the order fully refunded
+ * at it (Order.refundable_amount in polar/models/order.py).
+ */
+export function polarPaidAmount(order: PolarOrder): number {
+  return Math.max(0, order.net_amount + (order.applied_balance_amount ?? 0));
+}
 
 /** The exclusion flag (CONTEXT.md), wherever the owner set it. */
 export function hasPolarExclusionFlag(...sources: Metadata[]): boolean {

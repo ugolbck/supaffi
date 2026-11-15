@@ -36,6 +36,11 @@ describe("saleAmountFor", () => {
   it("leaves zero-decimal currencies alone", () => {
     expect(saleAmountFor(4900, "jpy")).toBe(4900);
   });
+
+  it("reads UGX and ISK as two-decimal, as the providers send them", () => {
+    expect(saleAmountFor(1_000_000, "ugx")).toBe(10_000);
+    expect(saleAmountFor(1_000_000, "isk")).toBe(10_000);
+  });
 });
 
 describe("addMonthsClamped", () => {

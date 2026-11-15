@@ -7,6 +7,11 @@ import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import { shouldLogSignatureFailure } from "@/lib/webhookSignatureLog";
 import { paymentProviderBySlug } from "@/lib/payments";
 
+// Far above any real event: Stripe and Polar send a page of at most a few
+// dozen kilobytes. The address is public, so a body is read only up to this,
+// whether or not a proxy in front already caps it.
+const MAX_WEBHOOK_BYTES = 1024 * 1024;
+
 // One instance can host several Merchants (ADR 0006), each on their own
 // domain, so the Merchant is resolved by which domain the request arrived
 // on, same as regular traffic. Each Merchant has their own webhook signing
@@ -39,7 +44,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
     return new NextResponse(null, { status: 404 });
   }
 
-  const rawBody = await req.text();
+  const rawBody = await readLimited(req, MAX_WEBHOOK_BYTES);
+  if (rawBody === null) {
+    return new NextResponse(null, { status: 413 });
+  }
   let verified;
   try {
     verified = provider.verifyWebhook({ rawBody, headers: req.headers, secret: decrypt(merchant.webhookSecretEnc) });
@@ -79,4 +87,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   }
 
   return new NextResponse(null, { status: 200 });
+}
+
+/** The body as text, or null once it passes `max` bytes, without reading further. */
+async function readLimited(req: NextRequest, max: number): Promise<string | null> {
+  if (Number(req.headers.get("content-length") ?? 0) > max) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }

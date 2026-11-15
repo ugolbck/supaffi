@@ -75,7 +75,7 @@ export function validateProductInput(
   // A product is served on a public name. localhost and the like are allowed
   // outside production only, where a product shares the developer's machine.
   if (!isPublicHostname(domain) && !(process.env.NODE_ENV !== "production" && isLocalDomain(domain))) {
-    return "Domain must be a full hostname, like affiliates.example.com";
+    return "Domain must be a full hostname, like partners.example.com";
   }
   // A Merchant on this domain would be served by the named Caddy site block
   // that exists to serve the admin dashboard, taking over the Owner's own

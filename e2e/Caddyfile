@@ -9,6 +9,11 @@
 }
 
 https://admin.test {
+	# No page or event Supaffi takes comes near this, and the product domains
+	# take requests from anyone.
+	request_body {
+		max_size 1MB
+	}
 	reverse_proxy app:3000
 }
 
@@ -19,6 +24,11 @@ https://shop.test, https://polarshop.test {
 https:// {
 	tls {
 		on_demand
+	}
+	# No page or event Supaffi takes comes near this, and the product domains
+	# take requests from anyone.
+	request_body {
+		max_size 1MB
 	}
 	reverse_proxy app:3000
 }

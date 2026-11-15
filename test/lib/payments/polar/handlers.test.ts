@@ -98,6 +98,19 @@ describe("Polar order.paid", () => {
     expect((await commissions())[0].status).toBe("FLAGGED");
   });
 
+  it("earns on what the customer paid when their credit covered part of it", async () => {
+    await send("order.paid", order({ applied_balance_amount: -4_000 }));
+    expect((await commissions())[0].amount.toNumber()).toBe(expected(6_000));
+  });
+
+  it("earns nothing on an order the customer's credit paid in full", async () => {
+    await send("order.paid", order({ billing_reason: "subscription_create", subscription_id: "sub_credit", applied_balance_amount: -10_000 }));
+    expect(await commissions()).toHaveLength(0);
+    // Still recorded, so a later renewal paid in money earns.
+    await send("order.paid", order({ billing_reason: "subscription_cycle", subscription_id: "sub_credit", metadata: {} }));
+    expect(await commissions()).toHaveLength(1);
+  });
+
   it("folds a refund already on the order into the new row", async () => {
     await send("order.paid", order({ refunded_amount: 5_000 }));
     expect((await commissions())[0].amount.toNumber()).toBe(expected(5_000));
@@ -192,6 +205,16 @@ describe("Polar order.refunded", () => {
     const [row] = await commissions();
     expect(row.status).toBe("VOIDED");
     expect(row.voidReason).toBe("refund");
+  });
+
+  it("voids the commission once everything the customer paid is refunded, credit applied", async () => {
+    const paid = order({ applied_balance_amount: -4_000 });
+    await send("order.paid", paid);
+    await send("order.refunded", { ...paid, refunded_amount: 3_000 });
+    expect((await commissions())[0].amount.toNumber()).toBe(expected(3_000));
+
+    await send("order.refunded", { ...paid, refunded_amount: 6_000 });
+    expect((await commissions())[0].status).toBe("VOIDED");
   });
 
   it("waits for a sale still in the queue rather than losing its refund", async () => {

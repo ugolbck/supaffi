@@ -60,6 +60,17 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // was not enough; every later renewal would have earned again.
   if (click.fraudConfirmedAt) return;
 
+  // The Checkout that created the subscription records it before reading its
+  // first invoice, and that read can be retrying. A plan change paid in that
+  // gap would otherwise take the first payment from the Checkout's own
+  // invoice, so it waits for the Checkout, as it would have found no
+  // subscription before. One whose retries ran out no longer holds it.
+  if (!referred.firstPaymentRef && (await checkoutStillQueued(merchant, subscriptionId))) {
+    throw new Error(
+      `[worker] invoice ${invoice.id} was paid before the checkout that started subscription ${subscriptionId} was processed, so it is retried after it`
+    );
+  }
+
   // Claimed before the exclusion check and the commission maths below: the
   // first payment is when money first moved on the subscription, whether or
   // not that payment earned.
@@ -201,4 +212,21 @@ async function retrieveInvoiceForEarningOrThrow(stripe: Stripe, invoiceId: strin
     const { type, code } = err as { type?: string; code?: string };
     throw new Error(`[worker] could not read invoice ${invoiceId} for earning (${type ?? "unknown"}/${code ?? "unknown"}), so the event is retried`);
   }
+}
+
+/** Whether a Checkout event for this subscription is still waiting or being retried. */
+async function checkoutStillQueued(merchant: Merchant, subscriptionId: string): Promise<boolean> {
+  const queued = await db.webhookEvent.findFirst({
+    where: {
+      merchantId: merchant.id,
+      status: { in: ["PENDING", "PROCESSING"] },
+      OR: [
+        { payload: { path: ["type"], equals: "checkout.session.completed" } },
+        { payload: { path: ["type"], equals: "checkout.session.async_payment_succeeded" } },
+      ],
+      AND: [{ payload: { path: ["data", "object", "subscription"], equals: subscriptionId } }],
+    },
+    select: { id: true },
+  });
+  return queued !== null;
 }
