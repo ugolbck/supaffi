@@ -15,6 +15,7 @@ import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { signupLinkFor } from "@/lib/url";
 import { linkUrl, listLinksWithStats } from "@/lib/affiliateLink";
 import { listPromoCodesWithStats, promoCodeOffer } from "@/lib/promoCode";
+import { paymentProviderFor } from "@/lib/payments";
 import { productHasEmail } from "@/lib/mail";
 import { Button } from "@/components/ui/button";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
@@ -188,7 +189,7 @@ export default async function AffiliatesPage({
         earned: [money(c.earned, fallbackCurrency), moneyHint(c.earned)].filter(Boolean).join(" · "),
       })),
       codeToIssue: offer?.kind === "claim" ? { suggested: offer.suggested, discountLabel: offer.discountLabel } : null,
-      promoCodesOn: merchant.paymentProvider === "STRIPE",
+      promoProvider: paymentProviderFor(merchant).promoCodes ? paymentProviderFor(merchant).name : null,
       commissions: (detail?.commissions ?? []).map((c) => ({
         id: c.id,
         date: formatDate(c.createdAt),

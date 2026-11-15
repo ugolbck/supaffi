@@ -15,6 +15,9 @@ export type PolarOrder = {
   currency: string;
   subscription_id: string | null;
   product_id: string | null;
+  checkout_id?: string | null;
+  /** The discount the order used: an affiliate's code when it is one Supaffi knows. */
+  discount_id?: string | null;
   metadata: Metadata;
   customer?: { email?: string | null; metadata?: Metadata } | null;
   subscription?: { metadata?: Metadata } | null;

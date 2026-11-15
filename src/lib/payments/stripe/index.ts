@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import type { PaymentProviderAdapter } from "@/lib/payments/types";
 import { stripeKeyWorks } from "@/lib/payments/stripe/keyCheck";
+import { stripePromoCodes } from "@/lib/payments/stripe/promoCodes";
 import { processStripeEvent } from "@/lib/payments/stripe/dispatch";
 import { isStripeError, stripeErrorLabel } from "@/lib/payments/stripe/errors";
 import { REQUIRED_STRIPE_WEBHOOK_EVENTS } from "@/lib/payments/stripe/webhookEvents";
@@ -42,4 +43,5 @@ export const stripeProvider: PaymentProviderAdapter = {
 
   upgradeWebhookEndpoints: () => upgradeAllWebhookEvents(),
   moveWebhookEndpoint: (merchantId) => moveMerchantWebhookEndpoint(merchantId),
+  promoCodes: stripePromoCodes,
 };

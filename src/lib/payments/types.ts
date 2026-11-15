@@ -1,5 +1,6 @@
 import type { Merchant, PaymentProvider } from "@prisma/client";
 import type { CheckResult } from "@/lib/checks/dns";
+import type { CouponList } from "@/lib/coupon";
 
 /**
  * What one payment provider plugs into Supaffi.
@@ -63,6 +64,41 @@ export type PaymentProviderAdapter = {
    * address and only the owner can change that.
    */
   moveWebhookEndpoint?(merchantId: string): Promise<WebhookMove>;
+
+  /** Promo codes, for a provider whose discounts can carry one per affiliate. */
+  promoCodes?: PromoCodeAdapter;
+};
+
+/** What a promo code call needs of the product: its credentials. */
+export type PromoMerchant = { paymentKeyEnc: string | null; paymentSandbox: boolean };
+
+/**
+ * A failure says, in the provider's words, what went wrong.
+ * `keyLacksPermission` sends the Owner to replace the key, from the form.
+ */
+export type PromoFailure = { ok: false; error: string; keyLacksPermission?: true };
+
+/**
+ * The provider's side of promo codes. A program picks one of the provider's
+ * discounts; each affiliate's code is created from it, named by them; an
+ * Owner can also link a code that already exists in the provider. Which code a
+ * sale used arrives on the sale itself, so matching it is the adapter's
+ * event handling, not part of this.
+ */
+export type PromoCodeAdapter = {
+  /** The discounts that can still be applied, for a program's form. */
+  listDiscounts(merchant: PromoMerchant): Promise<CouponList>;
+  /** One discount by id, for saving a program: still usable, and its label as of now. */
+  discountById(merchant: PromoMerchant, discountRef: string): Promise<{ ok: true; label: string } | PromoFailure>;
+  /** The one active code with this text, to link to an affiliate. */
+  findCode(merchant: PromoMerchant, code: string): Promise<{ ok: true; ref: string; code: string } | PromoFailure>;
+  /** Creates a code from the program's discount. `attempt` makes a retry of the same claim a no-op. */
+  createCode(
+    merchant: PromoMerchant,
+    input: { discountRef: string; code: string; affiliateId: string; attempt: number }
+  ): Promise<{ ok: true; ref: string; code: string } | PromoFailure>;
+  /** Stops a code Supaffi created from being used at checkout. */
+  deactivateCode(merchant: PromoMerchant, ref: string): Promise<{ ok: true } | PromoFailure>;
 };
 
 export type VerifiedWebhook = {

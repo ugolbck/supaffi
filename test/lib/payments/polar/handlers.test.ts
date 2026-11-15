@@ -14,6 +14,7 @@ let referral: Awaited<ReturnType<typeof seedReferral>>;
 
 beforeEach(async () => {
   await db.webhookEvent.deleteMany();
+  await db.affiliatePromoCode.deleteMany();
   await clearReferralTables();
   const owner = await seedOwner();
   merchant = await db.merchant.create({
@@ -32,6 +33,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await db.webhookEvent.deleteMany();
+  await db.affiliatePromoCode.deleteMany();
   await clearReferralTables();
   await db.$disconnect();
 });
@@ -99,6 +101,38 @@ describe("Polar order.paid", () => {
   it("folds a refund already on the order into the new row", async () => {
     await send("order.paid", order({ refunded_amount: 5_000 }));
     expect((await commissions())[0].amount.toNumber()).toBe(expected(5_000));
+  });
+});
+
+describe("Polar promo codes", () => {
+  async function codeFor(email: string, ref: string) {
+    const other = await seedReferral(merchant, { affiliateEmail: email });
+    await db.affiliatePromoCode.create({
+      data: { merchantId: merchant.id, affiliateId: other.affiliate.id, promoCodeRef: ref, code: ref.toUpperCase(), issued: true },
+    });
+    return other.affiliate;
+  }
+
+  it("credits the affiliate whose code the order used, with no click", async () => {
+    const coded = await codeFor("bob@example.com", "d_bob");
+    await send("order.paid", order({ metadata: {}, discount_id: "d_bob", checkout_id: "co_1" }));
+    const [row] = await commissions();
+    expect(row.affiliateId).toBe(coded.id);
+  });
+
+  it("puts a code ahead of another affiliate's link, and keeps it for the checkout's redelivery", async () => {
+    const coded = await codeFor("bob@example.com", "d_bob");
+    const paid = order({ discount_id: "d_bob", checkout_id: "co_2" });
+    await send("order.paid", paid);
+    await send("order.paid", paid);
+    const rows = await commissions();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].affiliateId).toBe(coded.id);
+  });
+
+  it("ignores a discount that is not an affiliate's code", async () => {
+    await send("order.paid", order({ metadata: {}, discount_id: "d_someone_else" }));
+    expect(await commissions()).toHaveLength(0);
   });
 });
 

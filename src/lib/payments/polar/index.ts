@@ -1,5 +1,6 @@
 import type { PaymentProviderAdapter } from "@/lib/payments/types";
 import { polarTokenWorks } from "@/lib/payments/polar/connect";
+import { polarPromoCodes } from "@/lib/payments/polar/promoCodes";
 import { processPolarEvent } from "@/lib/payments/polar/dispatch";
 import { isPolarApiError } from "@/lib/payments/polar/api";
 import { verifyPolarSignature } from "@/lib/payments/polar/signature";
@@ -35,4 +36,5 @@ export const polarProvider: PaymentProviderAdapter = {
 
   upgradeWebhookEndpoints: upgradePolarEndpoints,
   moveWebhookEndpoint: movePolarEndpoint,
+  promoCodes: polarPromoCodes,
 };

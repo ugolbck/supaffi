@@ -324,6 +324,7 @@ test("a new subdomain takes the Stripe webhook with it", async ({ request }) => 
 // A second product on the same install, selling through Polar: its own
 // provider, token, webhook and checkout link, next to the Stripe one above.
 const POLAR_DOMAIN = "https://affiliates.polarshop.test";
+let bob: Page;
 
 test("owner onboards a product that sells through Polar", async ({ request }) => {
   await owner.goto(`${ADMIN}/dashboard/products/new`);
@@ -361,7 +362,7 @@ test("owner onboards a product that sells through Polar", async ({ request }) =>
 });
 
 test("a Polar checkout link sale earns, and its refund takes it back", async ({ browser, request }) => {
-  const bob = await newPage(browser);
+  bob = await newPage(browser);
   await bob.goto(`${POLAR_DOMAIN}/affiliates/signup/polar-shop`);
   await bob.getByLabel("Name").fill("Bob");
   await bob.getByLabel("Email").fill("bob@example.com");
@@ -379,5 +380,50 @@ test("a Polar checkout link sale earns, and its refund takes it back", async ({ 
   const refund = await request.post("http://127.0.0.1:12112/_test/refund", { data: { order: result.order } });
   expect((await refund.json()).deliveries.map((d: { status: number }) => d.status)).toEqual([200]);
   await eventually(owner, () => expect(owner.getByRole("cell", { name: "Voided" })).toBeVisible());
+});
+
+test("a Polar promo code earns for its affiliate with no click", async ({ browser, request }) => {
+  // The owner gives the program a discount, picked from their Polar discounts.
+  await owner.goto(`${ADMIN}/dashboard/products/polar-shop/programs`);
+  await owner.getByRole("button", { name: "Edit" }).first().click();
+  await owner.locator("#program-discount").click();
+  await owner.getByRole("option", { name: "Partners · 20% off for 3 months" }).click();
+  await owner.getByRole("button", { name: "Save" }).click();
+  await expect(owner.getByRole("dialog")).toHaveCount(0);
+  await expect(owner.getByText("20% off for 3 months")).toBeVisible();
+
+  // The affiliate claims their code. A code Polar already has is refused.
+  await bob.goto(`${POLAR_DOMAIN}/affiliates/dashboard`);
+  const field = bob.getByLabel("Your promo code");
+  await expect(field).toHaveValue("BOB20");
+  await field.fill("partner20");
+  await bob.getByRole("button", { name: "Create code" }).click();
+  await expect(bob.getByRole("alert").filter({ hasText: "That code is taken" })).toBeVisible();
+  await field.fill("bob20");
+  await bob.getByRole("button", { name: "Create code" }).click();
+  await expect(bob.getByText("BOB20", { exact: true })).toBeVisible();
+
+  // The code exists in Polar as a copy of the program's discount.
+  let state = await (await request.get("http://127.0.0.1:12112/_test/state")).json();
+  const made = state.discounts.find((d: { code: string | null }) => d.code === "BOB20");
+  expect(made).toMatchObject({ basis_points: 2000, duration: "repeating", duration_in_months: 3, max_redemptions_per_customer: 1 });
+
+  const buyer = await newPage(browser);
+  const res = await buyer.request.post("http://127.0.0.1:12112/_test/order", {
+    data: { net_amount: 7000, email: "polar-codebuyer@example.com", discount_code: "BOB20" },
+  });
+  expect((await res.json()).deliveries.map((d: { status: number }) => d.status)).toEqual([200]);
+  await owner.goto(`${ADMIN}/dashboard/products/polar-shop/commissions`);
+  await eventually(owner, () => expect(owner.getByRole("cell", { name: "$21.00" })).toBeVisible());
+
+  // Turning it off deletes it in Polar.
+  await owner.goto(`${ADMIN}/dashboard/products/polar-shop/affiliates`);
+  await owner.getByRole("link", { name: "Bob" }).first().click();
+  const sheet = owner.getByRole("dialog");
+  await sheet.getByRole("button", { name: "Turn off" }).click();
+  await owner.getByRole("alertdialog").getByRole("button", { name: "Turn off" }).click();
+  await expect(sheet.getByRole("button", { name: "Create code" })).toBeVisible();
+  state = await (await request.get("http://127.0.0.1:12112/_test/state")).json();
+  expect(state.discounts.find((d: { id: string }) => d.id === made.id).deleted).toBe(true);
 });
 
