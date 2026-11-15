@@ -130,13 +130,23 @@ export async function listMerchantsForOwner(
 ): Promise<
   { id: string; slug: string; name: string; domain: string; onboardingCompletedAt: Date | null }[]
 > {
-  return db.merchant.findMany({
+  const merchants = await db.merchant.findMany({
     where: { ownerId },
     // onboardingCompletedAt so the product list can tell a product still being
     // set up from one that is running, without a second query per row.
     select: { id: true, slug: true, name: true, domain: true, onboardingCompletedAt: true },
     orderBy: { createdAt: "asc" },
   });
+  return merchants.map(withDomain);
+}
+
+/**
+ * A product's domain for the screens, empty when it has none. A product loses
+ * its domain only when another Owner claims it before this one proved it
+ * (see claimDomain), and its Owner then sets a new one.
+ */
+function withDomain<T extends { domain: string | null }>(merchant: T): T & { domain: string } {
+  return { ...merchant, domain: merchant.domain ?? "" };
 }
 
 /**
@@ -179,10 +189,11 @@ export async function getMerchantForOwner(
   ownerId: string,
   merchantId: string
 ): Promise<OwnedMerchant | null> {
-  return db.merchant.findFirst({
+  const merchant = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
     select: MERCHANT_FIELDS,
   });
+  return merchant && withDomain(merchant);
 }
 
 // What every dashboard route under /dashboard/products/[product] resolves
@@ -191,10 +202,11 @@ export async function getMerchantForOwnerBySlug(
   ownerId: string,
   slug: string
 ): Promise<OwnedMerchant | null> {
-  return db.merchant.findFirst({
+  const merchant = await db.merchant.findFirst({
     where: { slug, ownerId },
     select: MERCHANT_FIELDS,
   });
+  return merchant && withDomain(merchant);
 }
 
 const MERCHANT_FIELDS = {
@@ -231,16 +243,17 @@ export async function updateMerchant(
       ...claim,
     },
   });
-  if (moving) await releaseDomain(ownerId, before.domain, before.domainVerifiedAt);
+  if (moving && before.domain) await releaseDomain(ownerId, before.domain, before.domainVerifiedAt);
 }
 
 export async function getMerchantByDomain(
   domain: string
 ): Promise<{ id: string; slug: string; name: string; domain: string; websiteUrl: string } | null> {
-  return db.merchant.findUnique({
+  const merchant = await db.merchant.findUnique({
     where: servedDomain(domain),
     select: { id: true, slug: true, name: true, domain: true, websiteUrl: true },
   });
+  return merchant && { ...merchant, domain };
 }
 
 /**
@@ -257,7 +270,7 @@ export async function deleteMerchant(ownerId: string, merchantId: string): Promi
     where: { id: merchantId },
     select: { domain: true, domainVerifiedAt: true },
   });
-  const release = releaseDomain(ownerId, domain, domainVerifiedAt);
+  const release = domain ? releaseDomain(ownerId, domain, domainVerifiedAt) : null;
   await db.$transaction([
     db.commission.deleteMany({ where: affiliates }),
     // Points at the click, so it goes before clicks do.

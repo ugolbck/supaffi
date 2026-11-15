@@ -53,6 +53,7 @@ export async function upgradeMerchantWebhookEvents(
       merchant?.paymentProvider !== "STRIPE" ||
       !merchant?.paymentKeyEnc ||
       !merchant.webhookSecretEnc ||
+      !merchant.domain ||
       isLocalDomain(merchant.domain)
     ) {
       return;
@@ -107,7 +108,7 @@ export async function moveMerchantWebhookEndpoint(
     // No webhook means nothing in Stripe delivers to this product yet. A
     // local address has no endpoint Stripe could reach: its events come
     // from the CLI, which is pointed at the new address by hand.
-    if (!merchant?.webhookSecretEnc || isLocalDomain(merchant.domain)) return "none";
+    if (!merchant?.webhookSecretEnc || !merchant.domain || isLocalDomain(merchant.domain)) return "none";
     if (!merchant.paymentKeyEnc || !merchant.webhookEndpointId) return "manual";
 
     const result = await moveWebhookEndpoint(

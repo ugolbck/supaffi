@@ -43,6 +43,11 @@ export class DomainClaimError extends Error {}
  * it stores. Called for a new product and for a product's domain change,
  * never for a save that keeps the domain. `merchantId` is the product being
  * changed, left out of the count of domains waiting for proof.
+ *
+ * An unproven claim blocks nobody: another Owner's product waiting on the same
+ * domain loses it here, so whoever proves it first keeps it. A proven domain,
+ * or one this Owner's own product holds, is left alone and the write that
+ * follows is refused as a duplicate.
  */
 export async function claimDomain(
   ownerId: string,
@@ -60,13 +65,22 @@ export async function claimDomain(
   }
 
   const waiting = await db.merchant.count({
-    where: { ownerId, domainVerifiedAt: null, ...(merchantId ? { id: { not: merchantId } } : {}) },
+    where: {
+      ownerId,
+      domain: { not: null },
+      domainVerifiedAt: null,
+      ...(merchantId ? { id: { not: merchantId } } : {}),
+    },
   });
   if (waiting >= MAX_UNVERIFIED_DOMAINS) {
     throw new DomainClaimError(`You have ${waiting} domains waiting to be verified. Verify one first.`);
   }
 
   if (held) await db.releasedDomain.delete({ where: { domain } });
+  await db.merchant.updateMany({
+    where: { domain, domainVerifiedAt: null, ownerId: { not: ownerId } },
+    data: { domain: null, domainToken: null },
+  });
   return { domainToken: randomBytes(16).toString("base64url"), domainVerifiedAt: null };
 }
 
@@ -105,7 +119,8 @@ export async function checkDomainOwnership(
     where: { id: merchantId, ownerId },
     select: { domain: true, domainToken: true, domainVerifiedAt: true },
   });
-  if (!merchant) return null;
+  // No domain: another Owner's claim took it, and there is nothing to prove.
+  if (!merchant?.domain) return null;
   const { domain, domainToken, domainVerifiedAt } = merchant;
   if (domainVerifiedAt || !domainToken) {
     return { domain, record: null, result: { ok: true, detail: "Verified" } };

@@ -41,7 +41,9 @@ export type StaticExtensions = {
      * true shows the record in the product's subdomain step and settings, and
      * until it is found the domain gets no certificate and serves nothing. A
      * proven domain that is given up is held for its Owner for a while, and an
-     * Owner can have only a few domains waiting for proof at once.
+     * Owner can have only a few domains waiting for proof at once. A domain
+     * waiting for proof blocks no one: another Owner's product saving it takes
+     * it, leaving the first with no domain, and the first to prove it keeps it.
      */
     requireOwnershipProof: boolean;
     /**

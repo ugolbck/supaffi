@@ -204,6 +204,64 @@ describe.skipIf(!hasDatabase)("domain ownership", () => {
       });
     });
 
+    describe("a domain another Owner claimed first", () => {
+      it("is taken over while their claim is unproven, leaving their product with no domain", async () => {
+        const m = await withProof(true);
+        const theirs = await m.createMerchant(otherOwnerId, { ...site, domain: "affiliates.example.com" });
+        const mine = await m.createMerchant(ownerId, { ...site, domain: "affiliates.example.com" });
+
+        const lost = await db.merchant.findUniqueOrThrow({ where: { id: theirs.id } });
+        expect(lost).toMatchObject({ domain: null, domainToken: null, domainVerifiedAt: null });
+        expect((await m.getMerchantForOwner(otherOwnerId, theirs.id))?.domain).toBe("");
+        expect(await m.checkDomainOwnership(otherOwnerId, theirs.id)).toBeNull();
+
+        // Whoever proves first keeps it.
+        await m.checkDomainOwnership(ownerId, mine.id, await answering(mine.id));
+        expect((await stored(mine.id)).domainVerifiedAt).not.toBeNull();
+      });
+
+      it("is taken over by a domain change too", async () => {
+        const m = await withProof(true);
+        const theirs = await m.createMerchant(otherOwnerId, { ...site, domain: "affiliates.example.com" });
+        const mine = await m.createMerchant(ownerId, { ...site, domain: "mine.example.com" });
+        await m.updateMerchant(ownerId, mine.id, { ...site, domain: "affiliates.example.com" });
+        expect((await db.merchant.findUniqueOrThrow({ where: { id: theirs.id } })).domain).toBeNull();
+      });
+
+      it("is never taken once proven", async () => {
+        const m = await withProof(true);
+        const theirs = await m.createMerchant(otherOwnerId, { ...site, domain: "affiliates.example.com" });
+        await m.checkDomainOwnership(otherOwnerId, theirs.id, await answering(theirs.id));
+        await expect(m.createMerchant(ownerId, { ...site, domain: "affiliates.example.com" })).rejects.toThrow();
+        expect(await db.merchant.findUniqueOrThrow({ where: { id: theirs.id } })).toMatchObject({
+          domain: "affiliates.example.com",
+        });
+        expect((await stored(theirs.id)).domainVerifiedAt).not.toBeNull();
+      });
+
+      it("is not taken from the same Owner's other product", async () => {
+        const m = await withProof(true);
+        const first = await m.createMerchant(ownerId, { ...site, domain: "affiliates.example.com" });
+        await expect(m.createMerchant(ownerId, { ...site, domain: "affiliates.example.com" })).rejects.toThrow();
+        expect((await db.merchant.findUniqueOrThrow({ where: { id: first.id } })).domain).toBe("affiliates.example.com");
+      });
+
+      it("is a duplicate as before when proof is off", async () => {
+        const m = await withProof(false);
+        const theirs = await m.createMerchant(otherOwnerId, { ...site, domain: "affiliates.example.com" });
+        await db.merchant.update({ where: { id: theirs.id }, data: { domainVerifiedAt: null } });
+        await expect(m.createMerchant(ownerId, { ...site, domain: "affiliates.example.com" })).rejects.toThrow();
+        expect((await db.merchant.findUniqueOrThrow({ where: { id: theirs.id } })).domain).toBe("affiliates.example.com");
+      });
+
+      it("no longer counts toward its former claimant's cap", async () => {
+        const m = await withProof(true);
+        for (const n of [1, 2, 3]) await m.createMerchant(otherOwnerId, { ...site, domain: `a${n}.example.com` });
+        await m.createMerchant(ownerId, { ...site, domain: "a1.example.com" });
+        await m.createMerchant(otherOwnerId, { ...site, domain: "a4.example.com" });
+      });
+    });
+
     describe("domains waiting for proof", () => {
       it("are capped per Owner", async () => {
         const m = await withProof(true);

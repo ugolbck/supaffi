@@ -87,7 +87,8 @@ export async function notifyAffiliateJoined(tx: Tx, affiliateId: string): Promis
     });
   }
   const link = affiliate.links[0];
-  if (mail.emailAffiliates && link) {
+  // A product whose domain was taken over has no affiliate pages to link to.
+  if (mail.emailAffiliates && link && merchant.domain) {
     const terms = termsLine({
       rate: Number(affiliate.customCommissionRate ?? program.defaultCommissionRate),
       durationType: program.commissionDurationType,
@@ -182,7 +183,7 @@ export async function notifyCommission(tx: Tx, commissionId: string): Promise<vo
         }),
       });
     }
-    if (mail.emailAffiliates) {
+    if (mail.emailAffiliates && merchant.domain) {
       emails.push({
         key: `earned:${commission.id}`,
         email: earnedEmail({
@@ -209,7 +210,7 @@ export async function notifyPaid(
   });
   if (!affiliate) return;
   const mail = await productMail(affiliate.merchant.id, tx);
-  if (!mail?.emailAffiliates) return;
+  if (!mail?.emailAffiliates || !affiliate.merchant.domain) return;
   await queue(tx, affiliate.merchant.id, [
     {
       key: `paid:${args.affiliateId}:${args.paidAt.getTime()}`,
@@ -237,7 +238,8 @@ export async function emailPasswordLink(affiliateId: string): Promise<boolean> {
     where: { id: affiliateId },
     select: { id: true, email: true, merchant: { select: { id: true, name: true, domain: true } } },
   });
-  if (!affiliate) return false;
+  const domain = affiliate?.merchant.domain;
+  if (!affiliate || !domain) return false;
   if (!(await productMail(affiliate.merchant.id))) return false;
 
   await db.$transaction(async (tx) => {
@@ -248,7 +250,7 @@ export async function emailPasswordLink(affiliateId: string): Promise<boolean> {
         email: passwordLinkEmail({
           to: affiliate.email,
           product: affiliate.merchant.name,
-          href: `${originFor(affiliate.merchant.domain)}/affiliates/password?token=${token.rawToken}`,
+          href: `${originFor(domain)}/affiliates/password?token=${token.rawToken}`,
         }),
       },
     ]);

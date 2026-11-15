@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   const merchant = host
     ? await db.merchant.findUnique({ where: servedDomain(host), select: { domain: true, paymentProvider: true } })
     : null;
-  if (!merchant) {
+  if (!merchant?.domain) {
     return new NextResponse(null, { status: 404 });
   }
 

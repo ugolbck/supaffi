@@ -17,7 +17,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   record before it is served or given a certificate. The record and a check
   are shown in the subdomain step and the product's settings. A proven domain
   that is given up stays with its Owner for 7 days, and an Owner can have 3
-  domains waiting for proof at once. Off by default.
+  domains waiting for proof at once. A domain waiting for proof blocks
+  nobody: another Owner who saves it takes it over, the first product is
+  left with no domain, and whoever proves it first keeps it. Off by default.
 - Extensions: `domains.reserved`, a static hook listing hostnames no product
   may use, along with every name under them. Defaults to none.
 

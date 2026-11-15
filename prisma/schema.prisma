@@ -29,7 +29,9 @@ model Merchant {
   // break links already pointing at it. Unique per Owner, not globally: two
   // Owners on the same Instance can both have a product called "Docs".
   slug       String
-  domain     String @unique // e.g. affiliates.instantgradient.com
+  // e.g. affiliates.instantgradient.com. Null only after another Owner's claim
+  // took it while this product's claim was unproven (domainVerifiedAt below).
+  domain     String? @unique
   // When the Owner proved control of `domain` with the TXT record carrying
   // `domainToken`. Only read when the build requires that proof
   // (staticExt.domains.requireOwnershipProof): until then the domain is not

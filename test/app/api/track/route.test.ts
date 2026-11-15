@@ -68,7 +68,7 @@ async function seedMerchantWithAffiliate(tag: string) {
     },
   });
   const link = await db.affiliateLink.findFirstOrThrow({ where: { affiliateId: affiliate.id } });
-  return { merchant, affiliate, link };
+  return { merchant: { ...merchant, domain: merchant.domain! }, affiliate, link };
 }
 
 function requestFor(host: string, code: string, headers: Record<string, string> = {}): NextRequest {

@@ -37,6 +37,7 @@ const NOT_CONNECTED: CheckResult = { ok: false, detail: "Not connected yet" };
 const CHECKING: CheckResult = { ok: false, detail: "Checking" };
 const NO_ADDRESS: CheckResult = { ok: false, detail: "This server's address is not configured" };
 const FAILED: CheckResult = { ok: false, detail: "Could not check" };
+const NO_DOMAIN: CheckResult = { ok: false, detail: "No domain set" };
 
 /**
  * Runs one check and turns a rejection into its own failed CheckResult
@@ -151,6 +152,8 @@ function refresh(
       select: { domain: true, websiteUrl: true, paymentProvider: true, paymentKeyEnc: true },
     });
     if (!merchant) throw new Error("Merchant not found");
+    // Taken over by another Owner's claim: nothing to look up until a new one is set.
+    const domain = merchant.domain;
 
     const hostIp = process.env.SUPAFFI_HOST_IP?.trim() ?? "";
     const paymentKey = safeDecrypt(merchant.paymentKeyEnc);
@@ -161,8 +164,14 @@ function refresh(
       wanted.has("dns")
         ? (async () => {
             const [resolves, https] = await Promise.all([
-              hostIp ? settle(deps.resolvesTo(merchant.domain, hostIp), FAILED) : Promise.resolve(NO_ADDRESS),
-              settle(deps.httpsReachable(merchant.domain), { reachable: FAILED, certificate: FAILED }),
+              !domain
+                ? Promise.resolve(NO_DOMAIN)
+                : hostIp
+                  ? settle(deps.resolvesTo(domain, hostIp), FAILED)
+                  : Promise.resolve(NO_ADDRESS),
+              domain
+                ? settle(deps.httpsReachable(domain), { reachable: FAILED, certificate: FAILED })
+                : Promise.resolve({ reachable: NO_DOMAIN, certificate: NO_DOMAIN }),
             ]);
             result.dns = { resolves, https: https.reachable, certificate: https.certificate };
           })()
@@ -178,7 +187,9 @@ function refresh(
         : null,
       wanted.has("tracking")
         ? (async () => {
-            result.tracking = { script: await settle(deps.scriptFound(merchant.websiteUrl, merchant.domain), FAILED) };
+            result.tracking = {
+              script: domain ? await settle(deps.scriptFound(merchant.websiteUrl, domain), FAILED) : NO_DOMAIN,
+            };
           })()
         : null,
     ]);
