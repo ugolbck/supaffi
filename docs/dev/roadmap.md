@@ -11,10 +11,10 @@ costs, then the rest of the program.
 
 ## Up next
 
-### Polar and Paddle
-Founders who let a merchant of record handle sales tax cannot use Supaffi.
-Polar and Paddle first, Lemon Squeezy after. The e2e sale step is already
-written without naming Stripe, so each needs only a fake.
+### Paddle
+Polar shipped in 0.8.0 behind the provider layer (src/lib/payments/). Paddle
+is a folder next to stripe/ and polar/ that passes the shared provider test
+kit, plus a fake for the e2e suite; Lemon Squeezy after it.
 
 ## Planned
 

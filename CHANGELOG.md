@@ -8,6 +8,29 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.8.0
+
+### Added
+
+- Polar as a payment provider. Pick Stripe or Polar when you add a product.
+  Polar connects with an organization access token, including a sandbox
+  one, and Supaffi creates its webhook itself. Polar checkout links on your
+  pages are tagged with the referral, and your own checkout code passes it in
+  the session metadata. First payments, renewals and plan changes earn,
+  after discounts and before tax; refunds lower or cancel the commission.
+  Polar sends no chargeback events and shares no card details, so
+  chargebacks are not held and self-referrals are caught by email only.
+- Promo codes on Polar. A program picks one of your Polar discounts, and each
+  affiliate's code is a copy of it under their code, usable once per
+  customer. You can also link a code that already exists in Polar.
+
+### Changed
+
+- The onboarding step that connects payments is now called Payments. Links
+  to the old Stripe key step still work.
+- Commission reasons and a few labels no longer name Stripe, since a product
+  can sell through Polar.
+
 ## 0.7.0
 
 ### Added
