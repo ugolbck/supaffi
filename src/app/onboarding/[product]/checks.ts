@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { getMerchantForOwnerBySlug, getOnboardingState } from "@/lib/merchant";
 import { getProductSetup } from "@/lib/productSetup";
 import { runProductChecks, type ProductChecks } from "@/lib/checks/product";
@@ -10,9 +10,7 @@ import { checkSectionFor, stepIds, type StepId } from "@/lib/onboarding";
 // this, so resolving the product and reading its setup happens once however
 // many of them render.
 export const loadStepContext = cache(async (slug: string) => {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  const ownerId = session.user.id;
+  const ownerId = await requireOwner();
 
   const merchant = await getMerchantForOwnerBySlug(ownerId, slug);
   if (!merchant) redirect("/onboarding");

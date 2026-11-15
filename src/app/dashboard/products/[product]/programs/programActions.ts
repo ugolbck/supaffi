@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { createProgram, programDiscount, updateProgram } from "@/lib/program";
 import { NO_DISCOUNT, validateProgramInput } from "@/lib/programValidation";
 
@@ -35,18 +35,12 @@ async function discount(ownerId: string, productId: string, programId: string | 
   return programDiscount(ownerId, productId, programId, picked === NO_DISCOUNT ? "" : picked);
 }
 
-async function owner(): Promise<string> {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  return session.user.id;
-}
-
 export async function createProgramAction(
   product: { id: string; slug: string },
   _prev: { error: string },
   formData: FormData
 ): Promise<{ error: string }> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const result = read(formData);
   if (result.error !== null) return { error: result.error };
   const { error, ...coupon } = await discount(ownerId, product.id, null, formData);
@@ -64,7 +58,7 @@ export async function updateProgramAction(
   _prev: { error: string },
   formData: FormData
 ): Promise<{ error: string }> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const result = read(formData);
   if (result.error !== null) return { error: result.error };
   const { error, ...coupon } = await discount(ownerId, product.id, programId, formData);

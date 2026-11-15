@@ -1,8 +1,8 @@
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import type { CommissionDurationType } from "@prisma/client";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { couponsForProgramForm, listProgramsForMerchant } from "@/lib/program";
 import type { ProgramFormValues } from "@/lib/programValidation";
@@ -66,10 +66,7 @@ export default async function ProgramsPage({
 }) {
   const { product } = await params;
   const query = await searchParams;
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-
-  const ownerId = session.user.id;
+  const ownerId = await requireOwner();
   const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 

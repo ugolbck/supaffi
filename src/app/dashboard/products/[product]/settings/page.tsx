@@ -1,7 +1,7 @@
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { getMerchantForOwnerBySlug, getStripeKeyKind, getWebhookEndpointId } from "@/lib/merchant";
 import { getProductSetup } from "@/lib/productSetup";
 import { runProductChecks, type CheckSection } from "@/lib/checks/product";
@@ -66,10 +66,7 @@ export default async function SettingsPage({
 }) {
   const { product } = await params;
   const query = await searchParams;
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-
-  const ownerId = session.user.id;
+  const ownerId = await requireOwner();
   const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 

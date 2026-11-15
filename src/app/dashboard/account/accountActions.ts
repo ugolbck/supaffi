@@ -1,7 +1,6 @@
 "use server";
 
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireOwnerSession } from "@/app/requireOwner";
 import { changeOwnerEmail, changeOwnerPassword } from "@/lib/owner";
 
 /**
@@ -11,12 +10,13 @@ import { changeOwnerEmail, changeOwnerPassword } from "@/lib/owner";
  * written at login and stays stale until the next one, and a password change
  * deliberately ends every session issued before it, so both forms say what
  * happens next rather than pretending the change is invisible.
+ *
+ * Both stay open to an Owner refused by owners.canUse, so they check the
+ * session alone.
  */
 
 async function owner(): Promise<string> {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  return session.user.id;
+  return (await requireOwnerSession()).ownerId;
 }
 
 export async function changeEmailAction(

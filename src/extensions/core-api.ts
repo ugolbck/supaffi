@@ -46,6 +46,13 @@ export async function setOwnerPassword(ownerId: string, password: string): Promi
   });
 }
 
+/** The Owner's current email and when their password last changed, or null for no such Owner. */
+export async function getOwnerAccount(
+  ownerId: string
+): Promise<{ email: string; passwordChangedAt: Date | null } | null> {
+  return db.owner.findUnique({ where: { id: ownerId }, select: { email: true, passwordChangedAt: true } });
+}
+
 export async function listOwnerMerchants(ownerId: string): Promise<{ id: string; name: string; domain: string }[]> {
   const merchants = await listMerchantsForOwner(ownerId);
   return merchants.map(({ id, name, domain }) => ({ id, name, domain }));

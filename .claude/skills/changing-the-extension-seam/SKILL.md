@@ -27,8 +27,8 @@ downstream code.
 ## Hook catalogue (API version 1)
 
 Static (`staticExt`): `owners.signupPath`, `owners.passwordResetPath`, `instance.showInfo`.
-Server (`ext`): `dashboard.gate`, `dashboard.banner`, `account.sections`.
-Core API: `createOwnerAccount`, `findOwnerByEmail`, `setOwnerPassword`,
+Server (`ext`): `dashboard.gate`, `dashboard.banner`, `account.sections`, `owners.canUse`.
+Core API: `createOwnerAccount`, `findOwnerByEmail`, `getOwnerAccount`, `setOwnerPassword`,
 `listOwnerMerchants`, `currentOwnerId`, `signInOwner`, `isMerchantDomain`.
 Read `types.ts` for signatures. Reuse a listed hook before adding one, and add
 one only for a concrete need, not in anticipation.
@@ -45,6 +45,7 @@ one only for a concrete need, not in anticipation.
 8. Core API functions keep owner scoping and are tested against another Owner's data.
 9. Renaming, removing, or changing a hook's signature or meaning bumps `EXTENSIONS_API_VERSION` and adds an "Extensions" line to `CHANGELOG.md`. Adding one does not bump.
 10. Removing a hook's call site is breaking even if types compile. The wiring test must fail; never edit it to pass.
+11. Every Owner page, layout, route handler and server action starts with `requireOwner()` from `src/app/requireOwner.ts`, which runs `owners.canUse`. Only the layouts, the account page and its actions use `requireOwnerSession()`, and signing out uses neither. `test/app/requireOwner.test.ts` refuses anything else.
 
 ## Common mistakes
 

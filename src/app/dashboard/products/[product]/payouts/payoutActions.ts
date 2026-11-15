@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { alreadyPaidParams } from "@/lib/payoutNotices";
 import { markCommissionsPaid, type ShownCommission, STALE_PAGE } from "@/lib/commission";
 
@@ -24,9 +24,7 @@ export async function markPayoutPaidAction(
   shown: ShownCommission[],
   renderedAt: string
 ): Promise<void> {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  const result = await markCommissionsPaid(session.user.id, product.id, shown, renderedAt);
+  const result = await markCommissionsPaid(await requireOwner(), product.id, shown, renderedAt);
 
   const params = new URLSearchParams();
   if ("error" in result) params.set("error", refusalCode(result.error));

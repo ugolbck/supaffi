@@ -18,6 +18,7 @@ import {
   createOwnerAccount,
   currentOwnerId,
   findOwnerByEmail,
+  getOwnerAccount,
   isMerchantDomain,
   listOwnerMerchants,
   setOwnerPassword,
@@ -100,6 +101,20 @@ describe.skipIf(!hasDatabase)("core API", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("reads an Owner's current email and password change, for that Owner only", async () => {
+    const ann = await createOwnerAccount({ email: "ann@example.com", password: PASSWORD });
+    const bob = await createOwnerAccount({ email: "bob@example.com", password: PASSWORD });
+    expect(await getOwnerAccount(ann.ownerId)).toEqual({ email: "ann@example.com", passwordChangedAt: null });
+
+    await setOwnerPassword(ann.ownerId, "a brand new passphrase");
+    await db.owner.update({ where: { id: ann.ownerId }, data: { email: "ann@new.example.com" } });
+    const changed = await getOwnerAccount(ann.ownerId);
+    expect(changed?.email).toBe("ann@new.example.com");
+    expect(changed?.passwordChangedAt).toBeInstanceOf(Date);
+    expect(await getOwnerAccount(bob.ownerId)).toEqual({ email: "bob@example.com", passwordChangedAt: null });
+    expect(await getOwnerAccount("no-such-owner")).toBeNull();
   });
 
   it("lists only the Owner's own merchants", async () => {

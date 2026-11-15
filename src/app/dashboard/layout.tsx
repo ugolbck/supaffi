@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireOwnerSession } from "@/app/requireOwner";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { countAffiliatesForMerchant } from "@/lib/affiliate";
 import { listProgramsForMerchant } from "@/lib/program";
@@ -12,14 +12,12 @@ import { staticExt } from "@/extensions/static";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar, type Counts } from "./AppSidebar";
 
-// Defense-in-depth: every page under /dashboard already checks role itself
-// (added during the Affiliate Auth plan). This layout-level check is an
-// additional, cheap guard — it does not replace the per-page checks, which
-// stay as-is.
+// Defense-in-depth: every page under /dashboard already runs requireOwner
+// itself. This layout-level check is an additional, cheap guard. It checks the
+// session alone, since it also wraps the account page, which stays open to an
+// Owner refused by owners.canUse.
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  const ownerId = session.user.id;
+  const { ownerId, email } = await requireOwnerSession();
 
   const gate = await ext.dashboard.gate(ownerId);
   if (gate.redirect) redirect(gate.redirect);
@@ -71,7 +69,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <AppSidebar
         merchants={merchants}
         counts={counts}
-        email={session.user.email ?? ""}
+        email={email}
         version={staticExt.instance.showInfo ? installedVersion() : null}
         update={update && { version: update.version, url: update.url, security: update.security }}
       />

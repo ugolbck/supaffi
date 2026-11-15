@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { createMerchant } from "@/lib/merchant";
 import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
@@ -12,8 +12,7 @@ export async function createProductAction(
   _prev: { error: string },
   formData: FormData
 ): Promise<{ error: string }> {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
+  const ownerId = await requireOwner();
 
   const name = String(formData.get("name") ?? "").trim();
   const websiteUrl = normalizeWebsiteUrl(String(formData.get("websiteUrl") ?? ""));
@@ -31,7 +30,7 @@ export async function createProductAction(
 
   let slug: string;
   try {
-    slug = (await createMerchant(session.user.id, { name, domain: normalizeDomain(domain), websiteUrl, paymentProvider })).slug;
+    slug = (await createMerchant(ownerId, { name, domain: normalizeDomain(domain), websiteUrl, paymentProvider })).slug;
   } catch (err) {
     if (isUniqueConstraintError(err)) return { error: "A product on that site already exists" };
     throw err;

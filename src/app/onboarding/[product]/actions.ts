@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import {
   getMerchantForOwner,
   getWebhookEndpointId,
@@ -24,12 +24,6 @@ import { isLocalDomain } from "@/lib/url";
 import { runProductChecks } from "@/lib/checks/product";
 import { checkSectionFor } from "@/lib/onboarding";
 
-async function owner(): Promise<string> {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  return session.user.id;
-}
-
 /**
  * `savedAt` is what closes the inline editor and shows the confirmation. It
  * changes on every successful write, so saving the same value twice still
@@ -42,7 +36,7 @@ export async function updateSubdomainAction(
   _prev: EditResult,
   formData: FormData
 ): Promise<EditResult> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
 
@@ -78,7 +72,7 @@ export async function updateProductNameAction(
   _prev: EditResult,
   formData: FormData
 ): Promise<EditResult> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
 
@@ -102,7 +96,7 @@ export async function updateProductWebsiteAction(
   _prev: EditResult,
   formData: FormData
 ): Promise<EditResult> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
 
@@ -130,7 +124,7 @@ export async function saveStripeKeyAction(
   _prev: { error: string },
   formData: FormData
 ): Promise<{ error: string }> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const key = String(formData.get("value") ?? "").trim();
   // Checked before it is stored: a key that fails here fails on the screen
   // that can fix it, not on the first sale weeks later.
@@ -183,7 +177,7 @@ export async function savePolarTokenAction(
   _prev: { error: string },
   formData: FormData
 ): Promise<{ error: string }> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const token = String(formData.get("value") ?? "").trim();
   // Checked, and the webhook created in Polar, before anything is stored, so
   // a token that fails is refused on this screen.
@@ -197,7 +191,7 @@ export async function saveWebhookSecretAction(
   _prev: { error: string },
   formData: FormData
 ): Promise<{ error: string }> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const secret = String(formData.get("value") ?? "").trim();
   if (!secret.startsWith("whsec_")) return { error: "The signing secret starts with whsec_" };
   // A hand-pasted secret belongs to an endpoint Supaffi did not create, so
@@ -213,7 +207,7 @@ export async function saveTermsAction(
   _prev: { error: string },
   formData: FormData
 ): Promise<{ error: string }> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
   // The step asks no name: the first program is named after the product,
@@ -247,7 +241,7 @@ export async function saveTermsAction(
  * there is no separate cache to invalidate here.
  */
 export async function recheckAction(product: { id: string; slug: string }, step: StepId): Promise<void> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
   // Awaited, unlike the render's own run. This is the one moment the Owner
@@ -259,7 +253,7 @@ export async function recheckAction(product: { id: string; slug: string }, step:
 }
 
 export async function finishOnboardingAction(product: { id: string; slug: string }): Promise<void> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   await markOnboardingComplete(ownerId, product.id);
   revalidatePath("/dashboard", "layout");
   // Back to the step they were already on, which now renders the finished

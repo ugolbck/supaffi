@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireOwnerSession } from "@/app/requireOwner";
 import { ext } from "@/extensions";
 import { Button } from "@/components/ui/button";
 import { signOutAction } from "@/app/dashboard/signOutAction";
@@ -18,10 +18,10 @@ import { signOutAction } from "@/app/dashboard/signOutAction";
 const COLUMN = "mx-auto w-full max-w-[calc(256px+48px+640px+2*24px)] px-6";
 
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
+  // The session alone: every page and action under it runs requireOwner.
+  const { ownerId, email } = await requireOwnerSession();
 
-  const gate = await ext.dashboard.gate(session.user.id);
+  const gate = await ext.dashboard.gate(ownerId);
   if (gate.redirect) redirect(gate.redirect);
 
   return (
@@ -39,7 +39,7 @@ export default async function OnboardingLayout({ children }: { children: React.R
           />
         </span>
         <div className="flex items-center gap-2.5 text-xs">
-          <span className="hidden max-w-[28ch] truncate text-muted-foreground sm:block">{session.user.email ?? ""}</span>
+          <span className="hidden max-w-[28ch] truncate text-muted-foreground sm:block">{email}</span>
           <span className="hidden h-3.5 w-px bg-neutral-300 sm:block" aria-hidden />
           <form action={signOutAction}>
             <Button type="submit" variant="ghost" size="xs" className="-mr-2 px-2 font-medium text-neutral-600 hover:text-foreground">

@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { listMerchantsForOwner } from "@/lib/merchant";
 import { backToDashboardHref, displayStep, stepIds, stepLabel } from "@/lib/onboarding";
 import { StepShell } from "@/components/onboarding/StepShell";
@@ -7,9 +6,8 @@ import { Rail } from "./Rail";
 import { ProductForm } from "./ProductForm";
 
 export default async function OnboardingStart() {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  const existing = await listMerchantsForOwner(session.user.id);
+  const ownerId = await requireOwner();
+  const existing = await listMerchantsForOwner(ownerId);
   const ids = stepIds();
 
   const steps = ids.map((id, i) => ({

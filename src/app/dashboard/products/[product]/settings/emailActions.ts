@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import {
   clearMailFailure,
   connectMail,
@@ -23,19 +22,13 @@ import type { ProductRef } from "@/lib/merchant";
  * belongs to the signed-in Owner.
  */
 
-async function owner(): Promise<string> {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-  return session.user.id;
-}
-
 const settingsPath = (product: ProductRef) => `/dashboard/products/${product.slug}/settings`;
 
 export type MailFormState = { error: string; sentTo: string };
 
 export async function connectMailAction(product: ProductRef, _prev: MailFormState, formData: FormData): Promise<MailFormState> {
   const result = await connectMail(
-    await owner(),
+    await requireOwner(),
     product.id,
     {
       host: String(formData.get("host") ?? ""),
@@ -53,7 +46,7 @@ export async function connectMailAction(product: ProductRef, _prev: MailFormStat
 
 /** Sends a test through the saved settings, straight away rather than queued. */
 export async function sendTestEmailAction(product: ProductRef): Promise<MailFormState> {
-  const ownerId = await owner();
+  const ownerId = await requireOwner();
   const merchant = await db.merchant.findFirst({
     where: { id: product.id, ownerId },
     select: { name: true, owner: { select: { email: true } } },
@@ -71,11 +64,11 @@ export async function sendTestEmailAction(product: ProductRef): Promise<MailForm
 }
 
 export async function disconnectMailAction(product: ProductRef): Promise<void> {
-  await disconnectMail(await owner(), product.id);
+  await disconnectMail(await requireOwner(), product.id);
   revalidatePath(settingsPath(product));
 }
 
 export async function setMailSwitchAction(product: ProductRef, name: MailSwitch, on: boolean): Promise<void> {
-  await setMailSwitch(await owner(), product.id, name, on);
+  await setMailSwitch(await requireOwner(), product.id, name, on);
   revalidatePath(settingsPath(product));
 }

@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireOwner } from "@/app/requireOwner";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { clickedRecently, getTrackingTimestamps } from "@/lib/tracking";
 import { getProductMetrics } from "@/lib/analytics";
@@ -29,10 +29,7 @@ export default async function TrackingPage({
 }) {
   const { product } = await params;
   const query = await searchParams;
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
-
-  const ownerId = session.user.id;
+  const ownerId = await requireOwner();
   const merchant = await getMerchantForOwnerBySlug(ownerId, product);
   if (!merchant) notFound();
 
@@ -60,8 +57,7 @@ export default async function TrackingPage({
   const trackingHref = `/dashboard/products/${merchant.slug}/tracking`;
   async function checkAgain(): Promise<void> {
     "use server";
-    const session = await auth();
-    if (!session?.user?.id || session.user.role !== "owner") redirect("/login");
+    await requireOwner();
     revalidatePath(trackingHref);
     redirect(`${trackingHref}?fresh=1`);
   }
