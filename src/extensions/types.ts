@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 // Bump on any rename, removal, or change of signature or meaning, and say so
 // under "Extensions" in CHANGELOG.md. Adding a hook does not bump. Kept on one
 // line: builds read it with a regex.
-export const EXTENSIONS_API_VERSION = 1;
+export const EXTENSIONS_API_VERSION = 2;
 
 /**
  * Plain data, readable from anywhere, the proxy and the startup hook included.
@@ -33,6 +33,28 @@ export type StaticExtensions = {
   instance: {
     /** Whether the Owner sees the running version, update notices and the "This instance" panel. */
     showInfo: boolean;
+  };
+  domains: {
+    /**
+     * Whether a product's affiliate domain needs a DNS TXT record proving the
+     * Owner controls it. false keeps every domain live as soon as it is saved.
+     * true shows the record in the product's subdomain step and settings, and
+     * until it is found the domain gets no certificate and serves nothing. A
+     * proven domain that is given up is held for its Owner for a while, and an
+     * Owner can have only a few domains waiting for proof at once. A domain
+     * waiting for proof blocks no one: another Owner's product saving it takes
+     * it, leaving the first with no domain, and the first to prove it keeps it.
+     */
+    requireOwnershipProof: boolean;
+    /**
+     * Hostnames no product may use, each with every name under it. Matched
+     * without case, surrounding space or a trailing dot, and an internationalized
+     * name as its punycode; empty entries are ignored. A leading "*." or "." or
+     * anything other than a bare hostname fails at startup: an entry already
+     * covers the names under it. This Instance's own domain is always refused,
+     * whatever is listed here.
+     */
+    reserved: string[];
   };
 };
 

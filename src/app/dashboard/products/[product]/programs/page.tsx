@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { SetDomainFirst } from "@/components/SetDomainFirst";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import type { CommissionDurationType } from "@prisma/client";
@@ -114,7 +115,8 @@ export default async function ProgramsPage({
             holdingDays={p.holdingPeriodDays}
             affiliateCount={p.affiliateCount}
             discount={p.discountRef ? p.discountLabel : null}
-            signupLink={p.signupOpen ? signupLinkFor(merchant.domain, p.slug, defaultSlug) : null}
+            signupLink={p.signupOpen && merchant.domain ? signupLinkFor(merchant.domain, p.slug, defaultSlug) : null}
+            unlinked={p.signupOpen && !merchant.domain ? <SetDomainFirst slug={merchant.slug} className="px-2" /> : undefined}
             editHref={`${base}?edit=${p.id}`}
           />
         ))}

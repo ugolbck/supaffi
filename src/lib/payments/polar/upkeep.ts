@@ -23,7 +23,7 @@ const merchantSelect = {
 export async function movePolarEndpoint(merchantId: string): Promise<WebhookMove> {
   try {
     const merchant = await db.merchant.findUnique({ where: { id: merchantId }, select: merchantSelect });
-    if (!merchant?.webhookSecretEnc || isLocalDomain(merchant.domain)) return "none";
+    if (!merchant?.webhookSecretEnc || !merchant.domain || isLocalDomain(merchant.domain)) return "none";
     if (!merchant.paymentKeyEnc || !merchant.webhookEndpointId) return "manual";
     await movePolarWebhookEndpoint(
       { token: decrypt(merchant.paymentKeyEnc), sandbox: merchant.paymentSandbox },
@@ -55,7 +55,7 @@ export async function upgradePolarEndpoints(): Promise<void> {
     return;
   }
   for (const merchant of merchants) {
-    if (isLocalDomain(merchant.domain)) continue;
+    if (!merchant.domain || isLocalDomain(merchant.domain)) continue;
     try {
       const changed = await ensurePolarWebhookEvents(
         { token: decrypt(merchant.paymentKeyEnc!), sandbox: merchant.paymentSandbox },

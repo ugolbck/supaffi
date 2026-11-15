@@ -100,6 +100,29 @@ describe.skipIf(!hasDatabase)("runProductChecks", () => {
     expect(after.tracking.script.ok).toBe(true);
   });
 
+  it("looks nothing up for a product with no domain, and says so", async () => {
+    const owner = await db.owner.create({ data: { email: "c@example.com", passwordHash: "x" } });
+    const merchant = await createMerchant(owner.id, { name: "C", domain: "affiliates.c.test", websiteUrl: "https://c.test" });
+    await db.merchant.update({ where: { id: merchant.id }, data: { domain: null } });
+    process.env.SUPAFFI_HOST_IP = "146.59.195.140";
+    const asked: string[] = [];
+    const result = await runProductChecks(owner.id, merchant.id, {
+      fresh: ALL_SECTIONS,
+      overrides: {
+        resolvesTo: async (h: string) => (asked.push(h), ok),
+        httpsReachable: async (h: string) => (asked.push(h), { reachable: ok, certificate: ok }),
+        paymentKeyWorks: async () => ok,
+        webhookEventReceived: async () => no,
+        scriptFound: async (_url: string, h: string) => (asked.push(h), ok),
+      },
+    });
+    expect(asked).toEqual([]);
+    const none = { ok: false, detail: "No domain set" };
+    expect(result.dns).toEqual({ resolves: none, https: none, certificate: none });
+    expect(result.tracking.script).toEqual(none);
+    await db.merchant.delete({ where: { id: merchant.id } });
+  });
+
   it("runs every section on a cold cache and only the named ones on a warm one", async () => {
     const owner = await db.owner.create({ data: { email: "c@example.com", passwordHash: "x" } });
     const merchant = await createMerchant(owner.id, {

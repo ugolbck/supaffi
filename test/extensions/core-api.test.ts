@@ -125,6 +125,13 @@ describe.skipIf(!hasDatabase)("core API", () => {
     expect(await listOwnerMerchants(ann.ownerId)).toEqual([{ id: acme.id, name: "Acme", domain: "affiliates.acme.com" }]);
   });
 
+  it("lists a product with no domain as null", async () => {
+    const ann = await createOwnerAccount({ email: "ann@example.com", password: PASSWORD });
+    const acme = await merchantFor(ann.ownerId, "Acme");
+    await db.merchant.update({ where: { id: acme.id }, data: { domain: null } });
+    expect(await listOwnerMerchants(ann.ownerId)).toEqual([{ id: acme.id, name: "Acme", domain: null }]);
+  });
+
   it("tells a product's domain from the dashboard's", async () => {
     const ann = await createOwnerAccount({ email: "ann@example.com", password: PASSWORD });
     await merchantFor(ann.ownerId, "Acme");

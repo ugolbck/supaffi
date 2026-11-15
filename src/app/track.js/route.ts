@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { PaymentProvider } from "@prisma/client";
 import { db } from "@/lib/db";
+import { servedDomain } from "@/lib/domainOwnership";
 import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { originFor } from "@/lib/url";
 
@@ -41,9 +42,9 @@ export async function GET(req: NextRequest) {
   // is ignored for the same reason: originFor already knows the scheme.
   const host = req.headers.get("host");
   const merchant = host
-    ? await db.merchant.findUnique({ where: { domain: host }, select: { domain: true, paymentProvider: true } })
+    ? await db.merchant.findFirst({ where: servedDomain(host), select: { domain: true, paymentProvider: true } })
     : null;
-  if (!merchant) {
+  if (!merchant?.domain) {
     return new NextResponse(null, { status: 404 });
   }
 

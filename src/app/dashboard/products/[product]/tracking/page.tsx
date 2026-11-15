@@ -35,7 +35,7 @@ export default async function TrackingPage({
 
   // originFor, not a hardcoded https, so the snippet is a working URL on a
   // local instance too.
-  const scriptTag = `<script src="${originFor(merchant.domain)}/track.js" async></script>`;
+  const scriptTag = merchant.domain ? `<script src="${originFor(merchant.domain)}/track.js" async></script>` : null;
 
   // A flag, not a value: anything but the one string it is set to reads as
   // off, so a URL somebody made up cannot ask for anything else.
@@ -73,7 +73,7 @@ export default async function TrackingPage({
       verifiedAt={timestamps.verifiedAt}
       scriptTag={scriptTag}
       guide={checkoutGuideFor(merchant.paymentProvider)}
-      scriptPrompt={trackingScriptPrompt({ websiteUrl: merchant.websiteUrl, scriptTag })}
+      scriptPrompt={scriptTag ? trackingScriptPrompt({ websiteUrl: merchant.websiteUrl, scriptTag }) : ""}
       checkoutPromptText={checkoutPrompt({ guide: checkoutGuideFor(merchant.paymentProvider) })}
       checkAgain={checkAgain}
     />

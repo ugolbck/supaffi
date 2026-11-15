@@ -35,7 +35,7 @@ export async function connectPolarToken(ownerId: string, merchantId: string, tok
   // Polar refuses a webhook address on a local machine, so a local instance
   // stores the token alone.
   const handMade = merchant.webhookSecretEnc && !merchant.webhookEndpointId;
-  if (isLocalDomain(merchant.domain) || handMade) {
+  if (!merchant.domain || isLocalDomain(merchant.domain) || handMade) {
     await connectPaymentProvider(ownerId, merchantId, { secretKey: token, sandbox: check.sandbox });
     return { error: null };
   }

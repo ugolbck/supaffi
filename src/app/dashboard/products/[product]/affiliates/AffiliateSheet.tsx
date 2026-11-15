@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
+import { SetDomainFirst } from "@/components/SetDomainFirst";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -265,7 +266,8 @@ function PasswordLink({
   affiliateId: string;
   hasPassword: boolean;
   canEmail: boolean;
-  product: { id: string };
+  product: { id: string; slug: string };
+  /** Empty while the product has no domain, and there is no page to link to. */
   domain: string;
 }) {
   const [link, setLink] = useState<string | null>(null);
@@ -289,6 +291,8 @@ function PasswordLink({
           <Input readOnly value={link} className="min-w-0 flex-1 font-mono text-xs" onFocus={(e) => e.target.select()} />
           <CopyLinkButton link={link} size="lg" label="Copy" />
         </div>
+      ) : !domain ? (
+        <SetDomainFirst slug={product.slug} className="text-xs" />
       ) : canEmail ? (
         <Button
           type="button"

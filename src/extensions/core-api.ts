@@ -53,9 +53,10 @@ export async function getOwnerAccount(
   return db.owner.findUnique({ where: { id: ownerId }, select: { email: true, passwordChangedAt: true } });
 }
 
-export async function listOwnerMerchants(ownerId: string): Promise<{ id: string; name: string; domain: string }[]> {
+/** A product's domain is null while it has none (another Owner's claim took it before it was verified). */
+export async function listOwnerMerchants(ownerId: string): Promise<{ id: string; name: string; domain: string | null }[]> {
   const merchants = await listMerchantsForOwner(ownerId);
-  return merchants.map(({ id, name, domain }) => ({ id, name, domain }));
+  return merchants.map(({ id, name, domain }) => ({ id, name, domain: domain || null }));
 }
 
 /**

@@ -230,7 +230,7 @@ async function seed(label: string): Promise<Seeded> {
   });
   return {
     ownerId: owner.id,
-    product: { id: merchant.id, slug: merchant.slug, domain: merchant.domain },
+    product: { id: merchant.id, slug: merchant.slug, domain: merchant.domain! },
     programId: program.id,
     affiliateId: affiliate.id,
     payableId: payable.id,

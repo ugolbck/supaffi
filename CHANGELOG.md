@@ -12,12 +12,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Extensions: `domains.requireOwnershipProof`, a static hook that makes a
+  product's affiliate domain prove it belongs to its Owner with a DNS TXT
+  record before it is served or given a certificate. The record and a check
+  are shown in the subdomain step and the product's settings. A proven domain
+  that is given up stays with its Owner for 7 days, and an Owner can have 3
+  domains waiting for proof at once. A domain waiting for proof blocks
+  nobody: another Owner who saves it takes it over, the first product is
+  left with no domain, and whoever proves it first keeps it. A product moving
+  to a new domain keeps serving its proven one, payment webhook included,
+  until the new one is proven. Off by default.
+- Extensions: `domains.reserved`, a static hook listing hostnames no product
+  may use, along with every name under them. Defaults to none.
 - Extensions: `owners.canUse`, a server hook that decides whether an Owner
   may use the dashboard. Every Owner page and action checks it first; a
   refused Owner goes where `dashboard.gate` sends them, or gets not found.
   Signing out and the account page stay open. Defaults to allowed.
 - Extensions: `getOwnerAccount` in the core API, an Owner's current email
   and when their password last changed.
+
+### Changed
+
+- Extensions: API version 2. `listOwnerMerchants` returns `domain: null` for
+  a product that has no domain, which happens when ownership proof is
+  required and another Owner's claim took it before it was verified.
+- Every product domain saved before this version counts as proven, so it
+  keeps working after the upgrade.
 
 ## 0.8.0
 

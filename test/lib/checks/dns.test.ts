@@ -4,6 +4,7 @@ import {
   httpsReachable,
   detectDnsProvider,
   resolveAuthoritative,
+  resolveTxtAuthoritative,
   registrableCandidates,
 } from "@/lib/checks/dns";
 import { cloudflareDnsRecordsUrl } from "@/lib/dnsProviderLinks";
@@ -261,5 +262,41 @@ describe("detectDnsProvider", () => {
 describe("cloudflareDnsRecordsUrl", () => {
   it("opens the named zone's records, leaving the account to Cloudflare", () => {
     expect(cloudflareDnsRecordsUrl("mokkit.co")).toBe("https://dash.cloudflare.com/?to=/:account/mokkit.co/dns/records");
+  });
+});
+
+describe("resolveTxtAuthoritative", () => {
+  const deps = (over = {}) => ({
+    resolveNs: async () => ["ns1.cloudflare.com"],
+    resolve4: async () => ["9.9.9.9"],
+    resolveTxt: async () => [["from the system resolver"]],
+    makeResolver: () => ({ resolveTxt: async () => [["supaffi-verification=", "abc"], ["other"]] }),
+    ...over,
+  });
+
+  it("asks the zone's own nameservers and joins each record's chunks", async () => {
+    expect(await resolveTxtAuthoritative("_supaffi.affiliates.example.com", deps())).toEqual([
+      "supaffi-verification=abc",
+      "other",
+    ]);
+  });
+
+  it("falls back to the system resolver when the nameservers cannot be found", async () => {
+    const answer = await resolveTxtAuthoritative(
+      "_supaffi.affiliates.example.com",
+      deps({ resolveNs: async () => { throw new Error("no NS"); } })
+    );
+    expect(answer).toEqual(["from the system resolver"]);
+  });
+
+  it("takes the zone's own word that the record does not exist", async () => {
+    const missing = deps({
+      makeResolver: () => ({
+        resolveTxt: async () => {
+          throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+        },
+      }),
+    });
+    await expect(resolveTxtAuthoritative("_supaffi.affiliates.example.com", missing)).rejects.toThrow("ENOTFOUND");
   });
 });

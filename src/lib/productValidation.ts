@@ -1,4 +1,5 @@
 import { isLocalDomain } from "@/lib/url";
+import { staticExt } from "@/extensions/static";
 
 export type ProductInput = {
   name: string;
@@ -36,6 +37,11 @@ const HOSTNAME = new RegExp(`^(?:${LABEL}\\.)+${LABEL}$`);
 export function isPublicHostname(domain: string): boolean {
   if (domain.length > 253 || !HOSTNAME.test(domain)) return false;
   return !/^[0-9]+$/.test(domain.slice(domain.lastIndexOf(".") + 1));
+}
+
+/** Whether a domain is one the build reserves, or a name under one. */
+export function isReservedDomain(domain: string): boolean {
+  return staticExt.domains.reserved.some((reserved) => domain === reserved || domain.endsWith(`.${reserved}`));
 }
 
 function isValidWebsiteUrl(raw: string): boolean {
@@ -78,6 +84,7 @@ export function validateProductInput(
   if (instanceDomain && domain === instanceDomain) {
     return "That domain serves this Supaffi instance.";
   }
+  if (isReservedDomain(domain)) return "That domain is reserved.";
 
   if (!isValidWebsiteUrl(input.websiteUrl)) {
     return "Website URL must be a full address starting with http:// or https://";

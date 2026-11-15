@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { clientAddress, isPrivateAddress } from "@/lib/clientAddress";
+import { servedDomain } from "@/lib/domainOwnership";
 
 // Caddy's on-demand TLS "ask" endpoint (see Caddyfile). GET with ?domain=,
 // must respond fast and with a 2xx only for a domain we actually recognize,
@@ -22,8 +23,10 @@ export async function GET(req: NextRequest) {
     return new NextResponse(null, { status: 400 });
   }
 
-  const merchant = await db.merchant.findUnique({
-    where: { domain },
+  // A domain whose ownership is still unproven, when proof is required, is
+  // refused like an unknown one.
+  const merchant = await db.merchant.findFirst({
+    where: servedDomain(domain),
     select: { id: true },
   });
 

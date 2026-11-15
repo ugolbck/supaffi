@@ -1,4 +1,5 @@
 import { redirect, notFound } from "next/navigation";
+import { SetDomainFirst } from "@/components/SetDomainFirst";
 import Link from "next/link";
 import { requireOwner } from "@/app/requireOwner";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
@@ -76,7 +77,7 @@ export default async function AffiliatesPage({
     getProductMetrics(ownerId, merchant.id),
   ]);
 
-  const signupLink = firstProgram
+  const signupLink = firstProgram && merchant.domain
     ? signupLinkFor(merchant.domain, firstProgram.slug, firstProgram.slug)
     : null;
 
@@ -232,6 +233,8 @@ export default async function AffiliatesPage({
             />
             {signupLink ? (
               <CopyLinkButton link={signupLink} label="Copy link" />
+            ) : firstProgram ? (
+              <SetDomainFirst slug={merchant.slug} />
             ) : (
               toolbarNewProgramButton
             )}
@@ -249,6 +252,8 @@ export default async function AffiliatesPage({
           emptyAction={
             signupLink ? (
               <CopyLinkButton size="sm" link={signupLink} label="Copy link" />
+            ) : firstProgram ? (
+              <SetDomainFirst slug={merchant.slug} />
             ) : (
               newProgramButton
             )

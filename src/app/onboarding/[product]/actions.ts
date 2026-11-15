@@ -13,6 +13,7 @@ import {
 import { validateProductInput, normalizeDomain, normalizeWebsiteUrl } from "@/lib/productValidation";
 import { instanceDomain } from "@/lib/instance";
 import { isUniqueConstraintError } from "@/lib/prismaErrors";
+import { DomainClaimError } from "@/lib/domainOwnership";
 import { stepPath, nextStep, splitSubdomain, rehomeSubdomain, type StepId } from "@/lib/onboarding";
 import { createProgram, updateProgram, listProgramsForMerchant } from "@/lib/program";
 import { validateProgramInput } from "@/lib/programValidation";
@@ -58,6 +59,7 @@ export async function updateSubdomainAction(
     await updateMerchant(ownerId, product.id, { name: merchant.name, domain, websiteUrl: merchant.websiteUrl });
   } catch (err) {
     if (isUniqueConstraintError(err)) return { error: "Another product already uses that address" };
+    if (err instanceof DomainClaimError) return { error: err.message };
     throw err;
   }
   // No revalidate here. Re-rendering the step from the action means the save
@@ -77,6 +79,7 @@ export async function updateProductNameAction(
   if (!merchant) redirect("/onboarding");
 
   const name = String(formData.get("value") ?? "").trim();
+  if (!merchant.domain) return { error: "Set a domain first" };
   const error = validateProductInput({ name, domain: merchant.domain, websiteUrl: merchant.websiteUrl }, instanceDomain());
   if (error) return { error };
 
@@ -100,6 +103,8 @@ export async function updateProductWebsiteAction(
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
 
+  // Rehoming would claim a default address the Owner never chose.
+  if (!merchant.domain) return { error: "Set a domain first" };
   const websiteUrl = normalizeWebsiteUrl(String(formData.get("value") ?? ""));
   const domain = normalizeDomain(rehomeSubdomain(merchant.domain, merchant.websiteUrl, websiteUrl));
   const error = validateProductInput({ name: merchant.name, domain, websiteUrl }, instanceDomain());
@@ -109,6 +114,7 @@ export async function updateProductWebsiteAction(
     await updateMerchant(ownerId, product.id, { name: merchant.name, domain, websiteUrl });
   } catch (err) {
     if (isUniqueConstraintError(err)) return { error: "Another product already uses that address" };
+    if (err instanceof DomainClaimError) return { error: err.message };
     throw err;
   }
   revalidatePath(stepPath(product.slug, "product"));
@@ -133,6 +139,9 @@ export async function saveStripeKeyAction(
 
   const merchant = await getMerchantForOwner(ownerId, product.id);
   if (!merchant) redirect("/onboarding");
+
+  // Stripe would deliver to an address that answers for no product.
+  if (!merchant.domain) return { error: "Set a domain first" };
 
   // Stripe cannot reach a machine on your desk, so a local instance stores
   // the key alone and the step shows the CLI command that forwards events.

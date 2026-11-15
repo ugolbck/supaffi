@@ -16,6 +16,7 @@ describe("extension defaults", () => {
     expect(staticExt).toEqual({
       owners: { signupPath: null, passwordResetPath: null },
       instance: { showInfo: true },
+      domains: { requireOwnershipProof: false, reserved: [] },
     });
   });
 
@@ -56,6 +57,7 @@ describe("an installed build", () => {
     expect(staticExt).toEqual({
       owners: { signupPath: null, passwordResetPath: null },
       instance: { showInfo: false },
+      domains: { requireOwnershipProof: false, reserved: [] },
     });
   });
 
@@ -70,6 +72,22 @@ describe("an installed build", () => {
     const { staticExt } = await import("@/extensions/static");
     expect(staticExt.owners.passwordResetPath).toBeNull();
   });
+
+  it("reads reserved domains as hostnames: lowercase, punycode, trimmed, no trailing dot or empty entries", async () => {
+    vi.doMock("@/extensions/installed-static", () => ({
+      installedStatic: { domains: { reserved: [" Example.COM. ", "Bücher.de", "", "  "] } },
+    }));
+    const { staticExt } = await import("@/extensions/static");
+    expect(staticExt.domains).toEqual({ requireOwnershipProof: false, reserved: ["example.com", "xn--bcher-kva.de"] });
+  });
+
+  it.each(["*.example.com", ".example.com", "example.com:443", "https://example.com", "example.com/path", "exa mple.com"])(
+    "refuses %s as a reserved domain at startup",
+    async (entry) => {
+      vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { domains: { reserved: [entry] } } }));
+      await expect(import("@/extensions/static")).rejects.toThrow("is not a bare hostname");
+    }
+  );
 });
 
 it("keeps the API version on one line a build can read", () => {

@@ -93,8 +93,8 @@ describe.skipIf(!hasDatabase)("requireAffiliate", () => {
         websiteUrl: "https://requireaffiliate-b.example.com",
       },
     });
-    merchantA = { id: a.id, domain: a.domain };
-    merchantB = { id: b.id, domain: b.domain };
+    merchantA = { id: a.id, domain: a.domain! };
+    merchantB = { id: b.id, domain: b.domain! };
 
     const program = await db.program.create({
       data: {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
+import { servedDomain } from "@/lib/domainOwnership";
 import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { clientAddress, isPrivateAddress } from "@/lib/clientAddress";
 import { isClickLimited, rememberClick } from "@/lib/trackThrottle";
@@ -29,8 +30,8 @@ export async function GET(req: NextRequest) {
     return new NextResponse(null, { status: 400 });
   }
 
-  const merchant = await db.merchant.findUnique({
-    where: { domain: host },
+  const merchant = await db.merchant.findFirst({
+    where: servedDomain(host),
     select: { id: true },
   });
   if (!merchant) {

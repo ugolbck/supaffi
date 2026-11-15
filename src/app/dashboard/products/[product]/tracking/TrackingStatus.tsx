@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { SetDomainFirst } from "@/components/SetDomainFirst";
 import type { CheckoutGuide } from "@/lib/checkoutGuide";
 import { Page, PageTitle, Tiles, Section } from "@/components/dashboard/Page";
 import { StatTile } from "@/components/dashboard/StatTile";
@@ -32,7 +33,7 @@ export function TrackingStatus({
   checkoutPromptText,
   checkAgain,
 }: {
-  merchant: { domain: string; websiteUrl: string };
+  merchant: { slug: string; domain: string; websiteUrl: string };
   script: CheckResult;
   clicks: number;
   series: DayPoint[];
@@ -44,7 +45,8 @@ export function TrackingStatus({
    */
   clickedRecently: boolean;
   verifiedAt: Date | null;
-  scriptTag: string;
+  /** Null while the product has no domain. */
+  scriptTag: string | null;
   guide: CheckoutGuide;
   /** The plain text an owner forwards to whoever touches the code. */
   scriptPrompt: string;
@@ -76,7 +78,11 @@ export function TrackingStatus({
         <p className="mb-2 text-[13px] text-muted-foreground">
           In the head of every page an affiliate link can land on.
         </p>
-        <CodeBlock title="Tracking script" code={scriptTag} prompt={scriptPrompt} />
+        {scriptTag ? (
+          <CodeBlock title="Tracking script" code={scriptTag} prompt={scriptPrompt} />
+        ) : (
+          <SetDomainFirst slug={merchant.slug} />
+        )}
       </Section>
 
       {/* The longer of the two snippets, and the only thing on this page tall
