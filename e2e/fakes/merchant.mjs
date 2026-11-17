@@ -12,9 +12,9 @@
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.PORT ?? 8080);
-const TRACK_ORIGIN = process.env.TRACK_ORIGIN ?? "https://affiliates.shop.test";
+const TRACK_ORIGIN = process.env.TRACK_ORIGIN ?? "https://partners.shop.test";
 const STRIPE = process.env.FAKE_STRIPE ?? "http://fake-stripe:12111";
-const POLAR_TRACK_ORIGIN = process.env.POLAR_TRACK_ORIGIN ?? "https://affiliates.polarshop.test";
+const POLAR_TRACK_ORIGIN = process.env.POLAR_TRACK_ORIGIN ?? "https://partners.polarshop.test";
 const REFERRAL_COOKIE = "__supaffi_referral";
 const REFERRAL_METADATA_KEY = "supaffi_referral";
 

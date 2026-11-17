@@ -184,14 +184,16 @@ export function previousStep(current: StepId): StepId | null {
 }
 
 /**
- * The subdomain to propose from the website address: affiliates. on the
- * site's own domain, www dropped. It is where affiliates sign up and log in,
- * so the name says what it is.
+ * The subdomain to propose from the website address: partners. on the
+ * site's own domain, www dropped. It is where affiliates sign up and log in.
+ * Not affiliates.: EasyList, which most ad blockers load, blocks any
+ * affiliates. host serving another site, so the tracking script would be
+ * blocked wherever the product's site is on a different domain.
  */
 export function suggestSubdomain(websiteUrl: string): string {
   try {
     const host = new URL(websiteUrl).hostname.replace(/^www\./, "");
-    return host ? `affiliates.${host}` : "";
+    return host ? `partners.${host}` : "";
   } catch {
     return "";
   }

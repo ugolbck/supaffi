@@ -12,7 +12,7 @@ test.describe.configure({ mode: "serial" });
 const OWNER = { email: "owner@example.com", password: "owner-password-123" };
 const AFFILIATE = { name: "Alice", email: "alice@example.com", password: "alice-password-123", code: "alice" };
 const ADMIN = "https://admin.test";
-const PRODUCT_DOMAIN = "https://affiliates.shop.test";
+const PRODUCT_DOMAIN = "https://partners.shop.test";
 const SHOP = "https://shop.test";
 
 let owner: Page;
@@ -62,7 +62,7 @@ test("owner onboards a product", async () => {
   // TLS and the app's ask endpoint. The DNS record row cannot pass: it needs
   // a real authoritative nameserver.
   await owner.waitForURL(/\/subdomain$/);
-  await expect(owner.getByText("affiliates.shop.test").first()).toBeVisible();
+  await expect(owner.getByText("partners.shop.test").first()).toBeVisible();
   await expect(owner.getByText("Secured with HTTPS")).toBeVisible();
   await owner.getByRole("button", { name: "Continue" }).click();
 
@@ -293,7 +293,7 @@ test("an affiliate who forgot their password gets a link by email", async ({ bro
 // with it.
 test("a new subdomain takes the Stripe webhook with it", async ({ request }) => {
   await owner.goto(`${ADMIN}/dashboard/products/shop/settings`);
-  await owner.getByLabel("Subdomain").fill("partners.shop.test");
+  await owner.getByLabel("Subdomain").fill("affiliates.shop.test");
   await owner.getByRole("button", { name: "Save" }).click();
   const confirm = owner.getByRole("alertdialog");
   // Cancelling saves nothing, and the next save asks again.
@@ -301,15 +301,15 @@ test("a new subdomain takes the Stripe webhook with it", async ({ request }) => 
   await expect(confirm).toHaveCount(0);
   await expect(owner).toHaveURL(/\/settings$/);
   await owner.getByRole("button", { name: "Save" }).click();
-  await expect(confirm).toContainText("affiliates.shop.test will stop working");
+  await expect(confirm).toContainText("partners.shop.test will stop working");
   await expect(confirm).toContainText("Supaffi will point Stripe at the new address.");
   await confirm.getByRole("button", { name: "Change subdomain" }).click();
   await owner.waitForURL(/\/settings\?fresh=dns$/);
-  await expect(owner.getByLabel("Subdomain")).toHaveValue("partners.shop.test");
+  await expect(owner.getByLabel("Subdomain")).toHaveValue("affiliates.shop.test");
 
   const state = await (await request.get("http://127.0.0.1:12111/_test/state")).json();
   expect(state.endpoints.map((e: { url: string }) => e.url)).toEqual([
-    "https://partners.shop.test/api/webhooks/stripe",
+    "https://affiliates.shop.test/api/webhooks/stripe",
   ]);
 
   // A sale arrives at the new address and is accepted with the same secret.
@@ -317,13 +317,13 @@ test("a new subdomain takes the Stripe webhook with it", async ({ request }) => 
     data: { amount: 9000, email: "after-move@example.com", cardFingerprint: "fp_after_move" },
   });
   expect((await res.json()).deliveries).toEqual([
-    { url: "https://partners.shop.test/api/webhooks/stripe", status: 200 },
+    { url: "https://affiliates.shop.test/api/webhooks/stripe", status: 200 },
   ]);
 });
 
 // A second product on the same install, selling through Polar: its own
 // provider, token, webhook and checkout link, next to the Stripe one above.
-const POLAR_DOMAIN = "https://affiliates.polarshop.test";
+const POLAR_DOMAIN = "https://partners.polarshop.test";
 let bob: Page;
 
 test("owner onboards a product that sells through Polar", async ({ request }) => {

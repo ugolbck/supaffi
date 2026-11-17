@@ -17,6 +17,11 @@
 # Certificate work runs in the background and does not block startup, so
 # installing before DNS has propagated is fine. Caddy keeps retrying.
 {$SUPAFFI_DOMAIN:localhost} {
+	# No page or event Supaffi takes comes near this, and the product domains
+	# take requests from anyone.
+	request_body {
+		max_size 1MB
+	}
 	reverse_proxy app:3000
 }
 
@@ -27,6 +32,11 @@
 :443 {
 	tls {
 		on_demand
+	}
+	# No page or event Supaffi takes comes near this, and the product domains
+	# take requests from anyone.
+	request_body {
+		max_size 1MB
 	}
 	reverse_proxy app:3000
 }

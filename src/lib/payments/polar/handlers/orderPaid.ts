@@ -14,7 +14,7 @@ import {
   referredSubscriptionFor,
 } from "@/lib/worker/referredSubscription";
 import { checkSelfReferralEmail } from "@/lib/worker/selfReferral";
-import { hasPolarExclusionFlag, type PolarOrder } from "@/lib/payments/polar/types";
+import { hasPolarExclusionFlag, polarPaidAmount, type PolarOrder } from "@/lib/payments/polar/types";
 
 // A checkout's own order. A trial's start arrives here too, as a paid order of
 // nothing, so it records the subscription and earns nothing until money moves.
@@ -69,7 +69,7 @@ async function firstOrder(merchant: Merchant, order: PolarOrder, payment: Paymen
   });
   if (!click || click.fraudConfirmedAt) return;
 
-  const moneyMoved = order.net_amount > 0;
+  const moneyMoved = polarPaidAmount(order) > 0;
   if (order.subscription_id) {
     // Renewals earn by matching this subscription, never the customer, and
     // only on the product it was bought for. Recorded for a trial too, so its
@@ -91,7 +91,7 @@ async function firstOrder(merchant: Merchant, order: PolarOrder, payment: Paymen
 }
 
 async function renewal(merchant: Merchant, order: PolarOrder, payment: PaymentRef): Promise<void> {
-  if (!order.subscription_id || order.net_amount <= 0) return;
+  if (!order.subscription_id || polarPaidAmount(order) <= 0) return;
   const referred = await referredSubscriptionFor(merchant.id, order.subscription_id);
   if (!referred || referred.click.fraudConfirmedAt) return;
 
@@ -114,9 +114,10 @@ async function earn(merchant: Merchant, click: ReferralClick, order: PolarOrder,
   if (rate <= 0) return;
   if (hasPolarExclusionFlag(order.metadata, order.subscription?.metadata, order.customer?.metadata)) return;
 
-  // Earned on the order after its discount and before tax. Polar's own fee is
-  // not taken off, as Stripe's is not.
-  const baseMinor = order.net_amount;
+  // Earned on what the customer paid, after the discount and any credit from
+  // their balance, before tax. Polar's own fee is not taken off, as Stripe's
+  // is not.
+  const baseMinor = polarPaidAmount(order);
   const amount = computeCommissionAmount(baseMinor, order.currency, rate);
   if (amount.lte(0)) return;
 
@@ -124,7 +125,7 @@ async function earn(merchant: Merchant, click: ReferralClick, order: PolarOrder,
   // A refund Polar had already made when it sent this event is on the order.
   // One made later waits for this row (orderRefunded.ts). Polar sends no
   // dispute events, so disputes are not read.
-  const charge = { amount: order.net_amount, amountRefunded: order.refunded_amount ?? 0, disputed: false };
+  const charge = { amount: baseMinor, amountRefunded: order.refunded_amount ?? 0, disputed: false };
 
   try {
     await createCommissionUnlessSelfReferral({

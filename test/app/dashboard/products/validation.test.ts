@@ -81,7 +81,7 @@ describe("validateProductInput", () => {
       vi.unstubAllEnvs();
     });
 
-    const HOSTNAME_ERROR = "Domain must be a full hostname, like affiliates.example.com";
+    const HOSTNAME_ERROR = "Domain must be a full hostname, like partners.example.com";
 
     it.each([
       "affiliates.instantgradient.com",

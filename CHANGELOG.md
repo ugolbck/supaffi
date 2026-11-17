@@ -8,6 +8,31 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.9.1
+
+### Security
+
+- Next.js and Nodemailer updated for their November security advisories:
+  cookie exposure and responses reaching the wrong visitor on self-hosted
+  Next.js, and address parsing in Nodemailer.
+- Requests over 1 MB are refused, by Caddy and again by the payment webhook,
+  so an oversized request cannot tie up the server.
+
+### Fixed
+
+- Stripe sales in Ugandan shillings earned 100 times too much. Commissions
+  recorded before this version are not corrected.
+- A Polar order paid partly with customer credit earns on what the customer
+  paid, and its refunds are measured against the same amount.
+- A Stripe subscription whose first invoice could not be read is still
+  recorded, so its renewals keep earning. A plan change paid in that window
+  waits, so it cannot count as the first payment.
+
+### Changed
+
+- The suggested affiliate subdomain is `partners.` instead of `affiliates.`,
+  which common ad blockers block. Existing subdomains are unchanged.
+
 ## 0.9.0
 
 ### Added

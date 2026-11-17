@@ -1503,7 +1503,7 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(commission.amount.toString()).toBe("50000000000");
     });
 
-    it("writes nothing and fails the event so it retries when the invoice cannot be read", async () => {
+    it("records only the subscription and fails the event so it retries when the invoice cannot be read", async () => {
       stripeStub.invoices.retrieve.mockRejectedValueOnce(
         Object.assign(new Error("connection reset"), { type: "StripeConnectionError" })
       );
@@ -1511,7 +1511,10 @@ describe("handleCheckoutSessionCompleted", () => {
 
       await expect(handleCheckoutSessionCompleted(merchant, session)).rejects.toThrow("in_retry");
       expect(await db.commission.count()).toBe(0);
-      expect(await db.referredSubscription.count()).toBe(0);
+      // Recorded already, so its renewals earn even if this read never succeeds.
+      const recorded = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
+      expect(recorded.clickId).toBe(click.id);
+      expect(recorded.firstPaymentRef).toBeNull();
 
       // The retry, once Stripe answers.
       await handleCheckoutSessionCompleted(merchant, session);
@@ -1521,12 +1524,13 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(referred.firstPaymentRef).toBe("in_retry");
     });
 
-    it("writes nothing and fails the event so it retries while the invoice is not paid yet", async () => {
+    it("records only the subscription and fails the event so it retries while the invoice is not paid yet", async () => {
       const session = sessionFixture({ invoice: "in_open", subscription: "sub_1", invoiceStatus: "open", amountPaid: 0 });
 
       await expect(handleCheckoutSessionCompleted(merchant, session)).rejects.toThrow("in_open");
       expect(await db.commission.count()).toBe(0);
-      expect(await db.referredSubscription.count()).toBe(0);
+      const recorded = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_1" } });
+      expect(recorded.firstPaymentRef).toBeNull();
     });
 
     it("reads no invoice for a free trial", async () => {

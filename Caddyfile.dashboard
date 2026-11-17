@@ -24,5 +24,10 @@
 # `-3443`.
 https://{$SUPAFFI_HOST_IP:127.0.0.1}:{$SUPAFFI_DASHBOARD_PORT:3443} {
 	tls internal
+	# No page or event Supaffi takes comes near this, and the product domains
+	# take requests from anyone.
+	request_body {
+		max_size 1MB
+	}
 	reverse_proxy app:3000
 }

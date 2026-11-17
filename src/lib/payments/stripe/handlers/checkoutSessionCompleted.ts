@@ -76,38 +76,24 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // nothing, or a billing cycle anchor that bills later) reads nothing here.
   const moneyOnSession = session.payment_status === "paid" && (session.amount_total ?? 0) > 0;
 
-  // A subscription's first payment is judged on its invoice, never on the
-  // Session's totals: credit balance can pay part or all of it, money can be
-  // recorded as paid outside Stripe, and a one-off item can ride on it, and
-  // the Session says none of that. Read with its subscription and customer
-  // expanded, before anything is written, so a failed read retries the event
-  // from a clean start.
-  const firstInvoice =
-    session.mode === "subscription" && invoiceId && moneyOnSession
-      ? await retrievePaidFirstInvoice(stripe, session.id, invoiceId)
-      : null;
-
-  // The first invoice that moved money is the subscription's first payment, as
-  // invoicePaid.ts already decides. One paid entirely from credit balance moved
-  // none, so it is not claimed and the next paid invoice starts the referral.
-  const moneyPaid = firstInvoice ? firstInvoice.amount_paid > 0 : session.mode !== "subscription" && moneyOnSession;
-
   // Renewals earn by matching the subscription this Checkout created, never
   // the customer: products sharing a Stripe account share customers, and a
   // customer's other subscriptions were never referred. Recorded before the
-  // exclusion check below, because excluding this one purchase does not
-  // exclude the renewals after it, and recorded for a free trial too, so the
-  // trial's first paid invoice can earn. The first payment is claimed even
-  // when this sale earns nothing, because it is when money first moved.
+  // first invoice is read below and before the exclusion check: that read can
+  // keep failing until the event's retries run out (a key missing a
+  // permission, a long outage), and every renewal earns from this row, so one
+  // sale that cannot be read must not cost all of them. Excluding this one
+  // purchase does not exclude the renewals after it either, and a free trial
+  // is recorded too, so the trial's first paid invoice can earn.
   let referred: ReferredSubscription | null = null;
   if (subscriptionId) {
-    // Its renewals earn only on the products it bills, so they are read now,
-    // before anything is written: a Stripe outage throws and the retried
-    // event records the row whole. A key that cannot answer records none, and
-    // the first renewal fills them. A redelivery whose row already carries
-    // products skips the read entirely: the write-once guard would keep the
-    // data safe either way, but there is no reason to spend the Stripe call
-    // or retry a redelivery on a transient failure that changes nothing.
+    // Its renewals earn only on the products it bills, so they are read
+    // first: a Stripe outage throws and the retried event records the row
+    // whole. A key that cannot answer records none, and the first renewal
+    // fills them. A redelivery whose row already carries products skips the
+    // read entirely: the write-once guard would keep the data safe either way,
+    // but there is no reason to spend the Stripe call or retry a redelivery on
+    // a transient failure that changes nothing.
     const existing = await db.referredSubscription.findUnique({
       where: { merchantId_subscriptionRef: { merchantId: merchant.id, subscriptionRef: subscriptionId } },
     });
@@ -128,16 +114,35 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
       click = await db.click.findUniqueOrThrow({ where: { id: referred.clickId }, include: REFERRAL_INCLUDE });
       if (click.fraudConfirmedAt) return;
     }
-    if (moneyPaid && paymentRef) {
-      // A delayed payment method's Session is created unpaid, and
-      // checkout.session.async_payment_succeeded brings it back, paid, once
-      // the debit clears days later. The first payment is still dated from
-      // the Session's own creation time, not that later event: Stripe starts
-      // the subscription, and schedules every renewal, from the Session, so a
-      // FIXED_MONTHS window measured from the settlement date would end one
-      // renewal late and let the month N+1 invoice earn.
-      await claimFirstPayment(referred, { ref: paymentRef, at: completedAt });
-    }
+  }
+
+  // A subscription's first payment is judged on its invoice, never on the
+  // Session's totals: credit balance can pay part or all of it, money can be
+  // recorded as paid outside Stripe, and a one-off item can ride on it, and
+  // the Session says none of that. Read with its subscription and customer
+  // expanded, before the first payment is claimed or anything earns, so a
+  // failed read retries the event with only the subscription recorded.
+  const firstInvoice =
+    session.mode === "subscription" && invoiceId && moneyOnSession
+      ? await retrievePaidFirstInvoice(stripe, session.id, invoiceId)
+      : null;
+
+  // The first invoice that moved money is the subscription's first payment, as
+  // invoicePaid.ts already decides. One paid entirely from credit balance moved
+  // none, so it is not claimed and the next paid invoice starts the referral.
+  // It is claimed even when this sale earns nothing, because it is when money
+  // first moved.
+  const moneyPaid = firstInvoice ? firstInvoice.amount_paid > 0 : session.mode !== "subscription" && moneyOnSession;
+
+  if (referred && moneyPaid && paymentRef) {
+    // A delayed payment method's Session is created unpaid, and
+    // checkout.session.async_payment_succeeded brings it back, paid, once
+    // the debit clears days later. The first payment is still dated from
+    // the Session's own creation time, not that later event: Stripe starts
+    // the subscription, and schedules every renewal, from the Session, so a
+    // FIXED_MONTHS window measured from the settlement date would end one
+    // renewal late and let the month N+1 invoice earn.
+    await claimFirstPayment(referred, { ref: paymentRef, at: completedAt });
   }
 
   // A paid subscription Session is documented to name its invoice once it
