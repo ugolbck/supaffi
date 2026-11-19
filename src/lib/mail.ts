@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/crypto";
+import { blocksPrivateAddresses, PrivateAddressError, publicAddresses } from "@/lib/outboundAddress";
 
 /**
  * A product's own mail server, reached over SMTP. Per product, like its
@@ -80,9 +81,13 @@ export async function productHasEmail(merchantId: string): Promise<boolean> {
 // still looking at it, long enough for a slow provider's greeting.
 const TIMEOUTS = { connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000 };
 
-export function transportFor(settings: SmtpSettings) {
+/**
+ * `address`, when given, is the one connected to instead of the host's name,
+ * already checked. The certificate is still checked against the name.
+ */
+export function transportFor(settings: SmtpSettings, address?: string) {
   return nodemailer.createTransport({
-    host: settings.host,
+    host: address ?? settings.host,
     port: settings.port,
     // 465 is TLS from the first byte. Every other port starts in the clear
     // and upgrades with STARTTLS, which nodemailer does whenever the server
@@ -96,6 +101,7 @@ export function transportFor(settings: SmtpSettings) {
     // Messages are built here from text, never from a path or a URL.
     disableFileAccess: true,
     disableUrlAccess: true,
+    ...(address && address !== settings.host ? { tls: { servername: settings.host } } : {}),
     ...TIMEOUTS,
   });
 }
@@ -116,7 +122,10 @@ export function isSingleAddress(value: string): boolean {
 
 export async function sendWith(settings: SmtpSettings, email: OutgoingEmail): Promise<void> {
   if (!isSingleAddress(email.to)) throw Object.assign(new Error("Not a single address"), { code: "EENVELOPE" });
-  await transportFor(settings).sendMail({
+  // Checked once and connected to as checked, so the name cannot be pointed
+  // at this server's own network in between.
+  const address = blocksPrivateAddresses() ? (await publicAddresses(settings.host))[0] : undefined;
+  await transportFor(settings, address).sendMail({
     from: { name: headerSafe(email.fromName), address: settings.from },
     to: email.to,
     subject: email.subject.replace(/[\r\n]+/g, " "),
@@ -130,6 +139,7 @@ export async function sendWith(settings: SmtpSettings, email: OutgoingEmail): Pr
  * carry the server's reply, which is useful in a log and noise on a screen.
  */
 export function mailErrorText(err: unknown, settings: Pick<SmtpSettings, "host" | "port">): string {
+  if (err instanceof PrivateAddressError) return "That mail server is on a private network. Use its public address.";
   const { code, responseCode } = (err ?? {}) as { code?: string; responseCode?: number };
   if (code === "EAUTH" || responseCode === 535) return "The server refused the username or password.";
   if (code === "ESOCKET" && /certificate|SSL|TLS/i.test(String((err as Error).message))) {

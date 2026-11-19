@@ -1,4 +1,5 @@
 import type { CheckResult } from "@/lib/checks/dns";
+import { outboundFetch } from "@/lib/outboundAddress";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -47,7 +48,7 @@ async function readCapped(response: Response, capBytes: number): Promise<string>
 export async function scriptFound(
   websiteUrl: string,
   trackingDomain: string,
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = outboundFetch()
 ): Promise<CheckResult> {
   let url: URL;
   try {

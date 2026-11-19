@@ -17,6 +17,7 @@ describe("extension defaults", () => {
       owners: { signupPath: null, passwordResetPath: null },
       instance: { showInfo: true },
       domains: { requireOwnershipProof: false, reserved: [] },
+      outbound: { blockPrivateAddresses: false },
     });
   });
 
@@ -63,6 +64,7 @@ describe("an installed build", () => {
       owners: { signupPath: null, passwordResetPath: null },
       instance: { showInfo: false },
       domains: { requireOwnershipProof: false, reserved: [] },
+      outbound: { blockPrivateAddresses: false },
     });
   });
 
