@@ -453,6 +453,8 @@ model Email {
 
   @@unique([merchantId, dedupeKey])
   @@index([status, nextAttemptAt])
+  // The Owner's daily limit: platform sends per product since a moment.
+  @@index([sentByPlatform, merchantId, sentAt])
 }
 
 enum EmailStatus {
