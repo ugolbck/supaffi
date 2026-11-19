@@ -97,6 +97,7 @@ describe("handleSubscriptionDeleted", () => {
     const click = await db.click.create({
       data: {
         affiliateId: affiliate.id,
+        programId: affiliate.programId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),
       },
@@ -237,6 +238,7 @@ describe("handleSubscriptionDeleted", () => {
       await db.click.create({
         data: {
           affiliateId,
+          programId: (await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).programId,
           referralToken: crypto.randomUUID(),
           expiresAt: new Date(Date.now() + 60_000),
         },

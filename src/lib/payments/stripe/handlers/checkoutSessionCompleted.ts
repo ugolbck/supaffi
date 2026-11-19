@@ -190,7 +190,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
     !(await referralStillEarns(
       merchant.id,
       click.id,
-      click.affiliate.program,
+      click.program,
       sale,
       earlierPaymentRef ? [earlierPaymentRef] : []
     ))
@@ -208,7 +208,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
   // base needs a Stripe read of its own (see below), and there is no reason
   // to spend it on a sale that cannot pay anything.
   const affiliate = click.affiliate;
-  const program = affiliate.program;
+  const program = click.program;
   const rate = commissionRateFor(affiliate, program);
   if (rate <= 0) return;
 

@@ -190,6 +190,7 @@ async function seed(label: string): Promise<Seeded> {
   const click = await db.click.create({
     data: {
       affiliateId: affiliate.id,
+      programId: affiliate.programId,
       referralToken: `scoping-${label}-${tag}`,
       expiresAt: new Date(Date.now() + 86_400_000),
     },

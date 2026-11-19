@@ -4,7 +4,7 @@ import { isUniqueConstraintError } from "@/lib/prismaErrors";
 import type { PaymentRef } from "./commission";
 
 export const WITH_CLICK = {
-  click: { include: { affiliate: { include: { program: true } } } },
+  click: { include: { affiliate: true, program: true } },
 } satisfies Prisma.ReferredSubscriptionInclude;
 
 export type ReferredSubscriptionWithClick = Prisma.ReferredSubscriptionGetPayload<{

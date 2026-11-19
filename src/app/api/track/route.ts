@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
         select: {
           id: true,
           merchantId: true,
-          program: { select: { attributionWindowDays: true } },
+          program: { select: { id: true, attributionWindowDays: true } },
         },
       },
     },
@@ -100,7 +100,13 @@ export async function GET(req: NextRequest) {
 
   if (throttled) rememberClick(throttled);
   await db.click.create({
-    data: { affiliateId: link.affiliate.id, linkId: link.id, referralToken, expiresAt },
+    data: {
+      affiliateId: link.affiliate.id,
+      programId: link.affiliate.program.id,
+      linkId: link.id,
+      referralToken,
+      expiresAt,
+    },
   });
 
   return NextResponse.json({ referralToken }, { headers: CORS });

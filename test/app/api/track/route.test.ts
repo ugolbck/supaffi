@@ -123,6 +123,7 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
     const clicks = await db.click.findMany();
     expect(clicks).toHaveLength(1);
     expect(clicks[0].affiliateId).toBe(a.affiliate.id);
+    expect(clicks[0].programId).toBe(a.affiliate.programId);
     expect(clicks[0].linkId).toBe(a.link.id);
   });
 

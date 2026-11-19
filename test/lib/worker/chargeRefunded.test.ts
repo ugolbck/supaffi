@@ -215,6 +215,7 @@ describe("handleChargeRefunded", () => {
     const click = await db.click.create({
       data: {
         affiliateId: affiliate.id,
+        programId: affiliate.programId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),
       },

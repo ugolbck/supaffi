@@ -94,7 +94,7 @@ async function clearAll() {
 describe("handleCheckoutSessionCompleted", () => {
   let merchant: Merchant;
   let click: { id: string };
-  let clickInput: { affiliateId: string; referralToken: string; expiresAt: Date };
+  let clickInput: { affiliateId: string; programId: string; referralToken: string; expiresAt: Date };
   // What Stripe answers when the handler reads a Session's invoice back with
   // its subscription and customer expanded, registered by sessionFixture.
   const invoiceReadsById = new Map<string, Record<string, unknown>>();
@@ -301,6 +301,7 @@ describe("handleCheckoutSessionCompleted", () => {
 
     clickInput = {
       affiliateId: affiliate.id,
+      programId: program.id,
       referralToken: "tok-1",
       expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
     };
@@ -853,7 +854,7 @@ describe("handleCheckoutSessionCompleted", () => {
       },
     });
     const fixedClick = await db.click.create({
-      data: { ...clickInput, affiliateId: affiliate.id, referralToken: "tok-fixed" },
+      data: { ...clickInput, affiliateId: affiliate.id, programId: affiliate.programId, referralToken: "tok-fixed" },
     });
 
     const session = sessionFixture({
@@ -1825,7 +1826,7 @@ describe("handleCheckoutSessionCompleted", () => {
     });
   });
   describe("promo codes", () => {
-    let alice: { id: string; email: string };
+    let alice: { id: string; email: string; programId: string };
     let code: { id: string };
 
     beforeEach(async () => {
@@ -1870,6 +1871,7 @@ describe("handleCheckoutSessionCompleted", () => {
       expect(commission.amount.toString()).toBe("10");
       expect(commission.click.promoCheckoutRef).toBe("cs_in_code");
       expect(commission.click.promoCodeId).toBe(code.id);
+      expect(commission.click.programId).toBe(alice.programId);
       expect(commission.click.linkId).toBeNull();
       const referred = await db.referredSubscription.findFirstOrThrow({ where: { subscriptionRef: "sub_code" } });
       expect(referred.clickId).toBe(commission.clickId);

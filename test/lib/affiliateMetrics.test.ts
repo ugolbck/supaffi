@@ -72,6 +72,7 @@ async function seedSaleWithLegacyAdjustment(saleDaysAgo: number, adjustmentDaysA
   const click = await db.click.create({
     data: {
       affiliateId: sarah.id,
+      programId: program.id,
       linkId: primary!.id,
       referralToken: crypto.randomUUID(),
       expiresAt: new Date(Date.now() + 86400_000),
@@ -135,6 +136,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const click = await db.click.create({
       data: {
         affiliateId: sarah.id,
+        programId: program.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
@@ -203,6 +205,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const click = await db.click.create({
       data: {
         affiliateId: sarah.id,
+        programId: program.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
@@ -254,6 +257,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const click = await db.click.create({
       data: {
         affiliateId: sarah.id,
+        programId: program.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
       },
@@ -288,6 +292,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const click = await db.click.create({
       data: {
         affiliateId: sarah.id,
+        programId: program.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
@@ -347,6 +352,7 @@ describe.skipIf(!hasDatabase)("affiliate metrics", () => {
     const click = await db.click.create({
       data: {
         affiliateId: sarah.id,
+        programId: program.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
@@ -383,6 +389,7 @@ describe.skipIf(!hasDatabase)("listAffiliatePayments", () => {
     return db.click.create({
       data: {
         affiliateId,
+        programId: (await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).programId,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),

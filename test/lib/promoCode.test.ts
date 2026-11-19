@@ -200,6 +200,7 @@ describe("promo codes", () => {
     const sale = await db.click.create({
       data: {
         affiliateId: aliceId,
+        programId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(),
         promoCodeId: code.id,
@@ -217,7 +218,7 @@ describe("promo codes", () => {
 
   it("leaves a code sale's click out of click counts and tracking", async () => {
     await db.click.create({
-      data: { affiliateId: aliceId, referralToken: crypto.randomUUID(), expiresAt: new Date(), promoCheckoutRef: "cs_1" },
+      data: { affiliateId: aliceId, programId, referralToken: crypto.randomUUID(), expiresAt: new Date(), promoCheckoutRef: "cs_1" },
     });
 
     const { rows } = await listAffiliatesForMerchant(
@@ -237,6 +238,7 @@ describe("promo codes", () => {
     const sale = await db.click.create({
       data: {
         affiliateId: aliceId,
+        programId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(),
         promoCodeId: code.id,
@@ -277,7 +279,7 @@ describe("promo codes", () => {
     });
     const sale = async (codeId: string, ref: string, amount: number, currency: string, status: "PENDING" | "VOIDED") => {
       const click = await db.click.create({
-        data: { affiliateId: aliceId, referralToken: crypto.randomUUID(), expiresAt: new Date(), promoCodeId: codeId, promoCheckoutRef: `cs_${ref}` },
+        data: { affiliateId: aliceId, programId, referralToken: crypto.randomUUID(), expiresAt: new Date(), promoCodeId: codeId, promoCheckoutRef: `cs_${ref}` },
       });
       await db.commission.create({
         data: { merchantId, affiliateId: aliceId, clickId: click.id, paymentRef: ref, amount, currency, status, payableAt: new Date() },

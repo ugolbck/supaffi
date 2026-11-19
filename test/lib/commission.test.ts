@@ -87,6 +87,7 @@ async function makeClick(affiliateId: string) {
   return db.click.create({
     data: {
       affiliateId,
+      programId: (await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).programId,
       referralToken: `token-${Math.random().toString(36).slice(2)}`,
       expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
     },

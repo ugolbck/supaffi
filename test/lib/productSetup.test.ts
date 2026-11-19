@@ -113,6 +113,7 @@ describe.skipIf(!hasDatabase)("product setup", () => {
     await db.click.create({
       data: {
         affiliateId: affiliate.id,
+        programId: affiliate.programId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60 * 86400_000),
       },

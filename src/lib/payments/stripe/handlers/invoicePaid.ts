@@ -82,7 +82,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
   // another plan with a new Checkout, carries on from the click's first
   // payment instead of starting the program over. Measured after the claim
   // above, so this subscription's own first payment is part of that history.
-  const program = click.affiliate.program;
+  const program = click.program;
   if (!(await referralStillEarns(merchant.id, click.id, program, payment))) return;
 
   const stripe = stripeClientFor(merchant);
