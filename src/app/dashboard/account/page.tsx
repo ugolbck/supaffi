@@ -3,6 +3,7 @@ import { requireOwnerSession } from "@/app/requireOwner";
 import { availableUpdate, installedVersion, updateCheckEnabled } from "@/lib/version";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { EmailForm, PasswordForm } from "./AccountForms";
+import { getOwnerEmail } from "@/lib/owner";
 import { ext } from "@/extensions";
 import { staticExt } from "@/extensions/static";
 
@@ -17,7 +18,11 @@ import { staticExt } from "@/extensions/static";
 
 export default async function AccountPage() {
   // Open to an Owner refused by owners.canUse, so the session alone.
-  const { ownerId, email } = await requireOwnerSession();
+  const session = await requireOwnerSession();
+  const { ownerId } = session;
+  // Saved rather than the session's, so a password manager files a new
+  // password under the email the Owner just changed to.
+  const email = (await getOwnerEmail(ownerId)) ?? session.email;
 
   // Answers from the cache and starts a refresh it does not wait for, so a
   // server with no outbound access does not pay for this on every visit.

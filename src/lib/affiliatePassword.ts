@@ -96,13 +96,6 @@ export async function issueResetToken(
   return { id: token.id, rawToken };
 }
 
-/**
- * Spends a password link and saves the new password. The link must belong to
- * an Affiliate of the product it was opened on. Ends every session the
- * Affiliate already had. Answers the Affiliate's email, so the caller can log
- * them in again, or null for a link that is unknown, used,
- * expired or from another product.
- */
 /** A reset link that can still be used on this product. Reading it does not spend it. */
 async function liveResetLink(rawToken: string, merchantId: string) {
   const record = await db.affiliateLoginToken.findUnique({
@@ -123,6 +116,13 @@ export async function affiliateResetLinkEmail(rawToken: string, merchantId: stri
   return (await liveResetLink(rawToken, merchantId))?.affiliate.email ?? null;
 }
 
+/**
+ * Spends a password link and saves the new password. The link must belong to
+ * an Affiliate of the product it was opened on. Ends every session the
+ * Affiliate already had. Answers the Affiliate's email, so the caller can log
+ * them in again, or null for a link that is unknown, used,
+ * expired or from another product.
+ */
 export async function redeemAffiliateResetLink(
   rawToken: string,
   merchantId: string,

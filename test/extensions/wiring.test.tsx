@@ -184,6 +184,7 @@ describe("owners.canUse in the dashboard shell", () => {
 
 describe("account.sections and instance.showInfo", () => {
   beforeEach(() => {
+    vi.doMock("@/lib/owner", () => ({ getOwnerEmail: async () => null }));
     vi.doMock("@/app/dashboard/account/AccountForms", () => ({ EmailForm: () => null, PasswordForm: () => null }));
   });
 
@@ -339,7 +340,7 @@ describe("owners.canUse", () => {
     const changeOwnerEmail = vi.fn(async () => null);
     const changeOwnerPassword = vi.fn(async () => null);
     vi.doMock("@/lib/auth", () => ({ auth: async () => session, signOut }));
-    vi.doMock("@/lib/owner", () => ({ changeOwnerEmail, changeOwnerPassword }));
+    vi.doMock("@/lib/owner", () => ({ changeOwnerEmail, changeOwnerPassword, getOwnerEmail: async () => null }));
     vi.doMock("@/app/dashboard/account/AccountForms", () => ({ EmailForm: () => null, PasswordForm: () => null }));
     install({ owners: { canUse: async () => false } });
 
