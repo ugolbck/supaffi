@@ -11,29 +11,46 @@ costs, then the rest of the program.
 
 ## Up next
 
+### Tracking that ad blockers let through
+`/track.js` and `/api/track` are names filter lists match on. Rename both to
+neutral paths no list matches, checked against EasyList, EasyPrivacy, uBlock,
+AdGuard and Brave, and keep the old paths answering so installed snippets keep
+working. A reload already keeps its Click.
+
+### Referrals keep their program's terms
+Renewals and later payments read rate, duration and holding period from the
+affiliate's current program, so moving an affiliate rewrites the terms of
+customers they already referred. Record the program on the Click when it is
+made and earn from that one.
+
+### Forms that work with password managers
+`autocomplete`, labels and error wiring on the login, password and settings
+forms, on both sides of the app.
+
 ### Paddle
 Polar shipped in 0.8.0 behind the provider layer (src/lib/payments/). Paddle
 is a folder next to stripe/ and polar/ that passes the shared provider test
-kit, plus a fake for the e2e suite; Lemon Squeezy after it.
+kit, plus a fake for the e2e suite.
 
 ## Planned
 
-### Bulk payouts and tax forms
-A payout file in the format PayPal and Wise accept for bulk payouts, from the
-Payouts page, and a minimum amount below which an affiliate is not paid yet.
-Affiliates upload their W-9 or W-8BEN in the portal, and the Payouts page shows
-who is missing one. Paid tools charge 2 to 8% of payouts for this, or keep it
+### Payouts
+A minimum payout per program, below which an affiliate is not paid yet, and
+the reason each commission is on hold: holding period, below the minimum, or
+flagged. Recording a payout keeps its method, a reference and a note, and the
+Payouts page gets filters. A payout file in the format PayPal and Wise accept
+for bulk payouts. Paid tools charge 2 to 8% of payouts for this, or keep it
 for their top plans.
+
+### Commissions after fees
+An option per program to earn on the sale minus the provider's fee. The fee is
+stored on each payment as the provider reports it (Stripe's balance
+transaction, Polar's order), with a fallback rate when it is not reported.
 
 ### Import from another tool
 Affiliates, their links and their commission history from Rewardful, Tolt and
-FirstPromoter, so moving costs nothing and nobody's link breaks.
-
-### Claude and ChatGPT connection
-An MCP server so an owner can ask their AI assistant about the program and act
-on it: top affiliates, what is owed, flagged commissions. Read first, then the
-actions the dashboard already has. Tolt, FirstPromoter, Affonso, Partnero and
-Dub all ship one.
+FirstPromoter: upload an export, preview it, map it to programs, import. Moving
+costs nothing and nobody's link breaks.
 
 ### Applications and sales review
 A program can hold new affiliates until the owner approves them, instead of
@@ -41,11 +58,24 @@ choosing between open to anyone and invite only. Sales that look like fraud
 beyond a self-referral (many clicks from one address, disposable emails) are
 held in the same flagged list for the owner to confirm or dismiss.
 
-## Later
+### Claude and ChatGPT connection
+An MCP server so an owner can ask their AI assistant about the program and act
+on it: top affiliates, what is owed, flagged commissions. Read first, then the
+actions the dashboard already has. Tolt, FirstPromoter, Affonso, Partnero and
+Dub all ship one.
 
 ### Fixed and tiered rewards
 A flat amount per sale or per signup, and a higher rate once an affiliate
 passes a sales volume.
+
+## Later
+
+### Tax forms
+Affiliates upload their W-9 or W-8BEN in the portal, and the Payouts page shows
+who is missing one.
+
+### Lemon Squeezy
+A provider folder next to Paddle's.
 
 ### A discount for the referred customer
 Two-sided rewards: the customer who came through an affiliate gets a discount

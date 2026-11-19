@@ -19,22 +19,28 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
 | Feature | What you get |
 | --- | --- |
-| **Paddle** | Sell through Paddle, another merchant of record. Lemon Squeezy after it. |
+| **Tracking that ad blockers let through** | The tracking script and its address get names that ad blocker lists do not match, so fewer referred sales go unseen. |
+| **Referrals keep their program's terms** | Move an affiliate to another program and the customers they already brought keep earning on the old program's terms. |
+| **Forms that work with password managers** | Autofill and screen readers work on the login, password and settings forms. |
+| **Paddle** | Sell through Paddle, another merchant of record. |
 
 ## Planned
 
 | Feature | What you get |
 | --- | --- |
-| **Bulk payouts and tax forms** | One file to pay everyone through PayPal or Wise, a minimum payout amount, and affiliates' tax forms collected in their portal. |
-| **Import from Rewardful, Tolt and FirstPromoter** | Bring your affiliates, their links and their history. Nobody's link breaks. |
-| **Claude and ChatGPT connection** | Ask about your program and manage it from your AI assistant, through MCP. |
+| **Payouts** | A minimum payout per program, the reason each commission is on hold, a method, reference and note on every payout, and one file to pay everyone through PayPal or Wise. |
+| **Commissions after fees** | Pay commissions on the sale minus the payment provider's fee. |
+| **Import from Rewardful, Tolt and FirstPromoter** | Upload an export, check the preview, and bring your affiliates, their links and their history. Nobody's link breaks. |
 | **Applications and sales review** | Approve new affiliates before they go live, and hold sales that look like fraud until you review them. |
+| **Claude and ChatGPT connection** | Ask about your program and manage it from your AI assistant, through MCP. |
+| **Fixed and tiered rewards** | A flat amount per sale or signup, and a higher rate past a sales volume. |
 
 ## Later
 
 | Feature | What you get |
 | --- | --- |
-| **Fixed and tiered rewards** | A flat amount per sale or signup, and a higher rate past a sales volume. |
+| **Tax forms** | Affiliates upload their tax form in their portal, and the Payouts page shows who is missing one. |
+| **Lemon Squeezy** | Sell through Lemon Squeezy. |
 | **Discount for the referred customer** | Customers who come through an affiliate get a discount too. |
 | **Affiliate kit** | Your logo and colours on the affiliate pages, plus banners and copy ready to share. |
 | **Alerts and webhooks** | A Slack message or a Zapier webhook when an affiliate signs up, a sale earns or a commission is flagged. |
