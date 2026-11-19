@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { ext } from "@/extensions";
 import { servedDomain } from "@/lib/domainOwnership";
 import { decrypt } from "@/lib/crypto";
 import { Prisma } from "@prisma/client";
@@ -34,8 +35,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
 
   const merchant = await db.merchant.findFirst({
     where: servedDomain(host),
-    select: { id: true, paymentProvider: true, webhookSecretEnc: true },
+    select: { id: true, ownerId: true, paymentProvider: true, webhookSecretEnc: true },
   });
+  // A product owners.serves turns away drops its events on purpose: nothing
+  // is read, verified or recorded, and the 200 keeps the provider from
+  // disabling the endpoint.
+  if (merchant && !(await ext.owners.serves(merchant.ownerId))) {
+    return new NextResponse(null, { status: 200 });
+  }
   // No webhook secret means the provider was never connected for this
   // Merchant, so there is nothing to verify the signature against, and a
   // Merchant on another provider has no secret for this one. Treated the same

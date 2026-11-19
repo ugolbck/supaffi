@@ -8,6 +8,17 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Extensions: `owners.serves`, a server hook that decides whether an Owner's
+  products are served to the public. When it says no, the tracking script is
+  empty, click tracking answers not found, payment events are dropped with a
+  200 so the provider keeps the endpoint, the domain gets no certificate, and
+  the affiliate pages show the program as paused while their actions change
+  nothing. The Owner's dashboard is unaffected. Defaults to served.
+
 ## 0.9.1
 
 ### Security

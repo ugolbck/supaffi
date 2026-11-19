@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { requireAffiliate } from "@/lib/affiliateAuth";
+import { requireAffiliate } from "@/app/affiliates/requireAffiliate";
 import { getAffiliateMetrics, pickCurrency, rangeFromQuery, type CurrencyTotal } from "@/lib/analytics";
 import { listAffiliateCommissions, referralCounts } from "@/lib/affiliate";
 import { listLinksWithStats, linkUrl } from "@/lib/affiliateLink";

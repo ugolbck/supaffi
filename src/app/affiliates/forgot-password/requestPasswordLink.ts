@@ -1,7 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
-import { getMerchantByDomain } from "@/lib/merchant";
+import { merchantOnHost } from "@/app/affiliates/merchantOnHost";
 import { findAffiliateForLogin } from "@/lib/affiliatePassword";
 import { emailPasswordLink } from "@/lib/notify";
 import { reservePasswordLink } from "@/lib/passwordLinkThrottle";
@@ -19,7 +19,7 @@ export async function requestPasswordLink(_prev: { sentTo: string }, formData: F
 
   const requestHeaders = await headers();
   const host = requestHeaders.get("host");
-  const merchant = host ? await getMerchantByDomain(host) : null;
+  const merchant = await merchantOnHost(host);
   if (merchant && reservePasswordLink(merchant.id, email, clientAddress(new Headers(requestHeaders)))) {
     const affiliate = await findAffiliateForLogin(merchant.id, email);
     if (affiliate) await emailPasswordLink(affiliate.id);

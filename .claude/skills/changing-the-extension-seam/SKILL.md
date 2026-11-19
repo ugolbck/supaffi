@@ -22,13 +22,13 @@ downstream code.
 | `merge.ts` | Per-group merge; a key set to `undefined` keeps its default. |
 | `installed.ts`, `installed-static.ts` | Empty here, replaced by downstream builds. Never put logic in them. |
 | `core-api.ts` | Stable functions downstream code may call. |
-| `test/extensions/` | `contract` (defaults), `wiring` (each hook reaches its page), `owners`, `core-api`. |
+| `test/extensions/` | `contract` (defaults), `wiring` (each hook reaches its page), `owners`, `serves` (owners.serves on every surface), `core-api`. |
 
 ## Hook catalogue (API version 2)
 
 Static (`staticExt`): `owners.signupPath`, `owners.passwordResetPath`, `instance.showInfo`,
 `domains.requireOwnershipProof`, `domains.reserved`.
-Server (`ext`): `dashboard.gate`, `dashboard.banner`, `account.sections`, `owners.canUse`.
+Server (`ext`): `dashboard.gate`, `dashboard.banner`, `account.sections`, `owners.canUse`, `owners.serves`.
 Core API: `createOwnerAccount`, `findOwnerByEmail`, `getOwnerAccount`, `setOwnerPassword`,
 `listOwnerMerchants`, `currentOwnerId`, `signInOwner`, `isMerchantDomain`.
 Read `types.ts` for signatures. Reuse a listed hook before adding one, and add
@@ -47,6 +47,7 @@ one only for a concrete need, not in anticipation.
 9. Renaming, removing, or changing a hook's signature or meaning bumps `EXTENSIONS_API_VERSION` and adds an "Extensions" line to `CHANGELOG.md`. Adding one does not bump.
 10. Removing a hook's call site is breaking even if types compile. The wiring test must fail; never edit it to pass.
 11. Every Owner page, layout, route handler and server action awaits `requireOwner()` from `src/app/requireOwner.ts` before anything else; it runs `owners.canUse`. Only the layouts, the account page and its actions use `requireOwnerSession()`, and a layout reads none of the Owner's data until `ownerCanUse()` says yes. Signing out uses neither, and `currentOwnerId` in the core API skips `owners.canUse` on purpose. `test/app/requireOwner.test.ts` refuses anything else.
+12. Every affiliate page, layout and server action finds its product through `merchantOnHost()` in `src/app/affiliates/merchantOnHost.ts` (directly or through `requireAffiliate()`); it runs `owners.serves`. The tracking script, click tracking, the payment webhook and the certificate check ask `owners.serves` themselves, once, after the product lookup. `test/app/affiliates/merchantOnHost.test.ts` refuses an affiliate entry point that skips it.
 
 ## Common mistakes
 

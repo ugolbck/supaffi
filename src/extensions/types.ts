@@ -92,6 +92,18 @@ export type SupaffiExtensions = {
      * currentOwnerId in the core API does not ask it.
      */
     canUse(ownerId: string): Promise<boolean>;
+    /**
+     * Whether this Owner's products are served to the public. Asked once per
+     * request by everything that answers on a product's domain, after the
+     * product is found: the tracking script, click tracking, the payment
+     * webhook, the certificate check and every affiliate page and server
+     * action. On false the tracking script is empty, click tracking answers
+     * not found, the payment webhook answers 200 without verifying or
+     * recording the event, the certificate check refuses the domain like an
+     * unknown one, and the affiliate pages show the program as paused while
+     * their actions change nothing. The Owner's dashboard does not ask it (owners.canUse does).
+     */
+    serves(ownerId: string): Promise<boolean>;
   };
 };
 

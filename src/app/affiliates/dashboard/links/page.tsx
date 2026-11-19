@@ -1,4 +1,4 @@
-import { requireAffiliate } from "@/lib/affiliateAuth";
+import { requireAffiliate } from "@/app/affiliates/requireAffiliate";
 import { listLinksWithStats } from "@/lib/affiliateLink";
 import { listPromoCodesWithStats } from "@/lib/promoCode";
 import { LinksScreen } from "./LinksScreen";

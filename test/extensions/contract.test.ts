@@ -32,6 +32,11 @@ describe("extension defaults", () => {
     expect(await ext.owners.canUse("owner-1")).toBe(true);
   });
 
+  it("serve every Owner's products", async () => {
+    const { ext } = await import("@/extensions");
+    expect(await ext.owners.serves("owner-1")).toBe(true);
+  });
+
   it("ship with nothing installed", async () => {
     const { installed } = await import("@/extensions/installed");
     const { installedStatic } = await import("@/extensions/installed-static");

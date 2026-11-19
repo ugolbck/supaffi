@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
+import { ext } from "@/extensions";
 import { servedDomain } from "@/lib/domainOwnership";
 import { REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { clientAddress, isPrivateAddress } from "@/lib/clientAddress";
@@ -32,9 +33,10 @@ export async function GET(req: NextRequest) {
 
   const merchant = await db.merchant.findFirst({
     where: servedDomain(host),
-    select: { id: true },
+    select: { id: true, ownerId: true },
   });
-  if (!merchant) {
+  // A product owners.serves turns away answers like an unknown one.
+  if (!merchant || !(await ext.owners.serves(merchant.ownerId))) {
     return new NextResponse(null, { status: 404 });
   }
 

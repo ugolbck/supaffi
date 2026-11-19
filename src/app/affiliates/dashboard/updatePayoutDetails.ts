@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAffiliate } from "@/lib/affiliateAuth";
+import { requireAffiliate } from "@/app/affiliates/requireAffiliate";
 import { updateAffiliatePayoutDetails } from "@/lib/affiliate";
 
 export async function updatePayoutDetailsAction(

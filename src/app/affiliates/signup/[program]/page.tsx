@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getMerchantByDomain } from "@/lib/merchant";
+import { merchantOnHost } from "@/app/affiliates/merchantOnHost";
 import { requestHost } from "@/lib/requestHost";
 import { getClosedProgramName, getProgramForSignup } from "@/lib/program";
 import { CenteredShell } from "@/components/CenteredShell";
@@ -14,7 +14,7 @@ export default async function AffiliateSignupPage({
 }) {
   const { program: programSlug } = await params;
   const host = await requestHost();
-  const merchant = host ? await getMerchantByDomain(host) : null;
+  const merchant = await merchantOnHost(host);
   if (!merchant) notFound();
 
   const program = await getProgramForSignup(merchant.id, programSlug);

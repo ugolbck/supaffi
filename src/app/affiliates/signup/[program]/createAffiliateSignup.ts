@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
-import { getMerchantByDomain } from "@/lib/merchant";
+import { merchantOnHost } from "@/app/affiliates/merchantOnHost";
 import { getProgramForSignup } from "@/lib/program";
 import { createAffiliate } from "@/lib/affiliate";
 import { affiliatePasswordError } from "@/lib/affiliatePassword";
@@ -49,7 +49,7 @@ export async function createAffiliateSignup(
 
   const requestHeaders = await headers();
   const host = requestHeaders.get("host");
-  const merchant = host ? await getMerchantByDomain(host) : null;
+  const merchant = await merchantOnHost(host);
   if (!merchant) {
     return { error: "Could not determine which program this is for." };
   }

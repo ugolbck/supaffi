@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
-import { getMerchantByDomain } from "@/lib/merchant";
+import { merchantOnHost } from "@/app/affiliates/merchantOnHost";
 import { affiliatePasswordError, redeemAffiliateResetLink } from "@/lib/affiliatePassword";
 import { ConcurrencyLimitError } from "@/lib/password";
 
@@ -19,7 +19,7 @@ export async function setAffiliatePassword(
   if (passwordError) return { error: passwordError };
 
   const host = (await headers()).get("host");
-  const merchant = host ? await getMerchantByDomain(host) : null;
+  const merchant = await merchantOnHost(host);
   if (!merchant) return { error: INVALID_LINK };
 
   let redeemed: { email: string } | null;
