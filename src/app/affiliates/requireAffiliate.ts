@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getMerchantByDomain } from "@/lib/merchant";
 import { requestHost } from "@/lib/requestHost";
 import { db } from "@/lib/db";
+import { merchantOnHost } from "./merchantOnHost";
 
 /**
  * The guard every screen under /affiliates/dashboard runs.
@@ -10,7 +10,8 @@ import { db } from "@/lib/db";
  * Two checks, not one. The session says who the Affiliate is; the host says
  * which Merchant's site they are on. An Affiliate of one Merchant loading
  * another Merchant's dashboard has a valid session and no business here, so
- * a mismatch is a redirect, not a partial render.
+ * a mismatch is a redirect, not a partial render. A product owners.serves
+ * turns away goes to the paused page.
  */
 export async function requireAffiliate(): Promise<{
   affiliateId: string;
@@ -21,7 +22,7 @@ export async function requireAffiliate(): Promise<{
   if (!session?.user?.id || session.user.role !== "affiliate") redirect("/affiliates/login");
 
   const host = await requestHost();
-  const merchant = host ? await getMerchantByDomain(host) : null;
+  const merchant = await merchantOnHost(host);
   if (!merchant) redirect("/affiliates/login");
 
   const affiliate = await db.affiliate.findUnique({

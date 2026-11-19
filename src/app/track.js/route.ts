@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { PaymentProvider } from "@prisma/client";
 import { db } from "@/lib/db";
+import { ext } from "@/extensions";
 import { servedDomain } from "@/lib/domainOwnership";
 import { REFERRAL_CLIENT_REFERENCE_PREFIX, REFERRAL_COOKIE, REFERRAL_QUERY_PARAM } from "@/lib/referral";
 import { originFor } from "@/lib/url";
@@ -42,10 +43,25 @@ export async function GET(req: NextRequest) {
   // is ignored for the same reason: originFor already knows the scheme.
   const host = req.headers.get("host");
   const merchant = host
-    ? await db.merchant.findFirst({ where: servedDomain(host), select: { domain: true, paymentProvider: true } })
+    ? await db.merchant.findFirst({
+        where: servedDomain(host),
+        select: { domain: true, paymentProvider: true, ownerId: true },
+      })
     : null;
   if (!merchant?.domain) {
     return new NextResponse(null, { status: 404 });
+  }
+  // A product owners.serves turns away gets a script that does nothing, so
+  // the Merchant's site shows no error, cached briefly so it comes back soon
+  // after the product is served again.
+  if (!(await ext.owners.serves(merchant.ownerId))) {
+    return new NextResponse("", {
+      headers: {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "public, max-age=300",
+        Vary: "Host",
+      },
+    });
   }
 
   const trackUrl = JSON.stringify(`${originFor(merchant.domain)}/api/track?${REFERRAL_QUERY_PARAM}=`);

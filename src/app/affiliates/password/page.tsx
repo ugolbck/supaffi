@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { setAffiliatePassword } from "./setAffiliatePassword";
 import { CenteredShell } from "@/components/CenteredShell";
-import { getMerchantByDomain } from "@/lib/merchant";
+import { merchantOnHost } from "@/app/affiliates/merchantOnHost";
 import { requestHost } from "@/lib/requestHost";
 import { productHasEmail } from "@/lib/mail";
 import { affiliateResetLinkEmail } from "@/lib/affiliatePassword";
@@ -20,7 +20,7 @@ export default async function AffiliatePasswordPage({
   const { token } = await searchParams;
   if (typeof token !== "string" || !token) redirect("/affiliates/login");
   const host = await requestHost();
-  const merchant = host ? await getMerchantByDomain(host) : null;
+  const merchant = await merchantOnHost(host);
   const canReset = merchant ? await productHasEmail(merchant.id) : false;
   const email = merchant ? await affiliateResetLinkEmail(token, merchant.id) : null;
 

@@ -17,6 +17,7 @@ describe("extension defaults", () => {
       owners: { signupPath: null, passwordResetPath: null },
       instance: { showInfo: true },
       domains: { requireOwnershipProof: false, reserved: [] },
+      outbound: { blockPrivateAddresses: false },
     });
   });
 
@@ -30,6 +31,11 @@ describe("extension defaults", () => {
   it("let every Owner use the dashboard", async () => {
     const { ext } = await import("@/extensions");
     expect(await ext.owners.canUse("owner-1")).toBe(true);
+  });
+
+  it("serve every Owner's products", async () => {
+    const { ext } = await import("@/extensions");
+    expect(await ext.owners.serves("owner-1")).toBe(true);
   });
 
   it("ship with nothing installed", async () => {
@@ -58,6 +64,7 @@ describe("an installed build", () => {
       owners: { signupPath: null, passwordResetPath: null },
       instance: { showInfo: false },
       domains: { requireOwnershipProof: false, reserved: [] },
+      outbound: { blockPrivateAddresses: false },
     });
   });
 

@@ -1,5 +1,6 @@
 import { Resolver, resolve4, resolveNs, resolveTxt } from "node:dns/promises";
 import { connect, type PeerCertificate } from "node:tls";
+import { blocksPrivateAddresses, isInternalAddress, outboundFetch } from "@/lib/outboundAddress";
 
 export type CheckResult = { ok: boolean; detail: string };
 
@@ -92,10 +93,13 @@ async function askZoneNameservers<T>(
         // One unreachable nameserver out of four is normal.
       }
     }
-    if (addresses.length === 0) continue;
+    // The zone's nameservers are named by the Owner's DNS, so with private
+    // addresses blocked they are not asked at one of ours.
+    const servers = blocksPrivateAddresses() ? addresses.filter((address) => !isInternalAddress(address)) : addresses;
+    if (servers.length === 0) continue;
 
     try {
-      return await ask(addresses);
+      return await ask(servers);
     } catch (err) {
       if ((err as { code?: string })?.code === "ENOTFOUND") throw err;
       return fallback();
@@ -272,7 +276,7 @@ export function tlsProbe(hostname: string, timeoutMs = 6000): Promise<TlsProbe> 
  */
 export async function httpsReachable(
   hostname: string,
-  fetchFn: typeof fetch = fetch,
+  fetchFn: typeof fetch = outboundFetch(),
   resolve: (h: string) => Promise<string[]> = resolveAuthoritative,
   probe: (h: string) => Promise<TlsProbe> = tlsProbe
 ): Promise<{ reachable: CheckResult; certificate: CheckResult }> {

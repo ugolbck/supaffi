@@ -103,7 +103,7 @@ import {
 } from "@/app/dashboard/products/[product]/settings/emailActions";
 import CommissionsPage from "@/app/dashboard/products/[product]/commissions/page";
 import AffiliatesPage from "@/app/dashboard/products/[product]/affiliates/page";
-import { requireAffiliate } from "@/lib/affiliateAuth";
+import { requireAffiliate } from "@/app/affiliates/requireAffiliate";
 import { dismissWelcomeAction } from "@/app/dashboard/products/[product]/dismissWelcomeAction";
 import { markTrackingSeen } from "@/app/dashboard/products/[product]/markTrackingSeen";
 import {

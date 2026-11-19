@@ -269,10 +269,10 @@ export async function updateMerchant(
 
 export async function getMerchantByDomain(
   domain: string
-): Promise<{ id: string; slug: string; name: string; domain: string; websiteUrl: string } | null> {
+): Promise<{ id: string; ownerId: string; slug: string; name: string; domain: string; websiteUrl: string } | null> {
   const merchant = await db.merchant.findFirst({
     where: servedDomain(domain),
-    select: { id: true, slug: true, name: true, domain: true, websiteUrl: true },
+    select: { id: true, ownerId: true, slug: true, name: true, domain: true, websiteUrl: true },
   });
   return merchant && { ...merchant, domain };
 }

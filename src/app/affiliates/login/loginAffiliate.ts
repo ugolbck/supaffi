@@ -1,9 +1,13 @@
 "use server";
 
+import { headers } from "next/headers";
 import { AuthError } from "next-auth";
 import { signIn } from "@/lib/auth";
+import { merchantOnHost } from "@/app/affiliates/merchantOnHost";
 
 export async function loginAffiliate(_prevState: { error: string }, formData: FormData): Promise<{ error: string }> {
+  // The host the sign-in itself reads the product from.
+  await merchantOnHost((await headers()).get("host"));
   try {
     await signIn("affiliate-password", {
       email: formData.get("email"),

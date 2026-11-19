@@ -11,5 +11,6 @@ export const defaults: SupaffiExtensions = {
   },
   owners: {
     canUse: async () => true,
+    serves: async () => true,
   },
 };

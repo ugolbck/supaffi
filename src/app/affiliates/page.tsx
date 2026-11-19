@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { getMerchantByDomain } from "@/lib/merchant";
+import { merchantOnHost } from "@/app/affiliates/merchantOnHost";
 import { requestHost } from "@/lib/requestHost";
 import { getDefaultProgramSlug } from "@/lib/program";
 
@@ -11,7 +11,7 @@ import { getDefaultProgramSlug } from "@/lib/program";
  */
 export default async function AffiliateEntryPage() {
   const host = await requestHost();
-  const merchant = host ? await getMerchantByDomain(host) : null;
+  const merchant = await merchantOnHost(host);
   if (!merchant) notFound();
 
   const slug = await getDefaultProgramSlug(merchant.id);

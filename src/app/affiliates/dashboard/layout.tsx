@@ -1,5 +1,5 @@
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { requireAffiliate } from "@/lib/affiliateAuth";
+import { requireAffiliate } from "@/app/affiliates/requireAffiliate";
 import { getAffiliatePayoutDetails } from "@/lib/affiliate";
 import { AffiliateSidebar } from "./AffiliateSidebar";
 

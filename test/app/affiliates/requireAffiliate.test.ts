@@ -37,7 +37,7 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import { requireAffiliate } from "@/lib/affiliateAuth";
+import { requireAffiliate } from "@/app/affiliates/requireAffiliate";
 
 let hasDatabase = false;
 if (process.env.DATABASE_URL) {
@@ -50,9 +50,8 @@ if (process.env.DATABASE_URL) {
 }
 
 if (!hasDatabase) {
-  // eslint-disable-next-line no-console
   console.warn(
-    "Skipping test/lib/requireAffiliate.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
+    "Skipping test/app/affiliates/requireAffiliate.test.ts: no reachable DATABASE_URL. Set DATABASE_URL to a disposable database to run these tests."
   );
 }
 

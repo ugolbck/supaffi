@@ -8,6 +8,7 @@ export const staticDefaults: StaticExtensions = {
   owners: { signupPath: null, passwordResetPath: null },
   instance: { showInfo: true },
   domains: { requireOwnershipProof: false, reserved: [] },
+  outbound: { blockPrivateAddresses: false },
 };
 
 const merged = mergeExtensions(staticDefaults, installedStatic);
