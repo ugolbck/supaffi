@@ -163,6 +163,19 @@ describe("with a platform server", () => {
     expect(await db.email.findFirstOrThrow()).toMatchObject({ status: "SENT", sentByPlatform: true });
   });
 
+  it("adds no Reply-To to an email for the Owner", async () => {
+    const { worker } = await load();
+    const { owner, merchant } = await product();
+    await db.email.create({
+      data: { merchantId: merchant.id, dedupeKey: "joined", to: owner.email.toUpperCase(), fromName: "Product", subject: "s", text: "t", html: "h", nextAttemptAt: new Date(Date.now() - 60_000) },
+    });
+    const send = vi.fn(async () => {});
+
+    await worker.sendDueEmails(send);
+
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ from: "notify@platform.test" }), expect.not.objectContaining({ replyTo: expect.anything() }));
+  });
+
   it("emails a password link with no setup", async () => {
     const { notify } = await load();
     const { merchant } = await product();

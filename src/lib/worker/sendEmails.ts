@@ -135,7 +135,9 @@ export async function sendDueEmails(send: typeof sendWith = sendWith): Promise<v
       }
     }
     try {
-      await send(server, platform ? { ...email, replyTo: platform.replyTo } : email);
+      // Replies reach the Owner; an email to the Owner needs no Reply-To.
+      const toOwner = email.to.toLowerCase() === platform?.replyTo.toLowerCase();
+      await send(server, platform && !toOwner ? { ...email, replyTo: platform.replyTo } : email);
       await db.email.updateMany({
         where: { id: email.id },
         data: { status: "SENT", sentAt: new Date(), lastError: null, ...(platform ? { sentByPlatform: true } : {}), ...DONE },

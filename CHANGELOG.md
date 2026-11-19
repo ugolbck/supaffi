@@ -32,7 +32,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   that every product without its own sends through. Such a product has
   email on with no setup: notifications, affiliate emails and password
   links all go out, from that server's address with the product's name as
-  the sender, and replies go to the Owner's account email. A product's own
+  the sender, and affiliates' replies go to the Owner's account email. A product's own
   server always wins, and removing it falls back to this one. Its optional
   `dailyLimitPerOwner` caps what one Owner's products send through it in
   any 24 hours, password links included; past it, emails stay queued and

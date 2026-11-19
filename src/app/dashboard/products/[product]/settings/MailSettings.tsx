@@ -445,7 +445,7 @@ function Notices({ status, notice }: { status: NonNullable<MailStatus>; notice: 
       )}
       {status.waiting && (
         <p role="status" className="text-sm text-muted-foreground">
-          Some emails are waiting: you reached today&apos;s sending limit.
+          Some emails are waiting: you reached the daily sending limit.
         </p>
       )}
       {notice.error && (

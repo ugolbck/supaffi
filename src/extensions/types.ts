@@ -83,9 +83,9 @@ export type StaticExtensions = {
      * queued, the notification switches apply and affiliates can ask for a
      * password link. A product's own server, when it has one, is always used
      * instead, and removing it falls back to this one. Emails go out from
-     * `from` with the product's name as the display name, and replies go to
-     * the Owner's account email. The Owner's own notifications still go to
-     * that address. outbound.blockPrivateAddresses does not apply to this
+     * `from` with the product's name as the display name. Replies to an
+     * affiliate's email go to the Owner's account email, which is also where
+     * the Owner's own notifications go, with no Reply-To. outbound.blockPrivateAddresses does not apply to this
      * server. Read when an email is queued and when it is sent. Take every
      * value from the server's environment rather than writing it here.
      */

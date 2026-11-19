@@ -450,6 +450,6 @@ describe("mail.platformServer in the product's email settings", () => {
 
   it("says when emails wait for the daily limit", async () => {
     const html = await render({ via: "platform", product: "Acme", replyTo: "o@example.com", ...common, waiting: true });
-    expect(html).toContain("Some emails are waiting: you reached today&#x27;s sending limit.");
+    expect(html).toContain("Some emails are waiting: you reached the daily sending limit.");
   });
 });
