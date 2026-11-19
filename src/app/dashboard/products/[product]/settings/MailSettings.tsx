@@ -218,6 +218,11 @@ function ConnectForm({
             onChange={set("user")}
             type={provider.fromIsUser ? "email" : "text"}
             autoComplete="off"
+            // The mail server's login, not this dashboard's: keeps password
+            // managers from filling or saving it as one.
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore
             spellCheck={false}
             className="sm:max-w-80"
             required={!custom}
@@ -230,7 +235,10 @@ function ConnectForm({
           id="mail-password"
           name="password"
           type="password"
-          autoComplete="new-password"
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-bwignore
           placeholder={initial ? "Unchanged" : undefined}
           className="sm:max-w-80"
           required={!initial && !custom}

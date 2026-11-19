@@ -4,6 +4,7 @@ import { CenteredShell } from "@/components/CenteredShell";
 import { getMerchantByDomain } from "@/lib/merchant";
 import { requestHost } from "@/lib/requestHost";
 import { productHasEmail } from "@/lib/mail";
+import { affiliateResetLinkEmail } from "@/lib/affiliatePassword";
 import { SetPasswordForm } from "./SetPasswordForm";
 
 /**
@@ -21,10 +22,11 @@ export default async function AffiliatePasswordPage({
   const host = await requestHost();
   const merchant = host ? await getMerchantByDomain(host) : null;
   const canReset = merchant ? await productHasEmail(merchant.id) : false;
+  const email = merchant ? await affiliateResetLinkEmail(token, merchant.id) : null;
 
   return (
     <CenteredShell>
-      <SetPasswordForm action={setAffiliatePassword.bind(null, token)} canReset={canReset} />
+      <SetPasswordForm action={setAffiliatePassword.bind(null, token)} canReset={canReset} email={email} />
     </CenteredShell>
   );
 }

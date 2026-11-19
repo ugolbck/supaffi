@@ -48,6 +48,12 @@ export function looksLikeOwnerEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
+/** The Owner's email as saved. The session's copy lags a change until the next login. */
+export async function getOwnerEmail(ownerId: string): Promise<string | null> {
+  const owner = await db.owner.findUnique({ where: { id: ownerId }, select: { email: true } });
+  return owner?.email ?? null;
+}
+
 type OwnerForLogin = { id: string; email: string; passwordHash: string };
 
 /**

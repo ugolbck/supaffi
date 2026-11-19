@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import {
+  affiliateResetLinkEmail,
   createAffiliateResetLink,
   redeemAffiliateResetLink,
   checkAffiliatePassword,
@@ -161,6 +162,29 @@ describe.skipIf(!hasDatabase)("affiliatePassword", () => {
         redeemAffiliateResetLink(link!, mine.merchantId, "second password here"),
       ]);
       expect(results.filter((r) => r !== null)).toHaveLength(1);
+    });
+  });
+
+  describe("affiliateResetLinkEmail", () => {
+    it("names the account of a live link without spending it", async () => {
+      const link = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+
+      expect(await affiliateResetLinkEmail(link!, mine.merchantId)).toBe("sarah@example.com");
+      expect(await redeemAffiliateResetLink(link!, mine.merchantId, PASSWORD)).toEqual({ email: "sarah@example.com" });
+    });
+
+    it("names nobody for a used, expired, unknown or other product's link", async () => {
+      const used = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      await redeemAffiliateResetLink(used!, mine.merchantId, PASSWORD);
+      expect(await affiliateResetLinkEmail(used!, mine.merchantId)).toBeNull();
+
+      const expired = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      await db.affiliateLoginToken.updateMany({ data: { expiresAt: new Date(Date.now() - 1000) } });
+      expect(await affiliateResetLinkEmail(expired!, mine.merchantId)).toBeNull();
+
+      const live = await createAffiliateResetLink(mine.ownerId, mine.merchantId, mine.affiliateId);
+      expect(await affiliateResetLinkEmail(live!, other.merchantId)).toBeNull();
+      expect(await affiliateResetLinkEmail("not-a-real-token", mine.merchantId)).toBeNull();
     });
   });
 

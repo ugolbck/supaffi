@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { requireOwnerSession } from "@/app/requireOwner";
 import { changeOwnerEmail, changeOwnerPassword } from "@/lib/owner";
 
@@ -28,7 +29,10 @@ export async function changeEmailAction(
     String(formData.get("password") ?? ""),
     String(formData.get("email") ?? "")
   );
-  return result ? { error: result.error, done: false } : { error: "", done: true };
+  if (result) return { error: result.error, done: false };
+  // The password form names the account to password managers by this email.
+  revalidatePath("/dashboard/account");
+  return { error: "", done: true };
 }
 
 export async function changePasswordAction(
