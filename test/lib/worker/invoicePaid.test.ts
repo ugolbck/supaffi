@@ -238,6 +238,7 @@ describe("handleInvoicePaid", () => {
     const click = await db.click.create({
       data: {
         affiliateId: affiliate.id,
+        programId: affiliate.programId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),
       },
@@ -265,6 +266,28 @@ describe("handleInvoicePaid", () => {
     expect(commission.saleAmount?.toString()).toBe("100");
     expect(commission.amount.toString()).toBe("20");
     expect(commission.status).toBe("PENDING");
+  });
+
+  it("earns a renewal on the program the referral was made under after the affiliate moves to another", async () => {
+    const click = await db.click.findUniqueOrThrow({ where: { id: clickId } });
+    const richer = await db.program.create({
+      data: {
+        slug: crypto.randomUUID(),
+        merchantId: merchant.id,
+        name: "Partners",
+        defaultCommissionRate: 50,
+        commissionDurationType: "ONE_TIME",
+        attributionWindowDays: 60,
+        holdingPeriodDays: 0,
+      },
+    });
+    await db.affiliate.update({ where: { id: click.affiliateId }, data: { programId: richer.id } });
+
+    await handleInvoicePaid(merchant, invoiceFixture());
+
+    const commission = await db.commission.findFirstOrThrow({ where: { clickId } });
+    expect(commission.amount.toString()).toBe("20");
+    expect(commission.payableAt.getTime()).toBeGreaterThan(Date.now() + 29 * 24 * 60 * 60 * 1000);
   });
 
   it("waits for the checkout that started the subscription before claiming its first payment", async () => {

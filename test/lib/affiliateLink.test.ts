@@ -270,6 +270,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     const converting = await db.click.create({
       data: {
         affiliateId: sarah.id,
+        programId: program.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
@@ -278,6 +279,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     await db.click.create({
       data: {
         affiliateId: sarah.id,
+        programId: program.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
@@ -286,6 +288,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     await db.click.create({
       data: {
         affiliateId: sarah.id,
+        programId: program.id,
         linkId: secondId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),
@@ -318,6 +321,7 @@ describe.skipIf(!hasDatabase)("affiliate links", () => {
     const click = await db.click.create({
       data: {
         affiliateId: sarah.id,
+        programId: program.id,
         linkId: primary!.id,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 86400_000),

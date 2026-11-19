@@ -111,21 +111,17 @@ export default async function AffiliatesPage({
 
   // Task D3: how many of an affiliate's referrals still pay. Batched behind a
   // single Promise.all keyed on this page's own ids (referralCounts, Task
-  // A5), never called per row inside the render below. programs is already
-  // fetched above for the filter bar, so which program even has a "still
-  // paying" question to answer costs no extra query.
+  // A5), never called per row inside the render below. Only referrals made
+  // under a recurring program are counted, so an affiliate with none shows
+  // nothing.
   const counts = await Promise.all(rows.map((row) => referralCounts(row.id)));
   const referralCountsById = new Map(rows.map((row, i) => [row.id, counts[i]]));
-  const recurringByProgramId = new Map(
-    programs.map((p) => [p.id, p.commissionDurationType !== "ONE_TIME"])
-  );
 
   // An affiliate who has earned nothing still gets a currency on their zero.
   const fallbackCurrency = metrics.currencies[0] ?? null;
 
   const view: AffiliateRowView[] = rows.map((row) => {
     const counts = referralCountsById.get(row.id);
-    const recurring = recurringByProgramId.get(row.programId) ?? false;
     return {
       id: row.id,
       name: row.name,
@@ -141,7 +137,7 @@ export default async function AffiliatesPage({
       // Nothing when the program has no recurring commission to churn out of,
       // or when nobody has converted yet.
       retention:
-        recurring && counts && counts.total > 0 ? `${counts.active}/${counts.total}` : null,
+        counts && counts.total > 0 ? `${counts.active}/${counts.total}` : null,
       joined: formatDate(row.createdAt),
       href: hrefWith({ affiliate: row.id }),
     };

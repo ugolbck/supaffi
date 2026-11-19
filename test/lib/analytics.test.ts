@@ -112,6 +112,7 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     return db.click.create({
       data: {
         affiliateId,
+        programId: (await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).programId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60 * 86400_000),
         createdAt,

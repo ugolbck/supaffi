@@ -247,7 +247,7 @@ describe("dispute handlers", () => {
     });
     affiliateId = affiliate.id;
     const click = await db.click.create({
-      data: { affiliateId, referralToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + DAY) },
+      data: { affiliateId, programId: program.id, referralToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + DAY) },
     });
     clickId = click.id;
   });

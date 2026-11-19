@@ -71,6 +71,7 @@ export async function seedReferral(
   const click = await db.click.create({
     data: {
       affiliateId: affiliate.id,
+      programId: affiliate.programId,
       referralToken: crypto.randomUUID(),
       createdAt,
       expiresAt: new Date(createdAt.getTime() + 60 * DAY),

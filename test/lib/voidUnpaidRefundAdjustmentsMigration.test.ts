@@ -59,7 +59,7 @@ describe("void unpaid refund adjustments migration", () => {
       },
     });
     const click = await db.click.create({
-      data: { affiliateId: affiliate.id, referralToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + 60_000) },
+      data: { affiliateId: affiliate.id, programId: affiliate.programId, referralToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + 60_000) },
     });
     const base = { merchantId: merchant.id, affiliateId: affiliate.id, clickId: click.id, currency: "usd", payableAt: new Date() };
 

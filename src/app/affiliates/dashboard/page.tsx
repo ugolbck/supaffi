@@ -50,8 +50,8 @@ export default async function AffiliateOverviewPage({
     listLinksWithStats(affiliateId),
     listAffiliateCommissions(affiliateId, { page: 1, pageSize: RECENT_COMMISSIONS }),
     referralCounts(affiliateId),
-    // The terms line, and the retention card: on a one-time program nobody
-    // is "still paying", so that card is not shown.
+    // The terms line. The retention card follows referralCounts, which only
+    // counts referrals made under a recurring program.
     db.affiliate.findUnique({
       where: { id: affiliateId },
       select: {
@@ -104,7 +104,7 @@ export default async function AffiliateOverviewPage({
       payable={metrics.payable}
       paid={metrics.paid}
       referrals={referrals}
-      recurring={program?.program.commissionDurationType !== "ONE_TIME" && referrals.total > 0}
+      recurring={referrals.total > 0}
     />
   );
 }

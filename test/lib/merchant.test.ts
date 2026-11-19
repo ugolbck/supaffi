@@ -304,7 +304,7 @@ describe.skipIf(!hasDatabase)("merchant", () => {
       data: { affiliateId: affiliate.id, code: "gone1", isPrimary: true },
     });
     const click = await db.click.create({
-      data: { affiliateId: affiliate.id, linkId: link.id, referralToken: "tok1", expiresAt: new Date() },
+      data: { affiliateId: affiliate.id, programId: affiliate.programId, linkId: link.id, referralToken: "tok1", expiresAt: new Date() },
     });
     await db.commission.create({
       data: { merchantId: merchant.id, affiliateId: affiliate.id, clickId: click.id, amount: 1, currency: "usd", payableAt: new Date() },

@@ -97,6 +97,7 @@ describe("handleSubscriptionDeleted", () => {
     const click = await db.click.create({
       data: {
         affiliateId: affiliate.id,
+        programId: affiliate.programId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60_000),
       },
@@ -192,6 +193,52 @@ describe("handleSubscriptionDeleted", () => {
       expect(await referralCounts(affiliateId)).toEqual({ total: 1, active: 1 });
     });
 
+    it("counts by the program each referral was made under, not the affiliate's current one", async () => {
+      const oneTime = await db.program.create({
+        data: {
+          slug: crypto.randomUUID(),
+          merchantId: merchant.id,
+          name: "Launch",
+          defaultCommissionRate: 30,
+          commissionDurationType: "ONE_TIME",
+          attributionWindowDays: 60,
+          holdingPeriodDays: 30,
+        },
+      });
+      const earned = (clickId: string, paymentRef: string) =>
+        db.commission.create({
+          data: {
+            merchantId: merchant.id,
+            affiliateId,
+            clickId,
+            paymentRef,
+            amount: 15.6,
+            grossAmount: 15.6,
+            currency: "usd",
+            saleAmount: 78,
+            status: "PENDING",
+            payableAt: new Date(),
+          },
+        });
+      // Made under the forever program, before the move.
+      await seedReferredSubscription(merchant.id, clickId, "sub_forever");
+      await earned(clickId, "pi_forever");
+      // Made under the one-time program, after it.
+      await db.affiliate.update({ where: { id: affiliateId }, data: { programId: oneTime.id } });
+      const later = await db.click.create({
+        data: {
+          affiliateId,
+          programId: oneTime.id,
+          referralToken: crypto.randomUUID(),
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+      await seedReferredSubscription(merchant.id, later.id, "sub_once");
+      await earned(later.id, "pi_once");
+
+      expect(await referralCounts(affiliateId)).toEqual({ total: 1, active: 1 });
+    });
+
     it("does not count a click with a commission from a one-time purchase", async () => {
       await db.commission.create({
         data: {
@@ -237,6 +284,7 @@ describe("handleSubscriptionDeleted", () => {
       await db.click.create({
         data: {
           affiliateId,
+          programId: (await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).programId,
           referralToken: crypto.randomUUID(),
           expiresAt: new Date(Date.now() + 60_000),
         },

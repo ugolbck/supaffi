@@ -107,7 +107,7 @@ async function renewal(merchant: Merchant, order: PolarOrder, payment: PaymentRe
 
 async function earn(merchant: Merchant, click: ReferralClick, order: PolarOrder, payment: PaymentRef): Promise<void> {
   const affiliate = click.affiliate;
-  const program = affiliate.program;
+  const program = click.program;
   if (!(await referralStillEarns(merchant.id, click.id, program, payment))) return;
 
   const rate = commissionRateFor(affiliate, program);

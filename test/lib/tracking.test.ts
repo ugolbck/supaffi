@@ -54,6 +54,7 @@ async function seedClick(merchantId: string, programId: string, stripeCustomerId
   return db.click.create({
     data: {
       affiliateId: affiliate.id,
+      programId: affiliate.programId,
       referralToken: crypto.randomUUID(),
       expiresAt: new Date(Date.now() + 86_400_000),
       stripeCustomerId,

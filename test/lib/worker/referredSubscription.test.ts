@@ -133,7 +133,7 @@ describe("referred subscriptions", () => {
     const found = await findReferredSubscription(merchant, "sub_1", "cus_1");
 
     expect(found?.clickId).toBe(click.id);
-    expect(found?.click.affiliate.program.commissionDurationType).toBe("FOREVER");
+    expect(found?.click.program.commissionDurationType).toBe("FOREVER");
   });
 
   it("does not find another product's subscription", async () => {

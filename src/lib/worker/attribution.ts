@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { AffiliatePromoCode, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 
-export const REFERRAL_INCLUDE = { affiliate: { include: { program: true } } } as const;
+// The program comes from the click, not the affiliate: a referral earns on
+// the terms of the program it was made under, even after the Owner moves the
+// affiliate to another one.
+export const REFERRAL_INCLUDE = { affiliate: true, program: true } as const;
 export type ReferralClick = Prisma.ClickGetPayload<{ include: typeof REFERRAL_INCLUDE }>;
 
 /**
@@ -78,9 +81,14 @@ export async function referralThrough(
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`promo-session:${merchantId}:${checkoutRef}`}, 0))`;
     const first = await recordedOn(tx);
     if (first) return first;
+    const { programId } = await tx.affiliate.findUniqueOrThrow({
+      where: { id: promoCode.affiliateId },
+      select: { programId: true },
+    });
     return tx.click.create({
       data: {
         affiliateId: promoCode.affiliateId,
+        programId,
         promoCodeId: promoCode.id,
         promoCheckoutRef: checkoutRef,
         // Required and unique, and never handed to anyone: no browser holds

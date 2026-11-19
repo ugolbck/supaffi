@@ -316,6 +316,7 @@ async function main() {
       const click = {
         id: clickId,
         affiliateId: affiliate.id,
+        programId: program.id,
         linkId: pick(affiliate.linkIds),
         referralToken: `demo_${randomUUID()}`,
         expiresAt: new Date(createdAt.getTime() + 60 * DAY),

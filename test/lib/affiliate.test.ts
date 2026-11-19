@@ -251,7 +251,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
         },
       });
       const click = await db.click.create({
-        data: { affiliateId: affiliate.id, referralToken: "history-token", expiresAt: new Date(Date.now() + 60_000) },
+        data: { affiliateId: affiliate.id, programId: affiliate.programId, referralToken: "history-token", expiresAt: new Date(Date.now() + 60_000) },
       });
       for (let i = 0; i < 3; i++) {
         await db.commission.create({
@@ -355,6 +355,7 @@ describe.skipIf(!hasDatabase)("affiliate", () => {
     return db.click.create({
       data: {
         affiliateId,
+        programId: (await db.affiliate.findUniqueOrThrow({ where: { id: affiliateId } })).programId,
         referralToken: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
       },
