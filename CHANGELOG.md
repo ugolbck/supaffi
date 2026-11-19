@@ -14,17 +14,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Extensions: `owners.serves`, a server hook that decides whether an Owner's
   products are served to the public. When it says no, the tracking script is
-  empty, click tracking answers not found, payment events are dropped with a
-  200 so the provider keeps the endpoint, the domain gets no certificate, and
-  the affiliate pages show the program as paused while their actions change
-  nothing. The Owner's dashboard is unaffected. Defaults to served.
+  empty, click tracking answers not found, and the affiliate pages show the
+  program as paused while their actions and the affiliate sign-in change
+  nothing. Payment events are still verified and recorded, and certificates
+  still issued and renewed. The Owner's dashboard is unaffected. Defaults to
+  served.
 - Extensions: `outbound.blockPrivateAddresses`, a static hook that stops this
   server from connecting to an internal address on an Owner's behalf: their
   mail server, the tracking check on their website, the HTTPS check on their
   domain and the DNS checks that ask its nameservers. The name is checked and
-  then connected to by the address checked. A refused mail server shows "That
-  mail server is on a private network. Use its public address." in the test
-  send. Off by default, so a local mail relay keeps working.
+  then connected to by the addresses checked, IPv4 first. A refused mail
+  server shows "That mail server is on a private network. Use its public
+  address." in the test send, and a queued email records the same message.
+  Not supported with an outbound proxy set through `NODE_USE_ENV_PROXY`. Off
+  by default, so a local mail relay keeps working.
 
 ## 0.9.1
 

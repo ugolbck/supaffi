@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import nodemailer from "nodemailer";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -122,16 +123,37 @@ export function isSingleAddress(value: string): boolean {
 
 export async function sendWith(settings: SmtpSettings, email: OutgoingEmail): Promise<void> {
   if (!isSingleAddress(email.to)) throw Object.assign(new Error("Not a single address"), { code: "EENVELOPE" });
-  // Checked once and connected to as checked, so the name cannot be pointed
-  // at this server's own network in between.
-  const address = blocksPrivateAddresses() ? (await publicAddresses(settings.host))[0] : undefined;
-  await transportFor(settings, address).sendMail({
+  const message = {
     from: { name: headerSafe(email.fromName), address: settings.from },
     to: email.to,
     subject: email.subject.replace(/[\r\n]+/g, " "),
     text: email.text,
     html: email.html,
-  });
+  };
+  if (!blocksPrivateAddresses()) {
+    await transportFor(settings).sendMail(message);
+    return;
+  }
+  // Checked once and connected to as checked, so the name cannot be pointed
+  // at this server's own network in between. Each address in turn, IPv4
+  // first, moving on only when nothing reached the server.
+  const addresses = (await publicAddresses(settings.host)).sort((a, b) => isIP(a) - isIP(b));
+  for (const [index, address] of addresses.entries()) {
+    try {
+      await transportFor(settings, address).sendMail(message);
+      return;
+    } catch (err) {
+      if (index === addresses.length - 1 || !failedToConnect(err)) throw err;
+    }
+  }
+}
+
+const NOT_CONNECTED = new Set(["ECONNREFUSED", "EHOSTUNREACH", "ENETUNREACH", "EADDRNOTAVAIL", "EAFNOSUPPORT"]);
+
+/** Whether a send failed before a connection was made, so trying another address cannot send twice. */
+function failedToConnect(err: unknown): boolean {
+  const { originalCode, timeoutType } = (err ?? {}) as { originalCode?: string; timeoutType?: string };
+  return timeoutType === "CONNECT_TIMEOUT" || NOT_CONNECTED.has(originalCode ?? "");
 }
 
 /**

@@ -37,6 +37,10 @@ describe("isInternalAddress", () => {
     "fe80::1",
     "fe80::1%eth0",
     "febf:ffff::1",
+    "fec0::1",
+    "feff:ffff::1",
+    "100::1",
+    "100::ffff:ffff:ffff:ffff",
     "ff02::1",
     "::ffff:127.0.0.1",
     "::ffff:7f00:1",
@@ -78,7 +82,7 @@ describe("isInternalAddress", () => {
     "64:ff9b::8.8.8.8",
     "2a00:1450::1",
     "fbff:ffff::1",
-    "fec0::1",
+    "100:0:0:1::1",
     "::ffff:8.8.8.8",
     "::ffff:808:808",
   ])("allows %s", (address) => {
@@ -182,6 +186,49 @@ describe("sending mail", () => {
     expect(mailErrorText(error, SETTINGS)).toBe("That mail server is on a private network. Use its public address.");
   });
 
+  it("tries each checked address in turn, IPv4 first, while none could be connected to", async () => {
+    block();
+    lookup.mockResolvedValue([
+      { address: "2606:2800::1", family: 6 },
+      { address: "93.184.216.34", family: 4 },
+      { address: "93.184.216.35", family: 4 },
+    ]);
+    const refused = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNECTION", originalCode: "ECONNREFUSED" });
+    const timedOut = Object.assign(new Error("Connection timeout"), { code: "ETIMEDOUT", timeoutType: "CONNECT_TIMEOUT" });
+    const sendMail = vi.fn().mockRejectedValueOnce(refused).mockRejectedValueOnce(timedOut).mockResolvedValueOnce({});
+    createTransport.mockReturnValue({ sendMail });
+    const { sendWith } = await import("@/lib/mail");
+    await sendWith(SETTINGS, EMAIL);
+    expect(createTransport.mock.calls.map(([options]) => options.host)).toEqual(["93.184.216.34", "93.184.216.35", "2606:2800::1"]);
+    for (const [options] of createTransport.mock.calls) expect(options.tls).toEqual({ servername: "smtp.example.com" });
+  });
+
+  it("stops at an address that was reached, so nothing is sent twice", async () => {
+    block();
+    lookup.mockResolvedValue([
+      { address: "93.184.216.34", family: 4 },
+      { address: "93.184.216.35", family: 4 },
+    ]);
+    const auth = Object.assign(new Error("Invalid login"), { code: "EAUTH", responseCode: 535 });
+    createTransport.mockReturnValue({ sendMail: vi.fn().mockRejectedValue(auth) });
+    const { sendWith } = await import("@/lib/mail");
+    await expect(sendWith(SETTINGS, EMAIL)).rejects.toBe(auth);
+    expect(createTransport).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails with the last address's error when none can be connected to", async () => {
+    block();
+    lookup.mockResolvedValue([
+      { address: "93.184.216.34", family: 4 },
+      { address: "93.184.216.35", family: 4 },
+    ]);
+    const refused = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNECTION", originalCode: "ECONNREFUSED" });
+    createTransport.mockReturnValue({ sendMail: vi.fn().mockRejectedValue(refused) });
+    const { sendWith } = await import("@/lib/mail");
+    await expect(sendWith(SETTINGS, EMAIL)).rejects.toBe(refused);
+    expect(createTransport).toHaveBeenCalledTimes(2);
+  });
+
   it("refuses an IP literal on a private network without a lookup", async () => {
     block();
     const { sendWith } = await import("@/lib/mail");
@@ -228,6 +275,79 @@ describe("fetching from an Owner's host", () => {
     }
     const { scriptFound } = await import("@/lib/checks/script");
     expect(await scriptFound(`http://127.0.0.1:${port}/`, "t.example.com")).toEqual({ ok: false, detail: "Could not load the site" });
+  });
+});
+
+describe("fetching with private addresses blocked", () => {
+  let server: Server;
+  let port: number;
+  const seen: (string | undefined)[] = [];
+
+  beforeEach(async () => {
+    vi.resetModules();
+    seen.length = 0;
+    vi.doMock("@/extensions/installed-static", () => ({
+      installedStatic: { outbound: { blockPrivateAddresses: true } },
+    }));
+    server = createServer((req, res) => {
+      seen.push(req.headers["accept-encoding"]);
+      res.end("ok");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterEach(async () => {
+    vi.doUnmock("@/extensions/installed-static");
+    vi.doUnmock("node:dns/promises");
+    vi.doUnmock("node:http");
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  it("asks for the body uncompressed, whatever the caller sent", async () => {
+    // A public name answering at this test's own server: the address check
+    // is what would refuse it, so it is stood in for here.
+    vi.doMock("node:dns/promises", async (original) => ({
+      ...(await original<object>()),
+      lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    }));
+    vi.doMock("node:http", async (original) => {
+      const real = (await original<{ default: typeof import("node:http") }>()).default;
+      const request = ((url: URL, options: object, callback: () => void) =>
+        real.request(new URL(`http://127.0.0.1:${port}${url.pathname}`), options, callback)) as unknown as typeof real.request;
+      return { default: { ...real, request } };
+    });
+    const { publicFetch } = await import("@/lib/outboundAddress");
+    const response = await publicFetch("http://www.example.com/", { headers: { "accept-encoding": "gzip, br" } });
+    expect(await response.text()).toBe("ok");
+    expect(seen).toEqual(["identity"]);
+  });
+
+  it("guards the HTTPS check's own fetch, with no fetch passed in", async () => {
+    const plainFetch = vi.fn(fetch);
+    vi.stubGlobal("fetch", plainFetch);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { httpsReachable } = await import("@/lib/checks/dns");
+    const result = await httpsReachable(
+      `localhost:${port}`,
+      undefined,
+      async () => ["127.0.0.1"],
+      async () => ({ kind: "no-proxy", reason: "ENOTFOUND" })
+    );
+    expect(result.reachable).toEqual({ ok: false, detail: "Nothing answered" });
+    expect(plainFetch).not.toHaveBeenCalled();
+    expect(seen).toEqual([]);
+  });
+
+  it("leaves the HTTPS check on the plain fetch when not blocking", async () => {
+    vi.doMock("@/extensions/installed-static", () => ({ installedStatic: {} }));
+    const plainFetch = vi.fn(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", plainFetch);
+    const { httpsReachable } = await import("@/lib/checks/dns");
+    await httpsReachable("www.example.com", undefined, async () => ["93.184.216.34"], async () => ({ kind: "no-proxy", reason: "ENOTFOUND" }));
+    expect(plainFetch).toHaveBeenCalledWith("https://www.example.com/track.js", expect.objectContaining({ method: "HEAD" }));
   });
 });
 

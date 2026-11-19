@@ -61,14 +61,17 @@ export type StaticExtensions = {
      * Whether connections this server opens to a host an Owner typed in
      * refuse internal addresses: loopback, private and link-local networks,
      * shared address space, multicast and reserved ranges, in both IP
-     * families and in IPv4 written as IPv6. false leaves every address
-     * reachable, a mail relay on this machine included. true resolves the
-     * name, refuses it when any of its addresses is internal, and connects to
-     * the address it checked, so the name cannot change in between. Covers
-     * the product's mail server, the tracking check on the product's website,
-     * the HTTPS check on its domain and the DNS checks that ask the domain's
-     * own nameservers. A refused mail server is shown to the Owner in the
-     * test send; a queued email fails as if it could not be reached.
+     * families, and IPv4 carried in IPv6 (mapped, compatible, translated,
+     * NAT64 and 6to4 forms). false leaves every address reachable, a
+     * mail relay on this machine included. true resolves the name, refuses it
+     * when any of its addresses is internal, and connects to an address it
+     * checked, so the name cannot change in between. Covers the product's
+     * mail server, the tracking check on the product's website, the HTTPS
+     * check on its domain and the DNS checks that ask the domain's own
+     * nameservers. A refused mail server is shown to the Owner in the test
+     * send, and a queued email records the same message as its error. Not
+     * supported with an outbound HTTP(S)_PROXY through NODE_USE_ENV_PROXY:
+     * the checks connect directly.
      */
     blockPrivateAddresses: boolean;
   };
@@ -109,16 +112,17 @@ export type SupaffiExtensions = {
      */
     canUse(ownerId: string): Promise<boolean>;
     /**
-     * Whether this Owner's products are served to the public. Asked once per
-     * request by everything that answers on a product's domain, after the
-     * product is found: the tracking script, click tracking, the payment
-     * webhook, the certificate check and every affiliate page and server
-     * action. On false the tracking script is empty, click tracking answers
-     * not found, the payment webhook answers 200 without verifying or
-     * recording the event, the certificate check refuses the domain like an
-     * unknown one, and the affiliate pages show the program as paused while
-     * their actions change nothing. The Owner's dashboard does not ask it
-     * (owners.canUse does).
+     * Whether this Owner's products are served to the public. Asked on every
+     * request for the tracking script, click tracking, every affiliate page
+     * and server action, and the affiliate sign-in, after the product is
+     * found; once per request where a request looks the product up more than
+     * once. On false the tracking script is empty, click tracking answers not
+     * found, the affiliate pages show the program as paused, and their
+     * actions and the sign-in change nothing. The payment webhook and the
+     * certificate check do not ask it: events are verified and recorded and
+     * certificates issued and renewed as always. Neither does the Owner's
+     * dashboard (owners.canUse does). A throw fails the request, with no
+     * fallback, so answer from state the build already holds.
      */
     serves(ownerId: string): Promise<boolean>;
   };

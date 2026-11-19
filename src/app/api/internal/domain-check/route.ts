@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ext } from "@/extensions";
 import { clientAddress, isPrivateAddress } from "@/lib/clientAddress";
 import { servedDomain } from "@/lib/domainOwnership";
 
@@ -24,13 +23,12 @@ export async function GET(req: NextRequest) {
     return new NextResponse(null, { status: 400 });
   }
 
-  // A domain whose ownership is still unproven, when proof is required, or
-  // whose product owners.serves turns away, is refused like an unknown one.
+  // A domain whose ownership is still unproven, when proof is required, is
+  // refused like an unknown one.
   const merchant = await db.merchant.findFirst({
     where: servedDomain(domain),
-    select: { ownerId: true },
+    select: { id: true },
   });
-  const served = merchant !== null && (await ext.owners.serves(merchant.ownerId));
 
-  return new NextResponse(null, { status: served ? 200 : 403 });
+  return new NextResponse(null, { status: merchant ? 200 : 403 });
 }

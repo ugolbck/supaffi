@@ -23,6 +23,7 @@ const serves = vi.fn(async (_ownerId: string) => false);
 const findFirst = vi.fn(async () => MERCHANT);
 const touched: string[] = [];
 const signIn = vi.fn(async () => {});
+const authPostHandler = vi.fn(async () => new Response(null, { status: 302 }));
 
 // Anything past db.merchant.findFirst is a read or write the turned-away
 // product should never reach.
@@ -53,6 +54,7 @@ beforeEach(() => {
   serves.mockImplementation(async () => false);
   findFirst.mockClear();
   signIn.mockClear();
+  authPostHandler.mockClear();
   touched.length = 0;
   vi.doMock("@/extensions/installed", () => ({ installed: { owners: { serves } } }));
   vi.doMock("@/lib/db", () => ({ db: strictDb() }));
@@ -70,6 +72,7 @@ beforeEach(() => {
   vi.doMock("@/lib/auth", () => ({
     auth: async () => ({ user: { id: "affiliate-1", role: "affiliate", email: "a@example.com" } }),
     signIn,
+    handlers: { GET: async () => new Response(null), POST: authPostHandler },
   }));
 });
 
@@ -108,7 +111,7 @@ describe("owners.serves on the public endpoints", () => {
     expect(serves).toHaveBeenCalledTimes(1);
   });
 
-  it("answers the payment webhook 200 without verifying or recording", async () => {
+  it("leaves the payment webhook to verify and record as always", async () => {
     const { POST } = await import("@/app/api/webhooks/[provider]/route");
     const response = await POST(
       new NextRequest(`https://${HOST}/api/webhooks/stripe`, {
@@ -118,29 +121,24 @@ describe("owners.serves on the public endpoints", () => {
       }),
       { params: Promise.resolve({ provider: "stripe" }) }
     );
-    expect(response.status).toBe(200);
-    expect(touched).toEqual([]);
+    // Refused by the signature check, which a paused product still runs.
+    expect(response.status).toBe(400);
+    expect(serves).not.toHaveBeenCalled();
   });
 
-  it("refuses the certificate check like an unknown domain", async () => {
+  it("leaves the certificate check to answer as always", async () => {
     const { GET } = await import("@/app/api/internal/domain-check/route");
     const response = await GET(
       new NextRequest(`http://app:3000/api/internal/domain-check?domain=${HOST}`, {
         headers: { "x-forwarded-for": "172.18.0.3" },
       })
     );
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
+    expect(serves).not.toHaveBeenCalled();
   });
 
   it("answers as before when the hook lets the product be served", async () => {
     serves.mockResolvedValue(true);
-    const { GET } = await import("@/app/api/internal/domain-check/route");
-    const response = await GET(
-      new NextRequest(`http://app:3000/api/internal/domain-check?domain=${HOST}`, {
-        headers: { "x-forwarded-for": "172.18.0.3" },
-      })
-    );
-    expect(response.status).toBe(200);
     const { GET: script } = await import("@/app/track.js/route");
     expect(await (await script(new NextRequest(`https://${HOST}/track.js`, { headers: { host: HOST } }))).text()).not.toBe("");
   });
@@ -213,6 +211,36 @@ describe("owners.serves on the affiliate portal", () => {
     expect(await outcome(actions[name])).toBe("redirect:/affiliates/paused");
     expect(touched).toEqual([]);
     expect(signIn).not.toHaveBeenCalled();
+  });
+
+  function authPost(path: string) {
+    return new NextRequest(`https://${HOST}/api/auth/${path}`, {
+      method: "POST",
+      headers: { host: HOST, "content-type": "application/x-www-form-urlencoded" },
+      body: "email=a%40example.com&password=password123",
+    });
+  }
+
+  it("refuses the affiliate sign-in posted to Auth.js before it runs", async () => {
+    const { POST } = await import("@/app/api/auth/[...nextauth]/route");
+    const response = await POST(authPost("callback/affiliate-password"));
+    expect(response.status).toBe(403);
+    expect(authPostHandler).not.toHaveBeenCalled();
+    expect(serves).toHaveBeenCalledWith("owner-1");
+  });
+
+  it("passes the affiliate sign-in to Auth.js once the product is served", async () => {
+    serves.mockResolvedValue(true);
+    const { POST } = await import("@/app/api/auth/[...nextauth]/route");
+    expect((await POST(authPost("callback/affiliate-password"))).status).toBe(302);
+    expect(authPostHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves every other Auth.js request alone", async () => {
+    const { POST } = await import("@/app/api/auth/[...nextauth]/route");
+    expect((await POST(authPost("callback/credentials"))).status).toBe(302);
+    expect((await POST(authPost("signout"))).status).toBe(302);
+    expect(serves).not.toHaveBeenCalled();
   });
 
   it("shows the paused card while the product is not served", async () => {

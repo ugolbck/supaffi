@@ -31,6 +31,8 @@ INTERNAL.addAddress("::", "ipv6");
 INTERNAL.addAddress("::1", "ipv6");
 INTERNAL.addSubnet("fc00::", 7, "ipv6");
 INTERNAL.addSubnet("fe80::", 10, "ipv6");
+INTERNAL.addSubnet("fec0::", 10, "ipv6");
+INTERNAL.addSubnet("100::", 64, "ipv6");
 INTERNAL.addSubnet("ff00::", 8, "ipv6");
 // 6to4 and local-use NAT64 can carry any IPv4 address, internal ones included.
 INTERNAL.addSubnet("2002::", 16, "ipv6");
@@ -156,7 +158,9 @@ function requestOnce(url: URL, init: RequestInit): Promise<Response> {
       url,
       {
         method,
-        headers: Object.fromEntries(new Headers(init.headers)),
+        // Global fetch decodes compressed bodies and this does not, so it
+        // asks for none: a server that compresses anyway would hide the page.
+        headers: { ...Object.fromEntries(new Headers(init.headers)), "accept-encoding": "identity" },
         signal: init.signal ?? undefined,
         lookup: publicLookup,
       },
@@ -186,8 +190,8 @@ const MAX_REDIRECTS = 20;
 /**
  * fetch for a URL an Owner typed in, refusing internal addresses on every
  * hop. Covers what this app's checks use: GET and HEAD, redirects followed
- * or left alone, a timeout signal. The body is passed through undecoded, and
- * nothing asks for it compressed.
+ * or left alone, a timeout signal. The body is passed through undecoded, so
+ * it asks for it uncompressed.
  */
 export const publicFetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
   let url = new URL(input instanceof Request ? input.url : input);
