@@ -32,6 +32,9 @@ INTERNAL.addAddress("::1", "ipv6");
 INTERNAL.addSubnet("fc00::", 7, "ipv6");
 INTERNAL.addSubnet("fe80::", 10, "ipv6");
 INTERNAL.addSubnet("ff00::", 8, "ipv6");
+// 6to4 and local-use NAT64 can carry any IPv4 address, internal ones included.
+INTERNAL.addSubnet("2002::", 16, "ipv6");
+INTERNAL.addSubnet("64:ff9b:1::", 48, "ipv6");
 
 export function blocksPrivateAddresses(): boolean {
   return staticExt.outbound.blockPrivateAddresses;
@@ -63,10 +66,20 @@ function ipv6Groups(address: string): number[] | null {
   return groups.length === 8 && groups.every((group) => group >= 0 && group <= 0xffff) ? groups : null;
 }
 
-/** The IPv4 address inside an IPv4-mapped (::ffff:a.b.c.d) or IPv4-compatible (::a.b.c.d) one. */
+// The first six groups of each form that ends in an IPv4 address: compatible
+// (::a.b.c.d), mapped (::ffff:a.b.c.d), translated (::ffff:0:a.b.c.d) and the
+// well-known NAT64 prefix (64:ff9b::a.b.c.d).
+const IPV4_PREFIXES = [
+  [0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0xffff],
+  [0, 0, 0, 0, 0xffff, 0],
+  [0x64, 0xff9b, 0, 0, 0, 0],
+];
+
+/** The IPv4 address inside an IPv6 address of a form that embeds one. */
 function embeddedIPv4(address: string): string | null {
   const groups = ipv6Groups(address);
-  if (!groups || groups.slice(0, 5).some((group) => group !== 0) || (groups[5] !== 0 && groups[5] !== 0xffff)) return null;
+  if (!groups || !IPV4_PREFIXES.some((prefix) => prefix.every((group, i) => groups[i] === group))) return null;
   return [groups[6] >> 8, groups[6] & 0xff, groups[7] >> 8, groups[7] & 0xff].join(".");
 }
 
