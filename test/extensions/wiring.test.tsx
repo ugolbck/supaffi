@@ -59,7 +59,13 @@ describe("owners.signupPath", () => {
     const { default: Setup } = await import("@/app/setup/page");
     expect(await outcome(Setup)).toBe("notFound");
   });
+});
 
+// Outside the describe above: its beforeEach mocks @/lib/owner with no Owner,
+// and a second mock of the same module before the next import races it.
+// Vitest resolves the mocks queued since the last import in parallel, so
+// either factory could win, and this test failed now and then on CI.
+describe("owners.signupPath on the login page", () => {
   it("links the login page to signup when set, and not by default", async () => {
     vi.doMock("@/lib/owner", () => ({ ownerExists: async () => true }));
     vi.doMock("@/app/login/LoginForm", () => ({ LoginForm: () => null }));
