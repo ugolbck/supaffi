@@ -99,6 +99,9 @@ export function PayoutDetailsForm({
             onChange={(e) => setValue(e.target.value)}
             aria-label={METHOD_LABELS[method]}
             placeholder={PAYOUT_METHODS[method].placeholder}
+            // PayPal and Wise pay to an email address; anything else is not one
+            // to fill from the browser's saved addresses.
+            autoComplete={method === "paypal" || method === "wise" ? "email" : "off"}
             spellCheck={false}
           />
         </div>

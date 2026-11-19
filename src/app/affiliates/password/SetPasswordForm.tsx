@@ -13,7 +13,16 @@ const INVALID_LINK = "This link has expired or was already used.";
 
 type Action = (prevState: { error: string }, formData: FormData) => Promise<{ error: string }>;
 
-export function SetPasswordForm({ action, canReset }: { action: Action; canReset: boolean }) {
+export function SetPasswordForm({
+  action,
+  canReset,
+  email,
+}: {
+  action: Action;
+  canReset: boolean;
+  /** Null when the link is no longer valid; submitting then shows why. */
+  email: string | null;
+}) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
 
   return (
@@ -39,6 +48,8 @@ export function SetPasswordForm({ action, canReset }: { action: Action; canReset
                 ))}
             </p>
           )}
+          {/* Tells a password manager which account the new password is for. */}
+          {email && <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="password">New password</Label>
             <Input

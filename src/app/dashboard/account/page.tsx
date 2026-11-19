@@ -29,7 +29,7 @@ export default async function AccountPage() {
       <PageTitle title="Account" />
 
       <EmailForm email={email} />
-      <PasswordForm />
+      <PasswordForm email={email} />
 
       {sections.map((section, i) => (
         <Fragment key={i}>{section}</Fragment>

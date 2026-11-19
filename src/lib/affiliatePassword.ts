@@ -103,11 +103,8 @@ export async function issueResetToken(
  * them in again, or null for a link that is unknown, used,
  * expired or from another product.
  */
-export async function redeemAffiliateResetLink(
-  rawToken: string,
-  merchantId: string,
-  password: string
-): Promise<{ email: string } | null> {
+/** A reset link that can still be used on this product. Reading it does not spend it. */
+async function liveResetLink(rawToken: string, merchantId: string) {
   const record = await db.affiliateLoginToken.findUnique({
     where: { tokenHash: hashToken(rawToken) },
     select: { id: true, expiresAt: true, usedAt: true, affiliate: { select: { id: true, email: true, merchantId: true } } },
@@ -115,6 +112,24 @@ export async function redeemAffiliateResetLink(
   if (!record || record.usedAt || record.expiresAt < new Date() || record.affiliate.merchantId !== merchantId) {
     return null;
   }
+  return record;
+}
+
+/**
+ * The email a live reset link is for, so the form can tell a password manager
+ * which account the new password belongs to.
+ */
+export async function affiliateResetLinkEmail(rawToken: string, merchantId: string): Promise<string | null> {
+  return (await liveResetLink(rawToken, merchantId))?.affiliate.email ?? null;
+}
+
+export async function redeemAffiliateResetLink(
+  rawToken: string,
+  merchantId: string,
+  password: string
+): Promise<{ email: string } | null> {
+  const record = await liveResetLink(rawToken, merchantId);
+  if (!record) return null;
 
   const passwordHash = await hashPassword(password);
   // Claimed and saved together, conditionally, so two submits of one link

@@ -91,12 +91,14 @@ export function EmailForm({ email }: { email: string }) {
   );
 }
 
-export function PasswordForm() {
+export function PasswordForm({ email }: { email: string }) {
   const [state, action, pending] = useActionState(changePasswordAction, EMPTY);
 
   return (
     <Section title="Password">
       <form action={action} className="flex flex-col gap-4">
+        {/* Tells a password manager which account the new password is for. */}
+        <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />
         <Field
           id="current"
           label="Current password"
