@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import type { Email } from "@prisma/client";
 import { db } from "@/lib/db";
-import { clearMailFailure, mailErrorText, sendWith, smtpSettings, type SmtpSettings } from "@/lib/mail";
+import { clearMailFailure, DAILY_LIMIT_ERROR, mailErrorText, sendWith, smtpSettings, type SmtpSettings } from "@/lib/mail";
 
 const BATCH_SIZE = 20;
 // Retries double from a minute; the seventh failure is the last, about an
@@ -11,6 +11,9 @@ const BATCH_SIZE = 20;
 const MAX_ATTEMPTS = 7;
 const BASE_BACKOFF_MS = 60_000;
 const CLAIM_LEASE_SECONDS = 5 * 60;
+// How long an email held by the Owner's daily limit waits before it is looked
+// at again. The limit counts a rolling 24 hours, so room comes back gradually.
+const LIMIT_RETRY_MS = 15 * 60_000;
 
 // The same SKIP LOCKED claim as the webhook queue (claim.ts), lease included,
 // so a worker that dies mid-send leaves the row to be claimed again. Like
@@ -66,6 +69,29 @@ async function retryLater(email: Email, message: string): Promise<void> {
   }
 }
 
+/**
+ * Held back by the Owner's daily limit on the platform's server: back in the
+ * queue for later, the claim's attempt given back, since nothing was tried.
+ */
+async function holdForLimit(email: Email): Promise<void> {
+  await db.email.updateMany({
+    where: { id: email.id },
+    data: {
+      status: "PENDING",
+      attempts: { decrement: 1 },
+      lastError: DAILY_LIMIT_ERROR,
+      nextAttemptAt: new Date(Date.now() + LIMIT_RETRY_MS),
+    },
+  });
+}
+
+/** Emails this Owner's products sent through the platform's server in the last 24 hours. */
+function sentThroughPlatform(ownerId: string): Promise<number> {
+  return db.email.count({
+    where: { sentByPlatform: true, sentAt: { gte: new Date(Date.now() - 24 * 60 * 60_000) }, merchant: { ownerId } },
+  });
+}
+
 export async function sendDueEmails(send: typeof sendWith = sendWith): Promise<void> {
   const batch = await claimEmails();
   // Read once per product per batch: most batches are one product.
@@ -73,6 +99,8 @@ export async function sendDueEmails(send: typeof sendWith = sendWith): Promise<v
   // A product whose server could not be reached: the rest of its batch waits
   // for the next try instead of each one waiting out the same timeout.
   const unreachable = new Map<string, string>();
+  // Per Owner, read once per batch and counted up as this batch sends.
+  const sentToday = new Map<string, number>();
 
   for (const email of batch) {
     if (!servers.has(email.merchantId)) {
@@ -98,9 +126,21 @@ export async function sendDueEmails(send: typeof sendWith = sendWith): Promise<v
       await retryLater(email, skipped);
       continue;
     }
+    const platform = server.platform;
+    if (platform && platform.dailyLimit !== null) {
+      if (!sentToday.has(platform.ownerId)) sentToday.set(platform.ownerId, await sentThroughPlatform(platform.ownerId));
+      if (sentToday.get(platform.ownerId)! >= platform.dailyLimit) {
+        await holdForLimit(email);
+        continue;
+      }
+    }
     try {
-      await send(server, email);
-      await db.email.updateMany({ where: { id: email.id }, data: { status: "SENT", sentAt: new Date(), lastError: null, ...DONE } });
+      await send(server, platform ? { ...email, replyTo: platform.replyTo } : email);
+      await db.email.updateMany({
+        where: { id: email.id },
+        data: { status: "SENT", sentAt: new Date(), lastError: null, ...(platform ? { sentByPlatform: true } : {}), ...DONE },
+      });
+      if (platform) sentToday.set(platform.ownerId, (sentToday.get(platform.ownerId) ?? 0) + 1);
       await clearMailFailure(email.merchantId);
     } catch (err) {
       const message = mailErrorText(err, server);

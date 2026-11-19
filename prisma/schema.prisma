@@ -442,12 +442,14 @@ model Email {
   text       String
   html       String
 
-  status        EmailStatus @default(PENDING)
-  attempts      Int         @default(0)
-  lastError     String?
-  nextAttemptAt DateTime    @default(now()) // backoff and, while SENDING, the claim lease
-  sentAt        DateTime?
-  createdAt     DateTime    @default(now())
+  status         EmailStatus @default(PENDING)
+  attempts       Int         @default(0)
+  lastError      String?
+  nextAttemptAt  DateTime    @default(now()) // backoff and, while SENDING, the claim lease
+  sentAt         DateTime?
+  // Went out through mail.platformServer: what the Owner's daily limit counts.
+  sentByPlatform Boolean     @default(false)
+  createdAt      DateTime    @default(now())
 
   @@unique([merchantId, dedupeKey])
   @@index([status, nextAttemptAt])

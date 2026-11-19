@@ -75,6 +75,40 @@ export type StaticExtensions = {
      */
     blockPrivateAddresses: boolean;
   };
+  mail: {
+    /**
+     * A mail server every product without its own sends through. null keeps
+     * email off for such a product until its Owner connects a server. Set,
+     * every product counts as having email on with no setup: emails are
+     * queued, the notification switches apply and affiliates can ask for a
+     * password link. A product's own server, when it has one, is always used
+     * instead, and removing it falls back to this one. Emails go out from
+     * `from` with the product's name as the display name, and replies go to
+     * the Owner's account email. The Owner's own notifications still go to
+     * that address. outbound.blockPrivateAddresses does not apply to this
+     * server. Read when an email is queued and when it is sent, so take every
+     * value from the server's environment: this module is bundled for the
+     * browser too, where that environment is empty.
+     */
+    platformServer: PlatformMailServer | null;
+  };
+};
+
+export type PlatformMailServer = {
+  host: string;
+  /** 465 is TLS from the first byte; any other port upgrades with STARTTLS when offered. */
+  port: number;
+  user: string;
+  password: string;
+  /** A bare address, like noreply@example.com. Never the Owner's: the product's name is the display name. */
+  from: string;
+  /**
+   * How many emails one Owner's products may send through this server in any
+   * 24 hours, password links included. Past it, further emails stay queued
+   * and go out as the count drops, never dropped. Unset means no limit. Keep
+   * it generous: an affiliate waiting on a password link waits too.
+   */
+  dailyLimitPerOwner?: number;
 };
 
 /** Server-side hooks. Called from server components and actions only. */

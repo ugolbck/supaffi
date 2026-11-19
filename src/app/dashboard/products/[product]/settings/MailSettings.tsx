@@ -35,6 +35,9 @@ import {
  * Picking a provider fills in its server, so most owners type a key and an
  * address and nothing else. Connecting sends a test email first and saves only
  * when it goes through, so email is either working or off, never half set up.
+ *
+ * With mail.platformServer set, a product without its own server sends through
+ * that one, and its own server is an option tucked under it.
  */
 
 type Provider = {
@@ -83,6 +86,9 @@ function providerFor(host: string): string {
 
 const EMPTY: MailFormState = { error: "", sentTo: "" };
 
+type OwnServer = Extract<MailStatus, { via: "own" }>;
+type PlatformServer = Extract<MailStatus, { via: "platform" }>;
+
 export function MailSettings({ product, status }: { product: ProductRef; status: MailStatus }) {
   // Held here rather than in the form: a connect that works brings the saved
   // settings back with it, which swaps the form out for the connected view in
@@ -101,6 +107,33 @@ export function MailSettings({ product, status }: { product: ProductRef; status:
     return result;
   }, EMPTY);
 
+  const startEditing = () => {
+    setNotice(EMPTY);
+    setSeen(connectState);
+    setEditing(true);
+  };
+  const stopEditing = () => {
+    setSeen(connectState);
+    setEditing(false);
+  };
+  const form = (
+    <ConnectForm
+      initial={status?.via === "own" ? status : null}
+      action={connect}
+      pending={connecting}
+      error={connectState === seen ? "" : connectState.error}
+      onCancel={status ? stopEditing : undefined}
+    />
+  );
+
+  if (status?.via === "platform") {
+    return (
+      <Section title="Email">
+        <Platform product={product} status={status} notice={notice} setNotice={setNotice} ownServer={editing ? form : null} onUseOwn={startEditing} />
+      </Section>
+    );
+  }
+
   return (
     <Section title="Email">
       {status && !editing ? (
@@ -110,27 +143,10 @@ export function MailSettings({ product, status }: { product: ProductRef; status:
           status={status}
           notice={notice}
           setNotice={setNotice}
-          onChange={() => {
-            setNotice(EMPTY);
-            setSeen(connectState);
-            setEditing(true);
-          }}
+          onChange={startEditing}
         />
       ) : (
-        <ConnectForm
-          initial={status}
-          action={connect}
-          pending={connecting}
-          error={connectState === seen ? "" : connectState.error}
-          onCancel={
-            status
-              ? () => {
-                  setSeen(connectState);
-                  setEditing(false);
-                }
-              : undefined
-          }
-        />
+        form
       )}
     </Section>
   );
@@ -154,7 +170,7 @@ function ConnectForm({
   error,
   onCancel,
 }: {
-  initial: MailStatus;
+  initial: OwnServer | null;
   action: (formData: FormData) => void;
   pending: boolean;
   error: string;
@@ -288,7 +304,7 @@ function Connected({
   product: ProductRef;
   /** The form comes back empty, so nothing from an earlier connect shows on it. */
   onTurnedOff: () => void;
-  status: NonNullable<MailStatus>;
+  status: OwnServer;
   notice: MailFormState;
   setNotice: (state: MailFormState) => void;
   onChange: () => void;
@@ -326,40 +342,22 @@ function Connected({
               className="cursor-pointer text-muted-foreground hover:text-status-danger"
               onClick={() => setConfirmOff(true)}
             >
-              Turn off
+              {status.fallback ? "Remove" : "Turn off"}
             </Button>
           </div>
         </div>
       </Row>
 
-      {status.failure && !notice.sentTo && (
-        <p role="alert" className="text-sm text-status-danger">
-          Emails stopped going out: {status.failure.message}
-        </p>
-      )}
-      {notice.error && (
-        <p role="alert" className="text-sm text-status-danger">
-          {notice.error}
-        </p>
-      )}
-      {notice.sentTo && (
-        <p className="flex animate-in items-center gap-1.5 text-sm duration-300 fade-in-0">
-          <MailCheck aria-hidden className="size-4 text-status-success" />
-          Test email sent to {notice.sentTo}.
-        </p>
-      )}
-
-      <div className="flex flex-col gap-3 border-t border-border pt-4">
-        {SWITCHES.map((s) => (
-          <MailToggle key={s.name} product={product} name={s.name} label={s.label} on={status[s.name]} />
-        ))}
-      </div>
+      <Notices status={status} notice={notice} />
+      <Switches product={product} status={status} />
 
       <AlertDialog open={confirmOff} onOpenChange={setConfirmOff}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Turn off email?</AlertDialogTitle>
-            <AlertDialogDescription>Nothing is sent until you connect again.</AlertDialogDescription>
+            <AlertDialogTitle>{status.fallback ? "Remove your mail server?" : "Turn off email?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {status.fallback ? "Emails go out from our mail server instead." : "Nothing is sent until you connect again."}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="cursor-pointer" disabled={pending}>
@@ -378,11 +376,99 @@ function Connected({
                 });
               }}
             >
-              {pending ? "Turning off" : "Turn off"}
+              {status.fallback ? (pending ? "Removing" : "Remove") : pending ? "Turning off" : "Turn off"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+/** No server of the product's own: the platform's sends, and the product's own is one click away. */
+function Platform({
+  product,
+  status,
+  notice,
+  setNotice,
+  ownServer,
+  onUseOwn,
+}: {
+  product: ProductRef;
+  status: PlatformServer;
+  notice: MailFormState;
+  setNotice: (state: MailFormState) => void;
+  /** The form for the product's own server, while it is open. */
+  ownServer: React.ReactNode;
+  onUseOwn: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="min-w-0 text-sm">
+          Sent by {status.product} from our mail server. Replies go to {status.replyTo}.
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="shrink-0 cursor-pointer"
+          disabled={pending}
+          onClick={() => startTransition(async () => setNotice(await sendTestEmailAction(product)))}
+        >
+          {pending ? "Sending" : "Send test"}
+        </Button>
+      </div>
+
+      <Notices status={status} notice={notice} />
+      <Switches product={product} status={status} />
+
+      <div className="border-t border-border pt-4">
+        {ownServer ?? (
+          <Button type="button" size="sm" variant="link" className="cursor-pointer px-0" onClick={onUseOwn}>
+            Use your own mail server
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Notices({ status, notice }: { status: NonNullable<MailStatus>; notice: MailFormState }) {
+  return (
+    <>
+      {status.failure && !notice.sentTo && (
+        <p role="alert" className="text-sm text-status-danger">
+          Emails stopped going out: {status.failure.message}
+        </p>
+      )}
+      {status.waiting && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Some emails are waiting: you reached today&apos;s sending limit.
+        </p>
+      )}
+      {notice.error && (
+        <p role="alert" className="text-sm text-status-danger">
+          {notice.error}
+        </p>
+      )}
+      {notice.sentTo && (
+        <p className="flex animate-in items-center gap-1.5 text-sm duration-300 fade-in-0">
+          <MailCheck aria-hidden className="size-4 text-status-success" />
+          Test email sent to {notice.sentTo}.
+        </p>
+      )}
+    </>
+  );
+}
+
+function Switches({ product, status }: { product: ProductRef; status: NonNullable<MailStatus> }) {
+  return (
+    <div className="flex flex-col gap-3 border-t border-border pt-4">
+      {SWITCHES.map((s) => (
+        <MailToggle key={s.name} product={product} name={s.name} label={s.label} on={status[s.name]} />
+      ))}
     </div>
   );
 }

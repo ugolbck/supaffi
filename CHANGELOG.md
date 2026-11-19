@@ -28,6 +28,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   address." in the test send, and a queued email records the same message.
   Not supported with an outbound proxy set through `NODE_USE_ENV_PROXY`. Off
   by default, so a local mail relay keeps working.
+- Extensions: `mail.platformServer`, a static hook naming a mail server
+  that every product without its own sends through. Such a product has
+  email on with no setup: notifications, affiliate emails and password
+  links all go out, from that server's address with the product's name as
+  the sender, and replies go to the Owner's account email. A product's own
+  server always wins, and removing it falls back to this one. Its optional
+  `dailyLimitPerOwner` caps what one Owner's products send through it in
+  any 24 hours, password links included; past it, emails stay queued and
+  go out later, and the product's email settings say some are waiting.
+  `outbound.blockPrivateAddresses` does not apply to it. Defaults to none,
+  so email stays off until the Owner connects a server.
 
 ## 0.9.1
 

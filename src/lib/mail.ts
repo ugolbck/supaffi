@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { blocksPrivateAddresses, PrivateAddressError, publicAddresses } from "@/lib/outboundAddress";
+import { staticExt } from "@/extensions/static";
 
 /**
  * A product's own mail server, reached over SMTP. Per product, like its
@@ -15,10 +16,28 @@ import { blocksPrivateAddresses, PrivateAddressError, publicAddresses } from "@/
  * from the host itself: a VPS sending direct is blocked or lands in spam.
  *
  * Email is off until the Owner saves settings that pass a test send, and
- * nothing is queued while it is off.
+ * nothing is queued while it is off. With mail.platformServer set, a product
+ * without its own server sends through that one instead, so its email is on
+ * from the start.
  */
 
-export type SmtpSettings = { host: string; port: number; user: string; password: string; from: string };
+export type SmtpSettings = {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  from: string;
+  /**
+   * Set when this is mail.platformServer rather than the product's own:
+   * replies go to the Owner, and the Owner's limit applies.
+   */
+  platform?: { ownerId: string; replyTo: string; dailyLimit: number | null };
+};
+
+/** mail.platformServer, or null when products send only through their own. */
+function platformServer() {
+  return staticExt.mail.platformServer;
+}
 
 /** What queueing needs to know. No password: that is read only to send. */
 export type ProductMail = {
@@ -37,13 +56,19 @@ const MAIL_SELECT = {
   notifyNewAffiliates: true,
   notifyNewSales: true,
   emailAffiliates: true,
+  ownerId: true,
   owner: { select: { email: true } },
 } as const;
 
 type MailRow = Prisma.MerchantGetPayload<{ select: typeof MAIL_SELECT }>;
 
-function isOn(row: MailRow | null): row is MailRow & { smtpHost: string; smtpPort: number; mailFrom: string } {
+function hasOwnServer(row: MailRow | null): row is MailRow & { smtpHost: string; smtpPort: number; mailFrom: string } {
   return Boolean(row?.smtpHost && row.smtpPort && row.mailFrom);
+}
+
+/** Its own server, or the platform's when it has none. */
+function isOn(row: MailRow | null): row is MailRow {
+  return hasOwnServer(row) || Boolean(row && platformServer());
 }
 
 type MerchantReader = { merchant: { findUnique: typeof db.merchant.findUnique } };
@@ -60,10 +85,17 @@ export async function productMail(merchantId: string, client: MerchantReader = d
   };
 }
 
-/** The server to send through, password decrypted, or null while email is off. */
+/**
+ * The server to send through, password decrypted, or null while email is off:
+ * the product's own, or else the platform's.
+ */
 export async function smtpSettings(merchantId: string): Promise<SmtpSettings | null> {
   const row = await db.merchant.findUnique({ where: { id: merchantId }, select: MAIL_SELECT });
   if (!isOn(row)) return null;
+  if (!hasOwnServer(row)) {
+    const { dailyLimitPerOwner, ...server } = platformServer()!;
+    return { ...server, platform: { ownerId: row.ownerId, replyTo: row.owner.email, dailyLimit: dailyLimitPerOwner ?? null } };
+  }
   return {
     host: row.smtpHost,
     port: row.smtpPort,
@@ -112,7 +144,15 @@ export function headerSafe(value: string): string {
   return value.replace(/[\r\n\t"<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
-export type OutgoingEmail = { to: string; fromName: string; subject: string; text: string; html: string };
+export type OutgoingEmail = {
+  to: string;
+  fromName: string;
+  subject: string;
+  text: string;
+  html: string;
+  /** Where replies go, when not to the address it is sent from. */
+  replyTo?: string;
+};
 
 const EMAIL = /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/;
 
@@ -121,16 +161,24 @@ export function isSingleAddress(value: string): boolean {
   return value.length <= 254 && EMAIL.test(value);
 }
 
+/**
+ * Sends one email. The platform's server is the operator's own, so it is
+ * connected to as named, internal address or not.
+ */
 export async function sendWith(settings: SmtpSettings, email: OutgoingEmail): Promise<void> {
   if (!isSingleAddress(email.to)) throw Object.assign(new Error("Not a single address"), { code: "EENVELOPE" });
+  if (email.replyTo !== undefined && !isSingleAddress(email.replyTo)) {
+    throw Object.assign(new Error("Not a single reply address"), { code: "EENVELOPE" });
+  }
   const message = {
     from: { name: headerSafe(email.fromName), address: settings.from },
     to: email.to,
+    ...(email.replyTo === undefined ? {} : { replyTo: email.replyTo }),
     subject: email.subject.replace(/[\r\n]+/g, " "),
     text: email.text,
     html: email.html,
   };
-  if (!blocksPrivateAddresses()) {
+  if (settings.platform || !blocksPrivateAddresses()) {
     await transportFor(settings).sendMail(message);
     return;
   }
@@ -160,7 +208,9 @@ function failedToConnect(err: unknown): boolean {
  * What went wrong, in words an Owner can act on. nodemailer's own messages
  * carry the server's reply, which is useful in a log and noise on a screen.
  */
-export function mailErrorText(err: unknown, settings: Pick<SmtpSettings, "host" | "port">): string {
+export function mailErrorText(err: unknown, settings: Pick<SmtpSettings, "host" | "port" | "platform">): string {
+  // The platform's server is not the Owner's to fix, nor theirs to know.
+  if (settings.platform) return "The email could not be sent through our mail server.";
   if (err instanceof PrivateAddressError) return "That mail server is on a private network. Use its public address.";
   const { code, responseCode } = (err ?? {}) as { code?: string; responseCode?: number };
   if (code === "EAUTH" || responseCode === 535) return "The server refused the username or password.";
@@ -239,7 +289,11 @@ export async function connectMail(
   return { sentTo: product.owner.email };
 }
 
-/** Turns email off. Anything still queued is dropped by the worker unsent. */
+/**
+ * Removes the product's own server. Email goes off, and anything still queued
+ * is dropped by the worker unsent, unless mail.platformServer is set: then
+ * everything goes out through that one instead.
+ */
 export async function disconnectMail(ownerId: string, merchantId: string): Promise<void> {
   await db.merchant.updateMany({
     where: { id: merchantId, ownerId },
@@ -260,22 +314,37 @@ export async function clearMailFailure(merchantId: string): Promise<void> {
   await db.merchant.updateMany({ where: { id: merchantId, emailFailure: { not: null } }, data: { emailFailure: null, emailFailedAt: null } });
 }
 
-export type MailStatus = {
-  host: string;
-  port: number;
-  user: string;
-  from: string;
+/** Recorded on an email held back by the Owner's daily limit, and how the settings find one. */
+export const DAILY_LIMIT_ERROR = "Waiting for the daily sending limit";
+
+type MailStatusCommon = {
   notifyNewAffiliates: boolean;
   notifyNewSales: boolean;
   emailAffiliates: boolean;
   failure: { message: string; at: Date } | null;
-} | null;
+  /** Some emails wait for the Owner's daily limit on the platform's server. */
+  waiting: boolean;
+};
+
+export type MailStatus =
+  | (MailStatusCommon & {
+      via: "own";
+      host: string;
+      port: number;
+      user: string;
+      from: string;
+      /** Whether removing it leaves the platform's server sending. */
+      fallback: boolean;
+    })
+  | (MailStatusCommon & { via: "platform"; product: string; replyTo: string })
+  | null;
 
 /** What the product's settings show: no password, ever. */
 export async function mailStatus(ownerId: string, merchantId: string): Promise<MailStatus> {
   const row = await db.merchant.findFirst({
     where: { id: merchantId, ownerId },
     select: {
+      name: true,
       smtpHost: true,
       smtpPort: true,
       smtpUser: true,
@@ -285,17 +354,30 @@ export async function mailStatus(ownerId: string, merchantId: string): Promise<M
       emailAffiliates: true,
       emailFailure: true,
       emailFailedAt: true,
+      owner: { select: { email: true } },
     },
   });
-  if (!row?.smtpHost || !row.smtpPort || !row.mailFrom) return null;
-  return {
-    host: row.smtpHost,
-    port: row.smtpPort,
-    user: row.smtpUser ?? "",
-    from: row.mailFrom,
+  if (!row) return null;
+  const own = Boolean(row.smtpHost && row.smtpPort && row.mailFrom);
+  const platform = platformServer() !== null;
+  if (!own && !platform) return null;
+  const common: MailStatusCommon = {
     notifyNewAffiliates: row.notifyNewAffiliates,
     notifyNewSales: row.notifyNewSales,
     emailAffiliates: row.emailAffiliates,
     failure: row.emailFailure && row.emailFailedAt ? { message: row.emailFailure, at: row.emailFailedAt } : null,
+    waiting:
+      platform &&
+      (await db.email.count({ where: { merchantId, status: { in: ["PENDING", "SENDING"] }, lastError: DAILY_LIMIT_ERROR }, take: 1 })) > 0,
+  };
+  if (!own) return { via: "platform", product: row.name, replyTo: row.owner.email, ...common };
+  return {
+    via: "own",
+    host: row.smtpHost!,
+    port: row.smtpPort!,
+    user: row.smtpUser ?? "",
+    from: row.mailFrom!,
+    fallback: platform,
+    ...common,
   };
 }

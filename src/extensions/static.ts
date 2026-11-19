@@ -1,6 +1,6 @@
 import { installedStatic } from "./installed-static";
 import { mergeExtensions } from "./merge";
-import type { StaticExtensions } from "./types";
+import type { PlatformMailServer, StaticExtensions } from "./types";
 
 // Imports nothing that does work, so the proxy, the startup hook and anything
 // under src/lib can read it without pulling a build's server code along.
@@ -9,6 +9,7 @@ export const staticDefaults: StaticExtensions = {
   instance: { showInfo: true },
   domains: { requireOwnershipProof: false, reserved: [] },
   outbound: { blockPrivateAddresses: false },
+  mail: { platformServer: null },
 };
 
 const merged = mergeExtensions(staticDefaults, installedStatic);
@@ -35,6 +36,35 @@ function reservedHostname(entry: string): string | null {
   return hostname;
 }
 
+/**
+ * The platform's mail server as it is sent through: trimmed, `from` in
+ * lowercase. A server with no host counts as none. A `from` that is not one
+ * bare address, a port out of range or a limit that is not a whole number
+ * above zero fails at startup, so a mistyped setting fails loudly instead of
+ * sending from the wrong place. In the browser, where the server's
+ * environment is empty, it reads as none.
+ */
+function platformServer(server: PlatformMailServer | null): PlatformMailServer | null {
+  const host = server?.host?.trim().toLowerCase();
+  if (!server || !host) return null;
+  const from = server.from?.trim().toLowerCase() ?? "";
+  if (!/^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/.test(from)) throw new Error(`mail.platformServer: "${server.from}" is not one bare address`);
+  const port = Number(server.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`mail.platformServer: port ${server.port} is out of range`);
+  const limit = server.dailyLimitPerOwner;
+  if (limit !== undefined && !(Number.isInteger(limit) && limit > 0)) {
+    throw new Error(`mail.platformServer: dailyLimitPerOwner ${limit} is not a whole number above zero`);
+  }
+  return {
+    host,
+    port,
+    user: server.user?.trim() ?? "",
+    password: server.password ?? "",
+    from,
+    ...(limit === undefined ? {} : { dailyLimitPerOwner: limit }),
+  };
+}
+
 // An empty path would match no page yet still read as set, so it counts as no
 // path at all.
 export const staticExt: StaticExtensions = {
@@ -47,4 +77,5 @@ export const staticExt: StaticExtensions = {
     ...merged.domains,
     reserved: merged.domains.reserved.map(reservedHostname).filter((domain) => domain !== null),
   },
+  mail: { platformServer: platformServer(merged.mail.platformServer) },
 };

@@ -367,3 +367,89 @@ describe("owners.canUse", () => {
     expect(markCommissionsPaid).not.toHaveBeenCalled();
   });
 });
+
+describe("mail.platformServer", () => {
+  const PLATFORM = { host: "mail.example.com", port: 587, user: "u", password: "p", from: "noreply@example.com" };
+  // A product with no mail server of its own.
+  const row = {
+    smtpHost: null,
+    smtpPort: null,
+    smtpUser: null,
+    smtpPasswordEnc: null,
+    mailFrom: null,
+    notifyNewAffiliates: true,
+    notifyNewSales: true,
+    emailAffiliates: true,
+    ownerId: "owner-1",
+    owner: { email: "o@example.com" },
+  };
+
+  beforeEach(() => {
+    vi.doMock("@/lib/requestHost", () => ({ requestHost: async () => "affiliates.acme.com" }));
+    vi.doMock("@/app/affiliates/merchantOnHost", () => ({ merchantOnHost: async () => ({ id: "m1", name: "Acme" }) }));
+    vi.doMock("@/lib/db", () => ({ db: { merchant: { findUnique: async () => row } } }));
+  });
+
+  async function forgotPassword(): Promise<string> {
+    const { default: ForgotPasswordPage } = await import("@/app/affiliates/forgot-password/page");
+    return outcome(ForgotPasswordPage);
+  }
+
+  it("leaves a product without its own server with email off by default", async () => {
+    expect(await forgotPassword()).toBe("redirect:/affiliates/login");
+    const { smtpSettings } = await import("@/lib/mail");
+    expect(await smtpSettings("m1")).toBeNull();
+  });
+
+  it("sends a product without its own server through it when set", async () => {
+    install({}, { mail: { platformServer: PLATFORM } });
+    expect(await forgotPassword()).toBe("rendered");
+    const { smtpSettings } = await import("@/lib/mail");
+    expect(await smtpSettings("m1")).toMatchObject({ host: "mail.example.com", from: "noreply@example.com", platform: { replyTo: "o@example.com" } });
+  });
+});
+
+describe("mail.platformServer in the product's email settings", () => {
+  const product = { id: "m1", slug: "acme" };
+  const common = { notifyNewAffiliates: true, notifyNewSales: true, emailAffiliates: true, failure: null, waiting: false };
+  const own = { via: "own" as const, host: "smtp.resend.com", port: 465, user: "resend", from: "hi@acme.com", ...common };
+
+  async function render(status: Parameters<typeof import("@/app/dashboard/products/[product]/settings/MailSettings").MailSettings>[0]["status"]) {
+    const { MailSettings } = await import("@/app/dashboard/products/[product]/settings/MailSettings");
+    return renderToStaticMarkup(<MailSettings product={product} status={status} />);
+  }
+
+  it("shows the connect form with email off", async () => {
+    const html = await render(null);
+    expect(html).toContain("Connect");
+    expect(html).not.toContain("our mail server");
+  });
+
+  it("shows the product's own server, turned off for good when nothing else sends", async () => {
+    const html = await render({ ...own, fallback: false });
+    expect(html).toContain("hi@acme.com");
+    expect(html).toContain("Turn off");
+    expect(html).not.toContain("Remove");
+  });
+
+  it("removes the product's own server instead when the platform's would send", async () => {
+    const html = await render({ ...own, fallback: true });
+    expect(html).toContain("Remove");
+    expect(html).not.toContain("Turn off");
+  });
+
+  it("shows email on through the platform's server, the product's own one click away", async () => {
+    const html = await render({ via: "platform", product: "Acme", replyTo: "o@example.com", ...common });
+    expect(html).toContain("Sent by Acme from our mail server. Replies go to o@example.com.");
+    expect(html).toContain("Send test");
+    expect(html).toContain("Use your own mail server");
+    expect(html).not.toContain("Provider");
+    expect(html).toContain("Email me when someone joins");
+    expect(html).not.toContain("sending limit");
+  });
+
+  it("says when emails wait for the daily limit", async () => {
+    const html = await render({ via: "platform", product: "Acme", replyTo: "o@example.com", ...common, waiting: true });
+    expect(html).toContain("Some emails are waiting: you reached today&#x27;s sending limit.");
+  });
+});
