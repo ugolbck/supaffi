@@ -11,12 +11,6 @@ costs, then the rest of the program.
 
 ## Up next
 
-### Tracking that ad blockers let through
-`/track.js` and `/api/track` are names filter lists match on. Rename both to
-neutral paths no list matches, checked against EasyList, EasyPrivacy, uBlock,
-AdGuard and Brave, and keep the old paths answering so installed snippets keep
-working. A reload already keeps its Click.
-
 ### Referrals keep their program's terms
 Renewals and later payments read rate, duration and holding period from the
 affiliate's current program, so moving an affiliate rewrites the terms of

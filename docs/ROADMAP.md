@@ -19,7 +19,6 @@ Have a request? [Open an issue](https://github.com/ugolbck/supaffi/issues).
 
 | Feature | What you get |
 | --- | --- |
-| **Tracking that ad blockers let through** | The tracking script and its address get names that ad blocker lists do not match, so fewer referred sales go unseen. |
 | **Referrals keep their program's terms** | Move an affiliate to another program and the customers they already brought keep earning on the old program's terms. |
 | **Forms that work with password managers** | Autofill and screen readers work on the login, password and settings forms. |
 | **Paddle** | Sell through Paddle, another merchant of record. |
