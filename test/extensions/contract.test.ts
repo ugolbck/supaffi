@@ -15,7 +15,7 @@ describe("extension defaults", () => {
     const { staticExt } = await import("@/extensions/static");
     expect(staticExt).toEqual({
       owners: { signupPath: null, passwordResetPath: null },
-      instance: { showInfo: true },
+      instance: { showInfo: true, feedbackUrl: "https://github.com/ugolbck/supaffi/issues/new/choose" },
       domains: { requireOwnershipProof: false, reserved: [] },
     });
   });
@@ -56,7 +56,7 @@ describe("an installed build", () => {
     const { staticExt } = await import("@/extensions/static");
     expect(staticExt).toEqual({
       owners: { signupPath: null, passwordResetPath: null },
-      instance: { showInfo: false },
+      instance: { showInfo: false, feedbackUrl: "https://github.com/ugolbck/supaffi/issues/new/choose" },
       domains: { requireOwnershipProof: false, reserved: [] },
     });
   });
@@ -65,6 +65,12 @@ describe("an installed build", () => {
     vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { owners: { signupPath: "" } } }));
     const { staticExt } = await import("@/extensions/static");
     expect(staticExt.owners.signupPath).toBeNull();
+  });
+
+  it("reads an empty feedback link as none", async () => {
+    vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { instance: { feedbackUrl: " " } } }));
+    const { staticExt } = await import("@/extensions/static");
+    expect(staticExt.instance.feedbackUrl).toBeNull();
   });
 
   it("reads an empty password reset path as none", async () => {

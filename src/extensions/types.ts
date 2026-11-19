@@ -33,6 +33,11 @@ export type StaticExtensions = {
   instance: {
     /** Whether the Owner sees the running version, update notices and the "This instance" panel. */
     showInfo: boolean;
+    /**
+     * Where the feedback link at the bottom of the dashboard sidebar goes,
+     * opened in a new tab. null hides it. An empty string counts as null.
+     */
+    feedbackUrl: string | null;
   };
   domains: {
     /**

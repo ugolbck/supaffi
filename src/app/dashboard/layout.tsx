@@ -73,6 +73,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         counts={counts}
         email={email}
         version={staticExt.instance.showInfo ? installedVersion() : null}
+        feedbackUrl={staticExt.instance.feedbackUrl}
         update={update && { version: update.version, url: update.url, security: update.security }}
       />
       <SidebarInset>
