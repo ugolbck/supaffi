@@ -11,23 +11,6 @@ costs, then the rest of the program.
 
 ## Up next
 
-### Referrals keep their program's terms
-Renewals and later payments read rate, duration and holding period from the
-affiliate's current program, so moving an affiliate rewrites the terms of
-customers they already referred. Record the program on the Click when it is
-made and earn from that one.
-
-### Forms that work with password managers
-`autocomplete`, labels and error wiring on the login, password and settings
-forms, on both sides of the app.
-
-### Paddle
-Polar shipped in 0.8.0 behind the provider layer (src/lib/payments/). Paddle
-is a folder next to stripe/ and polar/ that passes the shared provider test
-kit, plus a fake for the e2e suite.
-
-## Planned
-
 ### Payouts
 A minimum payout per program, below which an affiliate is not paid yet, and
 the reason each commission is on hold: holding period, below the minimum, or
@@ -36,15 +19,23 @@ Payouts page gets filters. A payout file in the format PayPal and Wise accept
 for bulk payouts. Paid tools charge 2 to 8% of payouts for this, or keep it
 for their top plans.
 
-### Commissions after fees
-An option per program to earn on the sale minus the provider's fee. The fee is
-stored on each payment as the provider reports it (Stripe's balance
-transaction, Polar's order), with a fallback rate when it is not reported.
-
 ### Import from another tool
-Affiliates, their links and their commission history from Rewardful, Tolt and
-FirstPromoter: upload an export, preview it, map it to programs, import. Moving
-costs nothing and nobody's link breaks.
+Affiliates, their links and their commission history from Rewardful, Tolt,
+FirstPromoter and Affonso: upload an export, preview it, map it to programs,
+import. Moving costs nothing and nobody's link breaks.
+
+### Paddle
+Polar shipped in 0.8.0 behind the provider layer (src/lib/payments/). Paddle
+is a folder next to stripe/ and polar/ that passes the shared provider test
+kit, plus a fake for the e2e suite.
+
+## Planned
+
+### Commissions after fees
+An option per program, off by default, to earn on the sale minus the
+provider's fee. The fee is stored on each payment as the provider reports it
+(Stripe's balance transaction, Polar's order), with a fallback rate when it
+is not reported.
 
 ### Applications and sales review
 A program can hold new affiliates until the owner approves them, instead of
