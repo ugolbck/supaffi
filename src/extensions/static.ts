@@ -41,8 +41,7 @@ function reservedHostname(entry: string): string | null {
  * lowercase. A server with no host counts as none. A `from` that is not one
  * bare address, a port out of range or a limit that is not a whole number
  * above zero fails at startup, so a mistyped setting fails loudly instead of
- * sending from the wrong place. In the browser, where the server's
- * environment is empty, it reads as none.
+ * sending from the wrong place.
  */
 function platformServer(server: PlatformMailServer | null): PlatformMailServer | null {
   const host = server?.host?.trim().toLowerCase();

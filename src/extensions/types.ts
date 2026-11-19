@@ -86,9 +86,8 @@ export type StaticExtensions = {
      * `from` with the product's name as the display name, and replies go to
      * the Owner's account email. The Owner's own notifications still go to
      * that address. outbound.blockPrivateAddresses does not apply to this
-     * server. Read when an email is queued and when it is sent, so take every
-     * value from the server's environment: this module is bundled for the
-     * browser too, where that environment is empty.
+     * server. Read when an email is queued and when it is sent. Take every
+     * value from the server's environment rather than writing it here.
      */
     platformServer: PlatformMailServer | null;
   };
