@@ -48,6 +48,12 @@ export function looksLikeOwnerEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
+/** The Owner's email as saved. The session's copy lags a change until the next login. */
+export async function getOwnerEmail(ownerId: string): Promise<string | null> {
+  const owner = await db.owner.findUnique({ where: { id: ownerId }, select: { email: true } });
+  return owner?.email ?? null;
+}
+
 type OwnerForLogin = { id: string; email: string; passwordHash: string };
 
 /**
@@ -56,12 +62,6 @@ type OwnerForLogin = { id: string; email: string; passwordHash: string };
  * Split from the check so the login throttle can count an attempt on the real
  * Owner's email before the hash runs, and ignore every other email.
  */
-/** The Owner's email as saved. The session's copy lags a change until the next login. */
-export async function getOwnerEmail(ownerId: string): Promise<string | null> {
-  const owner = await db.owner.findUnique({ where: { id: ownerId }, select: { email: true } });
-  return owner?.email ?? null;
-}
-
 export async function findOwnerForLogin(email: string): Promise<OwnerForLogin | null> {
   return db.owner.findUnique({
     where: { email: email.trim().toLowerCase() },
