@@ -177,6 +177,28 @@ describe("Polar subscriptions", () => {
     expect(await commissions()).toHaveLength(1);
   });
 
+  it("earns renewals on the program the referral was made under after the affiliate moves to another", async () => {
+    await send("order.paid", order({ billing_reason: "subscription_create", subscription_id: "sub_moved" }));
+    const oneTime = await db.program.create({
+      data: {
+        slug: crypto.randomUUID(),
+        merchantId: merchant.id,
+        name: "Launch",
+        defaultCommissionRate: 50,
+        commissionDurationType: "ONE_TIME",
+        attributionWindowDays: 60,
+        holdingPeriodDays: 0,
+      },
+    });
+    await db.affiliate.update({ where: { id: referral.affiliate.id }, data: { programId: oneTime.id } });
+
+    await send("order.paid", order({ billing_reason: "subscription_cycle", subscription_id: "sub_moved", metadata: {} }));
+
+    const rows = await commissions();
+    expect(rows).toHaveLength(2);
+    expect(rows[1].amount.toNumber()).toBe(expected(10_000));
+  });
+
   it("earns nothing on a renewal nobody referred, or on usage billing", async () => {
     await send("order.paid", order({ billing_reason: "subscription_cycle", subscription_id: "sub_unknown", metadata: {} }));
     await send("order.paid", order({ billing_reason: "subscription_create", subscription_id: "sub_4" }));

@@ -33,8 +33,8 @@ export type AffiliateRowView = {
   rateIsOverride: boolean;
   /**
    * "8/11": still paying of all referred, from referralCounts (Task A5) batched on the page
-   * that builds this row. Null when the program has no recurring commission
-   * to churn out of, or when nobody has converted yet.
+   * that builds this row. Null when none of the affiliate's referrals was made
+   * under a recurring program, or when nobody has converted yet.
    */
   retention: string | null;
   /** Formatted on the server, so the row and the sheet read the same date. */

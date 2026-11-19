@@ -630,20 +630,27 @@ export async function getAffiliateDetails(
 /**
  * How many referred subscribers there are, and how many are still paying. A
  * referral confirmed as a self referral earns nothing more, so it is not
- * counted as still paying.
+ * counted as still paying. Only referrals made under a recurring program
+ * count: a one-time one has no "still paying" to report, whichever program
+ * the affiliate is in now.
  */
+const RECURRING_REFERRAL = {
+  commissions: { some: {} },
+  referredSubscriptions: { some: {} },
+  program: { commissionDurationType: { not: "ONE_TIME" } },
+} satisfies Prisma.ClickWhereInput;
+
 export async function referralCounts(
   affiliateId: string
 ): Promise<{ total: number; active: number }> {
   const [total, active] = await Promise.all([
     db.click.count({
-      where: { affiliateId, commissions: { some: {} }, referredSubscriptions: { some: {} } },
+      where: { ...RECURRING_REFERRAL, affiliateId },
     }),
     db.click.count({
       where: {
+        ...RECURRING_REFERRAL,
         affiliateId,
-        commissions: { some: {} },
-        referredSubscriptions: { some: {} },
         subscriptionCancelledAt: null,
         fraudConfirmedAt: null,
       },
