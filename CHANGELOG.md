@@ -8,6 +8,31 @@ below is not decoration.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.10.0
+
+### Changed
+
+- Customers an affiliate referred keep earning on the rate, commission
+  length and holding period of the program they were referred under, even
+  after the affiliate moves to another program. An affiliate's custom rate
+  still applies to all their referrals. Referrals made before this version
+  belong to the affiliate's program at the time of the upgrade.
+- The still-paying referral count on both dashboards counts each referral
+  by the program it was made under.
+- The upgrade updates every recorded click, so it takes longer the more
+  clicks an install has. Going back to an earlier version afterwards is not
+  supported.
+
+### Fixed
+
+- Password managers save a new password to the right account when an owner
+  changes theirs or an affiliate sets one from a password link, instead of
+  creating an entry with no name.
+- Password managers no longer fill or save the mail server's login on the
+  product's mail settings.
+- The payout details field suggests saved email addresses for PayPal and
+  Wise only.
+
 ## 0.9.1
 
 ### Security
