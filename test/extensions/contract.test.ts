@@ -18,6 +18,7 @@ describe("extension defaults", () => {
       instance: { showInfo: true },
       domains: { requireOwnershipProof: false, reserved: [] },
       outbound: { blockPrivateAddresses: false },
+      mail: { platformServer: null },
     });
   });
 
@@ -65,6 +66,7 @@ describe("an installed build", () => {
       instance: { showInfo: false },
       domains: { requireOwnershipProof: false, reserved: [] },
       outbound: { blockPrivateAddresses: false },
+      mail: { platformServer: null },
     });
   });
 
@@ -86,6 +88,32 @@ describe("an installed build", () => {
     }));
     const { staticExt } = await import("@/extensions/static");
     expect(staticExt.domains).toEqual({ requireOwnershipProof: false, reserved: ["example.com", "xn--bcher-kva.de"] });
+  });
+
+  it("reads the platform mail server trimmed, its address in lowercase, and one with no host as none", async () => {
+    vi.doMock("@/extensions/installed-static", () => ({
+      installedStatic: { mail: { platformServer: { host: " Mail.Example.com ", port: 465, user: " u ", password: "p", from: " NoReply@Example.com ", dailyLimitPerOwner: 500 } } },
+    }));
+    const { staticExt } = await import("@/extensions/static");
+    expect(staticExt.mail.platformServer).toEqual({ host: "mail.example.com", port: 465, user: "u", password: "p", from: "noreply@example.com", dailyLimitPerOwner: 500 });
+
+    vi.resetModules();
+    vi.doMock("@/extensions/installed-static", () => ({
+      installedStatic: { mail: { platformServer: { host: undefined, port: 587, user: "", password: "", from: "" } } },
+    }));
+    expect((await import("@/extensions/static")).staticExt.mail.platformServer).toBeNull();
+  });
+
+  it.each([
+    [{ from: "Shop <a@example.com>" }, "is not one bare address"],
+    [{ from: "a@example.com, b@example.com" }, "is not one bare address"],
+    [{ port: 0 }, "is out of range"],
+    [{ dailyLimitPerOwner: 0 }, "is not a whole number above zero"],
+    [{ dailyLimitPerOwner: 1.5 }, "is not a whole number above zero"],
+  ])("refuses a platform mail server with %o at startup", async (change, message) => {
+    const server = { host: "mail.example.com", port: 587, user: "", password: "", from: "a@example.com", ...change };
+    vi.doMock("@/extensions/installed-static", () => ({ installedStatic: { mail: { platformServer: server } } }));
+    await expect(import("@/extensions/static")).rejects.toThrow(message);
   });
 
   it.each(["*.example.com", ".example.com", "example.com:443", "https://example.com", "example.com/path", "exa mple.com"])(

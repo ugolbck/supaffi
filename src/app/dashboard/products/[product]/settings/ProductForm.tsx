@@ -14,8 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ProductRef } from "@/lib/merchant";
-import { normalizeDomain } from "@/lib/productValidation";
-import { staticExt } from "@/extensions/static";
+import { normalizeDomain } from "@/lib/url";
 import { cn } from "@/lib/utils";
 import { updateProductAction } from "./settingsActions";
 
@@ -64,12 +63,15 @@ export function ProductForm({
   initial,
   lights,
   webhook,
+  requireOwnershipProof,
 }: {
   product: ProductRef;
   initial: { name: string; domain: string; websiteUrl: string };
   /** The two DNS lights, rendered on the server and sat beside the subdomain. */
   lights: ReactNode | null;
   webhook: SubdomainWebhook;
+  /** domains.requireOwnershipProof, read on the server. */
+  requireOwnershipProof: boolean;
 }) {
   const [state, action, pending] = useActionState(updateProductAction.bind(null, product), {
     error: "",
@@ -118,7 +120,7 @@ export function ProductForm({
             <div
               className={cn(
                 "rounded-(--radius) border border-neutral-200 bg-neutral-50 lg:max-w-md",
-                staticExt.domains.requireOwnershipProof && "overflow-hidden"
+                requireOwnershipProof && "overflow-hidden"
               )}
             >
               {lights}

@@ -44,7 +44,7 @@ export async function connectMailAction(product: ProductRef, _prev: MailFormStat
   return { error: "", sentTo: result.sentTo };
 }
 
-/** Sends a test through the saved settings, straight away rather than queued. */
+/** Sends a test through the product's server or the platform's, straight away rather than queued. */
 export async function sendTestEmailAction(product: ProductRef): Promise<MailFormState> {
   const ownerId = await requireOwner();
   const merchant = await db.merchant.findFirst({
@@ -54,6 +54,7 @@ export async function sendTestEmailAction(product: ProductRef): Promise<MailForm
   const settings = merchant ? await smtpSettings(product.id) : null;
   if (!merchant || !settings) return { error: "Email is off", sentTo: "" };
   try {
+    // To the Owner, so no Reply-To even through the platform's server.
     await sendWith(settings, testEmail({ to: merchant.owner.email, product: merchant.name }));
   } catch (err) {
     return { error: mailErrorText(err, settings), sentTo: "" };

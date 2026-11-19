@@ -29,3 +29,12 @@ export function signupLinkFor(domain: string, programSlug: string, defaultSlug: 
   if (programSlug === defaultSlug && !isLocalDomain(domain)) return originFor(domain);
   return `${originFor(domain)}/affiliates/signup/${programSlug}`;
 }
+
+// Runtime domain lookups (webhooks, click tracking, Caddy's on-demand TLS
+// ask) are all exact-string matches against a real Host header/SNI, which is
+// always lowercase and never padded with whitespace. Normalizing here — and
+// having callers store this normalized value, not the raw form input — is
+// what keeps a stored Merchant.domain matchable by those lookups.
+export function normalizeDomain(raw: string): string {
+  return raw.trim().toLowerCase();
+}

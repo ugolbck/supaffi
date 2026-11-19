@@ -27,7 +27,8 @@ downstream code.
 ## Hook catalogue (API version 2)
 
 Static (`staticExt`): `owners.signupPath`, `owners.passwordResetPath`, `instance.showInfo`,
-`domains.requireOwnershipProof`, `domains.reserved`, `outbound.blockPrivateAddresses`.
+`domains.requireOwnershipProof`, `domains.reserved`, `outbound.blockPrivateAddresses`,
+`mail.platformServer`.
 Server (`ext`): `dashboard.gate`, `dashboard.banner`, `account.sections`, `owners.canUse`, `owners.serves`.
 Core API: `createOwnerAccount`, `findOwnerByEmail`, `getOwnerAccount`, `setOwnerPassword`,
 `listOwnerMerchants`, `currentOwnerId`, `signInOwner`, `isMerchantDomain`.
@@ -38,7 +39,7 @@ one only for a concrete need, not in anticipation.
 
 1. `src/lib/**`, `src/proxy.ts`, `src/instrumentation.ts` import only `@/extensions/static` and `@/extensions/types`. Server hooks (`ext`) are read in `src/app/**` pages, layouts and actions, and results passed down. Reason: a downstream `installed.ts` imports `core-api`, which imports `src/lib`; and anything the startup hook reaches is bundled for Edge, where Argon2 breaks the build. eslint and `test/instrumentation.test.ts` refuse it.
 2. No build-specific env var, no `isBuildX()`, no `if` on build anywhere. A difference between builds is a hook.
-3. Plain data that proxy or instrumentation needs is a static hook. Anything async or returning UI is a server hook.
+3. Plain data that proxy or instrumentation needs is a static hook. Anything async or returning UI is a server hook. No "use client" module may reach `@/extensions/static`, even through `src/lib`: a static hook can hold a secret. Read it in a server component and pass the value as a prop. `test/extensions/clientBundle.test.ts` refuses it.
 4. Server hooks may return server-rendered `ReactNode`. Render it in a server component; hand it to a client component only as `children`. Otherwise return plain data.
 5. A hook may hide something (return `null` or `false`) as long as its default never does.
 6. A new hook ships with: type, default reproducing current behaviour, call site, a contract test for the default, a wiring test that installs a fake (`vi.resetModules()`, `vi.doMock("@/extensions/installed", ...)`, dynamic import) and asserts its effect.

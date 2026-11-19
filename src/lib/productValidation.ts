@@ -1,20 +1,15 @@
-import { isLocalDomain } from "@/lib/url";
+import { isLocalDomain, normalizeDomain } from "@/lib/url";
 import { staticExt } from "@/extensions/static";
+
+// Lives in url.ts, which the browser can import; kept here for the actions
+// that import it with the rest of validation.
+export { normalizeDomain };
 
 export type ProductInput = {
   name: string;
   domain: string;
   websiteUrl: string;
 };
-
-// Runtime domain lookups (webhooks, click tracking, Caddy's on-demand TLS
-// ask) are all exact-string matches against a real Host header/SNI, which is
-// always lowercase and never padded with whitespace. Normalizing here — and
-// having callers store this normalized value, not the raw form input — is
-// what keeps a stored Merchant.domain matchable by those lookups.
-export function normalizeDomain(raw: string): string {
-  return raw.trim().toLowerCase();
-}
 
 /**
  * What an Owner types as their site, made into a full address. A bare

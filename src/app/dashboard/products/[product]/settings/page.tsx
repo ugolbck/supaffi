@@ -23,6 +23,7 @@ import { DeleteProduct } from "./DeleteProduct";
 import { MailSettings } from "./MailSettings";
 import { VerifyDomainButton } from "./VerifyDomainButton";
 import { mailStatus } from "@/lib/mail";
+import { staticExt } from "@/extensions/static";
 import {
   replacePolarTokenAction,
   replaceStripeKeyAction,
@@ -180,6 +181,7 @@ export default async function SettingsPage({
       <Section title="Product">
         <ProductForm
           product={productRef}
+          requireOwnershipProof={staticExt.domains.requireOwnershipProof}
           initial={{
             name: merchant.name,
             domain: merchant.domain,
