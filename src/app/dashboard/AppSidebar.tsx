@@ -212,6 +212,7 @@ export function AppSidebar({
           >
             <MessageSquare className="size-3.5" />
             Feedback
+            <span className="sr-only">(opens in a new tab)</span>
           </a>
         )}
         <AccountMenu email={email} version={version} update={update} />

@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Found a security problem? Don't post it here. Report it privately through the link on the previous page.
+        Found a security problem? Don't post it here. [Report it privately](https://github.com/ugolbck/supaffi/security/advisories/new) instead.
 
         Leave out API keys, webhook secrets, passwords and your customers' emails. Swap them for something like `sk_live_xxx`.
 
@@ -57,7 +57,7 @@ body:
       options:
         - Install script, with its own Caddy
         - Install script, behind my own reverse proxy
-        - Something else (say what below)
+        - Something else (say what in the first box)
     validations:
       required: true
 
@@ -67,5 +67,5 @@ body:
       label: Logs
       description: |
         If something failed in the background, the app log usually says why. On the server:
-        `cd /opt/supaffi && docker compose logs app --since 1h`
+        `cd /opt/supaffi && sudo docker compose logs app --since 1h`
       render: shell
