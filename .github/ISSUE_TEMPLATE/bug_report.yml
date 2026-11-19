@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in Supaffi doesn't work the way it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Found a security problem? Don't post it here. Report it privately through the link on the previous page.
+
+        Leave out API keys, webhook secrets, passwords and your customers' emails. Swap them for something like `sk_live_xxx`.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead. A screenshot helps.
+      placeholder: |
+        I refunded a $49 order in Stripe. The commission still shows as pending in Supaffi, at $9.80.
+        I expected it to be voided.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      description: Skip this if it only happened once and you don't know why.
+      placeholder: |
+        1. Create a program at 20%
+        2. Buy through an affiliate link
+        3. Refund the whole order in Stripe
+
+  - type: input
+    id: version
+    attributes:
+      label: Supaffi version
+      description: Click your email at the bottom left of the dashboard. The version is at the bottom of that menu.
+      placeholder: "0.10.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Payment provider
+      options:
+        - Stripe
+        - Polar
+        - Not about payments
+    validations:
+      required: true
+
+  - type: dropdown
+    id: setup
+    attributes:
+      label: How you run Supaffi
+      options:
+        - Install script, with its own Caddy
+        - Install script, behind my own reverse proxy
+        - Something else (say what below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        If something failed in the background, the app log usually says why. On the server:
+        `cd /opt/supaffi && docker compose logs app --since 1h`
+      render: shell

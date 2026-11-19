@@ -119,7 +119,7 @@ describe("dashboard.gate", () => {
   });
 });
 
-describe("dashboard.banner and instance.showInfo in the shell", () => {
+describe("dashboard.banner, instance.showInfo and instance.feedbackUrl in the shell", () => {
   beforeEach(() => {
     vi.doMock("@/lib/merchant", () => ({
       listMerchantsForOwner: async () => [{ id: "m1", slug: "acme", name: "Acme", domain: "a.acme.com", onboardingCompletedAt: null }],
@@ -135,7 +135,11 @@ describe("dashboard.banner and instance.showInfo in the shell", () => {
       SidebarTrigger: () => null,
     }));
     vi.doMock("@/app/dashboard/AppSidebar", () => ({
-      AppSidebar: ({ version }: { version: string | null }) => <nav>version:{String(version)}</nav>,
+      AppSidebar: ({ version, feedbackUrl }: { version: string | null; feedbackUrl: string | null }) => (
+        <nav>
+          version:{String(version)} feedback:{String(feedbackUrl)}
+        </nav>
+      ),
     }));
   });
 
@@ -144,6 +148,7 @@ describe("dashboard.banner and instance.showInfo in the shell", () => {
     const html = renderToStaticMarkup((await DashboardLayout({ children: <p>page</p> })) as ReactElement);
     const { installedVersion } = await import("@/lib/version");
     expect(html).toContain(`version:${installedVersion()}`);
+    expect(html).toContain("feedback:https://github.com/ugolbck/supaffi/issues/new/choose");
     expect(html).toContain("<main><div");
     expect(html).toContain("<p>page</p>");
   });
@@ -155,6 +160,19 @@ describe("dashboard.banner and instance.showInfo in the shell", () => {
     expect(html.indexOf("Installed banner")).toBeGreaterThan(-1);
     expect(html.indexOf("Installed banner")).toBeLessThan(html.indexOf("page"));
     expect(html).toContain("version:null");
+  });
+
+  it("point the feedback link where installed, or hide it", async () => {
+    install({}, { instance: { feedbackUrl: "https://example.com/feedback" } });
+    const { default: DashboardLayout } = await import("@/app/dashboard/layout");
+    expect(renderToStaticMarkup((await DashboardLayout({ children: null })) as ReactElement)).toContain(
+      "feedback:https://example.com/feedback"
+    );
+
+    vi.resetModules();
+    install({}, { instance: { feedbackUrl: null } });
+    const { default: HiddenLayout } = await import("@/app/dashboard/layout");
+    expect(renderToStaticMarkup((await HiddenLayout({ children: null })) as ReactElement)).toContain("feedback:null");
   });
 });
 

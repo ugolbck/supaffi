@@ -1,0 +1,30 @@
+name: Feature request
+description: Something you need that Supaffi doesn't do yet.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [roadmap](https://github.com/ugolbck/supaffi/blob/main/docs/ROADMAP.md) first. If it's already there, a comment on why you need it still helps decide what comes first.
+
+  - type: textarea
+    id: need
+    attributes:
+      label: What you're trying to do
+      description: The problem, in terms of your program. Leave the solution for the next box.
+      placeholder: Some of my affiliates are agencies, and they want to pay their own people from one payout.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today instead
+      description: A workaround, another tool, or nothing.
+      placeholder: I export commissions to a spreadsheet every month and split them by hand.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: How you'd like it to work
+      description: Optional. Rough is fine.

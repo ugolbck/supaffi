@@ -6,7 +6,7 @@ import type { StaticExtensions } from "./types";
 // under src/lib can read it without pulling a build's server code along.
 export const staticDefaults: StaticExtensions = {
   owners: { signupPath: null, passwordResetPath: null },
-  instance: { showInfo: true },
+  instance: { showInfo: true, feedbackUrl: "https://github.com/ugolbck/supaffi/issues/new/choose" },
   domains: { requireOwnershipProof: false, reserved: [] },
 };
 
@@ -34,13 +34,17 @@ function reservedHostname(entry: string): string | null {
   return hostname;
 }
 
-// An empty path would match no page yet still read as set, so it counts as no
-// path at all.
+// An empty path or link would go nowhere yet still read as set, so it counts
+// as none at all.
 export const staticExt: StaticExtensions = {
   ...merged,
   owners: {
     signupPath: merged.owners.signupPath?.trim() || null,
     passwordResetPath: merged.owners.passwordResetPath?.trim() || null,
+  },
+  instance: {
+    ...merged.instance,
+    feedbackUrl: merged.instance.feedbackUrl?.trim() || null,
   },
   domains: {
     ...merged.domains,

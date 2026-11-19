@@ -6,6 +6,7 @@ import {
   Building2,
   Code2,
   LayoutGrid,
+  MessageSquare,
   Percent,
   Receipt,
   Settings,
@@ -68,12 +69,15 @@ export function AppSidebar({
   email,
   version,
   update,
+  feedbackUrl,
 }: {
   merchants: Merchant[];
   counts: Record<string, Counts>;
   email: string;
   version: string | null;
   update: UpdateInfo | null;
+  /** null hides the feedback link. */
+  feedbackUrl: string | null;
 }) {
   const pathname = usePathname();
   const activeSlug = pathname.match(/^\/dashboard\/products\/([^/]+)/)?.[1];
@@ -197,6 +201,18 @@ export function AppSidebar({
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
+        )}
+        {/* Quieter than the rows above: always there, never competing with them. */}
+        {feedbackUrl && (
+          <a
+            href={feedbackUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-8 cursor-pointer items-center gap-2.5 rounded-(--radius) px-3 text-[13px] text-muted-foreground transition-[background-color,color] duration-150 hover:bg-black/[0.04] hover:text-foreground"
+          >
+            <MessageSquare className="size-3.5" />
+            Feedback
+          </a>
         )}
         <AccountMenu email={email} version={version} update={update} />
       </SidebarFooter>
