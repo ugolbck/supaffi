@@ -44,7 +44,7 @@
     "eslint-config-next": "^16.4.6",
     "prisma": "^6.0.0",
     "typescript": "^5.6.0",
-    "vitest": "^4.1.12"
+    "vitest": "^5.1.0"
   },
   "overrides": {
     "nodemailer": "$nodemailer"
