@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { paymentLinkSale, polarLinkSale, promoCodeSale, sale } from "./provider";
 import { email, linkIn } from "./inbox";
@@ -23,6 +24,15 @@ function setupToken(): string {
   const token = [...logs.matchAll(/setup token: ([A-Za-z0-9_-]{16,})/g)].at(-1)?.[1];
   if (!token) throw new Error("No setup token in the app logs");
   return token;
+}
+
+// Moves time forward for the commissions still in their hold, rather than
+// waiting thirty days. The worker's next sweep makes them payable.
+function endHolds() {
+  execSync(
+    `docker compose exec -T db psql -U supaffi -d supaffi -c "UPDATE \"Commission\" SET \"payableAt\" = now() - interval '1 minute' WHERE status = 'PENDING' AND \"disputeOpenedAt\" IS NULL"`,
+    { cwd: `${import.meta.dirname}/..` }
+  );
 }
 
 async function newPage(browser: Browser): Promise<Page> {
@@ -262,6 +272,62 @@ test("a promo code earns for its affiliate with no click", async ({ browser }) =
 
   await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard/links`);
   await expect(affiliate.getByRole("cell", { name: /ALICE20/ })).toContainText("Off");
+});
+
+test("a balance below the minimum waits, then is paid with a PayPal file and a reference", async () => {
+  // The payment link sale ($15.00) and the promo code sale ($21.00) clear.
+  endHolds();
+  await owner.goto(`${ADMIN}/dashboard/products/shop/programs`);
+  await owner.getByRole("button", { name: "Edit" }).first().click();
+  await owner.getByLabel("Minimum payout").fill("50");
+  await owner.getByRole("button", { name: "Save" }).click();
+  await expect(owner.getByRole("dialog")).toHaveCount(0);
+
+  await owner.goto(`${ADMIN}/dashboard/products/shop/payouts?tab=below`);
+  await eventually(owner, () => expect(owner.getByText("of $50.00 minimum")).toBeVisible());
+  await expect(owner.getByRole("row").filter({ hasText: AFFILIATE.name })).toContainText("$36.00");
+  await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard/commissions`);
+  await expect(affiliate.getByText("Below minimum, $36.00 of $50.00").first()).toBeVisible();
+
+  // Lowered, the same balance is ready.
+  await owner.goto(`${ADMIN}/dashboard/products/shop/programs`);
+  await owner.getByRole("button", { name: "Edit" }).first().click();
+  await owner.getByLabel("Minimum payout").fill("");
+  await owner.getByRole("button", { name: "Save" }).click();
+  await expect(owner.getByRole("dialog")).toHaveCount(0);
+
+  await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard/payouts`);
+  await affiliate.getByLabel("PayPal").fill("alice@paypal.test");
+  await affiliate.getByRole("button", { name: "Save" }).click();
+  await expect(affiliate.getByText("Saved")).toBeVisible();
+
+  await owner.goto(`${ADMIN}/dashboard/products/shop/payouts`);
+  const row = owner.getByRole("row").filter({ hasText: AFFILIATE.name });
+  await expect(row).toContainText("$36.00");
+  await row.getByRole("checkbox").click();
+  const [download] = await Promise.all([
+    owner.waitForEvent("download"),
+    owner.getByRole("button", { name: /PayPal file/ }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^paypal-payouts-usd-\d{4}-\d{2}-\d{2}\.csv$/);
+  expect(readFileSync(await download.path(), "utf8")).toMatch(
+    /^alice@paypal\.test,36\.00,USD,[a-z0-9]+,Shop affiliate commissions,PAYPAL\r\n$/
+  );
+
+  await owner.getByRole("button", { name: "Mark paid" }).first().click();
+  const dialog = owner.getByRole("dialog");
+  await dialog.getByLabel("Reference").fill("PP-E2E-1");
+  await dialog.getByLabel("Note").fill("only the owner sees this");
+  await dialog.getByRole("button", { name: "Mark paid" }).click();
+  await expect(owner.getByText("1 payout recorded.")).toBeVisible();
+
+  await owner.goto(`${ADMIN}/dashboard/products/shop/payouts?tab=paid`);
+  await expect(owner.getByRole("row").filter({ hasText: "PP-E2E-1" })).toContainText("$36.00");
+  await email(AFFILIATE.email, "Shop paid you $36.00");
+
+  await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard/payouts`);
+  await expect(affiliate.getByText("PayPal · PP-E2E-1")).toBeVisible();
+  await expect(affiliate.getByText("only the owner sees this")).toHaveCount(0);
 });
 
 // Last: setting a password ends every session the affiliate had.

@@ -33,6 +33,7 @@ type Program = {
   signupOpen: boolean;
   discountRef: string | null;
   discountLabel: string | null;
+  minimumPayout: string | null;
   affiliateCount: number;
 };
 
@@ -55,6 +56,7 @@ function toFormValues(p: Program): ProgramFormValues {
       : "",
     attributionWindowDays: String(p.attributionWindowDays),
     holdingPeriodDays: String(p.holdingPeriodDays),
+    minimumPayout: p.minimumPayout ?? "",
   };
 }
 

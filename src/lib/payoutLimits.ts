@@ -4,3 +4,7 @@
  * in the payout code, and the mail sending it queues, with it.
  */
 export const MAX_SHOWN = 5000;
+
+/** The longest reference and note Mark paid accepts. */
+export const MAX_REFERENCE = 200;
+export const MAX_NOTE = 1000;

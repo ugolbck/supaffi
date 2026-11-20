@@ -41,6 +41,7 @@ function deleted(id: string, customer = "cus_1"): Stripe.Subscription {
 
 async function clearAll() {
   await db.commission.deleteMany();
+  await db.payout.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
   await db.affiliateLink.deleteMany();

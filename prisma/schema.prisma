@@ -78,6 +78,7 @@ model Merchant {
   promoCodes            AffiliatePromoCode[]
   emails                Email[]
   commissions           Commission[]
+  payouts               Payout[]
   createdAt             DateTime               @default(now())
 
   // The product's own mail server, for its notifications, so its affiliates
@@ -138,6 +139,10 @@ model Program {
   // no page has to ask Stripe to say it.
   discountRef              String?                @map("stripeCouponId")
   discountLabel            String?
+  // The least an affiliate's payable balance in one currency has to reach
+  // before it is offered for payment, in that currency's major units. Below
+  // it the balance carries over. Null: no minimum.
+  minimumPayout            Decimal?               @db.Decimal(18, 2)
 
   affiliates Affiliate[]
   clicks     Click[]
@@ -168,6 +173,7 @@ model Affiliate {
   links       AffiliateLink[]
   clicks      Click[]
   commissions Commission[]
+  payouts     Payout[]
   loginTokens AffiliateLoginToken[]
   promoCodes  AffiliatePromoCode[]
   createdAt   DateTime              @default(now())
@@ -415,6 +421,9 @@ model Commission {
   status     CommissionStatus @default(PENDING)
   payableAt  DateTime // createdAt + Program.holdingPeriodDays
   paidAt     DateTime?
+  // The payout that paid it. Set with paidAt, and on every PAID row.
+  payoutId   String?
+  payout     Payout?          @relation(fields: [payoutId], references: [id])
   voidedAt   DateTime?
   voidReason String? // e.g. "refund", "confirmed self-referral"
   flagReason String? // e.g. "email:buyer@x.com affiliate@x.com" or "card"
@@ -432,6 +441,35 @@ model Commission {
   // The sale handlers read a click's earlier commissions on every sale of a
   // program with a limited duration (src/lib/worker/referralDuration.ts).
   @@index([clickId, createdAt])
+  @@index([payoutId])
+}
+
+/// One transfer the Owner made outside Supaffi and recorded with Mark paid:
+/// one affiliate, one currency, the commissions it covered. `amount` is what
+/// was sent, the sum of those commissions as they were paid.
+model Payout {
+  id          String       @id @default(cuid())
+  merchantId  String
+  merchant    Merchant     @relation(fields: [merchantId], references: [id])
+  affiliateId String
+  affiliate   Affiliate    @relation(fields: [affiliateId], references: [id])
+  currency    String
+  amount      Decimal      @db.Decimal(18, 2)
+  paidAt      DateTime
+  // How the affiliate asked to be paid when it was made: a key of
+  // PAYOUT_METHODS. Null when they had given no details, and on payouts made
+  // before this table existed.
+  method      String?
+  // The transfer's id in PayPal, Wise or the bank, as the Owner typed it.
+  // Shown to the affiliate.
+  reference   String?
+  // The Owner's own note. Never shown to the affiliate.
+  note        String?
+  commissions Commission[]
+  createdAt   DateTime     @default(now())
+
+  @@index([merchantId, paidAt])
+  @@index([affiliateId, paidAt])
 }
 
 /// One email to send, rendered when queued and sent by the worker. Queued in

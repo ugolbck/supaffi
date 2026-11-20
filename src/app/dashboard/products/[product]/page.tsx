@@ -75,9 +75,10 @@ export default async function ProductOverviewPage({
   ]);
 
   // Commissions, not groups: the Owner pays per affiliate but is counting
-  // lines on a ledger.
+  // lines on a ledger. Balances below their minimum payout wait, so they are
+  // not counted.
   const currency = pickCurrency(metrics.currencies, query.currency);
-  const payableTotal = payable.reduce((n, g) => n + g.commissionIds.length, 0);
+  const payableTotal = payable.filter((g) => !g.shortfall).reduce((n, g) => n + g.commissionIds.length, 0);
   const empty = metrics.clicks === 0 && metrics.signups === 0 && setup.affiliateCount === 0;
 
   const signupLink = setup.firstProgramSlug && merchant.domain

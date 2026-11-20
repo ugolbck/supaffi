@@ -19,6 +19,7 @@ async function clearAll() {
   await db.webhookEvent.deleteMany();
   await db.commission.deleteMany({ where: { adjustsCommissionId: { not: null } } });
   await db.commission.deleteMany();
+  await db.payout.deleteMany();
   // Release 3 added a foreign key from ReferredSubscription to Click, so it
   // has to go first.
   await db.referredSubscription.deleteMany();

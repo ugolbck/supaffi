@@ -3,8 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireOwner } from "@/app/requireOwner";
-import { alreadyPaidParams } from "@/lib/payoutNotices";
-import { markCommissionsPaid, type ShownCommission, STALE_PAGE } from "@/lib/commission";
+import { markPayoutsPaid, type ShownCommission, STALE_PAGE } from "@/lib/commission";
 
 function refusalCode(error: string): string {
   if (error.includes("Nothing selected")) return "empty";
@@ -14,23 +13,30 @@ function refusalCode(error: string): string {
 }
 
 /**
- * One payout: the commissions on the row as shown, at the amounts shown, and
- * when the page was drawn. The ledger records those amounts; see
- * `markCommissionsPaid`. Its refusal, or how many rows it skipped or found already paid, comes back
- * in the URL as a code.
+ * The payouts the Owner ticked, each the commissions on its row as shown, at
+ * the amounts shown, and when the page was drawn, with the reference and note
+ * typed in the dialog. The ledger records each; see `markPayoutsPaid`. How
+ * many it recorded, skipped or found already paid, and its first refusal, come
+ * back in the URL as codes.
  */
-export async function markPayoutPaidAction(
+export async function markPayoutsPaidAction(
   product: { id: string; slug: string },
-  shown: ShownCommission[],
-  renderedAt: string
+  batch: ShownCommission[][],
+  renderedAt: string,
+  formData: FormData
 ): Promise<void> {
-  const result = await markCommissionsPaid(await requireOwner(), product.id, shown, renderedAt);
+  const result = await markPayoutsPaid(await requireOwner(), product.id, batch, renderedAt, {
+    reference: formData.get("reference") as string | null,
+    note: formData.get("note") as string | null,
+  });
 
   const params = new URLSearchParams();
-  if ("error" in result) params.set("error", refusalCode(result.error));
-  else {
-    if (result.skipped) params.set("skipped", String(result.skipped));
-    for (const [key, value] of Object.entries(alreadyPaidParams(result))) params.set(key, value);
+  if (result.error) params.set("error", refusalCode(result.error));
+  if (result.payouts) params.set("paid", String(result.payouts));
+  if (result.skipped) params.set("skipped", String(result.skipped));
+  if (result.alreadyPaid) {
+    params.set("already", String(result.alreadyPaid));
+    if (result.payouts) params.set("recorded", "1");
   }
   const search = params.toString();
   revalidatePath("/dashboard", "layout");

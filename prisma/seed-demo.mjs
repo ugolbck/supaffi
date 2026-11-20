@@ -113,6 +113,7 @@ async function clearDemo(merchantId) {
   // commissions, which point at clicks, which point at links.
   await db.commission.deleteMany({ where: { affiliateId: { in: ids }, adjustsCommissionId: { not: null } } });
   await db.commission.deleteMany({ where: { affiliateId: { in: ids } } });
+  await db.payout.deleteMany({ where: { affiliateId: { in: ids } } });
   // Referred subscriptions point at clicks, so they go before them.
   await db.referredSubscription.deleteMany({ where: { click: { affiliateId: { in: ids } } } });
   await db.click.deleteMany({ where: { affiliateId: { in: ids } } });
@@ -190,7 +191,7 @@ async function main() {
       name,
       customCommissionRate: vip ? (baseRate + 10).toFixed(2) : null,
       // A few without payout details, so the "nowhere to send it" state shows.
-      payoutDetails: random() < 0.85 ? `${name.split(" ")[0].toLowerCase()}@paypal.test` : null,
+      payoutDetails: random() < 0.85 ? `PayPal: ${name.split(" ")[0].toLowerCase()}@paypal.test` : null,
       createdAt: new Date(NOW - joinedDaysAgo * DAY),
       weight: 1 / Math.pow(i + 1, 1.05),
       joinedDaysAgo,
@@ -265,6 +266,7 @@ async function main() {
     const s = statusFor(createdAt);
     const row = {
       id: randomUUID(),
+      merchantId: merchant.id,
       affiliateId: affiliate.id,
       clickId,
       paymentRef: `demo_${randomUUID()}`,
@@ -374,8 +376,33 @@ async function main() {
     }
   }
 
+  // One payout per affiliate, currency and payout day, as Mark paid writes it.
+  const payouts = new Map();
+  const detailsById = new Map(affiliates.map((a) => [a.id, a.payoutDetails]));
+  for (const row of commissions) {
+    if (row.status !== "PAID") continue;
+    const key = `${row.affiliateId}:${row.currency}:${row.paidAt.getTime()}`;
+    let payout = payouts.get(key);
+    if (!payout) {
+      payout = {
+        id: randomUUID(),
+        merchantId: merchant.id,
+        affiliateId: row.affiliateId,
+        currency: row.currency,
+        amount: 0,
+        paidAt: row.paidAt,
+        method: detailsById.get(row.affiliateId) ? "paypal" : null,
+        createdAt: row.paidAt,
+      };
+      payouts.set(key, payout);
+    }
+    payout.amount += Number(row.amount);
+    row.payoutId = payout.id;
+  }
+
   await insertMany("click", clicks);
   await insertMany("referredSubscription", referredSubscriptions);
+  await insertMany("payout", [...payouts.values()].map((p) => ({ ...p, amount: p.amount.toFixed(2) })));
   // Originals before adjustments, so every adjustment has its commission.
   await insertMany("commission", commissions.filter((c) => !c.adjustsCommissionId));
   await insertMany("commission", commissions.filter((c) => c.adjustsCommissionId));

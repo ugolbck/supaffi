@@ -39,3 +39,8 @@ export function parsePayoutDetails(stored: string | null | undefined): { method:
   }
   return { method: line ? "other" : "paypal", value: line };
 }
+
+/** A stored method's label, or null for none or one no longer on the list. */
+export function methodLabel(method: string | null): string | null {
+  return method && Object.hasOwn(PAYOUT_METHODS, method) ? PAYOUT_METHODS[method as PayoutMethod].label : null;
+}

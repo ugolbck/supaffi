@@ -20,6 +20,7 @@ function read(formData: FormData) {
     commissionDurationMonths: String(formData.get("commissionDurationMonths") ?? ""),
     attributionWindowDays: String(formData.get("attributionWindowDays") ?? ""),
     holdingPeriodDays: String(formData.get("holdingPeriodDays") ?? ""),
+    minimumPayout: String(formData.get("minimumPayout") ?? ""),
   });
   if (result.error !== null) return result;
   return { error: null, parsed: { ...result.parsed, signupOpen: formData.get("signupOpen") === "on" } };

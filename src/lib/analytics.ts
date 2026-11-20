@@ -3,6 +3,7 @@ import { assertOwnsMerchant } from "@/lib/ownership";
 import { VISITOR_CLICK } from "@/lib/referral";
 import { Prisma } from "@prisma/client";
 import { MAX_SHOWN } from "@/lib/payoutLimits";
+import { OFFERABLE, payableShortfalls, shortfallKey, type Shortfall } from "@/lib/payoutMinimum";
 
 /**
  * Every aggregate the dashboard cards read.
@@ -656,10 +657,14 @@ export type PayableGroup = {
   commissionIds: string[];
   /** Each commission behind `total` with its amount as rendered, two decimals. Mark paid binds these. */
   commissions: { id: string; amount: string }[];
+  /** Set when the balance has not reached the program's minimum payout yet. */
+  shortfall: Shortfall | null;
 };
 
 /**
- * What is ready to pay, per affiliate per currency.
+ * What is ready to pay, per affiliate per currency. A balance below its
+ * program's minimum payout is still listed, with its `shortfall`, so the
+ * Payouts page can show it apart rather than hide it.
  *
  * Carries the exact commissions and amounts behind each total so the Pay
  * button can name them, rather than the mutation re-querying at write time and
@@ -684,28 +689,26 @@ export async function getPayableGroups(
 ): Promise<PayableGroup[]> {
   await assertOwnsMerchant(ownerId, merchantId);
 
-  const rows = await db.commission.findMany({
-    where: {
-      status: "PAYABLE",
-      adjustsCommissionId: null,
-      amount: { gt: 0 },
-      // A disputed commission is never PAYABLE, so this matches nothing today.
-      // It stays as a guard: a payout button must never offer a held row.
-      disputeOpenedAt: null,
-      affiliate: { merchantId },
-    },
-    select: {
-      id: true,
-      amount: true,
-      currency: true,
-      affiliate: { select: { id: true, name: true, email: true, payoutDetails: true } },
-    },
-    orderBy: [{ payableAt: "asc" }, { id: "asc" }],
-  });
+  const [rows, shortfalls] = await Promise.all([
+    db.commission.findMany({
+      // A disputed commission is never PAYABLE, so OFFERABLE's dispute check
+      // matches nothing today. It stays as a guard: a payout button must
+      // never offer a held row.
+      where: { ...OFFERABLE, affiliate: { merchantId } },
+      select: {
+        id: true,
+        amount: true,
+        currency: true,
+        affiliate: { select: { id: true, name: true, email: true, payoutDetails: true } },
+      },
+      orderBy: [{ payableAt: "asc" }, { id: "asc" }],
+    }),
+    payableShortfalls({ merchantId }),
+  ]);
 
   const groups = new Map<string, PayableGroup & { sum: Prisma.Decimal }>();
   for (const row of rows) {
-    const key = `${row.affiliate.id}:${row.currency}`;
+    const key = shortfallKey(row.affiliate.id, row.currency);
     const existing = groups.get(key);
     // Past the cap for this affiliate and currency: left for a later payout,
     // never added to the total or the ids Mark paid would bind.
@@ -725,6 +728,7 @@ export async function getPayableGroups(
         total: "0.00",
         commissionIds: [row.id],
         commissions: [shown],
+        shortfall: shortfalls.get(key) ?? null,
         sum: row.amount,
       });
     }
@@ -735,22 +739,23 @@ export async function getPayableGroups(
     .sort((a, b) => Number(b.total) - Number(a.total));
 }
 
-/** How many payouts are ready: one per affiliate and currency. For the sidebar badge. */
+/**
+ * How many payouts are ready: one per affiliate and currency, leaving out
+ * balances below their minimum payout. For the sidebar badge.
+ */
 export async function countPayouts(merchantId: string): Promise<number> {
-  const groups = await db.commission.groupBy({
-    by: ["affiliateId", "currency"],
-    where: {
-      status: "PAYABLE",
-      adjustsCommissionId: null,
-      amount: { gt: 0 },
-      disputeOpenedAt: null,
-      affiliate: { merchantId },
-    },
-  });
-  return groups.length;
+  const [groups, shortfalls] = await Promise.all([
+    db.commission.groupBy({
+      by: ["affiliateId", "currency"],
+      where: { ...OFFERABLE, affiliate: { merchantId } },
+    }),
+    payableShortfalls({ merchantId }),
+  ]);
+  return groups.filter((g) => !shortfalls.has(shortfallKey(g.affiliateId, g.currency))).length;
 }
 
 export type PayoutRow = {
+  id: string;
   affiliateId: string;
   affiliateName: string | null;
   affiliateEmail: string;
@@ -758,45 +763,65 @@ export type PayoutRow = {
   paidAt: Date;
   total: string;
   count: number;
+  method: string | null;
+  reference: string | null;
+  note: string | null;
 };
 
-/**
- * Payouts already made, newest first. A payout is what one Mark paid wrote:
- * one affiliate, one currency, one `paidAt`, which the ledger stamps once for
- * every commission it covers.
- */
+export type PayoutFilters = { currency: string | null; method: string | null };
+
+/** Payouts already made, newest first. */
 export async function listPayouts(
   ownerId: string,
   merchantId: string,
-  { page, pageSize }: { page: number; pageSize: number }
-): Promise<{ rows: PayoutRow[]; total: number }> {
+  { page, pageSize }: { page: number; pageSize: number },
+  filters: PayoutFilters = { currency: null, method: null }
+): Promise<{ rows: PayoutRow[]; total: number; currencies: string[] }> {
   await assertOwnsMerchant(ownerId, merchantId);
 
-  const groups = await db.commission.groupBy({
-    by: ["affiliateId", "currency", "paidAt"],
-    where: { status: "PAID", paidAt: { not: null }, adjustsCommissionId: null, affiliate: { merchantId } },
-    _sum: { amount: true },
-    _count: { _all: true },
-    orderBy: [{ paidAt: "desc" }, { affiliateId: "asc" }, { currency: "asc" }],
-  });
-
-  const pageGroups = groups.slice((page - 1) * pageSize, page * pageSize);
-  const affiliates = await db.affiliate.findMany({
-    where: { id: { in: [...new Set(pageGroups.map((g) => g.affiliateId))] } },
-    select: { id: true, name: true, email: true },
-  });
-  const byId = new Map(affiliates.map((a) => [a.id, a]));
+  const where: Prisma.PayoutWhereInput = {
+    merchantId,
+    ...(filters.currency && { currency: filters.currency }),
+    // "none" is a payout made with no details given, or before methods were recorded.
+    ...(filters.method && { method: filters.method === "none" ? null : filters.method }),
+  };
+  const [total, currencies, payouts] = await Promise.all([
+    db.payout.count({ where }),
+    db.payout.groupBy({ by: ["currency"], where: { merchantId }, orderBy: { currency: "asc" } }),
+    db.payout.findMany({
+      where,
+      select: {
+        id: true,
+        currency: true,
+        amount: true,
+        paidAt: true,
+        method: true,
+        reference: true,
+        note: true,
+        affiliate: { select: { id: true, name: true, email: true } },
+        _count: { select: { commissions: true } },
+      },
+      orderBy: [{ paidAt: "desc" }, { id: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
 
   return {
-    total: groups.length,
-    rows: pageGroups.map((g) => ({
-      affiliateId: g.affiliateId,
-      affiliateName: byId.get(g.affiliateId)?.name ?? null,
-      affiliateEmail: byId.get(g.affiliateId)?.email ?? "",
-      currency: g.currency,
-      paidAt: g.paidAt!,
-      total: (g._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
-      count: g._count._all,
+    total,
+    currencies: currencies.map((c) => c.currency),
+    rows: payouts.map((p) => ({
+      id: p.id,
+      affiliateId: p.affiliate.id,
+      affiliateName: p.affiliate.name,
+      affiliateEmail: p.affiliate.email,
+      currency: p.currency,
+      paidAt: p.paidAt,
+      total: p.amount.toFixed(2),
+      count: p._count.commissions,
+      method: p.method,
+      reference: p.reference,
+      note: p.note,
     })),
   };
 }

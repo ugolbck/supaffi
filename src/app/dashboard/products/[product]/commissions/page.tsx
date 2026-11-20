@@ -13,6 +13,7 @@ import {
   type CommissionStatus,
 } from "@/lib/commission";
 import { getOwedTotals, type CurrencyTotal } from "@/lib/analytics";
+import { payableShortfalls, shortfallKey, type Shortfall } from "@/lib/payoutMinimum";
 import { alreadyPaidNote, refusalText, skippedNote } from "@/lib/payoutNotices";
 import { formatMoney, money, moneyHint, formatDate } from "@/lib/format";
 import { voidReasonText, flagReasonText } from "@/lib/commissionReason";
@@ -53,7 +54,7 @@ function parseStatus(raw: string | undefined): CommissionStatus | null {
 // shown raw: they always go through commissionReason.ts, so a stored token
 // like "refund" or "email:buyer@x.com affiliate@x.com" never leaks into the
 // ledger as-is.
-function stateLabel(row: CommissionRow): string {
+function stateLabel(row: CommissionRow, shortfalls: Map<string, Shortfall>): string {
   // A live row a partial refund reduced carries its own reason regardless of
   // which pre-void status it is otherwise in.
   if (row.status !== "VOIDED" && row.voidReason === "partial refund") {
@@ -62,9 +63,14 @@ function stateLabel(row: CommissionRow): string {
   }
   switch (row.status) {
     case "PENDING":
-      return `Payable ${formatDate(row.payableAt)}`;
-    case "PAYABLE":
+      return row.disputed ? "Held by a dispute" : `Payable ${formatDate(row.payableAt)}`;
+    case "PAYABLE": {
+      const shortfall = shortfalls.get(shortfallKey(row.affiliateId, row.currency));
+      if (shortfall) {
+        return `Below minimum, ${formatMoney(shortfall.balance, row.currency)} of ${formatMoney(shortfall.minimum, row.currency)}`;
+      }
       return "Ready to pay";
+    }
     case "FLAGGED":
       return flagReasonText(row.flagReason)?.title ?? "Flagged for review";
     case "PAID":
@@ -130,10 +136,11 @@ export default async function CommissionsPage({
 
   // Owed and payable now come from the same helper the overview uses, so the
   // two screens cannot disagree.
-  const [{ rows, total }, options, { owed, payableNow }] = await Promise.all([
+  const [{ rows, total }, options, { owed, payableNow }, shortfalls] = await Promise.all([
     listCommissions(ownerId, merchant.id, filters, { page, pageSize: COMMISSIONS_PAGE_SIZE }),
     getCommissionFilterOptions(ownerId, merchant.id),
     getOwedTotals(ownerId, merchant.id),
+    payableShortfalls({ merchantId: merchant.id }),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / COMMISSIONS_PAGE_SIZE));
@@ -177,7 +184,7 @@ export default async function CommissionsPage({
     affiliateEmail: row.affiliateEmail,
     isAdjustment: row.isAdjustment,
     createdLabel: formatDate(row.createdAt),
-    stateLabel: stateLabel(row),
+    stateLabel: stateLabel(row, shortfalls),
     sale: row.saleAmount ? formatMoney(row.saleAmount, row.currency) : null,
     href: hrefWith({ commission: row.id }),
   }));
@@ -205,7 +212,7 @@ export default async function CommissionsPage({
         voidedLabel: selected.voidedAt ? formatDate(selected.voidedAt) : null,
         voidReason: selected.voidReason,
         flagReason: selected.flagReason,
-        stateLabel: stateLabel(selected),
+        stateLabel: stateLabel(selected, shortfalls),
         reference: referenceFor(paymentProviderFor(merchant), selected.paymentRef),
         clickLabel: selected.promoCode ? null : formatDate(selected.click.at),
         promoCodeLabel: selected.promoCode ? (selected.promoCode.code ?? "Removed") : null,

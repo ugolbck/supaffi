@@ -10,6 +10,7 @@ import {
   getCommissionTotals,
   getCommissionFilterOptions,
   markCommissionsPaid,
+  markPayoutsPaid,
   STALE_PAGE,
   confirmCommissionFraud,
   dismissCommissionFlag,
@@ -149,6 +150,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
 
   beforeEach(async () => {
     await db.commission.deleteMany();
+    await db.payout.deleteMany();
     await db.referredSubscription.deleteMany();
     await db.click.deleteMany();
     await db.affiliateLink.deleteMany();
@@ -171,6 +173,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
 
   afterAll(async () => {
     await db.commission.deleteMany();
+    await db.payout.deleteMany();
     await db.referredSubscription.deleteMany();
     await db.click.deleteMany();
     await db.affiliateLink.deleteMany();
@@ -406,6 +409,88 @@ describe.skipIf(!hasDatabase)("commission", () => {
     expect(paid.every((row) => row.status === "PAID")).toBe(true);
     expect(paid.map((row) => row.amount.toFixed(2)).sort()).toEqual(["12.25", "30.00", "4.50"]);
     expect(new Set(paid.map((row) => row.paidAt?.getTime())).size).toBe(1);
+  });
+
+  it("writes one payout for what it recorded, with how it was sent and the Owner's reference and note", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    await db.affiliate.update({ where: { id: affiliate.id }, data: { payoutDetails: "PayPal: sarah@paypal.test" } });
+    const a = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "30.00" });
+    const b = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, { amount: "4.50" });
+    const voided = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {
+      status: "VOIDED",
+      voidReason: "voided by owner",
+      voidedAt: new Date(Date.now() - 60_000),
+    });
+
+    expect(
+      await markCommissionsPaid(ownerId, merchantId, shownOf(a, b, voided), loadedNow(), {
+        reference: "  5TY05013RG002845M ",
+        note: "",
+      })
+    ).toEqual({ count: 2, skipped: 1 });
+
+    const [payout] = await db.payout.findMany({ include: { commissions: { select: { id: true } } } });
+    expect(payout).toMatchObject({
+      merchantId,
+      affiliateId: affiliate.id,
+      currency: "usd",
+      method: "paypal",
+      reference: "5TY05013RG002845M",
+      note: null,
+    });
+    expect(payout.amount.toFixed(2)).toBe("34.50");
+    expect(payout.commissions.map((c) => c.id).sort()).toEqual([a.id, b.id].sort());
+    expect((await db.commission.findUniqueOrThrow({ where: { id: a.id } })).paidAt).toEqual(payout.paidAt);
+  });
+
+  it("writes no payout for a press that recorded nothing", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const only = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const renderedAt = loadedNow();
+    await markCommissionsPaid(ownerId, merchantId, shownOf(only), renderedAt);
+    await markCommissionsPaid(ownerId, merchantId, shownOf(only), renderedAt);
+    expect(await db.payout.count()).toBe(1);
+  });
+
+  it("refuses a reference or note longer than the dialog allows, and writes nothing", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const only = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    expect(
+      await markCommissionsPaid(ownerId, merchantId, shownOf(only), loadedNow(), { reference: "x".repeat(201) })
+    ).toEqual({ error: "The ledger refused that payout." });
+    expect(
+      await markCommissionsPaid(ownerId, merchantId, shownOf(only), loadedNow(), { note: 5 as unknown as string })
+    ).toEqual({ error: "The ledger refused that payout." });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: only.id } })).status).toBe("PAYABLE");
+    expect(await db.payout.count()).toBe(0);
+  });
+
+  it("marks several payouts paid in one press, each its own payout, past a refused one", async () => {
+    const sarah = await makeAffiliate(merchantId, programId, "sarah");
+    const tom = await makeAffiliate(merchantId, programId, "tom");
+    const s1 = await makeCommission(sarah.id, (await makeClick(sarah.id)).id, { amount: "10.00" });
+    const s2 = await makeCommission(sarah.id, (await makeClick(sarah.id)).id, { amount: "7.00", currency: "eur" });
+    const t1 = await makeCommission(tom.id, (await makeClick(tom.id)).id, { amount: "3.00" });
+
+    const result = await markPayoutsPaid(
+      ownerId,
+      merchantId,
+      [shownOf(s1), shownOf(s2, t1), shownOf(t1)],
+      loadedNow(),
+      { reference: "batch-7" }
+    );
+    expect(result).toEqual({
+      payouts: 2,
+      skipped: 0,
+      alreadyPaid: 0,
+      error: "A payout covers one affiliate and one currency at a time",
+    });
+    const payouts = await db.payout.findMany({ orderBy: { amount: "desc" } });
+    expect(payouts.map((p) => [p.affiliateId, p.amount.toFixed(2), p.reference])).toEqual([
+      [sarah.id, "10.00", "batch-7"],
+      [tom.id, "3.00", "batch-7"],
+    ]);
+    expect((await db.commission.findUniqueOrThrow({ where: { id: s2.id } })).status).toBe("PAYABLE");
   });
 
   it("skips a shown commission that is not payable and pays the rest", async () => {

@@ -1,6 +1,7 @@
 import { requireAffiliate } from "@/lib/affiliateAuth";
 import { getAffiliateMetrics } from "@/lib/analytics";
 import { getAffiliatePayoutDetails, listAffiliatePayments } from "@/lib/affiliate";
+import { payableShortfalls, shortfallKey } from "@/lib/payoutMinimum";
 import { PayoutsScreen } from "./PayoutsScreen";
 
 /**
@@ -12,11 +13,18 @@ import { PayoutsScreen } from "./PayoutsScreen";
 export default async function AffiliatePayoutsPage() {
   const { affiliateId, merchant } = await requireAffiliate();
 
-  const [metrics, payoutDetails, payments] = await Promise.all([
+  const [metrics, payoutDetails, payments, shortfalls] = await Promise.all([
     getAffiliateMetrics(affiliateId),
     getAffiliatePayoutDetails(affiliateId),
     listAffiliatePayments(affiliateId),
+    payableShortfalls({ affiliateId }),
   ]);
+  const byCurrency = Object.fromEntries(
+    metrics.payable.flatMap((t) => {
+      const shortfall = shortfalls.get(shortfallKey(affiliateId, t.currency));
+      return shortfall ? [[t.currency, shortfall]] : [];
+    })
+  );
 
   return (
     <PayoutsScreen
@@ -26,6 +34,7 @@ export default async function AffiliatePayoutsPage() {
       pending={metrics.pending}
       payable={metrics.payable}
       paid={metrics.paid}
+      shortfalls={byCurrency}
     />
   );
 }
