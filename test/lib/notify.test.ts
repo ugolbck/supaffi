@@ -7,7 +7,7 @@ import { encrypt } from "@/lib/crypto";
 import { createAffiliate } from "@/lib/affiliate";
 import { createAffiliateResetLink } from "@/lib/affiliatePassword";
 import { markCommissionsPaid } from "@/lib/commission";
-import { emailPasswordLink } from "@/lib/notify";
+import { emailPasswordLink, inviteAffiliatesWithoutPassword } from "@/lib/notify";
 import { createCommissionUnlessSelfReferral } from "@/lib/worker/recordCommission";
 import { clearReferralTables, seedMerchant, seedOwner, seedReferral } from "./worker/referralFixtures";
 
@@ -113,6 +113,33 @@ describe("notifications", () => {
     await sale(voided.affiliate.id, voided.click.id, "in_2", { status: "VOIDED" });
 
     expect(await keys()).toEqual(["flagged"]);
+  });
+
+  it("invites only the affiliates an import wrote, once, keeping links the owner already sent", async () => {
+    const { owner, merchant } = await productWithMail();
+    const { program } = await seedReferral(merchant);
+    const imported = await createAffiliate(merchant.id, program.id, { name: "Bob", email: "bob@example.com" });
+    await createAffiliate(merchant.id, program.id, { name: "Old", email: "old@example.com" });
+    await db.import.create({
+      data: { merchantId: merchant.id, source: "REWARDFUL", status: "DONE", summary: { createdAffiliateIds: [imported.id] } },
+    });
+    const handed = await createAffiliateResetLink(owner.id, merchant.id, imported.id);
+    await db.email.deleteMany();
+
+    expect(await inviteAffiliatesWithoutPassword(owner.id, merchant.id)).toBe(1);
+    expect(await inviteAffiliatesWithoutPassword(owner.id, merchant.id)).toBe(0);
+
+    const emails = await db.email.findMany();
+    expect(emails.map((e) => [e.to, e.subject])).toEqual([["bob@example.com", "Your Product affiliate account is ready"]]);
+    expect(emails.some((e) => e.to === "old@example.com")).toBe(false);
+    expect(await db.affiliateLoginToken.count({ where: { affiliateId: imported.id, usedAt: null } })).toBe(2);
+    expect(handed).not.toBeNull();
+  });
+
+  it("invites nobody while the product has email off", async () => {
+    const owner = await seedOwner();
+    const merchant = await seedMerchant(owner.id);
+    expect(await inviteAffiliatesWithoutPassword(owner.id, merchant.id)).toBeNull();
   });
 
   it("sends one email for a payout, with its total", async () => {

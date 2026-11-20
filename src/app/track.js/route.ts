@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   // is ignored for the same reason: originFor already knows the scheme.
   const host = req.headers.get("host");
   const merchant = host
-    ? await db.merchant.findFirst({ where: servedDomain(host), select: { domain: true, paymentProvider: true } })
+    ? await db.merchant.findFirst({ where: servedDomain(host), select: { domain: true, paymentProvider: true, legacyReferralParam: true } })
     : null;
   if (!merchant?.domain) {
     return new NextResponse(null, { status: 404 });
@@ -54,7 +54,10 @@ export async function GET(req: NextRequest) {
   const script = `
 (function () {
   var params = new URLSearchParams(window.location.search);
-  var code = params.get(${JSON.stringify(REFERRAL_QUERY_PARAM)});
+  var code = params.get(${JSON.stringify(REFERRAL_QUERY_PARAM)})${
+    // Links shared before the product moved here carry the old tool's parameter.
+    merchant.legacyReferralParam ? ` || params.get(${JSON.stringify(merchant.legacyReferralParam)})` : ""
+  };
 
   // The token this browser already holds, read by exact cookie name. Sent
   // back to /api/track so a reload keeps its Click rather than starting a new

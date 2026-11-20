@@ -7,6 +7,7 @@ import {
   newAffiliateEmail,
   newSaleEmail,
   paidEmail,
+  inviteEmail,
   passwordLinkEmail,
   welcomeEmail,
 } from "@/lib/emails";
@@ -14,7 +15,7 @@ import { formatDate, formatMoney, termsLine } from "@/lib/format";
 import { linkUrl } from "@/lib/affiliateLink";
 import { dashboardOrigin } from "@/lib/instance";
 import { originFor } from "@/lib/url";
-import { issueResetToken } from "@/lib/affiliatePassword";
+import { issueResetToken, LINK_TTL_MS } from "@/lib/affiliatePassword";
 
 /**
  * Queues the emails an event calls for, inside the transaction that records
@@ -256,4 +257,55 @@ export async function emailPasswordLink(affiliateId: string): Promise<boolean> {
     ]);
   });
   return true;
+}
+
+/**
+ * Emails every Affiliate an import wrote who has no password yet a link to
+ * set one, since the import told them nothing. Each gets one invite ever:
+ * pressing it again reaches only those not invited yet. A link the Owner
+ * already handed out keeps working. Answers how many were invited, or null
+ * while the product has email off.
+ */
+export async function inviteAffiliatesWithoutPassword(ownerId: string, merchantId: string): Promise<number | null> {
+  const merchant = await db.merchant.findFirst({
+    where: { id: merchantId, ownerId },
+    select: { id: true, name: true, domain: true },
+  });
+  if (!merchant?.domain || !(await productMail(merchant.id))) return null;
+  const domain = merchant.domain;
+
+  const imported = await db.import.findMany({ where: { merchantId, status: "DONE" }, select: { summary: true } });
+  const ids = imported.flatMap((i) => (i.summary as { createdAffiliateIds?: string[] } | null)?.createdAffiliateIds ?? []);
+  const affiliates = await db.affiliate.findMany({
+    where: { merchantId, id: { in: ids }, passwordHash: null },
+    select: { id: true, email: true },
+  });
+  let invited = 0;
+  for (const affiliate of affiliates) {
+    if (!isSingleAddress(affiliate.email)) continue;
+    const queued = await db.$transaction(async (tx) => {
+      // One press at a time per affiliate, so a second press never issues a
+      // link whose email is then dropped as a duplicate.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`invite:${affiliate.id}`}, 0))`;
+      const sent = await tx.email.findFirst({
+        where: { merchantId, dedupeKey: `invite:${affiliate.id}` },
+        select: { id: true },
+      });
+      if (sent) return false;
+      const token = await issueResetToken(tx, affiliate.id, LINK_TTL_MS, { replace: false });
+      await queue(tx, merchant.id, [
+        {
+          key: `invite:${affiliate.id}`,
+          email: inviteEmail({
+            to: affiliate.email,
+            product: merchant.name,
+            href: `${originFor(domain)}/affiliates/password?token=${token.rawToken}`,
+          }),
+        },
+      ]);
+      return true;
+    });
+    if (queued) invited += 1;
+  }
+  return invited;
 }

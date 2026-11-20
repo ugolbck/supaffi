@@ -211,6 +211,21 @@ export function passwordLinkEmail(args: { to: string; product: string; href: str
   });
 }
 
+export function inviteEmail(args: { to: string; product: string; href: string }): OutgoingEmail {
+  return render({
+    to: args.to,
+    product: args.product,
+    subject: `Your ${args.product} affiliate account is ready`,
+    heading: "Set your password",
+    lines: [
+      { text: `${args.product} moved its affiliate program here. Your links keep working and your commissions came with you.` },
+      { text: "Set a password to see them." },
+    ],
+    button: { label: "Set password", href: args.href },
+    footnote: "The link works once, within 3 days.",
+  });
+}
+
 export function testEmail(args: { to: string; product: string }): OutgoingEmail {
   return render({
     to: args.to,

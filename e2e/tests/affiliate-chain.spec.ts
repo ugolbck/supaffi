@@ -330,6 +330,42 @@ test("a balance below the minimum waits, then is paid with a PayPal file and a r
   await expect(affiliate.getByText("only the owner sees this")).toHaveCount(0);
 });
 
+test("a program imported from Rewardful keeps its links and its history", async ({ browser }) => {
+  await owner.goto(`${ADMIN}/dashboard/products/shop/settings`);
+  await owner.getByRole("button", { name: "Import" }).click();
+  await owner.waitForURL(/\/import$/);
+  await owner.getByLabel("Rewardful API key").fill("rw_e2e_secret");
+  await owner.getByRole("button", { name: "Read my program" }).click();
+
+  // Read by the worker; nothing is written until the owner says so.
+  await expect(owner.getByText("Read from Rewardful. Nothing is written yet.")).toBeVisible({ timeout: 60_000 });
+  await expect(owner.getByText("$25.00 (1)")).toBeVisible();
+  await owner.getByRole("button", { name: "Import", exact: true }).click();
+  await expect(owner.getByText("Imported from Rewardful")).toBeVisible({ timeout: 60_000 });
+
+  // What was paid in Rewardful is a payout here, and what was owed is payable.
+  await owner.goto(`${ADMIN}/dashboard/products/shop/payouts?tab=paid`);
+  await expect(owner.getByRole("row").filter({ hasText: "Paid in Rewardful" })).toContainText("$10.00");
+  await owner.goto(`${ADMIN}/dashboard/products/shop/payouts`);
+  await expect(owner.getByRole("row").filter({ hasText: "Bob Moved" })).toContainText("$25.00");
+
+  // A link Bob shared from Rewardful still earns for him.
+  const buyer = await newPage(browser);
+  const result = await sale(buyer, { via: "bob-old", email: "bobs-buyer@example.com" });
+  expect(result.referral).not.toBe("none");
+  await owner.goto(`${ADMIN}/dashboard/products/shop/commissions`);
+  await eventually(owner, () =>
+    expect(owner.getByRole("row").filter({ hasText: "Bob Moved" }).filter({ hasText: "$30.00" })).toBeVisible()
+  );
+
+  // Told only when the owner invites him.
+  await owner.goto(`${ADMIN}/dashboard/products/shop/import`);
+  await owner.getByRole("button", { name: "Invite affiliates to set a password" }).click();
+  await expect(owner.getByText("1 invited.")).toBeVisible();
+  const invite = await email("bob@example.com", "Your Shop affiliate account is ready");
+  expect(linkIn(invite.text, `${PRODUCT_DOMAIN}/affiliates/password?token=`)).toBeTruthy();
+});
+
 // Last: setting a password ends every session the affiliate had.
 test("an affiliate who forgot their password gets a link by email", async ({ browser }) => {
   // With email on, the owner's panel only keeps a copied link as a fallback.

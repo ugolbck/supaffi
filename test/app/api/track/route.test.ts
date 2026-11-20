@@ -127,6 +127,13 @@ describe.skipIf(!hasDatabase)("GET /api/track", () => {
     expect(clicks[0].linkId).toBe(a.link.id);
   });
 
+  it("matches a code in whatever case an old link carries it", async () => {
+    const a = await seedMerchantWithAffiliate("a");
+    const res = await GET(requestFor(a.merchant.domain, a.link.code.toUpperCase()));
+    expect(res.status).toBe(200);
+    expect(await db.click.count()).toBe(1);
+  });
+
   it("gives two visitors behind one address their own clicks", async () => {
     const a = await seedMerchantWithAffiliate("a");
     const office = { "x-forwarded-for": "198.51.100.1, 203.0.113.7" };

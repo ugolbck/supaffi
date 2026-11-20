@@ -25,7 +25,9 @@ const RELOAD_WINDOW_MS = 10 * 60 * 1000;
 // Merchant's own checkout code can read it later and pass it into Stripe.
 export async function GET(req: NextRequest) {
   const host = req.headers.get("host");
-  const referralCode = req.nextUrl.searchParams.get(REFERRAL_QUERY_PARAM);
+  // Lowercased: every code here is, and links shared from a tool a product
+  // moved from can carry the code in any case.
+  const referralCode = req.nextUrl.searchParams.get(REFERRAL_QUERY_PARAM)?.trim().toLowerCase();
   if (!host || !referralCode) {
     return new NextResponse(null, { status: 400 });
   }
