@@ -304,6 +304,7 @@ export async function deleteMerchant(ownerId: string, merchantId: string): Promi
       await tx.affiliate.deleteMany({ where: { merchantId } });
       await tx.program.deleteMany({ where: { merchantId } });
       await tx.webhookEvent.deleteMany({ where: { merchantId } });
+      await tx.import.deleteMany({ where: { merchantId } });
       await tx.merchant.delete({ where: { id: merchantId } });
       // Whichever proven domain it was serving is held for its Owner.
       const served = domainVerifiedAt ? domain : previousDomain;

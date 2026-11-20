@@ -7,6 +7,7 @@ import {
   newAffiliateEmail,
   newSaleEmail,
   paidEmail,
+  inviteEmail,
   passwordLinkEmail,
   welcomeEmail,
 } from "@/lib/emails";
@@ -14,7 +15,7 @@ import { formatDate, formatMoney, termsLine } from "@/lib/format";
 import { linkUrl } from "@/lib/affiliateLink";
 import { dashboardOrigin } from "@/lib/instance";
 import { originFor } from "@/lib/url";
-import { issueResetToken } from "@/lib/affiliatePassword";
+import { issueResetToken, LINK_TTL_MS } from "@/lib/affiliatePassword";
 
 /**
  * Queues the emails an event calls for, inside the transaction that records
@@ -256,4 +257,47 @@ export async function emailPasswordLink(affiliateId: string): Promise<boolean> {
     ]);
   });
   return true;
+}
+
+/**
+ * Emails every Affiliate on the product who has no password yet a link to
+ * set one, as after an import, which writes them without telling them.
+ * Each gets one invite ever: pressing it again reaches only those not invited
+ * yet. Answers how many were invited, or null while the product has email off.
+ */
+export async function inviteAffiliatesWithoutPassword(ownerId: string, merchantId: string): Promise<number | null> {
+  const merchant = await db.merchant.findFirst({
+    where: { id: merchantId, ownerId },
+    select: { id: true, name: true, domain: true },
+  });
+  if (!merchant?.domain || !(await productMail(merchant.id))) return null;
+  const domain = merchant.domain;
+
+  const affiliates = await db.affiliate.findMany({
+    where: { merchantId, passwordHash: null },
+    select: { id: true, email: true },
+  });
+  let invited = 0;
+  for (const affiliate of affiliates) {
+    const sent = await db.email.findFirst({
+      where: { merchantId, dedupeKey: `invite:${affiliate.id}` },
+      select: { id: true },
+    });
+    if (sent) continue;
+    await db.$transaction(async (tx) => {
+      const token = await issueResetToken(tx, affiliate.id, LINK_TTL_MS, { replace: true });
+      await queue(tx, merchant.id, [
+        {
+          key: `invite:${affiliate.id}`,
+          email: inviteEmail({
+            to: affiliate.email,
+            product: merchant.name,
+            href: `${originFor(domain)}/affiliates/password?token=${token.rawToken}`,
+          }),
+        },
+      ]);
+    });
+    invited += 1;
+  }
+  return invited;
 }

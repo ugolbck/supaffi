@@ -365,6 +365,17 @@ describe.skipIf(!hasDatabase)("track.js", () => {
     expect(new URL(link.href).searchParams.get("client_reference_id")).toBe(`${REF}fresh_token`);
   });
 
+  it("reads the parameter of the tool a product moved from, and only for that product", async () => {
+    const plain = stripeLink();
+    await runOn(await script(), { search: "?ref=sarah", build: (b) => b.appendChild(plain) });
+    expect(plain.href).toBe("https://buy.stripe.com/test_abc");
+
+    await db.merchant.updateMany({ data: { legacyReferralParam: "ref" } });
+    const moved = stripeLink();
+    await runOn(await (await serve(DOMAIN)).text(), { search: "?ref=sarah", build: (b) => b.appendChild(moved) });
+    expect(new URL(moved.href).searchParams.get("client_reference_id")).toBe(`${REF}fresh_token`);
+  });
+
   it("tags nothing when no token is known", async () => {
     const link = stripeLink();
     const button = new FakeEl("stripe-buy-button");

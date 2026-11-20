@@ -79,7 +79,13 @@ model Merchant {
   emails                Email[]
   commissions           Commission[]
   payouts               Payout[]
+  imports               Import[]
   createdAt             DateTime               @default(now())
+
+  // The query parameter the tool this product moved from put on its links
+  // ("ref", "fpr", "atp"). The tracking script reads it as well as `via`, so
+  // links affiliates already shared keep earning. Null: only `via`.
+  legacyReferralParam String?
 
   // The product's own mail server, for its notifications, so its affiliates
   // hear from an address on its own domain. Email is off while smtpHost is
@@ -566,4 +572,50 @@ model ReleasedDomain {
   domain     String   @id
   ownerId    String
   releasedAt DateTime @default(now())
+}
+
+enum ImportSource {
+  REWARDFUL
+  TOLT
+  FIRSTPROMOTER
+  AFFONSO
+}
+
+enum ImportStatus {
+  FETCHING // the worker is reading the other tool's API
+  READY // read, waiting for the Owner to check it and map campaigns
+  IMPORTING // the worker is writing it into the product
+  DONE
+  FAILED
+}
+
+/// Bringing a product's affiliate program over from another tool through
+/// that tool's API. The worker reads everything into `fetched` first, so the
+/// Owner sees what will come over before anything is written, then writes it
+/// on their go. Running it again writes nothing twice.
+model Import {
+  id         String       @id @default(cuid())
+  merchantId String
+  merchant   Merchant     @relation(fields: [merchantId], references: [id])
+  source     ImportSource
+  status     ImportStatus @default(FETCHING)
+  // The other tool's API key, encrypted. Deleted as soon as reading is done,
+  // whether it worked or not.
+  apiKeyEnc  String?
+  // FirstPromoter's account id, which its API asks for beside the key.
+  accountRef String?
+  // What was read, in Supaffi's own shape (src/lib/import/types.ts).
+  fetched    Json?
+  // The Owner's choice of program for each of the other tool's campaigns.
+  mapping    Json?
+  // What the import wrote and what it could not, once done.
+  summary    Json?
+  error      String?
+  // When the worker took the job, so a crash mid-job is picked up again.
+  claimedAt  DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([merchantId, createdAt])
+  @@index([status])
 }

@@ -4,6 +4,7 @@ import { sweepPayableCommissions } from "./sweep";
 import { processWebhookEvent } from "./dispatch";
 import { runDailyCleanup } from "./cleanup";
 import { runEmailSender } from "./sendEmails";
+import { runImports } from "@/lib/import/jobs";
 
 let ticking = false;
 
@@ -19,6 +20,8 @@ export async function runTick(): Promise<void> {
   // never hold up the queue; it returns at once when it ran less than a day
   // ago or is already going.
   runDailyCleanup().catch((err) => console.error("[worker] cleanup failed", err));
+  // Not awaited either: reading another tool's API can take minutes.
+  runImports().catch((err) => console.error("[worker] imports failed", err));
   try {
     const batch = await claimBatch();
     for (const event of batch) {

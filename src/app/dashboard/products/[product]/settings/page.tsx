@@ -249,6 +249,15 @@ export default async function SettingsPage({
 
       <MailSettings product={productRef} status={mail} />
 
+      <Section title="Import">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <p className="text-sm">Affiliates, links and commissions from Rewardful, Tolt, FirstPromoter or Affonso</p>
+          <Button variant="outline" size="sm" className="cursor-pointer" render={<Link href={`/dashboard/products/${merchant.slug}/import`} />}>
+            Import
+          </Button>
+        </div>
+      </Section>
+
       <Section title="Danger">
         <DeleteProduct product={productRef} name={merchant.name} />
       </Section>
