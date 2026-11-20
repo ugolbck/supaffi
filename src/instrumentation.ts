@@ -1,3 +1,6 @@
+import type { Instrumentation } from "next";
+import { installedErrors } from "@/extensions/installed-errors";
+
 const globalForWorker = globalThis as unknown as { supaffiWorkerStarted?: boolean };
 
 // Next.js's official startup hook — called once when a server instance is
@@ -18,6 +21,12 @@ const globalForWorker = globalThis as unknown as { supaffiWorkerStarted?: boolea
 // that is what this file reaches. `@/lib/setupToken` is fine: it imports only
 // `node:crypto`, which Edge warns about but resolves.
 export async function register(): Promise<void> {
+  try {
+    await installedErrors.register?.();
+  } catch (err) {
+    // A failing hook must not keep the worker from starting.
+    console.error("[instrumentation] startup hook failed", err);
+  }
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (globalForWorker.supaffiWorkerStarted) return; // dev-mode Fast Refresh guard, same pattern as db.ts
   globalForWorker.supaffiWorkerStarted = true;
@@ -33,6 +42,12 @@ export async function register(): Promise<void> {
   const { startWorker } = await import("@/lib/worker");
   startWorker();
 }
+
+// Every error the server catches while handling a request. Logged by Next as
+// before; an installed hook sees it too.
+export const onRequestError: Instrumentation.onRequestError = async (...args) => {
+  await installedErrors.onRequestError?.(...args);
+};
 
 // Printed before the worker starts so it is the first thing an operator sees
 // in `docker compose logs app`, and so the installer can pick it out of the

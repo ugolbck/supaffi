@@ -37,6 +37,10 @@ describe("extension defaults", () => {
     const { installedStatic } = await import("@/extensions/installed-static");
     expect(installed).toEqual({});
     expect(installedStatic).toEqual({});
+    const { installedErrors } = await import("@/extensions/installed-errors");
+    const { installedClient } = await import("@/extensions/installed-client");
+    expect(installedErrors).toEqual({});
+    expect(installedClient).toEqual({});
   });
 });
 
