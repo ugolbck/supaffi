@@ -268,6 +268,11 @@ describe("handleInvoicePaid", () => {
     expect(commission.status).toBe("PENDING");
   });
 
+  it("records whether the renewal was made in live mode", async () => {
+    await handleInvoicePaid(merchant, invoiceFixture({ livemode: false }));
+    expect((await db.commission.findFirstOrThrow({ where: { clickId } })).livemode).toBe(false);
+  });
+
   it("earns a renewal on the program the referral was made under after the affiliate moves to another", async () => {
     const click = await db.click.findUniqueOrThrow({ where: { id: clickId } });
     const richer = await db.program.create({

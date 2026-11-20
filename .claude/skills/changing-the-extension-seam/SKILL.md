@@ -30,7 +30,7 @@ Static (`staticExt`): `owners.signupPath`, `owners.passwordResetPath`, `instance
 `domains.requireOwnershipProof`, `domains.reserved`.
 Server (`ext`): `dashboard.gate`, `dashboard.banner`, `account.sections`, `owners.canUse`.
 Core API: `createOwnerAccount`, `findOwnerByEmail`, `getOwnerAccount`, `setOwnerPassword`,
-`listOwnerMerchants`, `currentOwnerId`, `signInOwner`, `isMerchantDomain`.
+`listOwnerMerchants`, `currentOwnerId`, `signInOwner`, `isMerchantDomain`, `attributedRevenue`.
 Read `types.ts` for signatures. Reuse a listed hook before adding one, and add
 one only for a concrete need, not in anticipation.
 

@@ -15,6 +15,7 @@ import { dropSessionIfStale } from "@/lib/sessionGuard";
 import type { Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import {
+  attributedRevenue,
   createOwnerAccount,
   currentOwnerId,
   findOwnerByEmail,
@@ -43,6 +44,36 @@ async function merchantFor(ownerId: string, name: string) {
   });
 }
 
+// One referred sale on a product, booked at `createdAt`.
+async function saleOn(
+  merchantId: string,
+  sale: { saleAmount: string; currency?: string; createdAt: Date; amount?: string; grossAmount?: string; livemode?: boolean; status?: "PENDING" | "PAID" | "VOIDED" | "FLAGGED" }
+) {
+  const program = await db.program.create({
+    data: { merchantId, name: "Standard", slug: crypto.randomUUID(), defaultCommissionRate: "20.00", commissionDurationType: "FOREVER" },
+  });
+  const affiliate = await db.affiliate.create({ data: { merchantId, programId: program.id, email: `${crypto.randomUUID()}@example.com` } });
+  const click = await db.click.create({
+    data: { affiliateId: affiliate.id, programId: program.id, referralToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + 86400_000) },
+  });
+  await db.commission.create({
+    data: {
+      merchantId,
+      affiliateId: affiliate.id,
+      clickId: click.id,
+      paymentRef: crypto.randomUUID(),
+      currency: sale.currency ?? "usd",
+      saleAmount: sale.saleAmount,
+      amount: sale.amount ?? "10.00",
+      grossAmount: sale.grossAmount ?? sale.amount ?? "10.00",
+      livemode: sale.livemode ?? true,
+      status: sale.status ?? "PENDING",
+      payableAt: sale.createdAt,
+      createdAt: sale.createdAt,
+    },
+  });
+}
+
 // What the sign-in callback writes into the cookie, and the session the
 // session callback then checks against the database.
 async function signedInToken(ownerId: string): Promise<JWT> {
@@ -56,11 +87,19 @@ function ownerSession(ownerId: string): Session {
 
 describe.skipIf(!hasDatabase)("core API", () => {
   beforeEach(async () => {
+    await db.commission.deleteMany();
+    await db.click.deleteMany();
+    await db.affiliate.deleteMany();
+    await db.program.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
   });
 
   afterAll(async () => {
+    await db.commission.deleteMany();
+    await db.click.deleteMany();
+    await db.affiliate.deleteMany();
+    await db.program.deleteMany();
     await db.merchant.deleteMany();
     await db.owner.deleteMany();
     await db.$disconnect();
@@ -130,6 +169,35 @@ describe.skipIf(!hasDatabase)("core API", () => {
     const acme = await merchantFor(ann.ownerId, "Acme");
     await db.merchant.update({ where: { id: acme.id }, data: { domain: null } });
     expect(await listOwnerMerchants(ann.ownerId)).toEqual([{ id: acme.id, name: "Acme", domain: null }]);
+  });
+
+  it("totals an Owner's live referred sales in a month per currency, net of refunds", async () => {
+    const ann = await createOwnerAccount({ email: "ann@example.com", password: PASSWORD });
+    const bob = await createOwnerAccount({ email: "bob@example.com", password: PASSWORD });
+    const acme = await merchantFor(ann.ownerId, "Acme");
+    const docs = await merchantFor(ann.ownerId, "Docs");
+    const bobco = await merchantFor(bob.ownerId, "Bobco");
+    const inMonth = new Date("2026-10-15T12:00:00Z");
+
+    await saleOn(acme.id, { saleAmount: "100.00", createdAt: inMonth });
+    await saleOn(docs.id, { saleAmount: "50.50", createdAt: new Date("2026-10-01T00:00:00Z"), status: "PAID" });
+    // A partial refund took a quarter of the commission, so a quarter of the sale.
+    await saleOn(acme.id, { saleAmount: "200.00", amount: "30.00", grossAmount: "40.00", createdAt: inMonth });
+    await saleOn(acme.id, { saleAmount: "80.00", currency: "eur", createdAt: inMonth });
+    // None of these count: refunded in full, flagged, test mode, outside the month, another Owner's.
+    await saleOn(acme.id, { saleAmount: "999.00", status: "VOIDED", createdAt: inMonth });
+    await saleOn(acme.id, { saleAmount: "999.00", status: "FLAGGED", createdAt: inMonth });
+    await saleOn(acme.id, { saleAmount: "999.00", livemode: false, createdAt: inMonth });
+    await saleOn(acme.id, { saleAmount: "999.00", createdAt: new Date("2026-11-01T00:00:00Z") });
+    await saleOn(acme.id, { saleAmount: "999.00", createdAt: new Date("2026-09-30T23:59:59Z") });
+    await saleOn(bobco.id, { saleAmount: "999.00", createdAt: inMonth });
+
+    const october = { from: new Date("2026-10-01T00:00:00Z"), to: new Date("2026-11-01T00:00:00Z") };
+    expect(await attributedRevenue(ann.ownerId, october)).toEqual([
+      { currency: "eur", amount: "80.00" },
+      { currency: "usd", amount: "300.50" },
+    ]);
+    expect(await attributedRevenue(bob.ownerId, { from: new Date("2026-12-01T00:00:00Z"), to: new Date("2027-01-01T00:00:00Z") })).toEqual([]);
   });
 
   it("tells a product's domain from the dashboard's", async () => {
