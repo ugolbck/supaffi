@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import { Download } from "lucide-react";
 import type { ShownCommission } from "@/lib/commission";
-import { MAX_NOTE, MAX_REFERENCE } from "@/lib/payoutLimits";
+import { MAX_NOTE, MAX_REFERENCE, MAX_SHOWN } from "@/lib/payoutLimits";
 import { formatCount, formatMoney } from "@/lib/format";
 import {
   countPayable,
@@ -83,12 +83,15 @@ function SubmitButton() {
 export function PayoutQueue({
   rows,
   product,
+  view,
   renderedAt,
   merchantName,
   affiliatesHref,
 }: {
   rows: QueueRow[];
   product: { id: string; slug: string };
+  /** The tab and filters this queue is showing, so Mark paid comes back to them. */
+  view: { tab: string; currency: string | null; method: string | null };
   renderedAt: string;
   merchantName: string;
   affiliatesHref: string;
@@ -112,12 +115,14 @@ export function PayoutQueue({
   }
 
   const date = renderedAt.slice(0, 10);
+  const tooMany = ticked.reduce((n, row) => n + row.commissions.length, 0) > MAX_SHOWN;
   const paypal = countPayable(ticked, "paypal");
   const wise = countPayable(ticked, "wise");
 
   // Why a download button is off, or who it leaves out, in one line.
   let fileHint: string | null = null;
-  if (ticked.length > 0 && !oneCurrency) fileHint = "Files take one currency. Filter by currency to download one.";
+  if (tooMany) fileHint = `Mark at most ${formatCount(MAX_SHOWN)} commissions paid at once. Tick fewer payouts.`;
+  else if (ticked.length > 0 && !oneCurrency) fileHint = "Files take one currency. Filter by currency to download one.";
   else if (ticked.length > 0 && paypal === 0 && wise === 0) fileHint = "None of these gave a PayPal or Wise email.";
 
   return (
@@ -153,7 +158,7 @@ export function PayoutQueue({
         >
           <Download data-icon="inline-start" /> Wise file{wise > 0 && wise < ticked.length ? ` (${formatCount(wise)})` : ""}
         </Button>
-        <Button size="sm" className="cursor-pointer" disabled={ticked.length === 0} onClick={() => setPaying(ticked)}>
+        <Button size="sm" className="cursor-pointer" disabled={ticked.length === 0 || tooMany} onClick={() => setPaying(ticked)}>
           Mark paid
         </Button>
       </div>
@@ -255,6 +260,7 @@ export function PayoutQueue({
                 action={markPayoutsPaidAction.bind(
                   null,
                   product,
+                  view,
                   paying.map((row) => row.commissions),
                   renderedAt
                 )}

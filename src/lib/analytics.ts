@@ -836,10 +836,21 @@ export async function getOwedTotals(
   merchantId: string
 ): Promise<{ owed: CurrencyTotal[]; payableNow: CurrencyTotal[] }> {
   await assertOwnsMerchant(ownerId, merchantId);
-  const [owed, payableNow] = await Promise.all([
+  const [owed, payable, shortfalls] = await Promise.all([
     owedTotals({ merchantId }),
     owedTotals({ merchantId }, ["PAYABLE"]),
+    payableShortfalls({ merchantId }),
   ]);
+  // Balances below their minimum payout are payable but not paid yet, as on
+  // the Payouts page.
+  const held = new Map<string, Prisma.Decimal>();
+  for (const [key, shortfall] of shortfalls) {
+    const currency = key.slice(key.lastIndexOf(":") + 1);
+    held.set(currency, (held.get(currency) ?? new Prisma.Decimal(0)).add(shortfall.balance));
+  }
+  const payableNow = payable
+    .map((t) => ({ currency: t.currency, total: new Prisma.Decimal(t.total).sub(held.get(t.currency) ?? 0).toFixed(2) }))
+    .filter((t) => Number(t.total) > 0);
   return { owed, payableNow };
 }
 

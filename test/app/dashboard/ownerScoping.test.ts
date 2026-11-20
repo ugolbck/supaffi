@@ -88,6 +88,8 @@ import {
   voidAction,
 } from "@/app/dashboard/products/[product]/commissions/commissionActions";
 import { markPayoutsPaidAction } from "@/app/dashboard/products/[product]/payouts/payoutActions";
+
+const VIEW = { tab: "ready", currency: null, method: null };
 import { createProgramAction, updateProgramAction } from "@/app/dashboard/products/[product]/programs/programActions";
 import {
   deleteProductAction,
@@ -532,12 +534,12 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
     it("payouts: refuses another Owner's payout", async () => {
       expect(
         await outcome(() =>
-          markPayoutsPaidAction(a.product, [[{ id: a.payableId, amount: "10.00" }]], new Date().toISOString(), new FormData())
+          markPayoutsPaidAction(a.product, VIEW, [[{ id: a.payableId, amount: "10.00" }]], new Date().toISOString(), new FormData())
         )
       ).toBe("Merchant not found");
       expect(
         await outcome(() =>
-          markPayoutsPaidAction(b.product, [[{ id: a.payableId, amount: "10.00" }]], new Date().toISOString(), new FormData())
+          markPayoutsPaidAction(b.product, VIEW, [[{ id: a.payableId, amount: "10.00" }]], new Date().toISOString(), new FormData())
         )
       ).toBe(`redirect:/dashboard/products/${SLUG}/payouts?error=refused`);
       expect(await snapshot(a)).toEqual(before);
@@ -638,7 +640,7 @@ describe.skipIf(!hasDatabase)("an Owner only reaches their own products and data
     it("payouts", async () => {
       expect(
         await outcome(() =>
-          markPayoutsPaidAction(a.product, [[{ id: a.payableId, amount: "10.00" }]], new Date().toISOString(), new FormData())
+          markPayoutsPaidAction(a.product, VIEW, [[{ id: a.payableId, amount: "10.00" }]], new Date().toISOString(), new FormData())
         )
       ).toBe(`redirect:/dashboard/products/${SLUG}/payouts?paid=1`);
       expect((await db.commission.findUniqueOrThrow({ where: { id: a.payableId } })).status).toBe("PAID");

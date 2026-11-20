@@ -581,6 +581,8 @@ export type BatchResult = {
   skipped: number;
   /** Rows an earlier press had already recorded, across every payout. */
   alreadyPaid: number;
+  /** The latest time one of those was marked paid. */
+  alreadyPaidAt: Date | null;
   /** The first refusal, when any payout in the batch was refused. */
   error: string | null;
 };
@@ -598,9 +600,13 @@ export async function markPayoutsPaid(
   renderedAt: string,
   details: PayoutDetails = {}
 ): Promise<BatchResult> {
-  const result: BatchResult = { payouts: 0, skipped: 0, alreadyPaid: 0, error: null };
+  const result: BatchResult = { payouts: 0, skipped: 0, alreadyPaid: 0, alreadyPaidAt: null, error: null };
   if (!Array.isArray(batch) || batch.length === 0) return { ...result, error: "Nothing selected" };
-  if (batch.length > MAX_SHOWN) return { ...result, error: REFUSED };
+  // One press never binds more commissions than one payout may, so a large
+  // selection is refused whole rather than recorded partway.
+  if (batch.some((shown) => !Array.isArray(shown)) || batch.reduce((n, shown) => n + shown.length, 0) > MAX_SHOWN) {
+    return { ...result, error: REFUSED };
+  }
 
   for (const shown of batch) {
     const outcome = await markCommissionsPaid(ownerId, merchantId, shown, renderedAt, details);
@@ -611,6 +617,8 @@ export async function markPayoutsPaid(
     if (outcome.count > 0) result.payouts += 1;
     result.skipped += outcome.skipped;
     result.alreadyPaid += outcome.alreadyPaid?.count ?? 0;
+    const at = outcome.alreadyPaid?.paidAt;
+    if (at && (!result.alreadyPaidAt || at > result.alreadyPaidAt)) result.alreadyPaidAt = at;
   }
   return result;
 }

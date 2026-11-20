@@ -56,11 +56,12 @@ function PaymentRows({ payments }: { payments: AffiliatePaymentGroup[] }) {
   );
 }
 
-/** Why a payable balance is not being paid yet, for the first currency the tile shows. */
-function minimumNote(payable: CurrencyTotal[], shortfalls: Record<string, Shortfall>): string | undefined {
-  const first = payable[0];
-  const shortfall = first && shortfalls[first.currency];
-  return shortfall ? `Paid once it reaches ${formatMoney(shortfall.minimum, first.currency)}` : undefined;
+/** Why a payable balance is not being paid yet, for each currency held back. */
+function minimumNote(shortfalls: Record<string, Shortfall>): string | undefined {
+  const held = Object.entries(shortfalls).map(
+    ([currency, s]) => `${formatMoney(s.balance, currency)} paid once it reaches ${formatMoney(s.minimum, currency)}`
+  );
+  return held.length ? held.join("  ·  ") : undefined;
 }
 
 export type PayoutsView = {
@@ -83,7 +84,7 @@ export function PayoutsScreen({
   paid,
   shortfalls,
 }: PayoutsView) {
-  const payableHint = [moneyHint(payable), minimumNote(payable, shortfalls)].filter(Boolean).join("  ·  ");
+  const payableHint = [moneyHint(payable), minimumNote(shortfalls)].filter(Boolean).join("  ·  ");
   return (
     <Page>
       <PageTitle title="Payouts" />

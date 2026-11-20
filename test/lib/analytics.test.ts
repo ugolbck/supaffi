@@ -356,6 +356,8 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     const byCurrency = Object.fromEntries(groups.map((g) => [g.currency, g.shortfall]));
     expect(byCurrency).toEqual({ usd: null, eur: { balance: "40.00", minimum: "50.00" } });
     expect(await countPayouts(merchantId)).toBe(1);
+    // Payable now is what the Payouts page offers: the held EUR is not in it.
+    expect((await getOwedTotals(ownerId, merchantId)).payableNow).toEqual([{ currency: "usd", total: "55.00" }]);
   });
 
   it("ranks top affiliates by money earned, not by clicks", async () => {

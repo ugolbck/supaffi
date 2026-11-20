@@ -295,7 +295,7 @@ describe("owners.canUse", () => {
   const createMerchant = vi.fn(async () => ({ slug: "acme" }));
   const getMerchantForOwner = vi.fn(async () => ({ id: "m1", name: "Acme" }));
   const deleteMerchant = vi.fn(async () => {});
-  const markPayoutsPaid = vi.fn(async () => ({ payouts: 0, skipped: 0, alreadyPaid: 0, error: null }));
+  const markPayoutsPaid = vi.fn(async () => ({ payouts: 0, skipped: 0, alreadyPaid: 0, alreadyPaidAt: null, error: null }));
   const product = { id: "m1", slug: "acme" };
 
   function form(fields: Record<string, string>): FormData {
@@ -320,6 +320,7 @@ describe("owners.canUse", () => {
     payout: async () =>
       (await import("@/app/dashboard/products/[product]/payouts/payoutActions")).markPayoutsPaidAction(
         product,
+        { tab: "ready", currency: null, method: null },
         [],
         "",
         form({})

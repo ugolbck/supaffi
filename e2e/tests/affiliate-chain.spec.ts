@@ -29,10 +29,10 @@ function setupToken(): string {
 // Moves time forward for the commissions still in their hold, rather than
 // waiting thirty days. The worker's next sweep makes them payable.
 function endHolds() {
-  execSync(
-    `docker compose exec -T db psql -U supaffi -d supaffi -c "UPDATE \"Commission\" SET \"payableAt\" = now() - interval '1 minute' WHERE status = 'PENDING' AND \"disputeOpenedAt\" IS NULL"`,
-    { cwd: `${import.meta.dirname}/..` }
-  );
+  execSync("docker compose exec -T db psql -U supaffi -d supaffi -v ON_ERROR_STOP=1", {
+    cwd: `${import.meta.dirname}/..`,
+    input: `UPDATE "Commission" SET "payableAt" = now() - interval '1 minute' WHERE status = 'PENDING' AND "disputeOpenedAt" IS NULL;`,
+  });
 }
 
 async function newPage(browser: Browser): Promise<Page> {
@@ -287,7 +287,7 @@ test("a balance below the minimum waits, then is paid with a PayPal file and a r
   await eventually(owner, () => expect(owner.getByText("of $50.00 minimum")).toBeVisible());
   await expect(owner.getByRole("row").filter({ hasText: AFFILIATE.name })).toContainText("$36.00");
   await affiliate.goto(`${PRODUCT_DOMAIN}/affiliates/dashboard/commissions`);
-  await expect(affiliate.getByText("Below minimum, $36.00 of $50.00").first()).toBeVisible();
+  await expect(affiliate.getByRole("cell", { name: "Below minimum, $36.00 of $50.00" }).first()).toBeVisible();
 
   // Lowered, the same balance is ready.
   await owner.goto(`${ADMIN}/dashboard/products/shop/programs`);

@@ -163,13 +163,21 @@ export default async function PayoutsPage({
           {rows.length === 0 ? (
             <EmptyState
               icon={<Wallet />}
-              title={tab === "below" ? "No balances below a minimum" : "Nothing to pay"}
+              title={
+                currency || method
+                  ? "Nothing matches these filters"
+                  : tab === "below"
+                    ? "No balances below a minimum"
+                    : "Nothing to pay"
+              }
             />
           ) : (
             <PayoutQueue
-              key={`${tab}:${currency}:${method}`}
+              // A new render after Mark paid starts with nothing ticked and the dialog closed.
+              key={`${tab}:${currency}:${method}:${renderedAt}`}
               rows={rows}
               product={{ id: merchant.id, slug: merchant.slug }}
+              view={{ tab, currency, method }}
               renderedAt={renderedAt}
               merchantName={merchant.name}
               affiliatesHref={`${base}/affiliates`}
@@ -179,8 +187,8 @@ export default async function PayoutsPage({
       ) : (
         <>
           <Section flush scroll className="overflow-hidden">
-            {history.total === 0 ? (
-              <EmptyState icon={<Wallet />} title="No payouts yet" />
+            {history.rows.length === 0 ? (
+              <EmptyState icon={<Wallet />} title={currency || method ? "Nothing matches these filters" : "No payouts yet"} />
             ) : (
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-neutral-100">

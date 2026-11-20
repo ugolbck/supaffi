@@ -483,6 +483,7 @@ describe.skipIf(!hasDatabase)("commission", () => {
       payouts: 2,
       skipped: 0,
       alreadyPaid: 0,
+      alreadyPaidAt: null,
       error: "A payout covers one affiliate and one currency at a time",
     });
     const payouts = await db.payout.findMany({ orderBy: { amount: "desc" } });
@@ -491,6 +492,17 @@ describe.skipIf(!hasDatabase)("commission", () => {
       [tom.id, "3.00", "batch-7"],
     ]);
     expect((await db.commission.findUniqueOrThrow({ where: { id: s2.id } })).status).toBe("PAYABLE");
+  });
+
+  it("refuses a press binding more commissions than one payout may, and records none of it", async () => {
+    const affiliate = await makeAffiliate(merchantId, programId, "sarah");
+    const only = await makeCommission(affiliate.id, (await makeClick(affiliate.id)).id, {});
+    const filler = Array.from({ length: 5000 }, (_, i) => ({ id: `x${i}`, amount: "1.00" }));
+    expect(await markPayoutsPaid(ownerId, merchantId, [shownOf(only), filler], loadedNow())).toMatchObject({
+      payouts: 0,
+      error: "The ledger refused that payout.",
+    });
+    expect((await db.commission.findUniqueOrThrow({ where: { id: only.id } })).status).toBe("PAYABLE");
   });
 
   it("skips a shown commission that is not payable and pays the rest", async () => {

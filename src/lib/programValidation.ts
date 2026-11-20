@@ -55,7 +55,9 @@ export function validateProgramInput(
     if (raw && (!/^\d+(\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value >= 1e16)) {
       return { error: "Minimum payout must be an amount like 50 or 50.00" };
     }
-    minimumPayout = raw && value > 0 ? value.toFixed(2) : null;
+    // Padded as text, not rounded through a float, so the stored minimum is the one typed.
+    const [whole, cents = ""] = raw.split(".");
+    minimumPayout = raw && value > 0 ? `${whole.replace(/^0+(?=\d)/, "")}.${cents.padEnd(2, "0")}` : null;
   }
 
   return {

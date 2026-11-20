@@ -74,6 +74,8 @@ describe("validateProgramInput minimum payout", () => {
     expect(validateProgramInput({ ...validInput, minimumPayout: "12.5" }).parsed?.minimumPayout).toBe("12.50");
     expect(validateProgramInput({ ...validInput, minimumPayout: "" }).parsed?.minimumPayout).toBeNull();
     expect(validateProgramInput({ ...validInput, minimumPayout: "0" }).parsed?.minimumPayout).toBeNull();
+    expect(validateProgramInput({ ...validInput, minimumPayout: "1234567890123456.7" }).parsed?.minimumPayout).toBe("1234567890123456.70");
+    expect(validateProgramInput({ ...validInput, minimumPayout: "007" }).parsed?.minimumPayout).toBe("7.00");
   });
 
   it("refuses anything that is not an amount", () => {
