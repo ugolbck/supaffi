@@ -20,7 +20,7 @@ downstream code.
 | `defaults.ts` | This app's behaviour for every server hook. |
 | `index.ts` | `ext`: server hooks. |
 | `merge.ts` | Per-group merge; a key set to `undefined` keeps its default. |
-| `installed.ts`, `installed-static.ts` | Empty here, replaced by downstream builds. Never put logic in them. |
+| `installed.ts`, `installed-static.ts`, `installed-errors.ts`, `installed-client.ts` | Empty here, replaced by downstream builds. Never put logic in them. |
 | `core-api.ts` | Stable functions downstream code may call. |
 | `test/extensions/` | `contract` (defaults), `wiring` (each hook reaches its page), `owners`, `core-api`. |
 
@@ -29,6 +29,8 @@ downstream code.
 Static (`staticExt`): `owners.signupPath`, `owners.passwordResetPath`, `instance.showInfo`, `instance.feedbackUrl`,
 `domains.requireOwnershipProof`, `domains.reserved`.
 Server (`ext`): `dashboard.gate`, `dashboard.banner`, `account.sections`, `owners.canUse`.
+Startup (`installedErrors`, called from `src/instrumentation.ts`, bundled for Edge too): `register`, `onRequestError`.
+Browser (`installedClient`, called from `src/instrumentation-client.ts`): `start`.
 Core API: `createOwnerAccount`, `findOwnerByEmail`, `getOwnerAccount`, `setOwnerPassword`,
 `listOwnerMerchants`, `currentOwnerId`, `signInOwner`, `isMerchantDomain`.
 Read `types.ts` for signatures. Reuse a listed hook before adding one, and add
@@ -36,7 +38,7 @@ one only for a concrete need, not in anticipation.
 
 ## Rules
 
-1. `src/lib/**`, `src/proxy.ts`, `src/instrumentation.ts` import only `@/extensions/static` and `@/extensions/types`. Server hooks (`ext`) are read in `src/app/**` pages, layouts and actions, and results passed down. Reason: a downstream `installed.ts` imports `core-api`, which imports `src/lib`; and anything the startup hook reaches is bundled for Edge, where Argon2 breaks the build. eslint and `test/instrumentation.test.ts` refuse it.
+1. `src/lib/**`, `src/proxy.ts`, `src/instrumentation.ts` import only `@/extensions/static` and `@/extensions/types` (and `src/instrumentation.ts` its own `@/extensions/installed-errors`). Server hooks (`ext`) are read in `src/app/**` pages, layouts and actions, and results passed down. Reason: a downstream `installed.ts` imports `core-api`, which imports `src/lib`; and anything the startup hook reaches is bundled for Edge, where Argon2 breaks the build. eslint and `test/instrumentation.test.ts` refuse it.
 2. No build-specific env var, no `isBuildX()`, no `if` on build anywhere. A difference between builds is a hook.
 3. Plain data that proxy or instrumentation needs is a static hook. Anything async or returning UI is a server hook.
 4. Server hooks may return server-rendered `ReactNode`. Render it in a server component; hand it to a client component only as `children`. Otherwise return plain data.

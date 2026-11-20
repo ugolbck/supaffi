@@ -1,3 +1,4 @@
+import type { Instrumentation } from "next";
 import type { ReactNode } from "react";
 
 // The contract between this app and a build that extends it. Every hook here
@@ -100,7 +101,27 @@ export type SupaffiExtensions = {
   };
 };
 
+/**
+ * Server startup and error hooks, read by src/instrumentation.ts. Next bundles
+ * that file for every runtime, Edge included, so anything installed here must
+ * build there too.
+ */
+export type ErrorExtensions = {
+  /** Called first when a server instance starts, in every runtime (NEXT_RUNTIME says which). */
+  register(): void | Promise<void>;
+  /** Called with every error the server catches while handling a request (Next's onRequestError). */
+  onRequestError: Instrumentation.onRequestError;
+};
+
+/** Browser hooks, read by src/instrumentation-client.ts. */
+export type ClientExtensions = {
+  /** Called once in the browser before the app becomes interactive. */
+  start(): void;
+};
+
 type InstalledGroups<T> = { [K in keyof T]?: Partial<T[K]> };
 
 export type InstalledStaticExtensions = InstalledGroups<StaticExtensions>;
 export type InstalledExtensions = InstalledGroups<SupaffiExtensions>;
+export type InstalledErrorExtensions = Partial<ErrorExtensions>;
+export type InstalledClientExtensions = Partial<ClientExtensions>;

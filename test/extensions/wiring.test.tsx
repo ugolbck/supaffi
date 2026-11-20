@@ -392,3 +392,39 @@ describe("owners.canUse", () => {
     expect(markCommissionsPaid).not.toHaveBeenCalled();
   });
 });
+
+describe("errors.register and errors.onRequestError", () => {
+  beforeEach(() => {
+    vi.doMock("@/lib/worker", () => ({ startWorker: () => {} }));
+  });
+
+  it("calls the installed startup hook in every runtime", async () => {
+    const register = vi.fn();
+    vi.doMock("@/extensions/installed-errors", () => ({ installedErrors: { register } }));
+    vi.stubEnv("NEXT_RUNTIME", "edge");
+    const instrumentation = await import("@/instrumentation");
+    await instrumentation.register();
+    vi.unstubAllEnvs();
+    expect(register).toHaveBeenCalledOnce();
+  });
+
+  it("passes every request error to the installed hook", async () => {
+    const onRequestError = vi.fn();
+    vi.doMock("@/extensions/installed-errors", () => ({ installedErrors: { onRequestError } }));
+    const instrumentation = await import("@/instrumentation");
+    const error = new Error("installed error");
+    const request = { path: "/x", method: "GET", headers: {} };
+    const context = { routerKind: "App Router", routePath: "/x", routeType: "render", renderSource: "react-server-components", revalidateReason: undefined } as const;
+    await instrumentation.onRequestError(error, request, context);
+    expect(onRequestError).toHaveBeenCalledWith(error, request, context);
+  });
+});
+
+describe("client.start", () => {
+  it("is called when the browser entry loads", async () => {
+    const start = vi.fn();
+    vi.doMock("@/extensions/installed-client", () => ({ installedClient: { start } }));
+    await import("@/instrumentation-client");
+    expect(start).toHaveBeenCalledOnce();
+  });
+});
