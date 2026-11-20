@@ -328,6 +328,21 @@ describe("handleCheckoutSessionCompleted", () => {
     }
   });
 
+  it("records whether the sale was made in live mode", async () => {
+    const test = sessionFixture({ invoice: "in_test" });
+    test.livemode = false;
+    await handleCheckoutSessionCompleted(merchant, test);
+    const live = sessionFixture({ invoice: "in_live" });
+    live.livemode = true;
+    await handleCheckoutSessionCompleted(merchant, live);
+
+    const rows = await db.commission.findMany({ where: { clickId: click.id }, orderBy: { paymentRef: "asc" } });
+    expect(rows.map((row) => [row.paymentRef, row.livemode])).toEqual([
+      ["in_live", true],
+      ["in_test", false],
+    ]);
+  });
+
   it("creates nothing on a redelivery of the same session", async () => {
     const session = sessionFixture({ invoice: "in_first" });
     await handleCheckoutSessionCompleted(merchant, session);

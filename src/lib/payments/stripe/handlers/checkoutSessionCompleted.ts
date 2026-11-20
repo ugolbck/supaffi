@@ -313,6 +313,7 @@ export async function handleCheckoutSessionCompleted(merchant: Merchant, session
         paymentRef,
         currency: session.currency,
         saleAmount: saleAmountFor(baseMinor, session.currency),
+        livemode: session.livemode,
         payableAt: computePayableAt(program),
         flagReason,
         // Stored through storableReferredShare exactly as invoicePaid.ts

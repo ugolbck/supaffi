@@ -412,6 +412,10 @@ model Commission {
   // this existed, which keep the whole-charge proration they always used.
   referredChargeMinor BigInt?
 
+  // False for a sale made in the payment provider's test mode (Stripe's
+  // livemode, a Polar sandbox). Rows written before this existed are true.
+  livemode Boolean @default(true)
+
   status     CommissionStatus @default(PENDING)
   payableAt  DateTime // createdAt + Program.holdingPeriodDays
   paidAt     DateTime?

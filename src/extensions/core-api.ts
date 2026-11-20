@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auth, signIn } from "@/lib/auth";
 import { createOwner, looksLikeOwnerEmail, MIN_PASSWORD_LENGTH } from "@/lib/owner";
@@ -77,4 +78,41 @@ export async function signInOwner(input: { email: string; password: string; redi
 /** Whether a request's host is one of the products' affiliate domains rather than the dashboard's. */
 export async function isMerchantDomain(host: string | null): Promise<boolean> {
   return hostIsMerchantDomain(host);
+}
+
+/**
+ * Affiliate-referred sales booked in [from, to) across all of an Owner's
+ * products, one total per currency (lowercase ISO code, two decimals, never
+ * converted). Live mode only. Voided sales (a full refund, a confirmed self
+ * referral, a lost dispute) and flagged ones (a self referral signal the Owner
+ * has not ruled on) count nothing, and a partial refund lowers the
+ * sale in proportion to what it took from the commission. A refund that lands
+ * after the commission was paid is not taken out (a paid commission is final).
+ */
+export async function attributedRevenue(
+  ownerId: string,
+  range: { from: Date; to: Date }
+): Promise<{ currency: string; amount: string }[]> {
+  const rows = await db.commission.findMany({
+    where: {
+      merchant: { ownerId },
+      createdAt: { gte: range.from, lt: range.to },
+      livemode: true,
+      status: { notIn: ["VOIDED", "FLAGGED"] },
+      adjustsCommissionId: null,
+      saleAmount: { not: null },
+    },
+    select: { currency: true, saleAmount: true, amount: true, grossAmount: true },
+  });
+  const totals = new Map<string, Prisma.Decimal>();
+  for (const row of rows) {
+    let sale = row.saleAmount!;
+    if (row.grossAmount && row.grossAmount.gt(0) && row.amount.lt(row.grossAmount)) {
+      sale = sale.mul(row.amount).div(row.grossAmount);
+    }
+    totals.set(row.currency, (totals.get(row.currency) ?? new Prisma.Decimal(0)).add(sale));
+  }
+  return [...totals]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([currency, total]) => ({ currency, amount: total.toFixed(2) }));
 }

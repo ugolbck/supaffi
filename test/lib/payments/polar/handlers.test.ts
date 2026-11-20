@@ -67,7 +67,15 @@ describe("Polar order.paid", () => {
     expect(row.paymentRef).toBe(paid.id);
     expect(row.amount.toNumber()).toBe(expected(10_000));
     expect(row.status).toBe("PENDING");
+    expect(row.livemode).toBe(true);
     expect((await db.merchant.findUniqueOrThrow({ where: { id: merchant.id } })).trackingVerifiedAt).not.toBeNull();
+  });
+
+  it("records a sale made in the Polar sandbox as test mode", async () => {
+    merchant = await db.merchant.update({ where: { id: merchant.id }, data: { paymentSandbox: true } });
+    await send("order.paid", order());
+    const [row] = await commissions();
+    expect(row.livemode).toBe(false);
   });
 
   it("earns on a checkout the owner's code made, carrying Supaffi's own key", async () => {

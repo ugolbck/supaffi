@@ -171,6 +171,7 @@ export async function handleInvoicePaid(merchant: Merchant, invoice: Stripe.Invo
         paymentRef: invoice.id,
         currency: invoice.currency,
         saleAmount: saleAmountFor(baseMinor, invoice.currency),
+        livemode: invoice.livemode,
         payableAt: computePayableAt(program),
         flagReason,
         referredChargeMinor: storableReferredShare(cappedReferredChargeMinor),
