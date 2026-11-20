@@ -62,3 +62,12 @@ export function throttle(max: number, windowMs: number): () => Promise<void> {
     }
   };
 }
+
+/** More rows than any program this importer is for. Past it, the read stops rather than filling memory. */
+export const MAX_ROWS = 100_000;
+
+export function checkSize(rows: unknown[], label: string): void {
+  if (rows.length > MAX_ROWS) {
+    throw new ImportApiError(`${label} returned more than ${MAX_ROWS.toLocaleString("en")} records of one kind, more than an import here can take.`);
+  }
+}

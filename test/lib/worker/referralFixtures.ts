@@ -16,6 +16,7 @@ export async function clearReferralTables(): Promise<void> {
   await db.affiliateLink.deleteMany();
   await db.affiliate.deleteMany();
   await db.program.deleteMany();
+  await db.import.deleteMany();
   await db.merchant.deleteMany();
   await db.owner.deleteMany();
 }

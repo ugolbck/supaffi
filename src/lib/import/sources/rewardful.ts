@@ -1,4 +1,4 @@
-import { apiBase, getJson, throttle } from "../http";
+import { apiBase, checkSize, getJson, throttle } from "../http";
 import { fromCents, type FetchedProgram, type SourceCommissionState } from "../types";
 
 /**
@@ -50,7 +50,8 @@ export async function fetchRewardful(apiKey: string): Promise<FetchedProgram> {
       const body = await getJson<Page<T>>(`${base}${path}?limit=100&page=${page}${query}`, headers, "Rewardful");
       if (Array.isArray(body)) return [...rows, ...body];
       rows.push(...body.data);
-      if (!body.pagination?.next_page) return rows;
+      checkSize(rows, "Rewardful");
+      if (!body.pagination?.next_page || body.data.length === 0) return rows;
     }
   }
 

@@ -5,14 +5,19 @@ import { fetchRewardful } from "./rewardful";
 import { fetchTolt } from "./tolt";
 
 /** Reads everything the other tool's API gives about the program. */
-export function fetchProgram(source: ImportSourceKey, apiKey: string, accountId: string | null): Promise<FetchedProgram> {
+export function fetchProgram(
+  source: ImportSourceKey,
+  apiKey: string,
+  accountId: string | null,
+  currency: string | null
+): Promise<FetchedProgram> {
   switch (source) {
     case "REWARDFUL":
       return fetchRewardful(apiKey);
     case "TOLT":
       return fetchTolt(apiKey);
     case "FIRSTPROMOTER":
-      return fetchFirstPromoter(apiKey, accountId ?? "");
+      return fetchFirstPromoter(apiKey, accountId ?? "", currency ?? "usd");
     case "AFFONSO":
       return fetchAffonso(apiKey);
   }

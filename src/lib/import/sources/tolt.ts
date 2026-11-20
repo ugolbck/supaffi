@@ -1,4 +1,4 @@
-import { apiBase, getJson, throttle } from "../http";
+import { apiBase, checkSize, getJson, throttle } from "../http";
 import { fromCents, type FetchedProgram, type SourceCommissionState } from "../types";
 
 /**
@@ -44,7 +44,8 @@ export async function fetchTolt(apiKey: string): Promise<FetchedProgram> {
       const url: string = `${base}${path}?limit=100${after ? `&starting_after=${encodeURIComponent(after)}` : ""}`;
       const body = await getJson<Page<T>>(url, headers, "Tolt");
       rows.push(...body.data);
-      if (!body.has_more || !body.next_cursor) return rows;
+      checkSize(rows, "Tolt");
+      if (!body.has_more || !body.next_cursor || body.data.length === 0) return rows;
       after = body.next_cursor;
     }
   }

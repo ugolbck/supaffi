@@ -17,6 +17,8 @@ CREATE TABLE "Import" (
     "status" "ImportStatus" NOT NULL DEFAULT 'FETCHING',
     "apiKeyEnc" TEXT,
     "accountRef" TEXT,
+    "currency" TEXT,
+    "attempts" INTEGER NOT NULL DEFAULT 0,
     "fetched" JSONB,
     "mapping" JSONB,
     "summary" JSONB,

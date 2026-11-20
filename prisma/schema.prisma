@@ -602,8 +602,13 @@ model Import {
   // The other tool's API key, encrypted. Deleted as soon as reading is done,
   // whether it worked or not.
   apiKeyEnc  String?
-  // FirstPromoter's account id, which its API asks for beside the key.
+  // FirstPromoter's account id, which its API asks for beside the key, and
+  // its account's currency, which its API does not say.
   accountRef String?
+  currency   String?
+  // How many times a worker took the job. One that keeps stopping the
+  // worker (out of memory, say) is failed rather than taken forever.
+  attempts   Int          @default(0)
   // What was read, in Supaffi's own shape (src/lib/import/types.ts).
   fetched    Json?
   // The Owner's choice of program for each of the other tool's campaigns.

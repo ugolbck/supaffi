@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { requireOwner } from "@/app/requireOwner";
 import { getMerchantForOwnerBySlug } from "@/lib/merchant";
 import { listProgramsForMerchant } from "@/lib/program";
-import { latestImport } from "@/lib/import/jobs";
+import { importFetched, latestImport } from "@/lib/import/jobs";
 import { previewImport } from "@/lib/import/preview";
-import { IMPORT_SOURCES, type FetchedProgram, type ImportSourceKey, type ImportSummary } from "@/lib/import/types";
+import { IMPORT_SOURCES, type ImportSourceKey, type ImportSummary } from "@/lib/import/types";
 import { formatCount, formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -39,7 +40,7 @@ export default async function ImportPage({
   searchParams,
 }: {
   params: Promise<{ product: string }>;
-  searchParams: Promise<{ invited?: string }>;
+  searchParams: Promise<{ invited?: string; new?: string }>;
 }) {
   const { product } = await params;
   const query = await searchParams;
@@ -50,7 +51,9 @@ export default async function ImportPage({
   const productRef = { id: merchant.id, slug: merchant.slug };
   const job = await latestImport(ownerId, merchant.id);
   const label = job ? IMPORT_SOURCES[job.source as ImportSourceKey].label : null;
-  const showForm = !job || (job.status === "FAILED" && !job.fetched);
+  // A new import once the last one is done, from the same tool or another.
+  const showForm =
+    !job || (job.status === "FAILED" && !job.hasFetched) || (query.new === "1" && job.status === "DONE");
 
   if (showForm) {
     return (
@@ -91,24 +94,31 @@ export default async function ImportPage({
           <Row label="Commissions owed" value={formatCount(s.commissionsOwed)} />
           <Row label="Commissions paid" value={formatCount(s.commissionsPaid)} />
           {s.codesTaken.length > 0 && <Row label="Codes another product uses" value={s.codesTaken.join(", ")} />}
+          {s.codesInvalid?.length > 0 && <Row label="Codes not valid here" value={s.codesInvalid.join(", ")} />}
         </Section>
         <div className="flex max-w-lg flex-col gap-2">
           <p className="text-sm text-muted-foreground">
             Affiliates were not emailed. Invite them once your site runs this product&apos;s tracking script.
           </p>
           {invited && <p className="text-[13px] text-muted-foreground">{invited}</p>}
-          <form action={inviteAction.bind(null, productRef)}>
-            <Button type="submit" className="cursor-pointer">
-              Invite affiliates to set a password
+          <div className="flex gap-2">
+            <form action={inviteAction.bind(null, productRef)}>
+              <Button type="submit" className="cursor-pointer">
+                Invite affiliates to set a password
+              </Button>
+            </form>
+            <Button variant="ghost" className="cursor-pointer" render={<Link href="?new=1" />}>
+              Import again
             </Button>
-          </form>
+          </div>
         </div>
       </Page>
     );
   }
 
   // READY, or a write that failed and can be run again.
-  const fetched = job.fetched as unknown as FetchedProgram;
+  const fetched = await importFetched(ownerId, merchant.id, job.id);
+  if (!fetched) notFound();
   const [preview, programs] = await Promise.all([
     previewImport(merchant, job.source as ImportSourceKey, fetched),
     listProgramsForMerchant(ownerId, merchant.id),
@@ -130,6 +140,9 @@ export default async function ImportPage({
           {preview.alreadyImported > 0 && <Row label="Imported before, skipped" value={formatCount(preview.alreadyImported)} />}
           {preview.codesTaken.length > 0 && (
             <Row label="Codes another product uses, replaced" value={preview.codesTaken.join(", ")} />
+          )}
+          {preview.codesInvalid.length > 0 && (
+            <Row label="Codes not valid here, replaced" value={preview.codesInvalid.join(", ")} />
           )}
         </Section>
         {preview.campaigns.length > 0 && (

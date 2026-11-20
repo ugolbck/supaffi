@@ -16,6 +16,9 @@ import { IMPORT_SOURCES, type CampaignMapping, type FetchedProgram, type ImportS
 /** How long a job may run before another worker takes it over, as after a crash. */
 const LEASE_MS = 60 * 60 * 1000;
 
+/** A job a worker took this many times without finishing is failed rather than taken again. */
+const MAX_ATTEMPTS = 3;
+
 export type StartResult = { error: string } | { error: null; id: string };
 
 export async function startImport(
@@ -23,14 +26,17 @@ export async function startImport(
   merchantId: string,
   source: ImportSourceKey,
   apiKey: string,
-  accountId: string | null
+  accountId: string | null,
+  currency: string | null = null
 ): Promise<StartResult> {
   await assertOwnsMerchant(ownerId, merchantId);
   const key = apiKey.trim();
   if (!key || key.length > 500) return { error: "Paste the API key." };
   const account = accountId?.trim() || null;
-  if (IMPORT_SOURCES[source].needsAccountId && (!account || account.length > 100)) {
-    return { error: "Paste the account ID too." };
+  const accountCurrency = currency?.trim().toLowerCase() || null;
+  if (IMPORT_SOURCES[source].needsAccountId) {
+    if (!account || account.length > 100) return { error: "Paste the account ID too." };
+    if (!accountCurrency || !/^[a-z]{3}$/.test(accountCurrency)) return { error: "Enter the account's currency, like USD." };
   }
   const running = await db.import.findFirst({
     where: { merchantId, status: { in: ["FETCHING", "IMPORTING"] } },
@@ -39,7 +45,13 @@ export async function startImport(
   if (running) return { error: "An import is already running on this product." };
 
   const created = await db.import.create({
-    data: { merchantId, source, apiKeyEnc: encrypt(key), accountRef: account },
+    data: {
+      merchantId,
+      source,
+      apiKeyEnc: encrypt(key),
+      accountRef: account,
+      currency: IMPORT_SOURCES[source].needsAccountId ? accountCurrency : null,
+    },
     select: { id: true },
   });
   // Wakes the worker now rather than at its next poll.
@@ -68,7 +80,7 @@ export async function confirmImport(
   // A failed write can be run again: what it wrote is matched, not repeated.
   const { count } = await db.import.updateMany({
     where: { id: importId, merchantId, status: { in: ["READY", "FAILED"] }, NOT: { fetched: { equals: Prisma.DbNull } } },
-    data: { status: "IMPORTING", mapping: clean, claimedAt: null },
+    data: { status: "IMPORTING", mapping: clean, claimedAt: null, attempts: 0 },
   });
   if (count > 0) await db.$executeRaw`SELECT pg_notify('webhook_event_inserted', '')`.catch(() => {});
   return count > 0;
@@ -80,19 +92,29 @@ export async function discardImport(ownerId: string, merchantId: string, importI
   await db.import.deleteMany({ where: { id: importId, merchantId, status: { in: ["READY", "FAILED"] } } });
 }
 
+/** The product's latest import, without what was read: the page asks for that only when it shows it. */
 export async function latestImport(ownerId: string, merchantId: string) {
   await assertOwnsMerchant(ownerId, merchantId);
-  return db.import.findFirst({
+  const job = await db.import.findFirst({
     where: { merchantId },
     orderBy: { createdAt: "desc" },
-    select: { id: true, source: true, status: true, fetched: true, summary: true, error: true, createdAt: true },
+    select: { id: true, source: true, status: true, summary: true, error: true, createdAt: true },
   });
+  if (!job) return null;
+  const read = await db.import.count({ where: { id: job.id, NOT: { fetched: { equals: Prisma.DbNull } } } });
+  return { ...job, hasFetched: read > 0 };
+}
+
+export async function importFetched(ownerId: string, merchantId: string, importId: string): Promise<FetchedProgram | null> {
+  await assertOwnsMerchant(ownerId, merchantId);
+  const job = await db.import.findFirst({ where: { id: importId, merchantId }, select: { fetched: true } });
+  return (job?.fetched as unknown as FetchedProgram) ?? null;
 }
 
 /** Takes the oldest job waiting on the worker, or one whose worker stopped. */
 async function claim(): Promise<string | null> {
   const rows = await db.$queryRaw<{ id: string }[]>`
-    UPDATE "Import" SET "claimedAt" = now()
+    UPDATE "Import" SET "claimedAt" = now(), attempts = attempts + 1
     WHERE id = (
       SELECT id FROM "Import"
       WHERE status IN ('FETCHING', 'IMPORTING')
@@ -117,14 +139,21 @@ async function runOne(id: string): Promise<void> {
     include: { merchant: { select: { id: true, paymentProvider: true, paymentKeyEnc: true } } },
   });
   const source = job.source as ImportSourceKey;
+  if (job.attempts > MAX_ATTEMPTS) {
+    await db.import.update({
+      where: { id },
+      data: { status: "FAILED", error: "The import kept stopping before it finished. The server log has the details.", apiKeyEnc: null },
+    });
+    return;
+  }
 
   if (job.status === "FETCHING") {
     try {
       if (!job.apiKeyEnc) throw new ImportApiError("The API key is gone. Start again.");
-      const fetched = await fetchProgram(source, decrypt(job.apiKeyEnc), job.accountRef);
+      const fetched = await fetchProgram(source, decrypt(job.apiKeyEnc), job.accountRef, job.currency);
       await db.import.update({
         where: { id },
-        data: { status: "READY", fetched: fetched as unknown as Prisma.InputJsonValue, apiKeyEnc: null, accountRef: null },
+        data: { status: "READY", fetched: fetched as unknown as Prisma.InputJsonValue, apiKeyEnc: null, accountRef: null, attempts: 0 },
       });
     } catch (err) {
       await db.import.update({
@@ -142,9 +171,10 @@ async function runOne(id: string): Promise<void> {
       job.fetched as unknown as FetchedProgram,
       (job.mapping ?? {}) as CampaignMapping
     );
+    // What was read is let go once written: it holds every affiliate's email.
     await db.import.update({
       where: { id },
-      data: { status: "DONE", summary: summary as unknown as Prisma.InputJsonValue },
+      data: { status: "DONE", summary: summary as unknown as Prisma.InputJsonValue, fetched: Prisma.DbNull },
     });
   } catch (err) {
     // What was written stays: running it again writes only the rest.

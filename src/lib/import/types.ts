@@ -13,7 +13,7 @@ export const IMPORT_SOURCES: Record<
     label: string;
     /** The query parameter its referral links carry. Null when it is `via`, as ours is. */
     referralParam: string | null;
-    /** Whether its API asks for an account id beside the key. */
+    /** Whether its API asks for an account id beside the key, and says no currency, so the Owner names both. */
     needsAccountId: boolean;
     /** Where its owner finds the API key. */
     keyHelp: string;
@@ -91,10 +91,14 @@ export type FetchedProgram = {
 export type CampaignMapping = Record<string, string>;
 
 export type ImportSummary = {
+  /** Who the import wrote, so only they are invited. */
+  createdAffiliateIds: string[];
   affiliatesCreated: number;
   affiliatesMatched: number;
   /** Codes another product already uses: those affiliates got a new code. */
   codesTaken: string[];
+  /** Codes that are not a valid code here even lowercased: those links stop working. */
+  codesInvalid: string[];
   referrals: number;
   /** Renewals of these referrals will earn here. */
   subscriptionsLinked: number;

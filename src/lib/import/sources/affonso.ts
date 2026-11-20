@@ -1,4 +1,4 @@
-import { apiBase, getJson, throttle } from "../http";
+import { apiBase, checkSize, getJson, throttle } from "../http";
 import { fromMajor, type FetchedProgram, type SourceCommissionState } from "../types";
 
 /**
@@ -55,7 +55,8 @@ export async function fetchAffonso(apiKey: string): Promise<FetchedProgram> {
       await wait();
       const body = await getJson<Numbered<T>>(`${base}${path}?limit=200&page=${page}${query}`, headers, "Affonso");
       rows.push(...body.data);
-      if (!(body.pagination?.hasNextPage ?? body.pagination?.has_next_page)) return rows;
+      checkSize(rows, "Affonso");
+      if (!(body.pagination?.hasNextPage ?? body.pagination?.has_next_page) || body.data.length === 0) return rows;
     }
   }
 
@@ -70,6 +71,7 @@ export async function fetchAffonso(apiKey: string): Promise<FetchedProgram> {
         "Affonso"
       );
       rows.push(...body.data);
+      checkSize(rows, "Affonso");
       if (!body.has_more || body.data.length === 0) return rows;
     }
   }

@@ -287,6 +287,12 @@ export async function getMerchantByDomain(
 export async function deleteMerchant(ownerId: string, merchantId: string): Promise<void> {
   await assertOwnsMerchant(ownerId, merchantId);
   const affiliates = { affiliate: { merchantId } };
+  // An import writing into it meanwhile would leave rows behind the delete.
+  const importing = await db.import.findFirst({
+    where: { merchantId, status: { in: ["FETCHING", "IMPORTING"] } },
+    select: { id: true },
+  });
+  if (importing) throw new Error("An import is running on this product. Delete it once the import is done.");
   await db.$transaction(
     async (tx) => {
       const { domain, domainVerifiedAt, previousDomain } = await tx.merchant.findUniqueOrThrow({

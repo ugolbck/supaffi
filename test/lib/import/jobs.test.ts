@@ -72,7 +72,10 @@ describe("import jobs", () => {
     expect(await confirmImport(ownerId, merchantId, started.id, { c1: programId, c2: "someone-elses" })).toBe(true);
     expect((await db.import.findUniqueOrThrow({ where: { id: started.id } })).mapping).toEqual({ c1: programId });
     await runImports();
-    expect((await db.import.findUniqueOrThrow({ where: { id: started.id } })).status).toBe("DONE");
+    const done = await db.import.findUniqueOrThrow({ where: { id: started.id } });
+    expect(done.status).toBe("DONE");
+    // What was read held every affiliate's email; only the summary stays.
+    expect(done.fetched).toBeNull();
     expect(await db.affiliateLink.findUnique({ where: { code: "sarah" } })).not.toBeNull();
   });
 
@@ -90,6 +93,9 @@ describe("import jobs", () => {
 
   it("asks FirstPromoter for its account id, and runs one import at a time", async () => {
     expect(await startImport(ownerId, merchantId, "FIRSTPROMOTER", "key", null)).toEqual({ error: "Paste the account ID too." });
+    expect(await startImport(ownerId, merchantId, "FIRSTPROMOTER", "key", "acc", "dollars")).toEqual({
+      error: "Enter the account's currency, like USD.",
+    });
     expect((await startImport(ownerId, merchantId, "TOLT", "key", null)).error).toBeNull();
     expect(await startImport(ownerId, merchantId, "TOLT", "key", null)).toEqual({ error: "An import is already running on this product." });
   });
@@ -97,5 +103,14 @@ describe("import jobs", () => {
   it("refuses another owner's product", async () => {
     const stranger = (await db.owner.create({ data: { email: `s-${crypto.randomUUID()}@example.com`, passwordHash: "x" } })).id;
     await expect(startImport(stranger, merchantId, "TOLT", "key", null)).rejects.toThrow();
+  });
+
+  it("fails a job that keeps stopping the worker instead of taking it forever", async () => {
+    rewardful();
+    const started = await startImport(ownerId, merchantId, "REWARDFUL", "key", null);
+    if (started.error !== null) throw new Error(started.error);
+    await db.import.update({ where: { id: started.id }, data: { attempts: 3 } });
+    await runImports();
+    expect(await db.import.findUniqueOrThrow({ where: { id: started.id } })).toMatchObject({ status: "FAILED", apiKeyEnc: null });
   });
 });

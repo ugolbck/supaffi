@@ -48,9 +48,14 @@ export function StartImportForm({ action }: { action: Action }) {
           <span className="text-xs text-muted-foreground">In {meta.label}: {meta.keyHelp}</span>
         </Field>
         {meta.needsAccountId && (
-          <Field label="Account ID" htmlFor="import-account">
-            <Input id="import-account" name="accountId" autoComplete="off" required />
-          </Field>
+          <div className="grid grid-cols-[1fr_auto] gap-5">
+            <Field label="Account ID" htmlFor="import-account">
+              <Input id="import-account" name="accountId" autoComplete="off" required />
+            </Field>
+            <Field label="Account currency" htmlFor="import-currency">
+              <Input id="import-currency" name="currency" defaultValue="USD" maxLength={3} required className="w-20 uppercase" />
+            </Field>
+          </div>
         )}
       </FormCard>
       {state.error && (

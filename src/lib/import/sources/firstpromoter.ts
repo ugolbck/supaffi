@@ -1,4 +1,4 @@
-import { apiBase, getJson, throttle } from "../http";
+import { apiBase, checkSize, getJson, throttle } from "../http";
 import { fromCents, type FetchedProgram, type SourceCommissionState } from "../types";
 
 /**
@@ -24,7 +24,6 @@ type Commission = {
   is_paid: boolean;
   amount: number;
   unit: string;
-  original_sale_currency: string | null;
   created_at: string;
   status_updated_at: string | null;
   promoter_campaign: { promoter_id: number } | null;
@@ -37,7 +36,11 @@ function stateOf(c: Commission): SourceCommissionState {
   return c.status === "approved" ? "owed" : "pending";
 }
 
-export async function fetchFirstPromoter(apiKey: string, accountId: string): Promise<FetchedProgram> {
+/**
+ * `currency` is the account's: FirstPromoter's API does not say which
+ * currency a commission is in, so the Owner names it when starting.
+ */
+export async function fetchFirstPromoter(apiKey: string, accountId: string, currency: string): Promise<FetchedProgram> {
   const base = apiBase("https://api.firstpromoter.com/api/v2/company");
   const headers = { authorization: `Bearer ${apiKey}`, "account-id": accountId };
   const wait = throttle(350, 60_000);
@@ -50,6 +53,7 @@ export async function fetchFirstPromoter(apiKey: string, accountId: string): Pro
       const body = await getJson<T[] | { data: T[] }>(`${base}${path}${sep}per_page=${perPage}&page=${page}`, headers, "FirstPromoter");
       const data = Array.isArray(body) ? body : body.data;
       rows.push(...data);
+      checkSize(rows, "FirstPromoter");
       if (data.length < perPage) return rows;
     }
   }
@@ -102,7 +106,7 @@ export async function fetchFirstPromoter(apiKey: string, accountId: string): Pro
         affiliateId: String(c.promoter_campaign!.promoter_id),
         referralId: c.referral ? String(c.referral.id) : null,
         amount: fromCents(c.amount),
-        currency: (c.original_sale_currency ?? "usd").toLowerCase(),
+        currency,
         state: stateOf(c),
         createdAt: c.created_at,
         paidAt: c.is_paid ? (c.status_updated_at ?? c.created_at) : null,

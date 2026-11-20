@@ -1,5 +1,5 @@
 # The end-to-end stack: the production image behind Caddy, a merchant site,
-# a fake Stripe, a fake Polar and a mail catcher. The .test names exist only on this network (aliases on
+# a fake Stripe, a fake Polar, a fake Rewardful and a mail catcher. The .test names exist only on this network (aliases on
 # caddy) and in the browser (host resolver rules in playwright.config.ts).
 #
 # Every container that speaks TLS to another trusts Caddy's local root through
@@ -53,6 +53,7 @@ services:
       SUPAFFI_UPDATE_CHECK: "off"
       SUPAFFI_STRIPE_API_BASE: http://fake-stripe:12111
       SUPAFFI_POLAR_API_BASE: http://fake-polar:12112
+      SUPAFFI_IMPORT_API_BASE: http://fake-rewardful:12113
     volumes:
       - caddy_data:/caddy:ro
     depends_on:
@@ -94,6 +95,12 @@ services:
     depends_on:
       caddy:
         condition: service_healthy
+
+  fake-rewardful:
+    image: node:24-alpine
+    command: ["node", "/fakes/rewardful.mjs"]
+    volumes:
+      - ./fakes:/fakes:ro
 
   # The owner's mail server: catches every email the app sends, and shows it
   # to the tests over its API.

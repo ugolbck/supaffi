@@ -31,7 +31,7 @@ const FETCHED: FetchedProgram = {
     { id: "c2", name: "Standard" },
   ],
   affiliates: [
-    { id: "a1", email: "Sarah@Example.com", name: "Sarah", campaignId: "c1", codes: ["sarah", "taken"], paypalEmail: "s@paypal.test", wiseEmail: null },
+    { id: "a1", email: "Sarah@Example.com", name: "Sarah", campaignId: "c1", codes: ["Sarah", "taken", "sarah_old"], paypalEmail: "s@paypal.test", wiseEmail: null },
     { id: "a2", email: "tom@example.com", name: "Tom", campaignId: "c2", codes: [], paypalEmail: null, wiseEmail: "t@wise.test" },
     { id: "a3", email: "here@example.com", name: "Here", campaignId: "c1", codes: ["here-old"], paypalEmail: null, wiseEmail: null },
   ],
@@ -39,7 +39,8 @@ const FETCHED: FetchedProgram = {
   commissions: [
     { id: "k1", affiliateId: "a1", referralId: "r1", amount: "30.00", currency: "usd", state: "owed", createdAt: "2025-12-01T00:00:00.000Z", paidAt: null },
     { id: "k2", affiliateId: "a1", referralId: "r1", amount: "12.50", currency: "usd", state: "paid", createdAt: "2025-11-01T00:00:00.000Z", paidAt: PAID_AT },
-    { id: "k3", affiliateId: "a1", referralId: null, amount: "7.50", currency: "usd", state: "paid", createdAt: "2025-11-02T00:00:00.000Z", paidAt: PAID_AT },
+    // Paid the same day as k2 but stamped later: one payout, as it was.
+    { id: "k3", affiliateId: "a1", referralId: null, amount: "7.50", currency: "usd", state: "paid", createdAt: "2025-11-02T00:00:00.000Z", paidAt: "2026-01-15T09:30:00.000Z" },
     { id: "k4", affiliateId: "a1", referralId: "r1", amount: "9.00", currency: "usd", state: "void", createdAt: "2025-11-03T00:00:00.000Z", paidAt: null },
     { id: "k5", affiliateId: "a2", referralId: null, amount: "4.00", currency: "eur", state: "pending", createdAt: "2026-03-01T00:00:00.000Z", paidAt: null },
   ],
@@ -87,6 +88,7 @@ describe("applyImport", () => {
       affiliates: 3,
       existingEmails: 1,
       codesTaken: ["taken"],
+      codesInvalid: ["sarah_old"],
       referrals: 1,
       renewalsLinkable: 1,
       owed: [
@@ -103,9 +105,11 @@ describe("applyImport", () => {
     const summary = await applyImport(merchant, "TOLT", FETCHED, { c1: vip, c2: standard });
 
     expect(summary).toEqual({
+      createdAffiliateIds: expect.any(Array),
       affiliatesCreated: 2,
       affiliatesMatched: 1,
       codesTaken: ["taken"],
+      codesInvalid: ["sarah_old"],
       referrals: 1,
       subscriptionsLinked: 1,
       commissionsOwed: 2,
@@ -136,7 +140,7 @@ describe("applyImport", () => {
 
     const sub = await db.referredSubscription.findFirstOrThrow({ include: { click: true } });
     expect(sub.subscriptionRef).toBe("sub_1");
-    expect(sub.click).toMatchObject({ affiliateId: sarah.id, programId: vip, referralToken: "import:tolt:referral:r1" });
+    expect(sub.click).toMatchObject({ affiliateId: sarah.id, programId: vip, referralToken: `import:tolt:${merchant.id}:referral:r1` });
 
     const owed = await db.commission.findFirstOrThrow({ where: { paymentRef: "import:tolt:k1" } });
     expect(owed).toMatchObject({ status: "PAYABLE", clickId: sub.clickId });
@@ -147,7 +151,7 @@ describe("applyImport", () => {
 
     const [payout] = await db.payout.findMany({ include: { commissions: { select: { paymentRef: true } } } });
     expect(payout.amount.toFixed(2)).toBe("20.00");
-    expect(payout.paidAt.toISOString()).toBe(PAID_AT);
+    expect(payout.paidAt.toISOString()).toBe("2026-01-15T09:30:00.000Z");
     expect(payout.note).toBe("Paid in Tolt");
     expect(payout.commissions.map((c) => c.paymentRef).sort()).toEqual(["import:tolt:k2", "import:tolt:k3"]);
 
@@ -178,5 +182,24 @@ describe("applyImport", () => {
     await applyImport(merchant, "TOLT", FETCHED, {});
     const tom = await db.affiliate.findUniqueOrThrow({ where: { merchantId_email: { merchantId: merchant.id, email: "tom@example.com" } } });
     expect(tom.programId).toBe(standard);
+  });
+
+  it("keeps the same tool's referrals apart when two products import from it", async () => {
+    const second = await db.merchant.create({
+      data: { slug: "shop-2", ownerId: (await db.merchant.findUniqueOrThrow({ where: { id: merchant.id } })).ownerId, name: "Shop 2", domain: `${crypto.randomUUID()}.example.com`, websiteUrl: "https://y.example.com" },
+    });
+    await db.program.create({ data: { merchantId: second.id, slug: "p", name: "P", defaultCommissionRate: 20, commissionDurationType: "FOREVER" } });
+    const solo: FetchedProgram = { ...FETCHED, affiliates: FETCHED.affiliates.map((a) => ({ ...a, codes: [] })) };
+
+    await applyImport(merchant, "TOLT", solo, {});
+    await applyImport({ ...merchant, id: second.id }, "TOLT", solo, {});
+
+    const subs = await db.referredSubscription.findMany({ include: { click: { include: { affiliate: true } } } });
+    expect(subs.map((s) => [s.merchantId, s.click.affiliate.merchantId]).sort()).toEqual(
+      [
+        [merchant.id, merchant.id],
+        [second.id, second.id],
+      ].sort()
+    );
   });
 });

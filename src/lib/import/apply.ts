@@ -1,6 +1,7 @@
 import { Prisma, type PaymentProvider } from "@prisma/client";
 import { db } from "@/lib/db";
 import { isCodeRetiredByAnother, lockLinkCodes } from "@/lib/affiliateLink";
+import { validateCode } from "@/lib/linkCode";
 import { generateLinkCode } from "@/lib/referralCode";
 import { composePayoutDetails } from "@/lib/payoutMethod";
 import { stripeClientFor } from "@/lib/payments/stripe/client";
@@ -11,7 +12,6 @@ import {
   type FetchedProgram,
   type ImportSourceKey,
   type ImportSummary,
-  type SourceCommission,
 } from "./types";
 
 /**
@@ -25,13 +25,30 @@ import {
  */
 
 type Merchant = { id: string; paymentProvider: PaymentProvider; paymentKeyEnc: string | null };
-type ProgramTerms = { id: string; holdingPeriodDays: number };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** The marker on everything an import wrote, unique per tool and per the tool's own id. */
-export function importRef(source: ImportSourceKey, kind: "referral" | "affiliate" | "commission", id: string): string {
-  return `import:${source.toLowerCase()}:${kind === "commission" ? "" : `${kind}:`}${id}`;
+/** How far a subscription's start may be from the referral for the subscription to be the one it brought. */
+const SUBSCRIPTION_WINDOW_MS = 3 * DAY_MS;
+
+/** A commission's payment reference, unique per product. */
+export function importRef(source: ImportSourceKey, id: string): string {
+  return `import:${source.toLowerCase()}:${id}`;
+}
+
+/** A click's token, unique on the whole instance, so the product is in it. */
+function clickToken(source: ImportSourceKey, merchantId: string, kind: "referral" | "affiliate", id: string): string {
+  return `import:${source.toLowerCase()}:${merchantId}:${kind}:${id}`;
+}
+
+/**
+ * A code as this product keeps it: lowercase, and a valid code here. Old links
+ * still arrive in whatever case they were shared, which the tracking endpoint
+ * lowercases. Null for a code no link here could carry.
+ */
+export function importCode(raw: string): string | null {
+  const result = validateCode(raw);
+  return result.error === null ? result.code : null;
 }
 
 function normalizeEmail(email: string): string {
@@ -48,19 +65,25 @@ function dateOr(value: string | null | undefined, fallback: Date): Date {
  * product's affiliate holds, or once held, is not taken from them: it is
  * listed, and the affiliate gets a new code if left with none.
  */
-async function writeLinks(affiliateId: string, name: string | null, codes: string[], taken: string[]): Promise<void> {
-  const wanted = [...new Set(codes.map((c) => c.trim()).filter((c) => c.length >= 1 && c.length <= 100))];
+async function writeLinks(affiliateId: string, name: string | null, raw: string[], summary: ImportSummary): Promise<void> {
+  const wanted: string[] = [];
+  for (const code of raw) {
+    const clean = importCode(code);
+    if (clean) wanted.push(clean);
+    else if (code.trim()) summary.codesInvalid.push(code.trim());
+  }
+  const codes = [...new Set(wanted)];
   await db.$transaction(async (tx) => {
-    await lockLinkCodes(tx, wanted);
+    await lockLinkCodes(tx, codes);
     let hasPrimary = (await tx.affiliateLink.count({ where: { affiliateId, isPrimary: true } })) > 0;
-    for (const code of wanted) {
+    for (const code of codes) {
       const existing = await tx.affiliateLink.findUnique({ where: { code }, select: { affiliateId: true } });
       if (existing) {
-        if (existing.affiliateId !== affiliateId) taken.push(code);
+        if (existing.affiliateId !== affiliateId) summary.codesTaken.push(code);
         continue;
       }
       if (await isCodeRetiredByAnother(tx, code, affiliateId)) {
-        taken.push(code);
+        summary.codesTaken.push(code);
         continue;
       }
       await tx.affiliateLink.create({ data: { affiliateId, code, isPrimary: !hasPrimary } });
@@ -77,16 +100,35 @@ async function writeLinks(affiliateId: string, name: string | null, codes: strin
 }
 
 /**
- * The subscriptions a Stripe customer has, for a tool that knows only the
- * customer. That tool credited every payment the customer made, so they all
- * keep earning here. A key that cannot list them links none.
+ * The subscriptions a referral brought, for a tool that knows only the Stripe
+ * customer: those the customer started within a few days of the referral, with
+ * the products they bill, so renewals earn on those products only, as a
+ * referred checkout's would. A customer's later subscriptions, or ones for
+ * another product on a shared Stripe account, were not referred. A key that
+ * cannot list them links none.
  */
-async function customerSubscriptions(merchant: Merchant, customerId: string): Promise<string[]> {
+async function referredSubscriptions(
+  merchant: Merchant,
+  customerId: string,
+  referredAt: Date
+): Promise<{ id: string; products: string[] }[]> {
   if (merchant.paymentProvider !== "STRIPE" || !merchant.paymentKeyEnc) return [];
   try {
     const stripe = stripeClientFor(merchant);
     const list = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 100 });
-    return list.data.filter((s) => !["canceled", "incomplete_expired"].includes(s.status)).map((s) => s.id);
+    return list.data
+      .filter((s) => !["canceled", "incomplete_expired"].includes(s.status))
+      .filter((s) => Math.abs(s.created * 1000 - referredAt.getTime()) <= SUBSCRIPTION_WINDOW_MS)
+      .map((s) => ({
+        id: s.id,
+        products: [
+          ...new Set(
+            s.items.data
+              .map((item) => (typeof item.price.product === "string" ? item.price.product : item.price.product?.id))
+              .filter((id): id is string => Boolean(id))
+          ),
+        ].sort(),
+      }));
   } catch {
     return [];
   }
@@ -100,9 +142,11 @@ export async function applyImport(
 ): Promise<ImportSummary> {
   const now = new Date();
   const summary: ImportSummary = {
+    createdAffiliateIds: [],
     affiliatesCreated: 0,
     affiliatesMatched: 0,
     codesTaken: [],
+    codesInvalid: [],
     referrals: 0,
     subscriptionsLinked: 0,
     commissionsOwed: 0,
@@ -117,15 +161,13 @@ export async function applyImport(
   });
   if (programs.length === 0) throw new Error("The product has no program to import into");
   const programById = new Map(programs.map((p) => [p.id, p]));
-  const programFor = (campaignId: string | null): ProgramTerms =>
-    programById.get(mapping[campaignId ?? ""] ?? "") ?? programs[0];
+  const programFor = (campaignId: string | null) => programById.get(mapping[campaignId ?? ""] ?? "") ?? programs[0];
 
   // Affiliates, one per email, with their payout details and links.
   const affiliates = new Map<string, { id: string; programId: string }>();
   for (const source of fetched.affiliates) {
     const email = normalizeEmail(source.email);
     if (!email.includes("@")) continue;
-    const program = programFor(source.campaignId);
     let affiliate = await db.affiliate.findUnique({
       where: { merchantId_email: { merchantId: merchant.id, email } },
       select: { id: true, programId: true },
@@ -140,10 +182,11 @@ export async function applyImport(
           : null;
       try {
         affiliate = await db.affiliate.create({
-          data: { merchantId: merchant.id, programId: program.id, email, name: source.name, payoutDetails },
+          data: { merchantId: merchant.id, programId: programFor(source.campaignId).id, email, name: source.name, payoutDetails },
           select: { id: true, programId: true },
         });
         summary.affiliatesCreated += 1;
+        summary.createdAffiliateIds.push(affiliate.id);
       } catch (err) {
         // Signed up in between: the same person, so theirs is matched.
         if (!isUniqueConstraintError(err)) throw err;
@@ -154,7 +197,7 @@ export async function applyImport(
         summary.affiliatesMatched += 1;
       }
     }
-    await writeLinks(affiliate.id, source.name, source.codes, summary.codesTaken);
+    await writeLinks(affiliate.id, source.name, source.codes, summary);
     affiliates.set(source.id, affiliate);
   }
 
@@ -180,27 +223,13 @@ export async function applyImport(
     const affiliate = affiliates.get(referral.affiliateId);
     if (!affiliate) continue;
     const at = dateOr(referral.createdAt, now);
-    const clickId = await clickFor(importRef(source, "referral", referral.id), affiliate, at);
-    referralClicks.set(referral.id, clickId);
+    referralClicks.set(referral.id, await clickFor(clickToken(source, merchant.id, "referral", referral.id), affiliate, at));
     summary.referrals += 1;
-
-    const subscriptions = referral.subscriptionId
-      ? [referral.subscriptionId]
-      : referral.stripeCustomerId
-        ? await customerSubscriptions(merchant, referral.stripeCustomerId)
-        : [];
-    for (const subscriptionRef of subscriptions) {
-      try {
-        await db.referredSubscription.create({ data: { merchantId: merchant.id, clickId, subscriptionRef } });
-        summary.subscriptionsLinked += 1;
-      } catch (err) {
-        // Already linked, by an earlier run or by a checkout here.
-        if (!isUniqueConstraintError(err)) throw err;
-      }
-    }
   }
 
-  // Commissions, as history. A voided one is left behind.
+  // Commissions, as history, before any subscription is linked: a renewal
+  // that arrives meanwhile then finds the referral's earlier commissions and
+  // is judged against the program's duration. A voided one is left behind.
   const already = new Set(
     (
       await db.commission.findMany({
@@ -210,12 +239,15 @@ export async function applyImport(
     ).map((c) => c.paymentRef)
   );
   const fallbackClicks = new Map<string, string>();
-  const rows: (Prisma.CommissionCreateManyInput & { source: SourceCommission })[] = [];
+  const unpaid: Prisma.CommissionCreateManyInput[] = [];
+  // Paid ones grouped into the payouts they were: one per affiliate,
+  // currency and day, since the tools record a payment's time loosely.
+  const payouts = new Map<string, Prisma.CommissionCreateManyInput[]>();
   for (const commission of fetched.commissions) {
     if (commission.state === "void") continue;
     const affiliate = affiliates.get(commission.affiliateId);
     if (!affiliate || !(Number(commission.amount) > 0)) continue;
-    const paymentRef = importRef(source, "commission", commission.id);
+    const paymentRef = importRef(source, commission.id);
     if (already.has(paymentRef)) {
       summary.commissionsSkipped += 1;
       continue;
@@ -226,15 +258,13 @@ export async function applyImport(
     if (!clickId) {
       clickId = fallbackClicks.get(affiliate.id);
       if (!clickId) {
-        clickId = await clickFor(importRef(source, "affiliate", commission.affiliateId), affiliate, now);
+        clickId = await clickFor(clickToken(source, merchant.id, "affiliate", commission.affiliateId), affiliate, now);
         fallbackClicks.set(affiliate.id, clickId);
       }
     }
     const createdAt = dateOr(commission.createdAt, now);
     const hold = programById.get(affiliate.programId)?.holdingPeriodDays ?? 30;
-    const status = commission.state === "paid" ? "PAID" : commission.state === "owed" ? "PAYABLE" : "PENDING";
-    rows.push({
-      source: commission,
+    const row: Prisma.CommissionCreateManyInput = {
       merchantId: merchant.id,
       affiliateId: affiliate.id,
       clickId,
@@ -242,51 +272,72 @@ export async function applyImport(
       amount: commission.amount,
       grossAmount: commission.amount,
       currency: commission.currency,
-      status,
       createdAt,
-      payableAt: status === "PENDING" ? new Date(createdAt.getTime() + hold * DAY_MS) : createdAt,
-      paidAt: status === "PAID" ? dateOr(commission.paidAt, createdAt) : null,
+      status: "PENDING",
+      payableAt: new Date(createdAt.getTime() + hold * DAY_MS),
+    };
+    if (commission.state === "paid") {
+      const paidAt = dateOr(commission.paidAt, createdAt);
+      const key = `${affiliate.id}:${commission.currency}:${paidAt.toISOString().slice(0, 10)}`;
+      payouts.set(key, [...(payouts.get(key) ?? []), { ...row, status: "PAID", payableAt: createdAt, paidAt }]);
+    } else {
+      unpaid.push(commission.state === "owed" ? { ...row, status: "PAYABLE", payableAt: createdAt } : row);
+    }
+  }
+
+  for (let i = 0; i < unpaid.length; i += 1000) {
+    const batch = unpaid.slice(i, i + 1000);
+    const { count } = await db.commission.createMany({ data: batch, skipDuplicates: true });
+    summary.commissionsOwed += count;
+    summary.commissionsSkipped += batch.length - count;
+  }
+
+  // Each payout with its commissions in one step, at what was actually
+  // written, so a run that stops partway leaves no payout without its rows.
+  const note = `Paid in ${IMPORT_SOURCES[source].label}`;
+  for (const rows of payouts.values()) {
+    const paidAt = new Date(Math.max(...rows.map((r) => (r.paidAt as Date).getTime())));
+    await db.$transaction(async (tx) => {
+      const payout = await tx.payout.create({
+        data: { merchantId: merchant.id, affiliateId: rows[0].affiliateId, currency: rows[0].currency, amount: 0, paidAt, note, createdAt: paidAt },
+        select: { id: true },
+      });
+      const { count } = await tx.commission.createMany({
+        data: rows.map((r) => ({ ...r, paidAt, payoutId: payout.id })),
+        skipDuplicates: true,
+      });
+      summary.commissionsPaid += count;
+      summary.commissionsSkipped += rows.length - count;
+      if (count === 0) {
+        await tx.payout.delete({ where: { id: payout.id } });
+        return;
+      }
+      const total = await tx.commission.aggregate({ where: { payoutId: payout.id }, _sum: { amount: true } });
+      await tx.payout.update({ where: { id: payout.id }, data: { amount: total._sum.amount ?? 0 } });
     });
   }
 
-  // Paid ones are grouped into the payouts they were, one per affiliate,
-  // currency and payment moment, as Mark paid writes them.
-  const payouts = new Map<string, { rows: typeof rows; total: Prisma.Decimal }>();
-  for (const row of rows) {
-    if (row.status !== "PAID") continue;
-    const key = `${row.affiliateId}:${row.currency}:${(row.paidAt as Date).getTime()}`;
-    const group = payouts.get(key) ?? { rows: [], total: new Prisma.Decimal(0) };
-    group.rows.push(row);
-    group.total = group.total.add(row.amount as string);
-    payouts.set(key, group);
+  // Last, so renewals earn only once the history above is in place.
+  for (const referral of fetched.referrals) {
+    const clickId = referralClicks.get(referral.id);
+    if (!clickId) continue;
+    const subscriptions = referral.subscriptionId
+      ? [{ id: referral.subscriptionId, products: [] as string[] }]
+      : referral.stripeCustomerId
+        ? await referredSubscriptions(merchant, referral.stripeCustomerId, dateOr(referral.createdAt, now))
+        : [];
+    for (const subscription of subscriptions) {
+      try {
+        await db.referredSubscription.create({
+          data: { merchantId: merchant.id, clickId, subscriptionRef: subscription.id, productRefs: subscription.products },
+        });
+        summary.subscriptionsLinked += 1;
+      } catch (err) {
+        // Already linked, by an earlier run or by a checkout here.
+        if (!isUniqueConstraintError(err)) throw err;
+      }
+    }
   }
-  const label = IMPORT_SOURCES[source].label;
-  for (const group of payouts.values()) {
-    const [first] = group.rows;
-    const payout = await db.payout.create({
-      data: {
-        merchantId: merchant.id,
-        affiliateId: first.affiliateId,
-        currency: first.currency,
-        amount: group.total,
-        paidAt: first.paidAt as Date,
-        note: `Paid in ${label}`,
-        createdAt: first.paidAt as Date,
-      },
-      select: { id: true },
-    });
-    for (const row of group.rows) row.payoutId = payout.id;
-  }
-
-  for (let i = 0; i < rows.length; i += 1000) {
-    const { count } = await db.commission.createMany({
-      data: rows.slice(i, i + 1000).map(({ source: _source, ...row }) => row),
-      skipDuplicates: true,
-    });
-    summary.commissionsSkipped += Math.min(1000, rows.length - i) - count;
-  }
-  summary.commissionsPaid = rows.filter((r) => r.status === "PAID").length;
-  summary.commissionsOwed = rows.length - summary.commissionsPaid;
 
   const param = fetched.referralParam !== undefined ? fetched.referralParam : IMPORT_SOURCES[source].referralParam;
   // Written into the tracking script, so only a plain parameter name.

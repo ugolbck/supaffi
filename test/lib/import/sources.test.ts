@@ -104,12 +104,12 @@ describe("FirstPromoter", () => {
       "/payout_methods": () => [{ method: "paypal", is_selected: true, details: { paypal_email: "pat@paypal.test" } }],
       "/referrals": () => [{ id: 3, uid: "cus_fp", created_at: "2026-01-01T00:00:00Z", promoter_campaign: { promoter_id: 7 } }],
       "/commissions": () => [
-        { id: 9, status: "approved", is_paid: true, amount: 2000, unit: "cash", original_sale_currency: "EUR", created_at: "2026-01-01T00:00:00Z", status_updated_at: "2026-02-01T00:00:00Z", promoter_campaign: { promoter_id: 7 }, referral: { id: 3 } },
-        { id: 10, status: "approved", is_paid: false, amount: 5, unit: "points", original_sale_currency: null, created_at: "2026-01-01T00:00:00Z", status_updated_at: null, promoter_campaign: { promoter_id: 7 }, referral: null },
+        { id: 9, status: "approved", is_paid: true, amount: 2000, unit: "cash", created_at: "2026-01-01T00:00:00Z", status_updated_at: "2026-02-01T00:00:00Z", promoter_campaign: { promoter_id: 7 }, referral: { id: 3 } },
+        { id: 10, status: "approved", is_paid: false, amount: 5, unit: "points", created_at: "2026-01-01T00:00:00Z", status_updated_at: null, promoter_campaign: { promoter_id: 7 }, referral: null },
       ],
     });
 
-    const program = await fetchFirstPromoter("key", "acc_1");
+    const program = await fetchFirstPromoter("key", "acc_1", "eur");
 
     expect(seen.every((r) => r.headers.get("account-id") === "acc_1")).toBe(true);
     expect(program.referralParam).toBe("fpr");

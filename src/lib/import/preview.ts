@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { importRef } from "./apply";
+import { importCode, importRef } from "./apply";
 import type { FetchedProgram, ImportSourceKey } from "./types";
 
 export type ImportPreview = {
@@ -10,6 +10,8 @@ export type ImportPreview = {
   existingEmails: number;
   /** Used by another product: those affiliates get a new code. */
   codesTaken: string[];
+  /** Not a valid code here even lowercased: links using them stop working. */
+  codesInvalid: string[];
   referrals: number;
   /** Referrals whose renewals can keep earning here. */
   renewalsLinkable: number;
@@ -35,8 +37,10 @@ export async function previewImport(
   fetched: FetchedProgram
 ): Promise<ImportPreview> {
   const emails = fetched.affiliates.map((a) => a.email.trim().toLowerCase());
-  const codes = [...new Set(fetched.affiliates.flatMap((a) => a.codes.map((c) => c.trim())))];
-  const refs = fetched.commissions.map((c) => importRef(source, "commission", c.id));
+  const raw = fetched.affiliates.flatMap((a) => a.codes.map((c) => c.trim()).filter(Boolean));
+  const codesInvalid = [...new Set(raw.filter((c) => importCode(c) === null))].sort();
+  const codes = [...new Set(raw.map(importCode).filter((c): c is string => c !== null))];
+  const refs = fetched.commissions.map((c) => importRef(source, c.id));
 
   const [existing, links, retired, imported] = await Promise.all([
     db.affiliate.findMany({ where: { merchantId: merchant.id, email: { in: emails } }, select: { email: true } }),
@@ -48,7 +52,12 @@ export async function previewImport(
   // A code is free when nobody has it, or when this product's affiliate with
   // the same email already does.
   const emailOfCode = new Map<string, string>();
-  for (const a of fetched.affiliates) for (const c of a.codes) emailOfCode.set(c.trim(), a.email.trim().toLowerCase());
+  for (const a of fetched.affiliates) {
+    for (const c of a.codes) {
+      const code = importCode(c);
+      if (code) emailOfCode.set(code, a.email.trim().toLowerCase());
+    }
+  }
   const codesTaken = [
     ...links
       .filter((l) => l.affiliate.merchantId !== merchant.id || l.affiliate.email !== emailOfCode.get(l.code))
@@ -66,6 +75,7 @@ export async function previewImport(
     affiliates: new Set(emails).size,
     existingEmails: existing.length,
     codesTaken: [...new Set(codesTaken)].sort(),
+    codesInvalid,
     referrals: fetched.referrals.length,
     renewalsLinkable: fetched.referrals.filter(
       (r) => r.subscriptionId || (r.stripeCustomerId && merchant.paymentProvider === "STRIPE")

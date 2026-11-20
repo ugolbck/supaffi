@@ -20,7 +20,8 @@ export async function startImportAction(product: Product, _prev: { error: string
     product.id,
     source,
     String(formData.get("apiKey") ?? ""),
-    formData.has("accountId") ? String(formData.get("accountId")) : null
+    formData.has("accountId") ? String(formData.get("accountId")) : null,
+    formData.has("currency") ? String(formData.get("currency")) : null
   );
   if (result.error !== null) return { error: result.error };
   redirect(page(product));
