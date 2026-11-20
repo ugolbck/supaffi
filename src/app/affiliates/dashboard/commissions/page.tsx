@@ -6,6 +6,7 @@ import {
   getAffiliateCommissionTotals,
   type AffiliateCommissionStatus,
 } from "@/lib/affiliate";
+import { payableShortfalls } from "@/lib/payoutMinimum";
 import { Page, PageTitle, Section } from "@/components/dashboard/Page";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TablePagination } from "@/components/dashboard/TablePagination";
@@ -44,10 +45,14 @@ export default async function AffiliateCommissionsPage({
   const status = parseStatus(query.status);
   const page = sanitizePage(query.page);
 
-  const [{ rows, total }, totals] = await Promise.all([
+  const [{ rows, total }, totals, shortfalls] = await Promise.all([
     listAffiliateCommissions(affiliateId, { page, pageSize: PAGE_SIZE, status }),
     getAffiliateCommissionTotals(affiliateId),
+    payableShortfalls({ affiliateId }),
   ]);
+  const shortfallByCurrency = Object.fromEntries(
+    [...shortfalls].map(([key, shortfall]) => [key.slice(affiliateId.length + 1), shortfall])
+  );
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -76,7 +81,7 @@ export default async function AffiliateCommissionsPage({
     ...totals.map((t) => ({ label: STATUS_LABELS[t.status], count: t.count, status: t.status })),
   ];
 
-  const ledgerRows: LedgerRow[] = rows.map(toLedgerRow);
+  const ledgerRows: LedgerRow[] = rows.map((row) => toLedgerRow(row, shortfallByCurrency));
 
   const statusTabs = (
     <Tabs value={status ?? "all"}>

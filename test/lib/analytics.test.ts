@@ -14,11 +14,13 @@ import {
   earnedTrend,
   type DayPoint,
 } from "@/lib/analytics";
+import { markCommissionsPaid } from "@/lib/commission";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 async function clearAll() {
   await db.commission.deleteMany();
+  await db.payout.deleteMany();
   await db.referredSubscription.deleteMany();
   await db.click.deleteMany();
   await db.affiliateLink.deleteMany();
@@ -295,35 +297,67 @@ describe.skipIf(!hasDatabase)("analytics", () => {
     expect(await countPayouts(emptyMerchantId)).toBe(0);
   });
 
-  it("lists past payouts by affiliate, currency and payment date, newest first", async () => {
+  async function pay(affiliateId: string, amounts: string[], currency = "usd", details = {}) {
+    const shown = [];
+    for (const amount of amounts) {
+      const commission = await makeCommission(affiliateId, (await makeClick(affiliateId)).id, { amount, currency });
+      shown.push({ id: commission.id, amount });
+    }
+    return markCommissionsPaid(ownerId, merchantId, shown, new Date().toISOString(), details);
+  }
+
+  it("lists past payouts newest first, with what each one covered", async () => {
     const a = await makeAffiliate("paid-a");
     const b = await makeAffiliate("paid-b");
-    const september = new Date("2026-09-01T09:00:00Z");
-    const october = new Date("2026-10-01T09:00:00Z");
-    for (const [affiliateId, paidAt, amount] of [
-      [a.id, september, "10.00"],
-      [a.id, october, "12.50"],
-      [a.id, october, "7.50"],
-      [b.id, october, "5.00"],
-    ] as const) {
-      const commission = await makeCommission(affiliateId, (await makeClick(affiliateId)).id, { amount, status: "PAID" });
-      await db.commission.update({ where: { id: commission.id }, data: { paidAt } });
-    }
+    await pay(a.id, ["10.00"]);
+    await pay(a.id, ["12.50", "7.50"], "usd", { reference: "TX-2", note: "second run" });
+    await pay(b.id, ["5.00"]);
     await makeCommission(a.id, (await makeClick(a.id)).id);
 
     const { rows, total } = await listPayouts(ownerId, merchantId, { page: 1, pageSize: 10 });
     expect(total).toBe(3);
-    expect(rows.map((r) => [r.affiliateEmail, r.paidAt.toISOString(), r.total, r.count])).toEqual(
-      expect.arrayContaining([
-        ["aff-paid-a@example.com", october.toISOString(), "20.00", 2],
-        ["aff-paid-b@example.com", october.toISOString(), "5.00", 1],
-      ])
-    );
-    expect(rows[2]).toMatchObject({ affiliateEmail: "aff-paid-a@example.com", total: "10.00", count: 1 });
+    expect(rows.map((r) => [r.affiliateEmail, r.total, r.count, r.reference, r.note])).toEqual([
+      ["aff-paid-b@example.com", "5.00", 1, null, null],
+      ["aff-paid-a@example.com", "20.00", 2, "TX-2", "second run"],
+      ["aff-paid-a@example.com", "10.00", 1, null, null],
+    ]);
 
     const second = await listPayouts(ownerId, merchantId, { page: 2, pageSize: 2 });
     expect(second.rows).toHaveLength(1);
     expect(second.total).toBe(3);
+  });
+
+  it("filters past payouts by currency and by how they were sent", async () => {
+    const paypal = await makeAffiliate("paypal");
+    const none = await makeAffiliate("none");
+    await db.affiliate.update({ where: { id: paypal.id }, data: { payoutDetails: "PayPal: p@example.com" } });
+    await pay(paypal.id, ["10.00"]);
+    await pay(paypal.id, ["8.00"], "eur");
+    await pay(none.id, ["5.00"]);
+
+    const totals = async (filters: { currency: string | null; method: string | null }) =>
+      (await listPayouts(ownerId, merchantId, { page: 1, pageSize: 10 }, filters)).rows.map((r) => r.total).sort();
+    expect(await totals({ currency: "eur", method: null })).toEqual(["8.00"]);
+    expect(await totals({ currency: null, method: "paypal" })).toEqual(["10.00", "8.00"]);
+    expect(await totals({ currency: null, method: "none" })).toEqual(["5.00"]);
+    expect((await listPayouts(ownerId, merchantId, { page: 1, pageSize: 10 })).currencies).toEqual(["eur", "usd"]);
+  });
+
+  it("holds a balance below the program's minimum apart, per currency, and leaves it out of the count", async () => {
+    await db.program.update({ where: { id: programId }, data: { minimumPayout: "50.00" } });
+    const a = await makeAffiliate("min-a");
+    await makeCommission(a.id, (await makeClick(a.id)).id, { amount: "30.00" });
+    await makeCommission(a.id, (await makeClick(a.id)).id, { amount: "25.00" });
+    await makeCommission(a.id, (await makeClick(a.id)).id, { amount: "40.00", currency: "eur" });
+    // Pending money does not count towards the minimum: it cannot be paid yet.
+    await makeCommission(a.id, (await makeClick(a.id)).id, { amount: "40.00", currency: "eur", status: "PENDING" });
+
+    const groups = await getPayableGroups(ownerId, merchantId);
+    const byCurrency = Object.fromEntries(groups.map((g) => [g.currency, g.shortfall]));
+    expect(byCurrency).toEqual({ usd: null, eur: { balance: "40.00", minimum: "50.00" } });
+    expect(await countPayouts(merchantId)).toBe(1);
+    // Payable now is what the Payouts page offers: the held EUR is not in it.
+    expect((await getOwedTotals(ownerId, merchantId)).payableNow).toEqual([{ currency: "usd", total: "55.00" }]);
   });
 
   it("ranks top affiliates by money earned, not by clicks", async () => {

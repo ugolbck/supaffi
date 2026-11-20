@@ -14,6 +14,8 @@ export type ProgramInput = {
   holdingPeriodDays: number;
   /** Left out by onboarding, which keeps the stored value (open by default). */
   signupOpen?: boolean;
+  /** Two decimals, or null for none. Left out by onboarding too. */
+  minimumPayout?: string | null;
   /** Left out by onboarding too. Null takes the discount away. See `programDiscount`. */
   discountRef?: string | null;
   discountLabel?: string | null;
@@ -105,6 +107,7 @@ export async function listProgramsForMerchant(
     signupOpen: boolean;
     discountRef: string | null;
     discountLabel: string | null;
+    minimumPayout: string | null;
     affiliateCount: number;
   }[]
 > {
@@ -124,6 +127,7 @@ export async function listProgramsForMerchant(
       signupOpen: true,
       discountRef: true,
       discountLabel: true,
+      minimumPayout: true,
       _count: { select: { affiliates: true } },
     },
     orderBy: { createdAt: "asc" },
@@ -133,8 +137,9 @@ export async function listProgramsForMerchant(
   // affiliates each program has without a second round trip per row. The
   // Programs screen's cards read the duration/window/holding fields too, so
   // that grid doesn't need a second query per card either.
-  return programs.map(({ _count, ...program }) => ({
+  return programs.map(({ _count, minimumPayout, ...program }) => ({
     ...program,
+    minimumPayout: minimumPayout?.toFixed(2) ?? null,
     affiliateCount: _count.affiliates,
   }));
 }

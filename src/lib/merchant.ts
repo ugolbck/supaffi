@@ -294,6 +294,7 @@ export async function deleteMerchant(ownerId: string, merchantId: string): Promi
         select: { domain: true, domainVerifiedAt: true, previousDomain: true },
       });
       await tx.commission.deleteMany({ where: affiliates });
+      await tx.payout.deleteMany({ where: { merchantId } });
       // Points at the click, so it goes before clicks do.
       await tx.referredSubscription.deleteMany({ where: { merchantId } });
       await tx.click.deleteMany({ where: affiliates });

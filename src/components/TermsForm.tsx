@@ -53,6 +53,7 @@ export function TermsForm({
   initial = TERMS_DEFAULTS,
   askName = true,
   signupOpen,
+  askMinimum = false,
   discount,
   submitLabel,
 }: {
@@ -62,6 +63,8 @@ export function TermsForm({
   askName?: boolean;
   /** Shown only where it is set: onboarding's first program is always open. */
   signupOpen?: boolean;
+  /** Off in onboarding, which keeps the first program short. */
+  askMinimum?: boolean;
   /** Left out where there is no Stripe key to list coupons with yet. */
   discount?: DiscountField;
   submitLabel: string;
@@ -171,6 +174,24 @@ export function TermsForm({
             </div>
           </Field>
         </div>
+
+        {askMinimum && (
+          <Field
+            label={<Term tip="An affiliate is paid once what they are owed in one currency reaches this amount. Below it, the balance waits for the next payout.">Minimum payout</Term>}
+            htmlFor="program-minimum"
+          >
+            <Input
+              id="program-minimum"
+              name="minimumPayout"
+              type="number"
+              min="0"
+              step="0.01"
+              defaultValue={initial.minimumPayout ?? ""}
+              placeholder="None"
+              className="w-28 tabular-nums"
+            />
+          </Field>
+        )}
 
         {discount && <Discount {...discount} />}
 

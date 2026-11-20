@@ -63,3 +63,26 @@ describe("validateProgramInput", () => {
     );
   });
 });
+
+describe("validateProgramInput minimum payout", () => {
+  it("leaves the minimum alone when the form has no such field", () => {
+    expect(validateProgramInput(validInput).parsed).not.toHaveProperty("minimumPayout");
+  });
+
+  it("stores two decimals, and none for empty or zero", () => {
+    expect(validateProgramInput({ ...validInput, minimumPayout: "50" }).parsed?.minimumPayout).toBe("50.00");
+    expect(validateProgramInput({ ...validInput, minimumPayout: "12.5" }).parsed?.minimumPayout).toBe("12.50");
+    expect(validateProgramInput({ ...validInput, minimumPayout: "" }).parsed?.minimumPayout).toBeNull();
+    expect(validateProgramInput({ ...validInput, minimumPayout: "0" }).parsed?.minimumPayout).toBeNull();
+    expect(validateProgramInput({ ...validInput, minimumPayout: "1234567890123456.7" }).parsed?.minimumPayout).toBe("1234567890123456.70");
+    expect(validateProgramInput({ ...validInput, minimumPayout: "007" }).parsed?.minimumPayout).toBe("7.00");
+  });
+
+  it("refuses anything that is not an amount", () => {
+    for (const minimumPayout of ["-5", "abc", "1.234", "1e3"]) {
+      expect(validateProgramInput({ ...validInput, minimumPayout }).error).toBe(
+        "Minimum payout must be an amount like 50 or 50.00"
+      );
+    }
+  });
+});

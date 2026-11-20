@@ -1071,21 +1071,25 @@ function EPayouts({ empty = false }: { empty?: boolean }) {
               {
                 paidAt: new Date("2026-08-28T14:35:00.000Z"),
                 count: 6,
-                totals: [
-                  { currency: "usd", total: "420.00" },
-                  { currency: "eur", total: "60.00" },
-                ],
+                currency: "usd",
+                total: "420.00",
+                method: "paypal",
+                reference: "5TY05013RG002845M",
               },
               {
                 paidAt: new Date("2026-07-30T09:10:00.000Z"),
                 count: 3,
-                totals: [{ currency: "usd", total: "180.00" }],
+                currency: "usd",
+                total: "180.00",
+                method: null,
+                reference: null,
               },
             ]
       }
       pending={[{ currency: "usd", total: "72.00" }]}
       payable={[{ currency: "usd", total: "180.00" }]}
       paid={[{ currency: "usd", total: "980.00" }]}
+      shortfalls={{}}
     />
   );
 }

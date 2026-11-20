@@ -42,7 +42,7 @@ export function ProgramSheet({
           <SheetTitle className="truncate">{title}</SheetTitle>
         </SheetHeader>
         <div className="px-4 pb-6">
-          <TermsForm action={action} initial={initial} signupOpen={signupOpen} discount={discount} submitLabel={initial ? "Save" : "Create program"} />
+          <TermsForm action={action} initial={initial} signupOpen={signupOpen} askMinimum discount={discount} submitLabel={initial ? "Save" : "Create program"} />
         </div>
       </SheetContent>
     </Sheet>

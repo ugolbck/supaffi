@@ -324,54 +324,42 @@ export async function updateAffiliate(
 }
 
 export type AffiliatePaymentGroup = {
-  /** The moment the Owner pressed Mark paid. Every commission in one payout carries the same one. */
+  /** The moment the Owner pressed Mark paid. */
   paidAt: Date;
-  totals: CurrencyTotal[];
+  currency: string;
+  total: string;
   count: number;
+  /** A key of PAYOUT_METHODS, or null when it was not recorded. */
+  method: string | null;
+  /** The transfer's reference, as the Owner typed it. */
+  reference: string | null;
 };
 
 /**
- * Payment history, derived rather than read from a table: Supaffi has no
- * payment rail, so a "payment" is the set of commissions one press of Mark
- * paid covered.
- *
- * Grouped by the exact `paidAt`, not by day. `markCommissionsPaid` stamps
- * every row of a payout with one moment in a single write, so that moment is
- * the payout's identity. Grouping by day merged two separate payouts made the
- * same day into one figure that matched neither transfer. Currencies stay
- * separate within a group (CONTEXT.md: never convert); a real payout only ever
- * has one, but seeded demo rows can share a moment across currencies.
+ * Payment history: one row per payout the Owner recorded. Their private note
+ * is not read.
  */
 export async function listAffiliatePayments(affiliateId: string): Promise<AffiliatePaymentGroup[]> {
-  const rows = await db.commission.findMany({
-    where: { affiliateId, status: "PAID", paidAt: { not: null } },
-    select: { amount: true, currency: true, paidAt: true },
+  const payouts = await db.payout.findMany({
+    where: { affiliateId },
+    select: {
+      paidAt: true,
+      currency: true,
+      amount: true,
+      method: true,
+      reference: true,
+      _count: { select: { commissions: true } },
+    },
+    orderBy: [{ paidAt: "desc" }, { id: "asc" }],
   });
-
-  const byPayout = new Map<number, { paidAt: Date; totals: Map<string, Prisma.Decimal>; count: number }>();
-  for (const row of rows) {
-    const paidAt = row.paidAt!;
-    let bucket = byPayout.get(paidAt.getTime());
-    if (!bucket) {
-      bucket = { paidAt, totals: new Map(), count: 0 };
-      byPayout.set(paidAt.getTime(), bucket);
-    }
-    bucket.count += 1;
-    bucket.totals.set(
-      row.currency,
-      (bucket.totals.get(row.currency) ?? new Prisma.Decimal(0)).add(row.amount)
-    );
-  }
-
-  return [...byPayout.values()]
-    .sort((a, b) => b.paidAt.getTime() - a.paidAt.getTime())
-    .map((bucket) => ({
-      paidAt: bucket.paidAt,
-      count: bucket.count,
-      totals: [...bucket.totals.entries()]
-        .map(([currency, amount]) => ({ currency, total: amount.toFixed(2) }))
-        .sort((a, b) => a.currency.localeCompare(b.currency)),
-    }));
+  return payouts.map((p) => ({
+    paidAt: p.paidAt,
+    currency: p.currency,
+    total: p.amount.toFixed(2),
+    count: p._count.commissions,
+    method: p.method,
+    reference: p.reference,
+  }));
 }
 
 export type AffiliateListFilters = {

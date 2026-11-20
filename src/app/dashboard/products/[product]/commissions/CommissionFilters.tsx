@@ -24,7 +24,7 @@ import {
 
 type Option = { value: string; label: string; hint?: string };
 
-function FilterMenu({
+export function FilterMenu({
   label,
   options,
   active,

@@ -295,7 +295,7 @@ describe("owners.canUse", () => {
   const createMerchant = vi.fn(async () => ({ slug: "acme" }));
   const getMerchantForOwner = vi.fn(async () => ({ id: "m1", name: "Acme" }));
   const deleteMerchant = vi.fn(async () => {});
-  const markCommissionsPaid = vi.fn(async () => ({ count: 1 }));
+  const markPayoutsPaid = vi.fn(async () => ({ payouts: 0, skipped: 0, alreadyPaid: 0, alreadyPaidAt: null, error: null }));
   const product = { id: "m1", slug: "acme" };
 
   function form(fields: Record<string, string>): FormData {
@@ -318,14 +318,20 @@ describe("owners.canUse", () => {
         form({ confirm: "Acme" })
       ),
     payout: async () =>
-      (await import("@/app/dashboard/products/[product]/payouts/payoutActions")).markPayoutPaidAction(product, [], ""),
+      (await import("@/app/dashboard/products/[product]/payouts/payoutActions")).markPayoutsPaidAction(
+        product,
+        { tab: "ready", currency: null, method: null },
+        [],
+        "",
+        form({})
+      ),
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.doMock("next/cache", () => ({ revalidatePath: vi.fn() }));
     vi.doMock("@/lib/merchant", () => ({ createMerchant, getMerchantForOwner, deleteMerchant, listMerchantsForOwner: vi.fn() }));
-    vi.doMock("@/lib/commission", () => ({ markCommissionsPaid, STALE_PAGE: "stale" }));
+    vi.doMock("@/lib/commission", () => ({ markPayoutsPaid, STALE_PAGE: "stale" }));
   });
 
   it("lets every Owner through by default", async () => {
@@ -334,7 +340,7 @@ describe("owners.canUse", () => {
     expect(await outcome(writes.payout)).toBe("redirect:/dashboard/products/acme/payouts");
     expect(createMerchant).toHaveBeenCalledWith("owner-1", expect.anything());
     expect(deleteMerchant).toHaveBeenCalledWith("owner-1", "m1");
-    expect(markCommissionsPaid).toHaveBeenCalledWith("owner-1", "m1", [], "");
+    expect(markPayoutsPaid).toHaveBeenCalledWith("owner-1", "m1", [], "", { reference: null, note: null });
   });
 
   it("sends a refused Owner where the gate does, before any action writes", async () => {
@@ -345,7 +351,7 @@ describe("owners.canUse", () => {
     expect(createMerchant).not.toHaveBeenCalled();
     expect(getMerchantForOwner).not.toHaveBeenCalled();
     expect(deleteMerchant).not.toHaveBeenCalled();
-    expect(markCommissionsPaid).not.toHaveBeenCalled();
+    expect(markPayoutsPaid).not.toHaveBeenCalled();
   });
 
   it("answers not found for a refused Owner when the gate sends nowhere, on actions and pages alike", async () => {
@@ -356,7 +362,7 @@ describe("owners.canUse", () => {
     expect(await outcome(Products)).toBe("notFound");
     expect(listMerchantsForOwner).not.toHaveBeenCalled();
     expect(createMerchant).not.toHaveBeenCalled();
-    expect(markCommissionsPaid).not.toHaveBeenCalled();
+    expect(markPayoutsPaid).not.toHaveBeenCalled();
   });
 
   it("leaves signing out, the account page and its actions open to a refused Owner", async () => {
@@ -389,6 +395,6 @@ describe("owners.canUse", () => {
     install({ owners: { canUse } });
     expect(await outcome(writes.payout)).toBe("redirect:/login");
     expect(canUse).not.toHaveBeenCalled();
-    expect(markCommissionsPaid).not.toHaveBeenCalled();
+    expect(markPayoutsPaid).not.toHaveBeenCalled();
   });
 });

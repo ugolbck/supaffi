@@ -114,7 +114,7 @@ export function OverviewScreen({
 }: OverviewView) {
   // Through the ledger's own mapping, so a date and an amount read the same on
   // this card as they do on the ledger the card links to.
-  const recentRows = recent.map(toLedgerRow);
+  const recentRows = recent.map((row) => toLedgerRow(row));
   const against = range === "all" ? "" : rangeLabel(range).toLowerCase().replace(/^last /, "previous ").replace(/^this /, "previous ").replace(/^yesterday$/, "the day before").replace(/^today$/, "yesterday");
   const delta = (now: number, before: number | null | undefined) =>
     range === "all" ? undefined : { percent: change(now, before ?? 0), against };

@@ -58,3 +58,10 @@ export function alreadyPaidParams(result: {
     ...(result.count > 0 && { recorded: "1" }),
   };
 }
+
+// Said after Mark paid recorded one or more payouts at once.
+export function recordedNote(raw: string | undefined): string | null {
+  const paid = Math.floor(Number(raw));
+  if (!Number.isFinite(paid) || paid < 1) return null;
+  return paid === 1 ? "1 payout recorded." : `${formatCount(paid)} payouts recorded.`;
+}

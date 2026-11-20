@@ -1,6 +1,7 @@
 import { formatMoney, formatDate } from "@/lib/format";
 import { Coins, TicketPercent } from "lucide-react";
 import type { AffiliateCommissionRow, AffiliateCommissionStatus } from "@/lib/affiliate";
+import type { Shortfall } from "@/lib/payoutMinimum";
 import { voidReasonText } from "@/lib/commissionReason";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/dashboard/EmptyState";
@@ -75,7 +76,7 @@ export type LedgerRow = {
  * from `voidReasonText`, which is the one place that turns a stored token into
  * words.
  */
-export function commissionStateLabel(row: AffiliateCommissionRow): string {
+export function commissionStateLabel(row: AffiliateCommissionRow, shortfall?: Shortfall): string {
   switch (row.status) {
     case "PENDING": {
       // FLAGGED folds into PENDING and the sweep deliberately never promotes a
@@ -87,6 +88,9 @@ export function commissionStateLabel(row: AffiliateCommissionRow): string {
       return `Clears ${formatDate(row.payableAt)}`;
     }
     case "PAYABLE":
+      if (shortfall) {
+        return `Below minimum, ${formatMoney(shortfall.balance, row.currency)} of ${formatMoney(shortfall.minimum, row.currency)}`;
+      }
       return "Ready to pay";
     case "PAID":
       return row.paidAt ? `Paid ${formatDate(row.paidAt)}` : "Paid";
@@ -97,8 +101,12 @@ export function commissionStateLabel(row: AffiliateCommissionRow): string {
   }
 }
 
-/** One database row as the ledger shows it. Both screens map through this. */
-export function toLedgerRow(row: AffiliateCommissionRow): LedgerRow {
+/**
+ * One database row as the ledger shows it. Both screens map through this.
+ * `shortfalls` are the affiliate's payable balances below the minimum payout,
+ * by currency.
+ */
+export function toLedgerRow(row: AffiliateCommissionRow, shortfalls: Record<string, Shortfall> = {}): LedgerRow {
   return {
     id: row.id,
     dateLabel: formatDate(row.createdAt),
@@ -108,7 +116,7 @@ export function toLedgerRow(row: AffiliateCommissionRow): LedgerRow {
     linkCode: row.linkCode,
     promoCode: row.promoCode ?? null,
     isAdjustment: row.isAdjustment,
-    stateLabel: commissionStateLabel(row),
+    stateLabel: commissionStateLabel(row, shortfalls[row.currency]),
     voidReason: row.voidReason,
     voidedLabel: row.voidedAt ? formatDate(row.voidedAt) : null,
   };

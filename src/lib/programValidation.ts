@@ -10,6 +10,8 @@ export type ProgramFormValues = {
   commissionDurationMonths: string;
   attributionWindowDays: string;
   holdingPeriodDays: string;
+  /** Left out by onboarding, which has no such field. Empty means no minimum. */
+  minimumPayout?: string;
 };
 
 export function validateProgramInput(
@@ -46,6 +48,18 @@ export function validateProgramInput(
     return { error: "Hold before paying must be a whole number of days, at least 1" };
   }
 
+  let minimumPayout: string | null | undefined;
+  if (input.minimumPayout !== undefined) {
+    const raw = input.minimumPayout.trim();
+    const value = Number(raw);
+    if (raw && (!/^\d+(\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value >= 1e16)) {
+      return { error: "Minimum payout must be an amount like 50 or 50.00" };
+    }
+    // Padded as text, not rounded through a float, so the stored minimum is the one typed.
+    const [whole, cents = ""] = raw.split(".");
+    minimumPayout = raw && value > 0 ? `${whole.replace(/^0+(?=\d)/, "")}.${cents.padEnd(2, "0")}` : null;
+  }
+
   return {
     error: null,
     parsed: {
@@ -55,6 +69,7 @@ export function validateProgramInput(
       commissionDurationMonths,
       attributionWindowDays,
       holdingPeriodDays,
+      ...(minimumPayout !== undefined && { minimumPayout }),
     },
   };
 }

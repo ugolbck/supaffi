@@ -2,7 +2,8 @@ import { db } from "@/lib/db";
 import { assertOwnsMerchant } from "@/lib/ownership";
 import { Prisma } from "@prisma/client";
 import { notifyPaid } from "@/lib/notify";
-import { MAX_SHOWN } from "@/lib/payoutLimits";
+import { MAX_NOTE, MAX_REFERENCE, MAX_SHOWN } from "@/lib/payoutLimits";
+import { parsePayoutDetails } from "@/lib/payoutMethod";
 
 export type CommissionStatus = "PENDING" | "PAYABLE" | "PAID" | "VOIDED" | "FLAGGED";
 
@@ -251,6 +252,12 @@ export async function getCommissionFilterOptions(
 export type ShownCommission = { id: string; amount: string };
 
 /**
+ * What the Owner typed when marking paid. The reference is shown to the
+ * affiliate; the note is the Owner's alone.
+ */
+export type PayoutDetails = { reference?: string | null; note?: string | null };
+
+/**
  * `alreadyPaid` is present only when some shown rows were already PAID, with
  * the latest time one of them was marked. Those are neither recorded again nor
  * counted as skipped, so without it a press from an older tab says nothing.
@@ -377,14 +384,22 @@ function payoutFor(row: PayoutRow, shown: Prisma.Decimal, renderedAt: Date): Pay
  * that are no longer payable for a reason the Owner chose are skipped and
  * counted, so the page can say so, and so is a row an open dispute already
  * held before the page was rendered; see `payoutFor`.
+ *
+ * What it records becomes one Payout, with how the affiliate asked to be paid
+ * at that moment and the Owner's reference and note.
  */
 export async function markCommissionsPaid(
   ownerId: string,
   merchantId: string,
   shown: ShownCommission[],
-  renderedAt: string
+  renderedAt: string,
+  details: PayoutDetails = {}
 ): Promise<MarkPaidResult> {
   await assertOwnsMerchant(ownerId, merchantId);
+
+  const reference = cleanText(details.reference, MAX_REFERENCE);
+  const note = cleanText(details.note, MAX_NOTE);
+  if (reference === undefined || note === undefined) return { error: REFUSED };
 
   if (!Array.isArray(shown) || shown.length === 0) {
     return { error: "Nothing selected" };
@@ -476,12 +491,40 @@ export async function markCommissionsPaid(
       }
     }
 
+    const stored = new Set(asStored);
+    const paid = [
+      ...rows.filter((row) => stored.has(row.id)).map((row) => row.amount),
+      ...atShownAmount.map((row) => row.amount),
+    ];
+    const total = paid.reduce((sum, amount) => sum.add(amount), new Prisma.Decimal(0));
+    let payoutId: string | null = null;
+    if (paid.length > 0) {
+      const affiliate = await tx.affiliate.findUniqueOrThrow({
+        where: { id: rows[0].affiliateId },
+        select: { payoutDetails: true },
+      });
+      const payout = await tx.payout.create({
+        data: {
+          merchantId,
+          affiliateId: rows[0].affiliateId,
+          currency: rows[0].currency,
+          amount: total,
+          paidAt,
+          method: affiliate.payoutDetails?.trim() ? parsePayoutDetails(affiliate.payoutDetails).method : null,
+          reference,
+          note,
+        },
+        select: { id: true },
+      });
+      payoutId = payout.id;
+    }
+
     // One write for the usual case, so a payout of many rows stays well inside
     // the transaction's time limit.
     if (asStored.length > 0) {
       await tx.commission.updateMany({
         where: { id: { in: asStored } },
-        data: { status: "PAID", paidAt },
+        data: { status: "PAID", paidAt, payoutId },
       });
     }
     // The few a refund reached in between are written one by one, each at its
@@ -493,6 +536,7 @@ export async function markCommissionsPaid(
         data: {
           status: "PAID",
           paidAt,
+          payoutId,
           amount: row.amount,
           voidedAt: null,
           voidReason: row.amount.lt(row.ceiling) ? "partial refund" : null,
@@ -500,16 +544,11 @@ export async function markCommissionsPaid(
       });
     }
 
-    const stored = new Set(asStored);
-    const paid = [
-      ...rows.filter((row) => stored.has(row.id)).map((row) => row.amount),
-      ...atShownAmount.map((row) => row.amount),
-    ];
     if (paid.length > 0) {
       await notifyPaid(tx, {
         affiliateId: rows[0].affiliateId,
         paidAt,
-        total: paid.reduce((sum, amount) => sum.add(amount), new Prisma.Decimal(0)).toString(),
+        total: total.toString(),
         currency: rows[0].currency,
       });
     }
@@ -520,6 +559,68 @@ export async function markCommissionsPaid(
       ...(alreadyPaid > 0 && { alreadyPaid: { count: alreadyPaid, paidAt: alreadyPaidAt } }),
     };
   });
+}
+
+/**
+ * A typed reference or note, trimmed, with an empty one stored as null.
+ * Undefined for input no form could have sent: not a string, or past the
+ * field's limit.
+ */
+function cleanText(value: unknown, max: number): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length > max) return undefined;
+  return trimmed || null;
+}
+
+export type BatchResult = {
+  /** Payouts recorded. */
+  payouts: number;
+  /** Rows skipped across every payout, as `markCommissionsPaid` counts them. */
+  skipped: number;
+  /** Rows an earlier press had already recorded, across every payout. */
+  alreadyPaid: number;
+  /** The latest time one of those was marked paid. */
+  alreadyPaidAt: Date | null;
+  /** The first refusal, when any payout in the batch was refused. */
+  error: string | null;
+};
+
+/**
+ * Several payouts at once, from the rows the Owner ticked: each is one
+ * affiliate and one currency as the page showed it, recorded on its own by
+ * `markCommissionsPaid` with the same reference and note. A refused one does
+ * not stop the rest, since each is a transfer the Owner already made.
+ */
+export async function markPayoutsPaid(
+  ownerId: string,
+  merchantId: string,
+  batch: ShownCommission[][],
+  renderedAt: string,
+  details: PayoutDetails = {}
+): Promise<BatchResult> {
+  const result: BatchResult = { payouts: 0, skipped: 0, alreadyPaid: 0, alreadyPaidAt: null, error: null };
+  if (!Array.isArray(batch) || batch.length === 0) return { ...result, error: "Nothing selected" };
+  // One press never binds more commissions than one payout may, so a large
+  // selection is refused whole rather than recorded partway.
+  if (batch.some((shown) => !Array.isArray(shown)) || batch.reduce((n, shown) => n + shown.length, 0) > MAX_SHOWN) {
+    return { ...result, error: REFUSED };
+  }
+
+  for (const shown of batch) {
+    const outcome = await markCommissionsPaid(ownerId, merchantId, shown, renderedAt, details);
+    if ("error" in outcome) {
+      result.error ??= outcome.error;
+      continue;
+    }
+    if (outcome.count > 0) result.payouts += 1;
+    result.skipped += outcome.skipped;
+    result.alreadyPaid += outcome.alreadyPaid?.count ?? 0;
+    const at = outcome.alreadyPaid?.paidAt;
+    if (at && (!result.alreadyPaidAt || at > result.alreadyPaidAt)) result.alreadyPaidAt = at;
+  }
+  return result;
 }
 
 /**
