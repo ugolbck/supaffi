@@ -427,4 +427,18 @@ describe("client.start", () => {
     await import("@/instrumentation-client");
     expect(start).toHaveBeenCalledOnce();
   });
+
+  it("does not stop the browser entry when it throws", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.doMock("@/extensions/installed-client", () => ({
+      installedClient: {
+        start: () => {
+          throw new Error("installed failure");
+        },
+      },
+    }));
+    await expect(import("@/instrumentation-client")).resolves.toBeDefined();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
 });

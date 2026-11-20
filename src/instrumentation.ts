@@ -21,7 +21,12 @@ const globalForWorker = globalThis as unknown as { supaffiWorkerStarted?: boolea
 // that is what this file reaches. `@/lib/setupToken` is fine: it imports only
 // `node:crypto`, which Edge warns about but resolves.
 export async function register(): Promise<void> {
-  await installedErrors.register?.();
+  try {
+    await installedErrors.register?.();
+  } catch (err) {
+    // A failing hook must not keep the worker from starting.
+    console.error("[instrumentation] startup hook failed", err);
+  }
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (globalForWorker.supaffiWorkerStarted) return; // dev-mode Fast Refresh guard, same pattern as db.ts
   globalForWorker.supaffiWorkerStarted = true;
